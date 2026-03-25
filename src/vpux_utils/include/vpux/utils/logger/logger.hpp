@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -11,6 +11,7 @@
 
 #include "vpux/utils/core/format.hpp"
 #include "vpux/utils/core/func_ref.hpp"
+#include "vpux/utils/core/helper_macros.hpp"
 #include "vpux/utils/core/string_ref.hpp"
 #include "vpux/utils/logger/common_logger.hpp"
 
@@ -59,6 +60,14 @@ public:
         _name = name;
     }
 
+    void setAlternateName(StringRef altName) {
+#if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
+        _alternateName = altName.str();
+#else
+        VPUX_UNUSED(altName);
+#endif
+    }
+
 public:
     auto level() const {
         return _logLevel;
@@ -72,6 +81,7 @@ public:
     bool isActive(LogLevel msgLevel) const;
 
 public:
+    static void setBaseStream(llvm::raw_ostream& stream);
     static llvm::raw_ostream& getBaseStream();
     static llvm::WithColor getLevelStream(LogLevel msgLevel);
 
@@ -139,8 +149,11 @@ private:
     StringLiteral _name;
     LogLevel _logLevel = LogLevel::None;
     size_t _indentLevel = 0;
+
+    inline static llvm::raw_ostream* _baseStreamOverride = nullptr;
+
 #if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
-    std::string _logFilterStr;
+    std::string _alternateName;
 #endif
 };
 

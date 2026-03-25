@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,6 +7,7 @@
 // REQUIRES: arch-NPU37XX
 
 // CHECK-LABEL: @ConvertUpsamplingToStridedConcatW
+// CHECK-SAME:     [[ARG_0:%[^:]+]]: tensor<1x1x2x2xf16>
 func.func @ConvertUpsamplingToStridedConcatW(%arg0: tensor<1x1x2x2xf16>) -> tensor<1x1x2x3xf16> {
     %0 = IE.Upsampling(%arg0) {
         pad = #IE.UpsamplingPad<pads_channel = [0, 0], pads_height = [0, 0], pads_width = [0, 0]>,
@@ -18,7 +19,7 @@ func.func @ConvertUpsamplingToStridedConcatW(%arg0: tensor<1x1x2x2xf16>) -> tens
     // CHECK-DAG:       [[CST:%.+]] = const.Declare
     // CHECK-SAME:      tensor<1x1x2x2xf16>
     // CHECK-SAME:      dense<0.000000e+00>
-    // CHECK:       [[CONCAT:%.+]] = IE.Concat(%arg0, [[CST]])
+    // CHECK:       [[CONCAT:%.+]] = IE.Concat([[ARG_0]], [[CST]])
     // CHECK-SAME:      axis = 3
     // CHECK-SAME:      stride = 2
     // CHECK-SAME:      tensor<1x1x2x2xf16>, tensor<1x1x2x2xf16> -> tensor<1x1x2x4xf16>
@@ -29,6 +30,7 @@ func.func @ConvertUpsamplingToStridedConcatW(%arg0: tensor<1x1x2x2xf16>) -> tens
 }
 
 // CHECK-LABEL: @ConvertUpsamplingToStridedConcatH
+// CHECK-SAME:     [[ARG_0:%[^:]+]]: tensor<1x1x2x2xf32>
 func.func @ConvertUpsamplingToStridedConcatH(%arg0: tensor<1x1x2x2xf32>) -> tensor<1x1x4x2xf32> {
     %0 = IE.Upsampling(%arg0) {
         pad = #IE.UpsamplingPad<pads_channel = [0, 0], pads_height = [0, 0], pads_width = [0, 0]>,
@@ -39,7 +41,7 @@ func.func @ConvertUpsamplingToStridedConcatH(%arg0: tensor<1x1x2x2xf32>) -> tens
     // CHECK-NOT:   IE.Upsampling
     // CHECK-DAG:       [[CST:%.+]] = const.Declare
     // CHECK-SAME:      tensor<1x1x2x2xf32>
-    // CHECK:       [[CONCAT:%.+]] = IE.Concat(%arg0, [[CST]], [[CST]])
+    // CHECK:       [[CONCAT:%.+]] = IE.Concat([[ARG_0]], [[CST]], [[CST]])
     // CHECK-SAME:      axis = 2
     // CHECK-SAME:      stride = 3
     // CHECK-SAME:      tensor<1x1x2x2xf32>, tensor<1x1x2x2xf32>, tensor<1x1x2x2xf32> -> tensor<1x1x6x2xf32>
@@ -50,6 +52,7 @@ func.func @ConvertUpsamplingToStridedConcatH(%arg0: tensor<1x1x2x2xf32>) -> tens
 }
 
 // CHECK-LABEL: @ConvertUpsamplingToStridedConcatC
+// CHECK-SAME:     [[ARG_0:%[^:]+]]: tensor<1x2x2x2xf16>
 func.func @ConvertUpsamplingToStridedConcatC(%arg0: tensor<1x2x2x2xf16>) -> tensor<1x3x2x2xf16> {
     %0 = IE.Upsampling(%arg0) {
         pad = #IE.UpsamplingPad<pads_channel = [0, 0], pads_height = [0, 0], pads_width = [0, 0]>,
@@ -60,7 +63,7 @@ func.func @ConvertUpsamplingToStridedConcatC(%arg0: tensor<1x2x2x2xf16>) -> tens
     // CHECK-NOT:   IE.Upsampling
     // CHECK-DAG:       [[CST:%.+]] = const.Declare
     // CHECK-SAME:      tensor<1x2x2x2xf16>
-    // CHECK:       [[CONCAT:%.+]] = IE.Concat(%arg0, [[CST]])
+    // CHECK:       [[CONCAT:%.+]] = IE.Concat([[ARG_0]], [[CST]])
     // CHECK-SAME:      axis = 1
     // CHECK-SAME:      stride = 2
     // CHECK-SAME:      tensor<1x2x2x2xf16>, tensor<1x2x2x2xf16> -> tensor<1x4x2x2xf16>
@@ -71,6 +74,7 @@ func.func @ConvertUpsamplingToStridedConcatC(%arg0: tensor<1x2x2x2xf16>) -> tens
 }
 
 // CHECK-LABEL: @ConvertUpsamplingToStridedConcatHWC
+// CHECK-SAME:     [[ARG_0:%[^:]+]]: tensor<1x2x2x2xf32>
 func.func @ConvertUpsamplingToStridedConcatHWC(%arg0: tensor<1x2x2x2xf32>) -> tensor<1x4x4x4xf32> {
     %0 = IE.Upsampling(%arg0) {
         pad = #IE.UpsamplingPad<pads_channel = [0, 0], pads_height = [0, 0], pads_width = [0, 0]>,
@@ -81,7 +85,7 @@ func.func @ConvertUpsamplingToStridedConcatHWC(%arg0: tensor<1x2x2x2xf32>) -> te
     // CHECK-NOT:   IE.Upsampling
     // CHECK-DAG:       [[CST_C:%.+]] = const.Declare
     // CHECK-SAME:      tensor<1x2x2x2xf32>
-    // CHECK:       [[CONCAT_C:%.+]] = IE.Concat(%arg0, [[CST_C]], [[CST_C]])
+    // CHECK:       [[CONCAT_C:%.+]] = IE.Concat([[ARG_0]], [[CST_C]], [[CST_C]])
     // CHECK-SAME:      axis = 1
     // CHECK-SAME:      stride = 3
     // CHECK-SAME:      tensor<1x2x2x2xf32>, tensor<1x2x2x2xf32>, tensor<1x2x2x2xf32> -> tensor<1x6x2x2xf32>
@@ -104,6 +108,7 @@ func.func @ConvertUpsamplingToStridedConcatHWC(%arg0: tensor<1x2x2x2xf32>) -> te
 }
 
 // CHECK-LABEL: @ConvertUpsamplingToStridedConcatPadWH
+// CHECK-SAME:     [[ARG_0:%[^:]+]]: tensor<1x1x2x2xf16>
 func.func @ConvertUpsamplingToStridedConcatPadWH(%arg0: tensor<1x1x2x2xf16>) -> tensor<1x1x4x4xf16> {
     %0 = IE.Upsampling(%arg0) {
         pad = #IE.UpsamplingPad<pads_channel = [0, 0], pads_height = [1, 0], pads_width = [1, 0]>,
@@ -114,7 +119,7 @@ func.func @ConvertUpsamplingToStridedConcatPadWH(%arg0: tensor<1x1x2x2xf16>) -> 
     // CHECK-NOT:   IE.Upsampling
     // CHECK-DAG:       [[CST_H:%.+]] = const.Declare
     // CHECK-SAME:      tensor<1x1x2x2xf16>
-    // CHECK:       [[CONCAT_H:%.+]] = IE.Concat(%arg0, [[CST_H]])
+    // CHECK:       [[CONCAT_H:%.+]] = IE.Concat([[ARG_0]], [[CST_H]])
     // CHECK-SAME:      axis = 2
     // CHECK-SAME:      stride = 2
     // CHECK-SAME:      tensor<1x1x2x2xf16>, tensor<1x1x2x2xf16> -> tensor<1x1x4x2xf16>
@@ -137,6 +142,7 @@ func.func @ConvertUpsamplingToStridedConcatPadWH(%arg0: tensor<1x1x2x2xf16>) -> 
 }
 
 // CHECK-LABEL: @ConvertDMAbleUpsamplingToStridedConcatPadWH
+// CHECK-SAME:     [[ARG_0:%[^:]+]]: tensor<1x1x2x2xf16>
 func.func @ConvertDMAbleUpsamplingToStridedConcatPadWH(%arg0: tensor<1x1x2x2xf16>) -> tensor<1x1x5x5xf16> {
     %0 = IE.Upsampling(%arg0) {
         pad = #IE.UpsamplingPad<pads_channel = [0, 0], pads_height = [1, 1], pads_width = [1, 1]>,
@@ -144,7 +150,7 @@ func.func @ConvertDMAbleUpsamplingToStridedConcatPadWH(%arg0: tensor<1x1x2x2xf16
     } : tensor<1x1x2x2xf16> -> tensor<1x1x5x5xf16>
     return %0 : tensor<1x1x5x5xf16>
 
-    // CHECK:       [[DMABLEUPSAMPLING:%.+]] = IE.Upsampling(%arg0)
+    // CHECK:       [[DMABLEUPSAMPLING:%.+]] = IE.Upsampling([[ARG_0]])
     // CHECK-SAME:      #IE.UpsamplingPad<pads_channel = [0, 0], pads_height = [0, 1], pads_width = [0, 1]>,
     // CHECK-SAME:      upsampling_factor = [2, 2, 1]} :
     // CHECK-SAME:      tensor<1x1x2x2xf16> -> tensor<1x1x4x4xf16>
@@ -158,6 +164,7 @@ func.func @ConvertDMAbleUpsamplingToStridedConcatPadWH(%arg0: tensor<1x1x2x2xf16
 }
 
 // CHECK-LABEL: @ConvertUpsamplingToStridedConcatPadC
+// CHECK-SAME:     [[ARG_0:%[^:]+]]: tensor<1x2x2x2xf32>
 func.func @ConvertUpsamplingToStridedConcatPadC(%arg0: tensor<1x2x2x2xf32>) -> tensor<1x5x3x3xf32> {
     %0 = IE.Upsampling(%arg0) {
         pad = #IE.UpsamplingPad<pads_channel = [1, 1], pads_height = [0, 0], pads_width = [0, 0]>,
@@ -168,7 +175,7 @@ func.func @ConvertUpsamplingToStridedConcatPadC(%arg0: tensor<1x2x2x2xf32>) -> t
     // CHECK-NOT:   IE.Upsampling
     // CHECK-DAG:       [[CST_C:%.+]] = const.Declare
     // CHECK-SAME:      tensor<1x2x2x2xf32>
-    // CHECK:       [[CONCAT_C:%.+]] = IE.Concat(%arg0, [[CST_C]])
+    // CHECK:       [[CONCAT_C:%.+]] = IE.Concat([[ARG_0]], [[CST_C]])
     // CHECK-SAME:      axis = 1
     // CHECK-SAME:      stride = 2
     // CHECK-SAME:      tensor<1x2x2x2xf32>, tensor<1x2x2x2xf32> -> tensor<1x4x2x2xf32>
@@ -197,6 +204,7 @@ func.func @ConvertUpsamplingToStridedConcatPadC(%arg0: tensor<1x2x2x2xf32>) -> t
 }
 
 // CHECK-LABEL: @ConvertUpsamplingHCToStridedConcatPadW
+// CHECK-SAME:     [[ARG_0:%[^:]+]]: tensor<1x3x3x3xf32>
 func.func @ConvertUpsamplingHCToStridedConcatPadW(%arg0: tensor<1x3x3x3xf32>) -> tensor<1x11x9x8xf32> {
     %0 = IE.Upsampling(%arg0) {
         pad = #IE.UpsamplingPad<pads_channel = [0, 0], pads_height = [0, 0], pads_width = [3, 2]>,
@@ -207,7 +215,7 @@ func.func @ConvertUpsamplingHCToStridedConcatPadW(%arg0: tensor<1x3x3x3xf32>) ->
     // CHECK-NOT:   IE.Upsampling
     // CHECK-DAG:       [[CST_C:%.+]] = const.Declare
     // CHECK-SAME:      tensor<1x3x3x3xf32>
-    // CHECK:       [[CONCAT_C:%.+]] = IE.Concat(%arg0, [[CST_C]], [[CST_C]], [[CST_C]], [[CST_C]])
+    // CHECK:       [[CONCAT_C:%.+]] = IE.Concat([[ARG_0]], [[CST_C]], [[CST_C]], [[CST_C]], [[CST_C]])
     // CHECK-SAME:      axis = 1
     // CHECK-SAME:      stride = 5
     // CHECK-SAME:      tensor<1x3x3x3xf32>, tensor<1x3x3x3xf32> -> tensor<1x15x3x3xf32>
@@ -230,6 +238,7 @@ func.func @ConvertUpsamplingHCToStridedConcatPadW(%arg0: tensor<1x3x3x3xf32>) ->
 }
 
 // CHECK-LABEL: @ConvertUpsamplingToStridedConcatPadNoFactor
+// CHECK-SAME:     [[ARG_0:%[^:]+]]: tensor<1x1x1x1xf16>
 func.func @ConvertUpsamplingToStridedConcatPadNoFactor(%arg0: tensor<1x1x1x1xf16>) -> tensor<1x2x2x1xf16> {
     %0 = IE.Upsampling(%arg0) {
         pad = #IE.UpsamplingPad<pads_channel = [0, 1], pads_height = [1, 0], pads_width = [0, 0]>,
@@ -238,7 +247,7 @@ func.func @ConvertUpsamplingToStridedConcatPadNoFactor(%arg0: tensor<1x1x1x1xf16
     return %0 : tensor<1x2x2x1xf16>
 
     // CHECK-NOT:   IE.Upsampling
-    // CHECK:       [[PADING:%.+]] = IE.Pad(%arg0)
+    // CHECK:       [[PADING:%.+]] = IE.Pad([[ARG_0]])
     // CHECK-SAME:      mode = #IE.pad_mode<CONSTANT>
     // CHECK-SAME:      pad_value_attr = 0.000000e+00 : f64
     // CHECK-SAME:      pads_begin_attr = [0, 0, 1, 0]

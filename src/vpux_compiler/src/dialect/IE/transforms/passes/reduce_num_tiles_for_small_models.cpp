@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 
@@ -98,13 +99,23 @@ void ReduceNumTilesForSmallModelsPass::safeRunOnModule() {
     });
     auto softmaxRatio = static_cast<double>(softmaxCount) / averageShapesSizes.size();
 
+    const auto tileCount = VPUIP::getNumTilesUsed(moduleOp);
+    _log.info("Number of tiles used: {0}", tileCount);
+
     if (mean < EXPERIMENTAL_SMALL_MODEL_MEAN_THRESHOLD && standardDeviation < EXPERIMENTAL_SMALL_MODEL_STD_THRESHOLD &&
         multiplyRatio > EXPERIMENTAL_SMALL_MODEL_MULTIPLY_RATIO &&
         matMulRatio > EXPERIMENTAL_SMALL_MODEL_MATMUL_RATIO && softmaxRatio > EXPERIMENTAL_SMALL_MODEL_SOFTMAX_RATIO) {
         auto tileOp = config::getTileExecutor(moduleOp);
         tileOp.setCount(1);
-        auto numDMAPorts = config::getAvailableExecutor(moduleOp, config::ExecutorKind::DMA_NN);
-        numDMAPorts.setCount(1);
+        _log.info("Tiles number overwritten to {0} for small model", tileOp.getCount());
+
+        auto archKind = config::getArch(moduleOp);
+        if (archKind == config::ArchKind::NPU37XX || archKind == config::ArchKind::NPU40XX) {
+            // 2 DMAs are not supported for 1T compilation before NPU50XX
+            auto numDMAPorts = config::getAvailableExecutor(moduleOp, config::ExecutorKind::DMA_NN);
+            numDMAPorts.setCount(1);
+            _log.info("DMA ports overwritten to {0} for small model", numDMAPorts.getCount());
+        }
     }
 }
 

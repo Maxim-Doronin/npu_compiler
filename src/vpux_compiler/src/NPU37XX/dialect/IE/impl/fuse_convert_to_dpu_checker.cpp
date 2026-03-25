@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -39,7 +39,7 @@ bool FuseConvertToDPUChecker::isFusionToParentDPUOpSupported(mlir::Operation* dp
     // There might be a way to set proper FP32 clamp values when bypassing conversion to FP16 in FpPPE
     // Ticket to investigate: E#150685
     if (auto postOpIf = mlir::dyn_cast<IE::LayerWithPostOpInterface>(dpuOp)) {
-        if (mlir::isa_and_nonnull<IE::ClampAttr>(postOpIf.getPostOp())) {
+        if (mlir::isa_and_nonnull<IE::ClampAttr>(postOpIf.getPostOp()) || postOpIf.getClampAttr() != nullptr) {
             log.trace("Parent op of type {0} at loc {1} has Clamp post op.", dpuOp->getName(), dpuOp->getLoc());
             return false;
         }

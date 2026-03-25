@@ -41,12 +41,15 @@ ov_add_test_target(
         npu_llvm_utils
         npu_ov_utils
         openvino::npu_al
+        openvino::npu_ops
     DEFINES
         DATA_PATH=\"${DATA_PATH}\"
         MODELS_PATH=\"${MODELS_PATH}\"
     LABELS
         KMB
 )
+
+ov_build_target_faster(${TARGET_NAME} PCH PUBLIC "precomp.hpp")
 
 if(WIN32)
     if(ENABLE_DX12)

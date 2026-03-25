@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -175,16 +175,32 @@ inline bool keepIntTypeQuantization(mlir::Operation* op) {
     auto isValidSignedUsecase = [](mlir::Operation* op) -> bool {
         // Consider only Convolution and GroupConvolution as valid usecase for mixed precision
         if (mlir::isa<IE::ConvolutionOp, IE::GroupConvolutionOp>(op)) {
+            // Check if the quantization is compatible with mixed precision usecase
+            auto isQuantizationFusable = [&op](const mlir::quant::QuantizedType filterType) -> bool {
+                const auto isPerChannelQuantType = mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(filterType);
+                const auto isPerTensorQuantType = mlir::isa<mlir::quant::UniformQuantizedType>(filterType);
+                const auto isSymmetricQuant = IE::isSymmetricQuantType(filterType);
+                auto moduleOp = getModuleOp(op);
+                const auto isAsymmetricPerChannelSupported = config::asymmetricPerChannelZeroPointSupported(moduleOp);
+                const auto isAsymmetricPerTensorSupported = config::asymmetricPerTensorZeroPointSupported(moduleOp);
+                return (isPerChannelQuantType && (isAsymmetricPerChannelSupported || isSymmetricQuant)) ||
+                       (isPerTensorQuantType && (isAsymmetricPerTensorSupported || isSymmetricQuant));
+            };
             // Cases of non quant input and quant wt must remain as Signed
-            if (!op->getOperand(0).getDefiningOp<IE::DequantizeOp>() &&
-                op->getOperand(1).getDefiningOp<IE::DequantizeOp>()) {
-                return true;
+            const auto activationProducerOp = op->getOperand(0).getDefiningOp();
+            const auto filterProducerOp = op->getOperand(1).getDefiningOp();
+            if ((activationProducerOp == nullptr || !mlir::isa<IE::DequantizeOp>(activationProducerOp)) &&
+                filterProducerOp != nullptr && mlir::isa<IE::DequantizeOp>(filterProducerOp)) {
+                const auto filterElemType =
+                        mlir::cast<vpux::NDTypeInterface>(filterProducerOp->getOperand(0).getType()).getElementType();
+                const auto quantFilterElemType = mlir::dyn_cast<mlir::quant::QuantizedType>(filterElemType);
+                return quantFilterElemType != nullptr && isQuantizationFusable(quantFilterElemType);
             }
-
             const auto inputElemType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType()).getElementType();
             const auto filterElemType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(1).getType()).getElementType();
-            return !mlir::isa<mlir::quant::QuantizedType>(inputElemType) &&
-                   mlir::isa<mlir::quant::QuantizedType>(filterElemType);
+            const auto quantFilterElemType = mlir::dyn_cast<mlir::quant::QuantizedType>(filterElemType);
+            return !mlir::isa<mlir::quant::QuantizedType>(inputElemType) && quantFilterElemType != nullptr &&
+                   isQuantizationFusable(quantFilterElemType);
         }
 
         return op->getNumOperands() == 1;
@@ -234,13 +250,28 @@ mlir::LogicalResult ConstRewriter::matchAndRewrite(Const::DeclareOp origOp, OpAd
     const auto constTensor = origOp.getResult();
     const auto constUsers = constTensor.getUsers();
     const auto mixedPrecisionUsers = llvm::count_if(constUsers, [&](mlir::Operation* user) {
-        return keepIntTypeQuantization(user) && user->getOperand(1) == constTensor;
+        // Check both cases: Const->(*Group)ConvOp and Const->DequantizeOp->(*Group)ConvOp
+        if (auto dequantizeOpUser = mlir::dyn_cast_if_present<IE::DequantizeOp>(user)) {
+            const auto dequantizeResult = dequantizeOpUser.getResult();
+            const auto dequantizeUsers = dequantizeResult.getUsers();
+            return llvm::count_if(dequantizeUsers, [&](mlir::Operation* dqUser) {
+                       return keepIntTypeQuantization(dqUser) && dqUser->getNumOperands() > 1 &&
+                              dqUser->getOperand(1) == dequantizeResult;
+                   }) > 0;
+        }
+        return keepIntTypeQuantization(user) && user->getNumOperands() > 1 && user->getOperand(1) == constTensor;
     });
     if (mixedPrecisionUsers > 0) {
         auto i8ConstOp = rewriter.create<Const::DeclareOp>(origOp.getLoc(), origOp.getType(), origOp.getContentAttr());
         for (auto* user : llvm::make_early_inc_range(constUsers)) {
             if (keepIntTypeQuantization(user)) {
-                user->setOperand(1, i8ConstOp);
+                // If user is Dequantize set operand 0 with I8 constant else set directly operand 1 of the
+                // (*Group)ConvOp
+                if (mlir::isa_and_present<IE::DequantizeOp>(user)) {
+                    user->setOperand(0, i8ConstOp);
+                } else {
+                    user->setOperand(1, i8ConstOp);
+                }
             }
         }
     }

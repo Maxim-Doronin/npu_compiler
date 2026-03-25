@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -17,6 +17,7 @@
 #include "vpux/compiler/conversion/rewriters/VPUASM2NPUReg50XX/work_item_rewriter.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 
 #include <mlir/Transforms/DialectConversion.h>
 #include "vpux/compiler/conversion.hpp"
@@ -48,9 +49,7 @@ private:
 void ConvertVPUASM2NPUReg50XXPass::safeRunOnModule() {
     auto moduleOp = getOperation();
     auto& ctx = getContext();
-    mlir::func::FuncOp netFunc;
-    net::NetworkInfoOp netInfo;
-    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
+    auto netFunc = net::getMainFunc(moduleOp);
 
     mlir::ConversionTarget target(ctx);
 

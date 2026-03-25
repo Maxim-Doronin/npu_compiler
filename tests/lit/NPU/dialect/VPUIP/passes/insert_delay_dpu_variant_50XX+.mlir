@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -14,12 +14,12 @@
 
 // CHECK-LABEL: @DPUTaskWithoutSprLUT
 func.func private @DPUTaskWithoutSprLUT(%input: !DataType, %weights: !WeightsType, %weight_table: !WeightTableType, %output: !DataType) -> !DataType {
-    %dpu_output = VPUIP.NCEClusterTask {
+    %dpu_output = VPUIP.NCEClusterTask <{
                             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                             kernel_size = [1, 1],
                             kernel_strides = [1, 1],
                             task_type = #VPUIP.nce_task_type<CONV>
-                        }
+                        }>
                         input(%input : !DataType)
                         weights(%weights : !WeightsType)
                         weight_table(%weight_table : !WeightTableType)
@@ -51,12 +51,12 @@ func.func private @DPUTaskWithoutSprLUT(%input: !DataType, %weights: !WeightsTyp
 
 // CHECK-LABEL: @ConvWithSprLUTKernel1x1
 func.func private @ConvWithSprLUTKernel1x1(%input: !DataType, %weights: !WeightsType, %weight_table: !WeightTableType, %sprlut: !SrplutType, %output: !DataType) -> !DataType {
-    %dpu_output = VPUIP.NCEClusterTask {
+    %dpu_output = VPUIP.NCEClusterTask <{
                             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                             kernel_size = [1, 1],
                             kernel_strides = [1, 1],
                             task_type = #VPUIP.nce_task_type<CONV>
-                        }
+                        }>
                         input(%input : !DataType)
                         weights(%weights : !WeightsType)
                         weight_table(%weight_table : !WeightTableType)
@@ -94,12 +94,12 @@ func.func private @ConvWithSprLUTKernel1x1(%input: !DataType, %weights: !Weights
 
 // CHECK-LABEL: @ConvWithSprLUTKernel3x3
 func.func private @ConvWithSprLUTKernel3x3(%input: !DataType, %weights: !WeightsType, %weight_table: !WeightTableType, %sprlut: !SrplutType, %output: !DataType) -> !DataType {
-    %dpu_output = VPUIP.NCEClusterTask {
+    %dpu_output = VPUIP.NCEClusterTask <{
                             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                             kernel_size = [3, 3],
                             kernel_strides = [1, 1],
                             task_type = #VPUIP.nce_task_type<CONV>
-                        }
+                        }>
                         input(%input : !DataType)
                         weights(%weights : !WeightsType)
                         weight_table(%weight_table : !WeightTableType)
@@ -137,12 +137,12 @@ func.func private @ConvWithSprLUTKernel3x3(%input: !DataType, %weights: !Weights
 
 // CHECK-LABEL: @ConvWithSprLUTKernel3x3Padding1x1x1x1
 func.func private @ConvWithSprLUTKernel3x3Padding1x1x1x1(%input: !DataType, %weights: !WeightsType, %sprlut: !SrplutType, %output: !DataType) -> !DataType {
-    %dpu_output = VPUIP.NCEClusterTask {
+    %dpu_output = VPUIP.NCEClusterTask <{
                             kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
                             kernel_size = [3, 3],
                             kernel_strides = [1, 1],
                             task_type = #VPUIP.nce_task_type<CONV>
-                        }
+                        }>
                         input(%input : !DataType)
                         weights(%weights : !WeightsType)
                         spr_lookup_table(%sprlut: !SrplutType)
@@ -179,12 +179,12 @@ func.func private @ConvWithSprLUTKernel3x3Padding1x1x1x1(%input: !DataType, %wei
 
 // CHECK-LABEL: @ConvWithSprLUTKernel1x1Autopad
 func.func private @ConvWithSprLUTKernel1x1Autopad(%input: !DataType, %weights: !WeightsType, %weight_table: !WeightTableType, %sprlut: !SrplutType, %output: !DataType) -> !DataType {
-    %dpu_output = VPUIP.NCEClusterTask {
+    %dpu_output = VPUIP.NCEClusterTask <{
                             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                             kernel_size = [1, 1],
                             kernel_strides = [1, 1],
                             task_type = #VPUIP.nce_task_type<CONV>
-                        }
+                        }>
                         input(%input : !DataType)
                         weights(%weights : !WeightsType)
                         weight_table(%weight_table : !WeightTableType)
@@ -259,14 +259,14 @@ func.func private @ConvWithSprLUTKernel1x1Autopad(%input: !DataType, %weights: !
 func.func  @ConvWithODUAutopadAndHalo(
         %input: !DataType, %weights: !WeightsType, %weight_table: !WeightTableType,
         %output_iti0: !OutputITICluster0, %output_iti1: !OutputITICluster1, %output_iti2: !OutputITICluster2) -> !OutputITICluster0 {
-    %nce = VPUIP.NCEClusterTask {
+    %nce = VPUIP.NCEClusterTask <{
             is_superdense,
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1],
             kernel_strides = [1, 1],
             mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>,
             task_type = #VPUIP.nce_task_type<CONV>
-        } input(%input : !DataType)
+        }> input(%input : !DataType)
           weights(%weights : !WeightsType)
           weight_table(%weight_table : !WeightTableType)
           parent_input(%input : memref<1x64x3x4xf16, #NHWC, [@CMX_NN, 0]>)
@@ -318,11 +318,11 @@ func.func  @ConvWithODUAutopadAndHalo(
 
 // CHECK-LABEL: @EltwiseAddWithSprLUT
 func.func private @EltwiseAddWithSprLUT(%input1: !DataType, %input2: !DataType, %sprlut: !SrplutType, %output: !DataType) -> !DataType {
-    %dpu_output = VPUIP.NCEClusterTask {
+    %dpu_output = VPUIP.NCEClusterTask <{
                             eltwise_type = #VPU.eltwise_type<ADD>,
                             mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>,
                             task_type = #VPUIP.nce_task_type<ELTWISE>
-                        }
+                        }>
                         input(%input1 : !DataType)
                         weights(%input2 : !DataType)
                         spr_lookup_table(%sprlut: !SrplutType)
@@ -358,12 +358,12 @@ func.func private @EltwiseAddWithSprLUT(%input1: !DataType, %input2: !DataType, 
 
 // CHECK-LABEL: @MaxPoolWithSprLUT
 func.func private @MaxPoolWithSprLUT(%input1: !DataType, %weight_table: !WeightTableType, %sprlut: !SrplutType, %output: !DataType) -> !DataType {
-    %dpu_output = VPUIP.NCEClusterTask {
+    %dpu_output = VPUIP.NCEClusterTask <{
                             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                             kernel_size = [2, 2],
                             kernel_strides = [2, 2],
                             task_type = #VPUIP.nce_task_type<MAXPOOL>
-                        }
+                        }>
                         input(%input1 : !DataType)
                         weight_table(%weight_table : !WeightTableType)
                         spr_lookup_table(%sprlut: !SrplutType)
@@ -400,13 +400,13 @@ func.func private @MaxPoolWithSprLUT(%input1: !DataType, %weight_table: !WeightT
 
 // CHECK-LABEL: @ConvWithSprLUTAndProfiling
 func.func private @ConvWithSprLUTAndProfiling(%input: !DataType, %weights: !WeightsType, %sprlut: !SrplutType, %output: !DataType) -> !DataType {
-    %dpu_output = VPUIP.NCEClusterTask {
+    %dpu_output = VPUIP.NCEClusterTask <{
                             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                             kernel_size = [1, 1],
                             kernel_strides = [1, 1],
                             task_type = #VPUIP.nce_task_type<CONV>,
                             profilingMetadata = #VPUIP.DpuProfilingMetadataAttr<bufferId = 1 : i64, taskId = 1 : i64, maxVariants = 1 : i64>
-                        }
+                        }>
                         input(%input : !DataType)
                         weights(%weights : !WeightsType)
                         spr_lookup_table(%sprlut: !SrplutType)

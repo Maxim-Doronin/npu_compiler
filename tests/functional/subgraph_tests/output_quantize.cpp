@@ -90,6 +90,12 @@ TEST_P(OutputQuantizeTestCommon, NPU5010_HW) {
     run(Platform::NPU5010);
 }
 
+TEST_P(OutputQuantizeTestCommon, NPU5020_HW) {
+    rel_threshold = 0.0003f;
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
+}
+
 const std::vector<bool> withReshape = {true, false};
 
 INSTANTIATE_TEST_SUITE_P(smoke_outputQuantize, OutputQuantizeTestCommon, ::testing::ValuesIn(withReshape),

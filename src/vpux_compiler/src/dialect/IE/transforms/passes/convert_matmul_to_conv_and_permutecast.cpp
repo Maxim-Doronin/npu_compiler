@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -107,9 +107,8 @@ mlir::LogicalResult ConvertMatMulToConvPass::MatMulOpConverter::matchAndRewrite(
     newWeightsShape.insert(newWeightsShape.end(), 2, 1);
 
     const auto filterShapeAttr = getIntArrayAttr(ctx, newWeightsShape);
-    auto weight = rewriter.create<IE::ReshapeOp>(takeOpLoc(matmulOp, "filter_reshape"), input2, nullptr, false,
-                                                 filterShapeAttr)
-                          .getOutput();
+    auto weight =
+            rewriter.create<IE::ReshapeOp>(takeOpLoc(matmulOp, "filter_reshape"), input2, filterShapeAttr).getOutput();
 
     auto inputShape = to_small_vector(getShape(input1));
     if (inputShape.size() == 3) {
@@ -118,8 +117,7 @@ mlir::LogicalResult ConvertMatMulToConvPass::MatMulOpConverter::matchAndRewrite(
     }
     const auto inputShapeAttr = getIntArrayAttr(ctx, inputShape);
 
-    auto convInput = rewriter.create<IE::ReshapeOp>(takeOpLoc(matmulOp, "before_conv_reshape"), input1, nullptr, false,
-                                                    inputShapeAttr)
+    auto convInput = rewriter.create<IE::ReshapeOp>(takeOpLoc(matmulOp, "before_conv_reshape"), input1, inputShapeAttr)
                              .getOutput();
 
     auto dstOrder = mlir::AffineMapAttr::get(DimsOrder::NHWC.toAffineMap(ctx));
@@ -144,7 +142,7 @@ mlir::LogicalResult ConvertMatMulToConvPass::MatMulOpConverter::matchAndRewrite(
 
     const auto outShape = getShape(matmulOp.getOutput());
     const auto outShapeAttr = getIntArrayAttr(ctx, outShape);
-    auto outputReshape = rewriter.replaceOpWithNewOp<IE::ReshapeOp>(matmulOp, convOp, nullptr, false, outShapeAttr);
+    auto outputReshape = rewriter.replaceOpWithNewOp<IE::ReshapeOp>(matmulOp, convOp, outShapeAttr);
     extendOpLoc(outputReshape, "output_reshape");
 
     _log.trace("Replace {0} success", matmulOp->getName());

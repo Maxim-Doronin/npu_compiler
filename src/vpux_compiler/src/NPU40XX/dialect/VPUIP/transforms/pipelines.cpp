@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/NPU37XX/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/NPU40XX/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/conversion.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
@@ -45,7 +46,7 @@ void vpux::VPUIP::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     const auto grc = getDefaultGreedyRewriteConfig();
 
     if (options.enableShaveCodeGen) {
-        VPUIP::buildShaveCodeGenPipeline(pm);
+        ShaveCodeGen::buildShaveCodeGenPipelineVPUIP(pm);
     }
 
     if (options.enableShaveKernelTiling) {
@@ -238,14 +239,7 @@ void vpux::VPUIP::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     if (options.enableSWKernelInstructionPrefetch) {
         pm.addPass(VPUIP::createAddSwKernelInstructionPrefetchPass(log));
     }
-}
 
-void vpux::VPUIP::arch40xx::buildVPUIPFinalizePipeline(mlir::OpPassManager& pm,
-                                                       const VPUIP::arch40xx::DefaultHWOptions& options, Logger log) {
-    const bool isInliningRequired = isOutliningEnabled(options);
-    const auto grc = getDefaultGreedyRewriteConfig();
-
-    // Ensures legal schedule in the case of a WLM rollback
     pm.addPass(VPURT::createInsertBarrierToMarkTheEndOfDescriptorGroupPass(
             options.workloadManagementBarrierCountThreshold, options.workloadManagementMode, log));
 
@@ -372,7 +366,7 @@ void vpux::VPUIP::arch40xx::buildReferenceSWPipeline(mlir::OpPassManager& pm,
     const auto grc = getDefaultGreedyRewriteConfig();
 
     if (options.enableShaveCodeGen) {
-        VPUIP::buildShaveCodeGenPipeline(pm);
+        ShaveCodeGen::buildShaveCodeGenPipelineVPUIP(pm);
     }
 
     pm.addPass(VPUIP::createSetMemorySpacePass(VPU::getMemKind<VPU::MemoryKind::DDR>,
@@ -404,7 +398,6 @@ void vpux::VPUIP::arch40xx::buildReferenceSWPipeline(mlir::OpPassManager& pm,
 
     VPUIP::buildHardwareAdaptationPipeline(pm, log);
 
-    // Ensures legal schedule in the case of a WLM rollback
     pm.addPass(VPURT::createInsertBarrierToMarkTheEndOfDescriptorGroupPass(
             options.workloadManagementBarrierCountThreshold, options.workloadManagementMode, log));
 
@@ -465,11 +458,6 @@ void vpux::VPUIP::arch40xx::registerVPUIPPipelines() {
             "default-hw-mode-vpuip", "VPUIP dialect part of Default HW pipeline",
             [](mlir::OpPassManager& pm, const VPUIP::arch40xx::DefaultHWOptions& options) {
                 VPUIP::arch40xx::buildDefaultHWPipeline(pm, options);
-            });
-    mlir::PassPipelineRegistration<VPUIP::arch40xx::DefaultHWOptions>(
-            "vpuip-finalize", "VPUIP legalization passes required for rollback",
-            [](mlir::OpPassManager& pm, const VPUIP::arch40xx::DefaultHWOptions& options) {
-                VPUIP::arch40xx::buildVPUIPFinalizePipeline(pm, options);
             });
 
     mlir::PassPipelineRegistration<VPUIP::arch40xx::DefaultHWOptions>(

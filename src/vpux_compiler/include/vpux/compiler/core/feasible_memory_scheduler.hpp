@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,7 @@
 #include "vpux/compiler/core/async_deps_info.hpp"
 #include "vpux/compiler/core/linear_scan_handler.hpp"
 #include "vpux/compiler/core/mem_live_range_info.hpp"
+#include "vpux/compiler/core/schedule_builder_utils.hpp"
 #include "vpux/compiler/utils/linear_scan.hpp"
 #include "vpux/compiler/utils/partitioner.hpp"
 
@@ -29,7 +30,8 @@ public:
         ORIGINAL_SPILL_WRITE_OP = 3,
         IMPLICIT_SPILL_READ_OP = 4,
         IMPLICIT_SPILL_WRITE_OP = 5,
-        IMPLICIT_SPILL_WRITE_FRAG_OP = 6
+        IMPLICIT_SPILL_WRITE_FRAG_OP = 6,
+        LOOP_OP = 7  // The operation inside a loop region
     };
     // QueueType represents independent execution queue identified by
     // executor kind and abstract ID that allows to differentiate
@@ -72,8 +74,12 @@ public:
         bool operator==(const HeapElement& other) const {
             return (op_ == other.op_) && (cycleBegin_ == other.cycleBegin_) && (spillBuffer_ == other.spillBuffer_);
         }
+        bool isLoopOp() const {
+            return opType_ == EOpType::LOOP_OP;
+        }
         bool isOriginalOp() const {
-            return (opType_ == EOpType::ORIGINAL_OP) || (opType_ == EOpType::ORIGINAL_PREFETCHED_OP);
+            return (opType_ == EOpType::ORIGINAL_OP) || (opType_ == EOpType::ORIGINAL_PREFETCHED_OP) ||
+                   (opType_ == EOpType::LOOP_OP);
         }
         bool isPrefetched() const {
             return (opType_ == EOpType::ORIGINAL_PREFETCHED_OP);
@@ -162,9 +168,13 @@ public:
             opType_ = hElement.opType_;
             return *this;
         }
+        bool isLoopOp() const {
+            return opType_ == EOpType::LOOP_OP;
+        }
         bool isOriginalOp() const {
             return (opType_ == EOpType::ORIGINAL_OP) || (opType_ == EOpType::ORIGINAL_PREFETCHED_OP) ||
-                   (opType_ == EOpType::ORIGINAL_SPILL_WRITE_OP) || (opType_ == EOpType::ORIGINAL_SPILL_READ_OP);
+                   (opType_ == EOpType::ORIGINAL_SPILL_WRITE_OP) || (opType_ == EOpType::ORIGINAL_SPILL_READ_OP) ||
+                   (opType_ == EOpType::LOOP_OP);
         }
         bool isOriginalSpillWriteOp() const {
             return (opType_ == EOpType::ORIGINAL_SPILL_WRITE_OP);
@@ -199,6 +209,8 @@ public:
                 return StringLiteral("IMPLICIT_SPILL_WRITE");
             } else if (opType_ == EOpType::IMPLICIT_SPILL_WRITE_FRAG_OP) {
                 return StringLiteral("IMPLICIT_SPILL_WRITE_FRAG");
+            } else if (opType_ == EOpType::LOOP_OP) {
+                return StringLiteral("LOOP_OP");
             }
             return StringLiteral("UNDEFINED");
         }
@@ -272,6 +284,9 @@ public:
         SmallVector<IntervalInfo> outputResourceInfo_;
         QueueType queueType{config::ExecutorKind::DMA_NN, 0};
         llvm::BitVector executorInstanceMask;
+        // flag indicating if operation is modified by any post schedule optimizations,
+        // some assumptions such as coexistence can be invalidated
+        bool modifiedMemoryRange_{false};
     };
     using ScheduledOpInfoVec = SmallVector<ScheduledOpInfo, 1>;
 
@@ -338,13 +353,16 @@ public:
                             AsyncDepsInfo& depsInfo, Logger log, LinearScan<mlir::Value, LinearScanHandler>& scan,
                             config::ArchKind arch, VPUNN::VPUDevice vpuDevice,
                             std::shared_ptr<VPUNN::VPUCostModel> costModel, int64_t nceClusterCount, int64_t dmaCount,
-                            bool enableScheduleStatistics, bool optimizeFragmentation,
-                            bool activelySpillForPrefetching);
+                            bool enableScheduleStatistics, bool optimizeFragmentation, bool activelySpillForPrefetching,
+                            const ComputeRegionVec& loopRegions = {});
 
 public:
     ScheduledOpInfoVec generateSchedule();
     void cleanUpAndLogSchedule(ScheduledOpInfoVec& scheduledOps);
     void printFragmentFixCountLog() const;
+
+    // Grant test class access to private members
+    friend class FeasibleMemorySchedulerTest;
 
 private:
     bool init();
@@ -399,21 +417,101 @@ private:
 
     // handling buffers
     mlir::DenseSet<mlir::Value> getBuffersToAllocateForOp(operationIdxType opIdx);
-    bool canAllocBuffers(mlir::DenseSet<mlir::Value>& buffersToAllocate);
-    void sortAndAllocateBuffers(mlir::DenseSet<mlir::Value>& buffersToAllocate);
     SmallVector<mlir::Value> getNonAliveBuffersUsedByOperation(operationIdxType opIdx);
     SmallVector<mlir::Value> sortUsedBuffers(mlir::DenseSet<mlir::Value>& operationBuffers);
     void updateBufferCycleUseAndProducer(size_t opIdx, size_t opCycleEnd, const mlir::Value buffer,
                                          bool isNewProducer = false);
     void createBufferAsyncIdxMap();
 
-    // scheduling loops
-    void unscheduleAllCompletingOps();
-    size_t getOperationLevel(operationIdxType opIdx, bool isSpilled = false);
+    // memory allocation
+    // check if memory has enough space for the buffer set
+    bool canAllocBuffers(mlir::DenseSet<mlir::Value>& buffersToAllocate);
+    // sort based on buffer qualities, and allocate buffers according to the order
+    void sortAndAllocateBuffers(mlir::DenseSet<mlir::Value>& buffersToAllocate);
+    // check if memory has enough space for the buffer set with extra constraints
+    // reservedRanges: list of (address, size) pairs that cannot be used for allocation
+    bool canAllocBuffersWithReservedRanges(SmallVector<std::pair<vpux::AddressType, vpux::AddressType>>& reservedRanges,
+                                           mlir::DenseSet<mlir::Value>& buffersToAllocate);
+    // sort based on buffer qualities, and allocate buffers according to the order excluding prohibited addresses
+    void sortAndAllocateBuffersWithReservedRanges(
+            SmallVector<std::pair<vpux::AddressType, vpux::AddressType>>& reservedRanges,
+            mlir::DenseSet<mlir::Value>& buffersToAllocate);
+    // check if memory has enough space for the buffer set with extra constraints
+    // reserve: address space that cannot be used for allocation from the beginning of memory
+    bool canAllocBuffersWithReservedSize(mlir::DenseSet<mlir::Value>& buffersToAllocate, vpux::AddressType reserve,
+                                         vpux::AddressType baseAlignment);
+    // sort based on buffer qualities, and allocate buffers according to the order excluding prohibited space
+    vpux::AddressType sortAndAllocateBuffersWithReservedSize(mlir::DenseSet<mlir::Value>& buffersToAllocate,
+                                                             vpux::AddressType reserve,
+                                                             vpux::AddressType baseAlignment);
+
+    // prefetching
+    // Get data operations that can be prefetched within a level-based window
+    // Parameters:
+    //   lastScheduledOp: IR index of last scheduled compute op (upper bound for IR ordering)
+    //   lastScheduledLevel: Scheduling level of last scheduled compute op (defines current position)
+    // Returns: Map of [level -> operation indices] for operations that can be prefetched
+    //          Lower levels are prioritized (closer dependencies in the computation graph)
+    std::map<size_t, std::set<operationIdxType>> getPrefetchCandidates(size_t lastScheduledOp,
+                                                                       size_t lastScheduledLevel);
+    std::pair<size_t, mlir::DenseSet<mlir::Value>> getPrefetchInfo(operationIdxType opIdx);
+    // Execute prefetching for a single operation by scheduling it ahead of its consumer.
+    // @param opIdx Operation index to prefetch
+    // @return Number of operations scheduled (1 for normal ops, N for spilled ops with multiple buffers)
+    size_t executePrefetch(operationIdxType opIdx);
     void prefetchOps(ArrayRef<std::pair<operationIdxType, size_t>> scheduledOps,
                      mlir::DenseSet<mlir::Value>& buffersToAllocate, bool checkMemoryFragmentation);
+
+    // scheduling logics
+    // unschedule all operations from cycle end heap, free their resources and unlock dependent operations
+    void unscheduleAllCompletingOps();
+    // calculate the scheduling level of an operation based on its dependencies in the DAG
+    size_t getOperationLevel(operationIdxType opIdx, bool isSpilled = false) const;
+    // schedule non-compute operations (e.g., profiling buffer management DMAs)
     void scheduleNonComputeOps();
+    // schedule ready compute operations along with their data dependencies
     void scheduleComputeOps();
+
+    // loop scheduling logics
+    // Build index sets (_loopRegionInd, _loopPrefetchInd) that categorize operations
+    // belonging to loop bodies. Loop operations are excluded from normal scheduling
+    // and handled separately by scheduleLoopRegions(). DATA_IN operations are marked
+    // as prefetchable for better performance.
+    void buildLoopOperationIndices();
+    // get list of loop operations that are ready to be scheduled (all dependencies satisfied)
+    std::vector<size_t> getReadyLoopOps();
+    // main entry point for loop region scheduling with ping-pong memory allocation
+    bool scheduleLoopRegions();
+    // unschedule operations from cycle heaps and collect ready operations for loop scheduling
+    void cleanupBeforeLoopScheduling(SmallVector<operationIdxType>& readyOps);
+    // schedule operations that must execute before the loop starts (e.g., input DMAs)
+    void schedulePreLoopDependencies(const ComputeRegion& computeRegion);
+    // schedule spill-read operations for shared buffers that are dynamically spilled
+    void scheduleLoopSpills(const ComputeRegion& computeRegion);
+    // allocate memory for shared buffers used across all loop iterations
+    vpux::AddressType allocateLoopSharedBuffers(mlir::DenseSet<mlir::Value>& buffersToAllocate,
+                                                const ComputeRegion& computeRegion);
+    // verify buffer usage across iterations and collect spilled/prefetched buffer information
+    void verifyAndCollectLoopBuffers(const ComputeRegion& computeRegion,
+                                     mlir::DenseMap<size_t, mlir::DenseSet<mlir::Value>>& dynamicSpillBuffers,
+                                     mlir::DenseMap<mlir::Value, vpux::AddressType>& prefetchBuffers);
+    // schedule a single loop iteration with ping-pong buffer assignment and loop-2 unscheduling
+    void scheduleLoopIterationAtIndex(const ComputeRegion& computeRegion, size_t loopIdx,
+                                      vpux::AddressType reserveOffset, mlir::DenseMap<size_t, size_t>& loopCycleEnd,
+                                      mlir::DenseMap<size_t, mlir::SmallVector<mlir::Value>>& loopBuffers,
+                                      const mlir::DenseMap<size_t, mlir::DenseSet<mlir::Value>>& dynamicSpillBuffers,
+                                      const mlir::DenseMap<mlir::Value, vpux::AddressType>& prefetchBuffers,
+                                      size_t& loopMaxCycleEnd);
+    // attempt to prefetch operations outside the loop after the last two iterations
+    void handleLoopBoundaryPrefetch(const ComputeRegion& computeRegion, vpux::AddressType reserveOffset,
+                                    const mlir::DenseMap<size_t, size_t>& loopCycleEnd,
+                                    const mlir::DenseMap<size_t, mlir::SmallVector<mlir::Value>>& loopBuffers,
+                                    const mlir::DenseMap<mlir::Value, vpux::AddressType>& prefetchBuffers);
+    // unschedule operations from cycle end heap up to the target cycle
+    void unscheduleOpsToCycle(size_t targetUnscheduleCycle);
+    // unschedule operations from a specific loop iteration and spill its local buffers
+    void unscheduleLoopOps(size_t loopIdx, size_t targetUnscheduleCycle,
+                           const mlir::SmallVector<mlir::Value>& loopBuffersForIndex);
 
     // eviction utility
     void evictActiveOp(EvictionCandidate evictionCandidate);
@@ -439,7 +537,7 @@ private:
     // This is needed to be able to rollback the changes when prefetching fails due to fragmentation
     void resetScheduleComputeOpsDeltas();
     // Spill the eviction candidate that is selected by `chooseCandidateForEvictionToSupportPrefetch`
-    void performEvictionAndScheduling(const EvictionCandidate& evictionCandidate);
+    size_t performEvictionAndScheduling(const EvictionCandidate& evictionCandidate, bool alignExecutorsFlag = true);
     size_t getOpCmxDemand(operationIdxType opIdx);
 
 private:
@@ -563,7 +661,6 @@ private:
      * `_new*` variables store newly added buffers/ops during `scheduleComputeOps`
      * `_original*` variables store previous scheduled but changed buffers/ops during `scheduleComputeOps`
      */
-
     // _bufferProducer deltas
     mlir::DenseSet<mlir::Value> _newBufferProducersFromScheduleComputeOps;
     mlir::DenseMap<mlir::Value, operationIdxType> _originalBufferProducersFromScheduleComputeOps;
@@ -573,6 +670,15 @@ private:
     // _opIdxEndCycleMap deltas
     mlir::DenseMap<operationIdxType, size_t> _originalOpIdxEndCycleMapFromScheduleComputeOps;
     mlir::DenseSet<operationIdxType> _newOpsFromScheduleComputeOps;
+
+    // loop region allocation variables, used for quick check during scheduling
+    const ComputeRegionVec& _loopRegions;
+    // store the ops' ids which are wrapped in loop regions
+    std::unordered_set<size_t> _loopRegionInd;
+    // store the data in ops ids which are prefetchable
+    std::unordered_set<size_t> _loopPrefetchInd;
+    // store the scheduled loop regions' indexes
+    std::unordered_set<size_t> _scheduledLoopRegionInd;
 };
 
 }  // namespace vpux

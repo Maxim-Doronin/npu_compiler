@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2023-2025 Intel Corporation.
+# Copyright (C) 2023-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -29,6 +29,8 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${SOURCES})
 
 add_library(${TARGET_NAME} STATIC ${SOURCES})
 set_target_properties(${TARGET_NAME} PROPERTIES FOLDER "src")
+
+ov_build_target_faster(${TARGET_NAME} PCH PUBLIC "precomp.hpp")
 
 enable_warnings_as_errors(${TARGET_NAME} WIN_STRICT)
 replace_noerror(${TARGET_NAME})

@@ -1,11 +1,10 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/utils/analysis.hpp"
-#include "vpux/compiler/dialect/IE/IR/ops_interfaces.hpp"
-#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
+#include "vpux/compiler/utils/types.hpp"
 #include "vpux/utils/core/error.hpp"
 
 #include <mlir/IR/BuiltinTypes.h>
@@ -70,42 +69,6 @@ bool vpux::isBufAllocOp(mlir::Operation* op) {
     return false;
 }
 
-mlir::SmallVector<mlir::Value> vpux::getInputsSanitized(VPUIP::LayerOpInterface layerOp) {
-    auto inputs = vpux::to_small_vector(layerOp.getInputs());
-
-    // handle dynamic input shapes which are not part of getInputs()
-    if (auto swOp = mlir::dyn_cast<VPUIP::SwKernelOp>(layerOp.getOperation())) {
-        auto dynamicInputs = swOp.getDynamicInputShapes();
-        std::move(dynamicInputs.begin(), dynamicInputs.end(), std::back_inserter(inputs));
-    }
-
-    // handle parent input / output buffer duplication
-    if (auto nceTaskOp = mlir::dyn_cast<VPUIP::NCEClusterTaskOp>(layerOp.getOperation())) {
-        // in case of NCEClusterTaskOp we need to remove parent outputs from inputs
-        // in order to make dependency calculation work correctly
-        auto parentOutput = nceTaskOp.getParentOutput();
-        auto parentOutputSparsityMap = nceTaskOp.getParentOutputSparsityMap();
-        auto input = nceTaskOp.getInput();
-        auto inputSparsityMap = nceTaskOp.getInputSparsityMap();
-        auto weights = nceTaskOp.getWeights();
-        auto weightsSparsityMap = nceTaskOp.getWeightsSparsityMap();
-        llvm::SmallVector<mlir::Value> inputsToSanitize{};
-        inputsToSanitize.swap(inputs);
-        std::copy_if(inputsToSanitize.begin(), inputsToSanitize.end(), std::back_inserter(inputs),
-                     [&](mlir::Value value) {
-                         // For in-place eltwise op it might happen that parentOutput == input.
-                         // Check those first to make sure they don't get removed.
-                         if (value == input || value == inputSparsityMap || value == weights ||
-                             value == weightsSparsityMap) {
-                             return true;
-                         }
-                         return (value != parentOutput) && (value != parentOutputSparsityMap);
-                     });
-    }
-
-    return inputs;
-}
-
 //
 // getModuleOp
 //
@@ -137,29 +100,4 @@ mlir::ModuleOp vpux::getModuleOp(mlir::OpBuilder& builder) {
 //
 mlir::func::ReturnOp vpux::findReturnOp(mlir::func::FuncOp funcOp) {
     return mlir::cast<mlir::func::ReturnOp>(funcOp.getBody().front().getTerminator());
-}
-
-//
-// searchOpConsumers
-//
-mlir::FailureOr<mlir::Operation*> vpux::searchOpConsumers(
-        mlir::Operation* op, const std::function<bool(mlir::Operation*)>& isTargetOpFound) {
-    if (op == nullptr) {
-        return mlir::failure();
-    }
-
-    for (auto user : op->getUsers()) {
-        mlir::Operation* operation = user;
-        while (operation) {
-            if (isTargetOpFound(operation)) {
-                return operation;
-            } else if (IE::isPureViewOp(operation) && operation->hasOneUse()) {
-                operation = *(operation->getUsers().begin());
-                continue;
-            } else {
-                break;
-            }
-        }
-    }
-    return mlir::failure();
 }

@@ -1,9 +1,10 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/interfaces/ppe_factory.hpp"
+#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 
 #include <mlir/Dialect/Quant/IR/QuantTypes.h>
 

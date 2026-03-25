@@ -45,6 +45,15 @@ TEST_P(DepthToSpace_SCFTilingLayerTest, NPU5010_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
+TEST_P(DepthToSpaceLayerTestCommon, NPU5020_SW) {
+    setReferenceSoftwareMode();
+    run(Platform::NPU5020);
+}
+
+TEST_P(DepthToSpace_SCFTilingLayerTest, NPU5020_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
+}
 
 }  // namespace test
 }  // namespace ov

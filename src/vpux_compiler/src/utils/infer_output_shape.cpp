@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -190,15 +190,32 @@ ShapeInfo vpux::inferStridedSliceOutputShape(const ShapeInfo& inDataShapeInfo, A
 
 ShapeInfo vpux::inferAvgPoolOutputShape(const ShapeInfo& inDataShapeInfo, ArrayRef<int64_t> windowStrides,
                                         ArrayRef<int64_t> dataPaddingBelow, ArrayRef<int64_t> dataPaddingAbove,
-                                        ArrayRef<int64_t> windowShape, IE::RoundingType roundingType) {
+                                        ArrayRef<int64_t> windowShape, std::optional<ArrayRef<int64_t>> inputPadding,
+                                        std::optional<ArrayRef<int64_t>> outputPadding, IE::RoundingType roundingType) {
+    auto inDataShapeInfoLocal = inDataShapeInfo;
+    if (inputPadding.has_value()) {
+        IE::unpadShape(inDataShapeInfoLocal.shape, inputPadding.value());
+        if (inDataShapeInfoLocal.isDynamic()) {
+            IE::unpadShape(inDataShapeInfoLocal.bounds, inputPadding.value());
+        }
+    }
+
     const auto padsBegin = ov::Shape(dataPaddingBelow.begin(), dataPaddingBelow.end());
     const auto padsEnd = ov::Shape(dataPaddingAbove.begin(), dataPaddingAbove.end());
-    const auto inDataShape = createPartialShapeFromShapeInfo(inDataShapeInfo);
+    const auto inDataShape = createPartialShapeFromShapeInfo(inDataShapeInfoLocal);
     const auto ovOp = ov::op::v1::AvgPool(std::make_shared<ov::op::v0::Parameter>(ov::element::i32, inDataShape),
                                           ov::Strides(windowStrides.begin(), windowStrides.end()), padsBegin, padsEnd,
                                           ov::Shape(windowShape.begin(), windowShape.end()), false,
                                           static_cast<ov::op::RoundingType>(roundingType), ov::op::PadType::EXPLICIT);
-    return createShapeInfoFromPartialShape(ovOp.get_output_partial_shape(0));
+    auto outShapeInfo = createShapeInfoFromPartialShape(ovOp.get_output_partial_shape(0));
+
+    if (outputPadding.has_value()) {
+        IE::padShape(outShapeInfo.shape, outputPadding.value());
+        if (outShapeInfo.isDynamic()) {
+            IE::padShape(outShapeInfo.bounds, outputPadding.value());
+        }
+    }
+    return outShapeInfo;
 }
 
 ShapeInfo vpux::inferAvgPool16OutputShape(const ShapeInfo& inDataShapeInfo, ArrayRef<int64_t> windowStrides,
@@ -750,6 +767,63 @@ mlir::FailureOr<SmallVector<mlir::OpFoldResult>> vpux::reifyConvPoolTensors(
     }
 
     return shapes;
+}
+
+mlir::LogicalResult vpux::reifyReduceTensors(mlir::Operation* op, mlir::OpBuilder& builder, mlir::ArrayAttr axesAttr,
+                                             bool keepDims, mlir::ReifiedRankedShapedTypeDims& reifiedReturnShapes) {
+    auto loc = op->getLoc();
+    const auto type = mlir::cast<mlir::ShapedType>(op->getOperand(0).getType());
+    const auto resTy = mlir::cast<mlir::ShapedType>(op->getResult(0).getType());
+
+    auto inputPadding = SmallVector<int64_t>(type.getRank(), 0);
+    auto outputPadding = SmallVector<int64_t>(resTy.getRank(), 0);
+    auto axes = parseIntArrayAttr<int64_t>(axesAttr);
+    auto outDims = reifyReduceTensors(builder, op->getOperand(0), axes, inputPadding, outputPadding, keepDims, loc);
+    if (mlir::failed(outDims)) {
+        return mlir::failure();
+    }
+    reifiedReturnShapes.emplace_back(std::move(outDims.value()));
+    return mlir::success();
+}
+
+mlir::FailureOr<SmallVector<mlir::OpFoldResult>> vpux::reifyReduceTensors(mlir::OpBuilder& builder, mlir::Value input,
+                                                                          ArrayRef<int64_t> axes,
+                                                                          ArrayRef<int64_t> inputPad,
+                                                                          ArrayRef<int64_t> outputPad, bool keepDims,
+                                                                          mlir::Location loc) {
+    const auto type = mlir::cast<mlir::ShapedType>(input.getType());
+    auto shape = type.getShape();
+
+    SmallVector<mlir::OpFoldResult> outDims;
+    if (axes.size() == shape.size() && !keepDims) {
+        outDims.push_back(builder.getIndexAttr(1));
+        return outDims;
+    }
+
+    for (size_t inIdx = 0, outIdx = 0; inIdx < shape.size(); ++inIdx) {
+        bool isReductionAxis = std::find(axes.begin(), axes.end(), inIdx) != axes.end();
+        if (isReductionAxis && !keepDims) {
+            // This input dimension is reduced and we're not preserving reduce dimensions.
+            // Therefore we don't have a corresponding output dimension and we need to skip incrementing the output
+            // index.
+            continue;
+        }
+
+        if (isReductionAxis) {
+            outDims.push_back(builder.getIndexAttr(1 + outputPad[outIdx]));
+        } else if (type.isDynamicDim(inIdx)) {
+            // No reduction, input dimension is dynamic.
+            auto dim = reifyDim(builder, input, inIdx, loc);
+            outDims.push_back(builder.createOrFold<mlir::arith::AddIOp>(
+                    loc, mlir::cast<mlir::Value>(dim),
+                    builder.createOrFold<mlir::arith::ConstantIndexOp>(loc, outputPad[outIdx] - inputPad[inIdx])));
+        } else {
+            // No reduction, input dimension is static.
+            outDims.push_back(builder.getIndexAttr(type.getDimSize(inIdx) + outputPad[outIdx] - inputPad[inIdx]));
+        }
+        outIdx++;
+    }
+    return outDims;
 }
 
 ShapeInfo vpux::inferEltwiseOutputShapeInfo(const ShapeInfo& in1ShapeInfo, const ShapeInfo& in2ShapeInfo,

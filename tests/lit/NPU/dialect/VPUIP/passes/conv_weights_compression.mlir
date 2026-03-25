@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,6 +12,7 @@
 !qElemType3 = !quant.uniform<u8:f16, 0.012699142156862745>
 
 // CHECK-LABEL: @CompressConvWeightsMoreThan4IC
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: memref<1x16x112x112x!qElemType, #NHWC, [@CMX_NN, 0]>
 func.func @CompressConvWeightsMoreThan4IC(%arg0: memref<1x16x112x112x!qElemType2, #NHWC, [@CMX_NN, 0]>) -> memref<1x64x56x56x!qElemType3, #NHWC, [@CMX_NN, 0]> {
     %cst = const.Declare memref<64x1x1x4xsi32> = dense<1> : tensor<64x1x1x4xsi32>
     %cst_0 = const.Declare memref<64x16x7x7x!qElemType, #NHWC> = dense<1.0> :
@@ -28,13 +29,12 @@ func.func @CompressConvWeightsMoreThan4IC(%arg0: memref<1x16x112x112x!qElemType2
         outputs(%3 : memref<64x1x1x4xsi32, [@CMX_NN, 0]>)
          -> memref<64x1x1x4xsi32, [@CMX_NN, 0]>
     %output = memref.alloc() : memref<1x64x56x56x!qElemType3, #NHWC, [@CMX_NN, 0]>
-    %NCEOp = VPUIP.NCEClusterTask {
+    %NCEOp = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 375613 : i64} <{
           kernel_padding = #VPU.Padding<left = 3 : i64, right = 2 : i64, top = 3 : i64, bottom = 2 : i64>,
           kernel_size = [7, 7],
           kernel_strides = [2, 2],
-          minimumHardwareExecutionCost = 375613 : i64,
           task_type = #VPUIP.nce_task_type<CONV>
-      }
+      }>
       input(%arg0 : memref<1x16x112x112x!qElemType2, #NHWC, [@CMX_NN, 0]>)
       weights(%weights : memref<64x16x7x7x!qElemType, #NHWC, [@CMX_NN, 0]>)
       weight_table(%weights_table : memref<64x1x1x4xsi32, [@CMX_NN, 0]>)
@@ -64,13 +64,13 @@ func.func @CompressConvWeightsMoreThan4IC(%arg0: memref<1x16x112x112x!qElemType2
     //CHECK-SAME:           -> memref<64x13x7x7x!qElemType2, {order = #NHWC, strides = [640, 1, 91, 13]}, [@CMX_NN, 0]>
     //CHECK:        [[VAR5:%.+]] = VPUIP.ShapeCast {shape = [64, 16, 7, 7]} inputs([[VAR4]] : memref<64x13x7x7x!qElemType2, {order = #NHWC, strides = [640, 1, 91, 13]}, [@CMX_NN, 0]>)
     //CHECK-SAME:           -> memref<64x16x7x7x!qElemType2, #NHWC, [@CMX_NN, 0]>
-    //CHECK:        [[VAR6:%.+]] = VPUIP.NCEClusterTask {cm_sp_pattern = 8191 : i64,
+    //CHECK:        [[VAR6:%.+]] = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 375613 : i64} <{cm_sp_pattern = 8191 : i64,
     //CHECK-SAME:           kernel_padding = #VPU.Padding<left = 3 : i64, right = 2 : i64, top = 3 : i64, bottom = 2 : i64>, kernel_size = [7, 7],
-    //CHECK-SAME:           kernel_strides = [2, 2], minimumHardwareExecutionCost = 375613 : i64, task_type = #VPUIP.nce_task_type<CONV>}
-    //CHECK-SAME:           input(%arg0 : memref<1x16x112x112x!qElemType, #NHWC, [@CMX_NN, 0]>)
+    //CHECK-SAME:           kernel_strides = [2, 2], task_type = #VPUIP.nce_task_type<CONV>}>
+    //CHECK-SAME:           input([[ARG_0]] : memref<1x16x112x112x!qElemType, #NHWC, [@CMX_NN, 0]>)
     //CHECK-SAME:           weights([[VAR5]] : memref<64x16x7x7x!qElemType2, #NHWC, [@CMX_NN, 0]>)
     //CHECK-SAME:           weight_table([[VAR1]] : memref<64x1x1x4xsi32, [@CMX_NN, 0]>)
-    //CHECK-SAME:           parent_input(%arg0 : memref<1x16x112x112x!qElemType, #NHWC, [@CMX_NN, 0]>)
+    //CHECK-SAME:           parent_input([[ARG_0]] : memref<1x16x112x112x!qElemType, #NHWC, [@CMX_NN, 0]>)
     //CHECK-SAME:           parent_output([[VAR2]] : memref<1x64x56x56x!qElemType1, #NHWC, [@CMX_NN, 0]>)
     //CHECK-SAME:           outputs([[VAR2]] : memref<1x64x56x56x!qElemType1, #NHWC, [@CMX_NN, 0]>)
     //CHECK-SAME:           -> memref<1x64x56x56x!qElemType1, #NHWC, [@CMX_NN, 0]>
@@ -88,6 +88,7 @@ func.func @CompressConvWeightsMoreThan4IC(%arg0: memref<1x16x112x112x!qElemType2
 !qElemType3 = !quant.uniform<u8:f16, 0.012699142156862745>
 
 // CHECK-LABEL: @DoNotCompressSparseConvWeights
+// CHECK-SAME: [[ARG_0:%[^:]+]]: memref<1x16x224x224x!qElemType, #NHWC, [@CMX_NN, 0]>
 func.func @DoNotCompressSparseConvWeights(%arg0: memref<1x16x224x224x!qElemType2, #NHWC, [@CMX_NN, 0]>) -> memref<1x64x112x112x!qElemType3, #NHWC, [@CMX_NN, 0]> {
     %cst_weights = const.Declare memref<64x16x7x7x!qElemType, #NHWC> = dense<1.0> : tensor<64x3x7x7xf16>,
         [#const.CastElemType<ui8>, #const.CastElemType<!qElemType>, #const.Reorder<#NHWC>, #const.PadWithZero<[0, 0, 0, 0], [0, 13, 0, 0]>, #const.Sparsify<false>]
@@ -115,13 +116,12 @@ func.func @DoNotCompressSparseConvWeights(%arg0: memref<1x16x224x224x!qElemType2
         -> memref<64x1x1x4xsi32, [@CMX_NN, 0]>
 
     %output_cmx = memref.alloc() : memref<1x64x112x112x!qElemType3, #NHWC, [@CMX_NN, 0]>
-    %output = VPUIP.NCEClusterTask {
+    %output = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 375613 : i64} <{
           kernel_padding = #VPU.Padding<left = 3 : i64, right = 2 : i64, top = 3 : i64, bottom = 2 : i64>,
           kernel_size = [7, 7],
           kernel_strides = [2, 2],
-          minimumHardwareExecutionCost = 375613 : i64,
           task_type = #VPUIP.nce_task_type<CONV>
-      }
+      }>
       input(%arg0 : memref<1x16x224x224x!qElemType2, #NHWC, [@CMX_NN, 0]>)
       weights(%weights_data : memref<64x16x7x7x!qElemType, #NHWC, [@CMX_NN, 0]>)
       weights_sparsity_map(%weights_sm : memref<64x1x1x896xi1, [@CMX_NN, 0]>)
@@ -155,11 +155,11 @@ func.func @DoNotCompressSparseConvWeights(%arg0: memref<1x16x224x224x!qElemType2
 
     //CHECK:       [[OUTPUT_CMX:%.+]] = memref.alloc() : memref<1x64x112x112x!qElemType1, #NHWC, [@CMX_NN, 0]>
     //CHECK:       [[OUTPUT:%.+]] = VPUIP.NCEClusterTask
-    //CHECK-SAME:          input(%arg0
+    //CHECK-SAME:          input([[ARG_0]]
     //CHECK-SAME:          weights([[WEIGHTS_DATA]]
     //CHECK-SAME:          weights_sparsity_map([[WEIGHTS_SM]]
     //CHECK-SAME:          weight_table([[WEIGHTS_TABLE]]
-    //CHECK-SAME:          parent_input(%arg0
+    //CHECK-SAME:          parent_input([[ARG_0]]
     //CHECK-SAME:          parent_output([[OUTPUT_CMX]]
     //CHECK-SAME:          outputs([[OUTPUT_CMX]]
     //CHECK-SAME:          -> memref<1x64x112x112x!qElemType1, #NHWC, [@CMX_NN, 0]>
@@ -186,6 +186,7 @@ func.func @DoNotCompressSparseConvWeights(%arg0: memref<1x16x224x224x!qElemType2
     {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
 
 // CHECK-LABEL: @TiledCompressConvWeights
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x16x224x224x!qElemType, #NHWC, [@CMX_NN, 0]>)
 func.func @TiledCompressConvWeights(%arg0: memref<1x16x224x224x!qElemType2, #NHWC, [@CMX_NN, 0]>)
     -> !VPUIP.DistributedBuffer<1x64x112x112x!qElemType3, #NHWC, @CMX_NN,
     {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}> {
@@ -201,13 +202,12 @@ func.func @TiledCompressConvWeights(%arg0: memref<1x16x224x224x!qElemType2, #NHW
     %3 = VPURT.AllocDistributed -> !WeightsTableDistributed
     %weights_table = VPUIP.Copy inputs(%cst : memref<64x1x1x4xsi32>) outputs(%3 : !WeightsTableDistributed) -> !WeightsTableDistributed
 
-    %NCEOp = VPUIP.NCEClusterTask {
+    %NCEOp = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 269263 : i64} <{
         kernel_padding = #VPU.Padding<left = 3 : i64, right = 2 : i64, top = 3 : i64, bottom = 2 : i64>,
         kernel_size = [7, 7],
         kernel_strides = [2, 2],
-        minimumHardwareExecutionCost = 269263 : i64,
         task_type = #VPUIP.nce_task_type<CONV>
-    }
+    }>
     input(%arg0 : memref<1x16x224x224x!qElemType2, #NHWC, [@CMX_NN, 0]>)
     weights(%weights : !WeightsDistributed)
     weight_table(%weights_table : !WeightsTableDistributed)
@@ -265,13 +265,13 @@ func.func @TiledCompressConvWeights(%arg0: memref<1x16x224x224x!qElemType2, #NHW
     //CHECK-SAME:           {order = #NHWC, strides = [160, 1, 21, 3]}, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
     //CHECK-SAME:       -> !VPUIP.DistributedBuffer<64x16x7x7x!qElemType2, #NHWC, @CMX_NN
     //CHECK-SAME:           {mode = "DUPLICATED", num_clusters = 2 : i64}
-    //CHECK:       [[CONV_OUT:%.+]] = VPUIP.NCEClusterTask {cm_sp_pattern = 7 : i64,
+    //CHECK:       [[CONV_OUT:%.+]] = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 269263 : i64} <{cm_sp_pattern = 7 : i64,
     //CHECK-SAME:           kernel_padding = #VPU.Padding<left = 3 : i64, right = 2 : i64, top = 3 : i64, bottom = 2 : i64>,
-    //CHECK-SAME:           kernel_size = [7, 7], kernel_strides = [2, 2], minimumHardwareExecutionCost = 269263 : i64, task_type = #VPUIP.nce_task_type<CONV>}
-    //CHECK-SAME:           input(%arg0
+    //CHECK-SAME:           kernel_size = [7, 7], kernel_strides = [2, 2], task_type = #VPUIP.nce_task_type<CONV>}>
+    //CHECK-SAME:           input([[ARG_0]]
     //CHECK-SAME:           weights([[WEIGHTS_SHAPE_CAST]]
     //CHECK-SAME:           weight_table([[CLUSTER_WEIGHTS_TABLE]]
-    //CHECK-SAME:           parent_input(%arg0
+    //CHECK-SAME:           parent_input([[ARG_0]]
     //CHECK-SAME:           parent_output([[OUT_BUFFER]]
     //CHECK-SAME:           outputs([[OUT_BUFFER]]
     //CHECK-SAME:           -> !VPUIP.DistributedBuffer<1x64x112x112x!qElemType1, #NHWC, @CMX_NN,
@@ -288,6 +288,7 @@ func.func @TiledCompressConvWeights(%arg0: memref<1x16x224x224x!qElemType2, #NHW
 !qElemType3 = !quant.uniform<u8:f16, 0.012699142156862745>
 
 // CHECK-LABEL: @CompressConvWeightsSharedTable
+// CHECK-SAME: [[ARG_0:%[^:]+]]: memref<1x16x112x112x!qElemType, #NHWC, [@CMX_NN, 0]>
 func.func @CompressConvWeightsSharedTable(%arg0: memref<1x16x112x112x!qElemType2, #NHWC, [@CMX_NN, 0]>) -> memref<1x64x56x56x!qElemType3, #NHWC, [@CMX_NN, 0]> {
     %cst_wt = const.Declare memref<64x1x1x4xsi32> = dense<1> : tensor<64x1x1x4xsi32>
     %cst_w1 = const.Declare memref<64x16x7x7x!qElemType, #NHWC> = dense<1.0> :
@@ -308,13 +309,12 @@ func.func @CompressConvWeightsSharedTable(%arg0: memref<1x16x112x112x!qElemType2
         outputs(%wt1_cmx : memref<64x1x1x4xsi32, [@CMX_NN, 0]>)
          -> memref<64x1x1x4xsi32, [@CMX_NN, 0]>
     %output1 = memref.alloc() : memref<1x64x56x56x!qElemType3, #NHWC, [@CMX_NN, 0]>
-    %conv1 = VPUIP.NCEClusterTask {
+    %conv1 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 375613 : i64} <{
           kernel_padding = #VPU.Padding<left = 3 : i64, right = 2 : i64, top = 3 : i64, bottom = 2 : i64>,
           kernel_size = [7, 7],
           kernel_strides = [2, 2],
-          minimumHardwareExecutionCost = 375613 : i64,
           task_type = #VPUIP.nce_task_type<CONV>
-      }
+      }>
       input(%arg0 : memref<1x16x112x112x!qElemType2, #NHWC, [@CMX_NN, 0]>)
       weights(%weights1 : memref<64x16x7x7x!qElemType, #NHWC, [@CMX_NN, 0]>)
       weight_table(%weights_table1 : memref<64x1x1x4xsi32, [@CMX_NN, 0]>)
@@ -343,13 +343,12 @@ func.func @CompressConvWeightsSharedTable(%arg0: memref<1x16x112x112x!qElemType2
         outputs(%wt2_cmx : memref<64x1x1x4xsi32, [@CMX_NN, 0]>)
          -> memref<64x1x1x4xsi32, [@CMX_NN, 0]>
     %output2 = memref.alloc() : memref<1x64x56x56x!qElemType3, #NHWC, [@CMX_NN, 0]>
-    %conv2 = VPUIP.NCEClusterTask {
+    %conv2 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 375613 : i64} <{
           kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
           kernel_size = [1, 1],
           kernel_strides = [1, 1],
-          minimumHardwareExecutionCost = 375613 : i64,
           task_type = #VPUIP.nce_task_type<CONV>
-      }
+      }>
       input(%conv1 : memref<1x64x56x56x!qElemType3, #NHWC, [@CMX_NN, 0]>)
       weights(%weights2 : memref<64x64x1x1x!qElemType, #NHWC, [@CMX_NN, 0]>)
       weight_table(%weights_table2 : memref<64x1x1x4xsi32, [@CMX_NN, 0]>)
@@ -374,15 +373,15 @@ func.func @CompressConvWeightsSharedTable(%arg0: memref<1x16x112x112x!qElemType2
     //CHECK:        [[WT1_CMX:%.+]] = memref.alloc() : memref<64x1x1x4xsi32, [@CMX_NN, 0]>
     //CHECK:        [[WT1:%.+]] = VPUIP.Copy inputs([[cst_wt1]] : memref<64x1x1x4xsi32>) outputs([[WT1_CMX]] : memref<64x1x1x4xsi32, [@CMX_NN, 0]>)
     //CHECK-SAME:           -> memref<64x1x1x4xsi32, [@CMX_NN, 0]>
-    //CHECK:        [[CONV1:%.+]] = VPUIP.NCEClusterTask {
-    //CHECK-SAME:           input(%arg0 : memref<1x16x112x112x!qElemType, #NHWC, [@CMX_NN, 0]>)
+    //CHECK:        [[CONV1:%.+]] = VPUIP.NCEClusterTask
+    //CHECK-SAME:           input([[ARG_0]] : memref<1x16x112x112x!qElemType, #NHWC, [@CMX_NN, 0]>)
     //CHECK-SAME:           weight_table([[WT1]] : memref<64x1x1x4xsi32, [@CMX_NN, 0]>)
     //CHECK-SAME:           -> memref<1x64x56x56x!qElemType1, #NHWC, [@CMX_NN, 0]>
 
     //CHECK:        [[WT2_CMX:%.+]] = memref.alloc() : memref<64x1x1x4xsi32, [@CMX_NN, 0]>
     //CHECK:        [[WT2:%.+]] = VPUIP.Copy inputs([[cst_wt2]] : memref<64x1x1x4xsi32>) outputs([[WT2_CMX]] : memref<64x1x1x4xsi32, [@CMX_NN, 0]>)
     //CHECK-SAME:           -> memref<64x1x1x4xsi32, [@CMX_NN, 0]>
-    //CHECK:        [[CONV2:%.+]] = VPUIP.NCEClusterTask {
+    //CHECK:        [[CONV2:%.+]] = VPUIP.NCEClusterTask
     //CHECK-SAME:           input([[CONV1]] : memref<1x64x56x56x!qElemType1, #NHWC, [@CMX_NN, 0]>)
     //CHECK-SAME:           weight_table([[WT2]] : memref<64x1x1x4xsi32, [@CMX_NN, 0]>)
     //CHECK-SAME:           -> memref<1x64x56x56x!qElemType1, #NHWC, [@CMX_NN, 0]>
@@ -399,6 +398,7 @@ func.func @CompressConvWeightsSharedTable(%arg0: memref<1x16x112x112x!qElemType2
 !qElemType3 = !quant.uniform<u8:f16, 0.012699142156862745>
 
 // CHECK-LABEL: @CompressTiledConvWeightsSharedTable
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x16x112x112x!qElemType, #NHWC, [@CMX_NN, 0]>)
 func.func @CompressTiledConvWeightsSharedTable(%arg0: memref<1x16x112x112x!qElemType2, #NHWC, [@CMX_NN, 0]>) -> memref<1x64x56x56x!qElemType3, #NHWC, [@CMX_NN, 0]> {
     %cst_wt = const.Declare memref<64x1x1x4xsi32> = dense<1> : tensor<64x1x1x4xsi32>
     %cst_w1 = const.Declare memref<64x16x7x7x!qElemType, #NHWC> = dense<1.0> :
@@ -430,13 +430,12 @@ func.func @CompressTiledConvWeightsSharedTable(%arg0: memref<1x16x112x112x!qElem
         {mode = "DUPLICATED", num_clusters = 2 : i64}>
 
     %output1 = memref.alloc() : memref<1x64x56x56x!qElemType3, #NHWC, [@CMX_NN, 0]>
-    %conv1 = VPUIP.NCEClusterTask {
+    %conv1 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 269263 : i64} <{
     kernel_padding = #VPU.Padding<left = 3 : i64, right = 2 : i64, top = 3 : i64, bottom = 2 : i64>,
     kernel_size = [7, 7],
     kernel_strides = [2, 2],
-    minimumHardwareExecutionCost = 269263 : i64,
     task_type = #VPUIP.nce_task_type<CONV>
-        }
+        }>
         input(%arg0 : memref<1x16x112x112x!qElemType2, #NHWC, [@CMX_NN, 0]>)
         weights(%weights1 : !VPUIP.DistributedBuffer<64x16x7x7x!qElemType, #NHWC, [@CMX_NN, 0],
         {mode = "DUPLICATED", num_clusters = 2 : i64}>)
@@ -484,13 +483,12 @@ func.func @CompressTiledConvWeightsSharedTable(%arg0: memref<1x16x112x112x!qElem
         outputs(%wt2_cmx : memref<64x1x1x4xsi32, [@CMX_NN, 0]>)
          -> memref<64x1x1x4xsi32, [@CMX_NN, 0]>
     %output2 = memref.alloc() : memref<1x64x56x56x!qElemType3, #NHWC, [@CMX_NN, 0]>
-    %conv2 = VPUIP.NCEClusterTask {
+    %conv2 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 375613 : i64} <{
           kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
           kernel_size = [1, 1],
           kernel_strides = [1, 1],
-          minimumHardwareExecutionCost = 375613 : i64,
           task_type = #VPUIP.nce_task_type<CONV>
-      }
+      }>
       input(%conv1 : memref<1x64x56x56x!qElemType3, #NHWC, [@CMX_NN, 0]>)
       weights(%weights2 : memref<64x64x1x1x!qElemType, #NHWC, [@CMX_NN, 0]>)
       weight_table(%weights_table2 : memref<64x1x1x4xsi32, [@CMX_NN, 0]>)
@@ -516,15 +514,15 @@ func.func @CompressTiledConvWeightsSharedTable(%arg0: memref<1x16x112x112x!qElem
     //CHECK:        [[WT1:%.+]] = VPUIP.Copy inputs([[cst_wt1]] : memref<64x1x1x4xsi32>)
     //CHECK-SAME:           outputs([[WT1_CMX]] : !VPUIP.DistributedBuffer<64x1x1x4xsi32, #NCHW, [@CMX_NN, 0], {mode = "DUPLICATED", num_clusters = 2 : i64}>)
     //CHECK-SAME:           -> !VPUIP.DistributedBuffer<64x1x1x4xsi32, #NCHW, [@CMX_NN, 0], {mode = "DUPLICATED", num_clusters = 2 : i64}>
-    //CHECK:        [[CONV1:%.+]] = VPUIP.NCEClusterTask {
-    //CHECK-SAME:           input(%arg0 : memref<1x16x112x112x!qElemType, #NHWC, [@CMX_NN, 0]>)
+    //CHECK:        [[CONV1:%.+]] = VPUIP.NCEClusterTask
+    //CHECK-SAME:           input([[ARG_0]] : memref<1x16x112x112x!qElemType, #NHWC, [@CMX_NN, 0]>)
     //CHECK-SAME:           weight_table([[WT1]] : !VPUIP.DistributedBuffer<64x1x1x4xsi32, #NCHW, [@CMX_NN, 0], {mode = "DUPLICATED", num_clusters = 2 : i64}>)
     //CHECK-SAME:           -> memref<1x64x56x56x!qElemType1, #NHWC, [@CMX_NN, 0]>
 
     //CHECK:        [[WT2_CMX:%.+]] = memref.alloc() : memref<64x1x1x4xsi32, [@CMX_NN, 0]>
     //CHECK:        [[WT2:%.+]] = VPUIP.Copy inputs([[cst_wt2]] : memref<64x1x1x4xsi32>) outputs([[WT2_CMX]] : memref<64x1x1x4xsi32, [@CMX_NN, 0]>)
     //CHECK-SAME:           -> memref<64x1x1x4xsi32, [@CMX_NN, 0]>
-    //CHECK:        [[CONV2:%.+]] = VPUIP.NCEClusterTask {
+    //CHECK:        [[CONV2:%.+]] = VPUIP.NCEClusterTask
     //CHECK-SAME:           input([[CONV1]] : memref<1x64x56x56x!qElemType1, #NHWC, [@CMX_NN, 0]>)
     //CHECK-SAME:           weight_table([[WT2]] : memref<64x1x1x4xsi32, [@CMX_NN, 0]>)
     //CHECK-SAME:           -> memref<1x64x56x56x!qElemType1, #NHWC, [@CMX_NN, 0]>
@@ -538,6 +536,7 @@ func.func @CompressTiledConvWeightsSharedTable(%arg0: memref<1x16x112x112x!qElem
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
 // CHECK-LABEL: @DoNotCompressConvWeightsOCPadding
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x32x2x4xf16, #NHWC, [@CMX_NN, 0]>)
 func.func @DoNotCompressConvWeightsOCPadding(%arg0: memref<1x32x2x4xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x16x2x4xf16, #NHWC, [@CMX_NN, 0]> {
     %cst = const.Declare memref<16x32x1x1xf16, #NHWC> = dense<1.0> :
         tensor<1x2x2x32xf16>, [#const.Reshape<[2, 2, 32]>, #const.SubView<[0, 0, 0], [1, 2, 32]>,
@@ -557,13 +556,12 @@ func.func @DoNotCompressConvWeightsOCPadding(%arg0: memref<1x32x2x4xf16, #NHWC, 
 
     %output = memref.alloc() : memref<1x16x2x4xf16, #NHWC, [@CMX_NN, 0]>
 
-    %NCEOp = VPUIP.NCEClusterTask {
+    %NCEOp = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 180 : i64} <{
     kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
     kernel_size = [1, 1],
     kernel_strides = [1, 1],
-    minimumHardwareExecutionCost = 180 : i64,
     task_type = #VPUIP.nce_task_type<CONV>
-        }
+        }>
         input(%arg0 : memref<1x32x2x4xf16, #NHWC, [@CMX_NN, 0]>)
         weights(%weights : memref<16x32x1x1xf16, #NHWC, [@CMX_NN, 0]>)
         weight_table(%weights_table : memref<16x1x1x4xsi32, [@CMX_NN, 0]>)
@@ -600,14 +598,14 @@ func.func @DoNotCompressConvWeightsOCPadding(%arg0: memref<1x32x2x4xf16, #NHWC, 
 
     //CHECK:        [[OUT:%.+]] = memref.alloc() : memref<1x16x2x4xf16, #NHWC, [@CMX_NN, 0]>
 
-    //CHECK:        [[CLUSTER_TASK:%.+]] = VPUIP.NCEClusterTask {
+    //CHECK:        [[CLUSTER_TASK:%.+]] = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 180 : i64} <{
     //CHECK-SAME:       kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
-    //CHECK-SAME:       kernel_size = [1, 1], kernel_strides = [1, 1], minimumHardwareExecutionCost = 180 : i64,
-    //CHECK-SAME:       task_type = #VPUIP.nce_task_type<CONV>}
-    //CHECK-SAME:           input(%arg0 : memref<1x32x2x4xf16, #NHWC, [@CMX_NN, 0]>)
+    //CHECK-SAME:       kernel_size = [1, 1], kernel_strides = [1, 1],
+    //CHECK-SAME:       task_type = #VPUIP.nce_task_type<CONV>}>
+    //CHECK-SAME:           input([[ARG_0]] : memref<1x32x2x4xf16, #NHWC, [@CMX_NN, 0]>)
     //CHECK-SAME:           weights([[WEIGHTS_CMX]] : memref<16x32x1x1xf16, #NHWC, [@CMX_NN, 0]>)
     //CHECK-SAME:           weight_table([[WEIGHTS_TABLE_CMX]] : memref<16x1x1x4xsi32, [@CMX_NN, 0]>)
-    //CHECK-SAME:           parent_input(%arg0 : memref<1x32x2x4xf16, #NHWC, [@CMX_NN, 0]>)
+    //CHECK-SAME:           parent_input([[ARG_0]] : memref<1x32x2x4xf16, #NHWC, [@CMX_NN, 0]>)
     //CHECK-SAME:           parent_output([[OUT]] : memref<1x16x2x4xf16, #NHWC, [@CMX_NN, 0]>)
     //CHECK-SAME:           outputs([[OUT]] : memref<1x16x2x4xf16, #NHWC, [@CMX_NN, 0]>)
     //CHECK-SAME:           -> memref<1x16x2x4xf16, #NHWC, [@CMX_NN, 0]> variants : {
@@ -622,7 +620,9 @@ func.func @DoNotCompressConvWeightsOCPadding(%arg0: memref<1x32x2x4xf16, #NHWC, 
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 !qElemType = !quant.uniform<i4:f16, 1.1534313725490195>
+
 // CHECK-LABEL: @DoNotCompressConvSubByteWeights
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x8x112x112xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x64x56x56xf16, #NHWC, [@CMX_NN, 0]>
 func.func @DoNotCompressConvSubByteWeights(%arg0: memref<1x8x112x112xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x64x56x56xf16, #NHWC, [@CMX_NN, 0]> {
     %cst = const.Declare memref<64x1x1x4xsi32> = dense<1> : tensor<64x1x1x4xsi32>
     %cst_0 = const.Declare memref<64x16x7x7x!qElemType, #NHWC> = dense<1.0> :
@@ -639,13 +639,12 @@ func.func @DoNotCompressConvSubByteWeights(%arg0: memref<1x8x112x112xf16, #NHWC,
         outputs(%3 : memref<64x1x1x4xsi32, [@CMX_NN, 0]>)
          -> memref<64x1x1x4xsi32, [@CMX_NN, 0]>
     %output = memref.alloc() : memref<1x64x56x56xf16, #NHWC, [@CMX_NN, 0]>
-    %NCEOp = VPUIP.NCEClusterTask {
+    %NCEOp = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 375613 : i64} <{
           kernel_padding = #VPU.Padding<left = 3 : i64, right = 2 : i64, top = 3 : i64, bottom = 2 : i64>,
           kernel_size = [7, 7],
           kernel_strides = [2, 2],
-          minimumHardwareExecutionCost = 375613 : i64,
           task_type = #VPUIP.nce_task_type<CONV>
-      }
+      }>
       input(%arg0 : memref<1x8x112x112xf16, #NHWC, [@CMX_NN, 0]>)
       weights(%weights : memref<64x16x7x7x!qElemType, #NHWC, [@CMX_NN, 0]>)
       weight_table(%weights_table : memref<64x1x1x4xsi32, [@CMX_NN, 0]>)
@@ -672,11 +671,11 @@ func.func @DoNotCompressConvSubByteWeights(%arg0: memref<1x8x112x112xf16, #NHWC,
     //CHECK:    [[VAR3:%.+]] = memref.alloc() : memref<1x64x56x56xf16, #NHWC, [@CMX_NN, 0]>
     //CHECK:    [[NCE_TASK:%.+]] = VPUIP.NCEClusterTask
     //CHECK-NOT:     cm_sp_pattern
-    //CHECK-SAME:    {kernel_padding = #VPU.Padding<left = 3 : i64, right = 2 : i64, top = 3 : i64, bottom = 2 : i64>,
-    //CHECK-SAME:    kernel_size = [7, 7], kernel_strides = [2, 2], minimumHardwareExecutionCost = 375613 : i64, task_type = #VPUIP.nce_task_type<CONV>}
-    //CHECK-SAME:    input(%arg0 : memref<1x8x112x112xf16, #NHWC, [@CMX_NN, 0]>) weights([[COPY1]] : memref<64x16x7x7x!qElemType, #NHWC, [@CMX_NN, 0]>)
+    //CHECK-SAME:    kernel_padding = #VPU.Padding<left = 3 : i64, right = 2 : i64, top = 3 : i64, bottom = 2 : i64>,
+    //CHECK-SAME:    kernel_size = [7, 7], kernel_strides = [2, 2], task_type = #VPUIP.nce_task_type<CONV>
+    //CHECK-SAME:    input([[ARG_0]] : memref<1x8x112x112xf16, #NHWC, [@CMX_NN, 0]>) weights([[COPY1]] : memref<64x16x7x7x!qElemType, #NHWC, [@CMX_NN, 0]>)
     //CHECK-SAME:    weight_table([[COPY2]] : memref<64x1x1x4xsi32, [@CMX_NN, 0]>)
-    //CHECK-SAME:    parent_input(%arg0 : memref<1x8x112x112xf16, #NHWC, [@CMX_NN, 0]>)
+    //CHECK-SAME:    parent_input([[ARG_0]] : memref<1x8x112x112xf16, #NHWC, [@CMX_NN, 0]>)
     //CHECK-SAME:    parent_output([[VAR3]] : memref<1x64x56x56xf16, #NHWC, [@CMX_NN, 0]>)
     //CHECK-SAME:    outputs([[VAR3]] : memref<1x64x56x56xf16, #NHWC, [@CMX_NN, 0]>)
     //CHECK-SAME:    -> memref<1x64x56x56xf16, #NHWC, [@CMX_NN, 0]> variants : {
@@ -762,11 +761,11 @@ func.func @TiledCompressConvWeightsWithExplicitShapeAndOffset(%arg0: !InputDistr
         -> !WeightsTableDistributed
 
     %alloc_2 = VPURT.AllocDistributed -> !OutputDistributed
-    %2 = VPUIP.NCEClusterTask {
+    %2 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 210 : i64} <{
         kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
-        kernel_size = [1, 1], kernel_strides = [1, 1], minimumHardwareExecutionCost = 210 : i64,
+        kernel_size = [1, 1], kernel_strides = [1, 1],
         task_type = #VPUIP.nce_task_type<CONV>
-    }
+    }>
     input(%arg0 : !InputDistributed)
     weights(%0 : !WeightsDistributed)
     weight_table(%1 : !WeightsTableDistributed)
@@ -850,7 +849,7 @@ func.func @DoNotCompressConvWithoutPadZero(%arg0: memref<1x96x96x96xf16, #NHWC, 
         inputs(%cst : memref<32x1x1x4xsi32>)
         outputs(%5 : !VPUIP.DistributedBuffer<32x1x1x4xsi32, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>) -> !VPUIP.DistributedBuffer<32x1x1x4xsi32, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
     %7 = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x32x96x96xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
-    %8 = VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, kernel_size = [3, 3], kernel_strides = [1, 1], minimumHardwareExecutionCost = 47534 : i64, task_type = #VPUIP.nce_task_type<CONV>}
+    %8 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 47534 : i64} <{kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, kernel_size = [3, 3], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
         input(%2 : !VPUIP.DistributedBuffer<1x32x96x96xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)
         weights(%4 : !VPUIP.DistributedBuffer<32x32x3x3xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
         weight_table(%6 : !VPUIP.DistributedBuffer<32x1x1x4xsi32, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
@@ -885,7 +884,7 @@ func.func @DoNotCompressConvWithoutPadZero(%arg0: memref<1x96x96x96xf16, #NHWC, 
     //CHECK:    inputs([[CST]] : memref<32x1x1x4xsi32>)
     //CHECK:    outputs([[VAR5]] : !VPUIP.DistributedBuffer<32x1x1x4xsi32, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>) -> !VPUIP.DistributedBuffer<32x1x1x4xsi32, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
     //CHECK:        [[VAR7:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x32x96x96xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
-    //CHECK:        [[VAR8:%.+]] = VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, kernel_size = [3, 3], kernel_strides = [1, 1], minimumHardwareExecutionCost = 47534 : i64, task_type = #VPUIP.nce_task_type<CONV>}
+    //CHECK:        [[VAR8:%.+]] = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 47534 : i64} <{kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, kernel_size = [3, 3], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
     //CHECK-SAME:           input([[VAR2]] : !VPUIP.DistributedBuffer<1x32x96x96xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)
     //CHECK-SAME:           weights([[VAR4]] : !VPUIP.DistributedBuffer<32x32x3x3xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
     //CHECK-SAME:           weight_table([[VAR6]] : !VPUIP.DistributedBuffer<32x1x1x4xsi32, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
@@ -954,13 +953,12 @@ func.func @DoNotCompressConvWeightsWithNonICPadAttr(%arg0: !InputDistributed) ->
         outputs(%2 : !WeightTableDistributed)
         -> !WeightTableDistributed
     %4 = VPURT.AllocDistributed -> !OutputDistributed
-    %5 = VPUIP.NCEClusterTask {
+    %5 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 5571 : i64} <{
     kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
     kernel_size = [2, 1],
     kernel_strides = [1, 1],
-    minimumHardwareExecutionCost = 5571 : i64,
     task_type = #VPUIP.nce_task_type<CONV>
-        }
+        }>
         input(%arg0 : !InputDistributed)
         weights(%1 : !WeightsDistributed)
         weight_table(%3 : !WeightTableDistributed)
@@ -1001,10 +999,10 @@ func.func @DoNotCompressConvWeightsWithNonICPadAttr(%arg0: !InputDistributed) ->
 
     //CHECK:        [[OUT:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x16x128x64xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
 
-    //CHECK:        [[CLUSTER_TASK:%.+]] = VPUIP.NCEClusterTask {
+    //CHECK:        [[CLUSTER_TASK:%.+]] = VPUIP.NCEClusterTask
     //CHECK-SAME:       kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
     //CHECK-SAME:       kernel_size = [2, 1], kernel_strides = [1, 1],
-    //CHECK-SAME:       task_type = #VPUIP.nce_task_type<CONV>}
+    //CHECK-SAME:       task_type = #VPUIP.nce_task_type<CONV>}>
     //CHECK-SAME:           weights([[WEIGHTS_CMX]] : !VPUIP.DistributedBuffer<16x16x2x1xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
     //CHECK-SAME:           weight_table([[WEIGHTS_TABLE_CMX]] : !VPUIP.DistributedBuffer<16x1x1x4xsi32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
     //CHECK-SAME:           parent_output([[OUT]] : !VPUIP.DistributedBuffer<1x16x128x64xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)
@@ -1067,7 +1065,7 @@ func.func @CompressConvWeightsWithReshape(
     %ALLOC_OUTPUT = memref.alloc() : memref<1x128x256x4xf16, #NHWC, [@CMX_NN, 0]>
     // CHECK:   [[ALLOC_OUTPUT:%.+]] = memref.alloc() : memref<1x128x256x4xf16, #NHWC, [@CMX_NN, 0]>
 
-    %NCE = VPUIP.NCEClusterTask {
+    %NCE = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 3005 : i64} <{
           kernel_padding = #VPU.Padding<
     left = 0 : i64,
     right = 0 : i64,
@@ -1076,9 +1074,8 @@ func.func @CompressConvWeightsWithReshape(
           >,
           kernel_size = [1, 1],
           kernel_strides = [1, 1],
-          minimumHardwareExecutionCost = 3005 : i64,
           task_type = #VPUIP.nce_task_type<CONV>
-    }
+    }>
     input(%INPUT : memref<1x16x256x4xf16, #NHWC, [@CMX_NN, 0]>)
     weights(%WEIGHTS_COPY : memref<128x16x1x1xf16, #NHWC, [@CMX_NN, 0]>)
     weight_table(%WEIGHTS_TABLE_COPY : memref<128x1x1x4xsi32, [@CMX_NN, 0]>)

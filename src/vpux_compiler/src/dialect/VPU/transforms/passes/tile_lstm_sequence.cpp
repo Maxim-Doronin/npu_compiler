@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -88,7 +88,9 @@ mlir::FailureOr<int> TileLSTMSequence::getNumSplits(VPU::LSTMSequenceOp op) cons
 
     auto inputDataShape = Shape(inputData.getShape());
     auto outputHiddenValuesShape = Shape(outputHiddenValues.getShape());
-    const auto seqLenght = op.getSequenceLength().has_value() ? op.getSequenceLength().value() : 1;
+
+    const auto seqLength = op.getSequenceLength().has_value() ? op.getSequenceLength().value()
+                                                              : inputDataShape[Dim(inputDataShape.size() - 2)];
 
     if (inputDataShape.size() != 4 || outputHiddenValuesShape.size() != 4) {
         _log.trace("LSTMSequenceOp cannot be tiled due to unsupported shape sizes.");
@@ -97,6 +99,7 @@ mlir::FailureOr<int> TileLSTMSequence::getNumSplits(VPU::LSTMSequenceOp op) cons
 
     SmallVector<Byte> bufferSizes;
     const auto numBuffers = op.getNumOperands() + op.getNumResults();
+
     bufferSizes.reserve(numBuffers);
 
     const auto operands = op.getOperands();
@@ -125,6 +128,7 @@ mlir::FailureOr<int> TileLSTMSequence::getNumSplits(VPU::LSTMSequenceOp op) cons
         auto operandType = multiClusterStrategy.has_value()
                                    ? applyMultiClusterTiling(operand, multiClusterStrategy.value())
                                    : mlir::cast<vpux::NDTypeInterface>(operand.getType());
+
         bufferSizes.push_back(operandType.getTotalAllocSize());
     }
 
@@ -132,6 +136,7 @@ mlir::FailureOr<int> TileLSTMSequence::getNumSplits(VPU::LSTMSequenceOp op) cons
         auto resultType = multiClusterStrategy.has_value()
                                   ? applyMultiClusterTiling(result, multiClusterStrategy.value())
                                   : mlir::cast<vpux::NDTypeInterface>(result.getType());
+
         bufferSizes.push_back(resultType.getTotalAllocSize());
     }
 
@@ -143,10 +148,12 @@ mlir::FailureOr<int> TileLSTMSequence::getNumSplits(VPU::LSTMSequenceOp op) cons
     }
 
     const auto inputDataOperandIdx = std::find(operands.begin(), operands.end(), op.getInputData()) - operands.begin();
+
     const auto outputHiddenValuesResultIdx =
             std::find(results.begin(), results.end(), op.getOutputHiddenValues()) - results.begin();
 
     const auto inputDataBufferIdx = inputDataOperandIdx;
+
     const auto outputHiddenValuesBufferIdx = op.getNumOperands() + outputHiddenValuesResultIdx;
 
     if (multiClusterStrategy.has_value()) {
@@ -157,16 +164,16 @@ mlir::FailureOr<int> TileLSTMSequence::getNumSplits(VPU::LSTMSequenceOp op) cons
         outputHiddenValuesShape = Shape(outputHiddenValues.getShape());
     }
 
-    for (int numSplits = 2; numSplits <= seqLenght; numSplits++) {
-        const int64_t newLargestSeqLenght =
-                std::ceil(checked_cast<double>(seqLenght) / checked_cast<double>(numSplits));
+    for (int numSplits = 2; numSplits <= seqLength; numSplits++) {
+        const int64_t newLargestSeqLength =
+                std::ceil(checked_cast<double>(seqLength) / checked_cast<double>(numSplits));
 
         auto newInputDataShape = inputDataShape;
-        newInputDataShape[Dims4D::Act::H] = newLargestSeqLenght;
+        newInputDataShape[Dims4D::Act::H] = newLargestSeqLength;
         bufferSizes[inputDataBufferIdx] = inputData.changeShape(newInputDataShape).getTotalAllocSize();
 
         auto newOutputHiddenValuesShape = outputHiddenValuesShape;
-        newOutputHiddenValuesShape[Dims4D::Act::H] = newLargestSeqLenght;
+        newOutputHiddenValuesShape[Dims4D::Act::H] = newLargestSeqLength;
         bufferSizes[outputHiddenValuesBufferIdx] =
                 outputHiddenValues.changeShape(newOutputHiddenValuesShape).getTotalAllocSize();
 
@@ -218,27 +225,29 @@ void TileLSTMSequence::tileBidirectionalLSTMSequence(VPU::LSTMSequenceOp op, mli
     const auto inputDataForwardShape = Shape(getShape(inputDataForward));
     const auto outputHiddenValuesShape = Shape(getShape(op.getOutputHiddenValues()));
 
-    const auto seqLenght = op.getSequenceLength().has_value() ? op.getSequenceLength().value() : 1;
+    const auto seqLength = op.getSequenceLength().has_value() ? op.getSequenceLength().value()
+                                                              : inputDataShape[Dim(inputDataShape.size() - 2)];
+
     mlir::Value hiddenState = op.getInitialHiddenState();
     mlir::Value cellState = op.getInitialCellState();
     SmallVector<mlir::Value> outputHiddenValuesVecForward;
     SmallVector<mlir::Value> outputHiddenValuesVecReverse;
 
-    int64_t seqLenghtOffset = 0;
-    const int64_t splitSize = seqLenght / numSplits;
-    const int64_t reminder = seqLenght % numSplits;
+    int64_t seqLengthOffset = 0;
+    const int64_t splitSize = seqLength / numSplits;
+    const int64_t reminder = seqLength % numSplits;
 
     for (int i = 0; i < numSplits; i++) {
-        const auto newSeqLenght = i < reminder ? splitSize + 1 : splitSize;
+        const auto newSeqLength = i < reminder ? splitSize + 1 : splitSize;
 
         auto sliceSizes = inputDataForwardShape;
-        sliceSizes[Dims4D::Act::H] = newSeqLenght;
+        sliceSizes[Dims4D::Act::H] = newSeqLength;
 
         SmallVector<int64_t> sliceOffsetsForward(inputDataShape.size(), 0);
-        sliceOffsetsForward[2] = seqLenghtOffset;
+        sliceOffsetsForward[2] = seqLengthOffset;
 
         SmallVector<int64_t> sliceOffsetsReverse(inputDataShape.size(), 0);
-        sliceOffsetsReverse[2] = seqLenght - seqLenghtOffset - newSeqLenght;
+        sliceOffsetsReverse[2] = seqLength - seqLengthOffset - newSeqLength;
 
         const mlir::Value sliceForward = rewriter.create<VPU::SliceOp>(
                 appendLoc(loc, "sliceForward_{0}", i), inputDataForward, getIntArrayAttr(ctx, sliceOffsetsForward),
@@ -251,10 +260,28 @@ void TileLSTMSequence::tileBidirectionalLSTMSequence(VPU::LSTMSequenceOp op, mli
         const mlir::Value newLstmSequenceInput =
                 rewriter.create<VPU::ConcatOp>(appendLoc(loc, "concat_{0}", i), sliceOps, 1);
 
+        mlir::IntegerAttr seqLengthAttr =
+                op.getSequenceLengthData() == nullptr ? getIntAttr(ctx, newSeqLength) : nullptr;
+
+        mlir::ArrayAttr initialOutputOffset;
+        if (op.getInitialOutputOffsetAttrAttr()) {
+            initialOutputOffset = op.getInitialOutputOffsetAttrAttr();
+        } else {
+            SmallVector<int64_t> offsetValues({0, 0});
+            if (sliceOffsetsForward[2]) {
+                offsetValues[0] = sliceOffsetsForward[2];
+            }
+
+            if (sliceOffsetsReverse[2]) {
+                offsetValues[1] = sliceOffsetsReverse[2];
+            }
+            initialOutputOffset = getIntArrayAttr(ctx, offsetValues);
+        }
+
         auto newLSTMSequenceOp = rewriter.create<VPU::LSTMSequenceOp>(
-                appendLoc(loc, "tile_{0}", 1), newLstmSequenceInput, hiddenState, cellState, op.getReccurenceWeights(),
-                op.getBiases(), getIntAttr(ctx, newSeqLenght), op.getDirectionAttr(), op.getUseDpuAttr(),
-                op.getMultiClusterStrategyAttr());
+                appendLoc(loc, "tile_{0}", 1), newLstmSequenceInput, hiddenState, cellState, op.getSequenceLengthData(),
+                op.getRecurrenceWeights(), op.getBiases(), seqLengthAttr, op.getDirectionAttr(), op.getUseDpuAttr(),
+                initialOutputOffset, op.getMultiClusterStrategyAttr());
 
         const auto [newOutputHiddenValuesForward, newOutputHiddenValuesReverse] =
                 splitOnDim(newLSTMSequenceOp.getOutputHiddenValues(), 1);
@@ -264,7 +291,7 @@ void TileLSTMSequence::tileBidirectionalLSTMSequence(VPU::LSTMSequenceOp op, mli
         hiddenState = newLSTMSequenceOp.getOutputHiddenState();
         cellState = newLSTMSequenceOp.getOutputCellState();
 
-        seqLenghtOffset += newSeqLenght;
+        seqLengthOffset += newSeqLength;
     }
 
     std::reverse(outputHiddenValuesVecReverse.begin(), outputHiddenValuesVecReverse.end());
@@ -295,40 +322,59 @@ void TileLSTMSequence::tileForwardOrReverseLSTMSequence(VPU::LSTMSequenceOp op, 
     const auto inputDataShape = Shape(getShape(inputData));
     const auto outputHiddenValuesShape = Shape(getShape(op.getOutputHiddenValues()));
 
-    const auto seqLenght = op.getSequenceLength().has_value() ? op.getSequenceLength().value() : 1;
+    const auto seqLength = op.getSequenceLength().has_value() ? op.getSequenceLength().value()
+                                                              : inputDataShape[Dim(inputDataShape.size() - 2)];
+
     mlir::Value newHiddenState = op.getInitialHiddenState();
     mlir::Value newCellState = op.getInitialCellState();
     SmallVector<mlir::Value> outputHiddenValuesVec;
 
-    int64_t seqLenghtOffset = 0;
-    const int64_t splitSize = seqLenght / numSplits;
-    const int64_t reminder = seqLenght % numSplits;
+    int64_t seqLengthOffset = 0;
+    const int64_t splitSize = seqLength / numSplits;
+    const int64_t reminder = seqLength % numSplits;
 
     for (int i = 0; i < numSplits; i++) {
-        const auto newSeqLenght = i < reminder ? splitSize + 1 : splitSize;
+        const auto newSeqLength = i < reminder ? splitSize + 1 : splitSize;
 
         auto sliceSizes = inputDataShape;
-        sliceSizes[Dims4D::Act::H] = newSeqLenght;
+        sliceSizes[Dims4D::Act::H] = newSeqLength;
 
         Shape sliceOffsets(inputDataShape.size(), 0);
         sliceOffsets[Dims4D::Act::H] = direction == vpux::IE::RNNSequenceDirection::FORWARD
-                                               ? seqLenghtOffset
-                                               : seqLenght - seqLenghtOffset - newSeqLenght;
+                                               ? seqLengthOffset
+                                               : seqLength - seqLengthOffset - newSeqLength;
 
         const mlir::Value newLstmSequenceInput =
                 rewriter.create<VPU::SliceOp>(appendLoc(loc, "slice_{0}", i), inputData,
                                               getIntArrayAttr(ctx, sliceOffsets), getIntArrayAttr(ctx, sliceSizes));
 
+        mlir::IntegerAttr seqLengthAttr =
+                op.getSequenceLengthData() == nullptr ? getIntAttr(ctx, newSeqLength) : nullptr;
+
+        mlir::ArrayAttr initialOutputOffset;
+
+        if (op.getInitialOutputOffsetAttrAttr()) {
+            initialOutputOffset = op.getInitialOutputOffsetAttrAttr();
+        } else {
+            initialOutputOffset = getIntArrayAttr(ctx, SmallVector<int64_t>({-1, -1}));
+
+            if (direction == vpux::IE::RNNSequenceDirection::FORWARD) {
+                initialOutputOffset = getIntArrayAttr(ctx, SmallVector<int64_t>({sliceOffsets[Dims4D::Act::H], -1}));
+            } else if (direction == vpux::IE::RNNSequenceDirection::REVERSE) {
+                initialOutputOffset = getIntArrayAttr(ctx, SmallVector<int64_t>({-1, sliceOffsets[Dims4D::Act::H]}));
+            }
+        }
+
         auto newLSTMSequenceOp = rewriter.create<VPU::LSTMSequenceOp>(
                 appendLoc(loc, "tile_{0}", 1), newLstmSequenceInput, newHiddenState, newCellState,
-                op.getReccurenceWeights(), op.getBiases(), getIntAttr(ctx, newSeqLenght), op.getDirectionAttr(),
-                op.getUseDpuAttr(), op.getMultiClusterStrategyAttr());
+                op.getSequenceLengthData(), op.getRecurrenceWeights(), op.getBiases(), seqLengthAttr,
+                op.getDirectionAttr(), op.getUseDpuAttr(), initialOutputOffset, op.getMultiClusterStrategyAttr());
 
         outputHiddenValuesVec.push_back(newLSTMSequenceOp.getOutputHiddenValues());
         newHiddenState = newLSTMSequenceOp.getOutputHiddenState();
         newCellState = newLSTMSequenceOp.getOutputCellState();
 
-        seqLenghtOffset += newSeqLenght;
+        seqLengthOffset += newSeqLength;
     }
 
     if (direction == vpux::IE::RNNSequenceDirection::REVERSE) {
@@ -362,6 +408,7 @@ mlir::LogicalResult TileLSTMSequence::matchAndRewrite(VPU::LSTMSequenceOp op, ml
     }
 
     const auto numSplits = getNumSplits(op);
+
     if (mlir::failed(numSplits) || numSplits == 1) {
         return mlir::failure();
     }

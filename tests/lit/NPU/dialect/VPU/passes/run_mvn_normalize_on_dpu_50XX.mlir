@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -86,7 +86,7 @@ func.func @ReplaceMVN1NormalizeWithMaxPool(%arg0: tensor<1x512x64x64xf32>) -> te
 
     // CHECK:        [[SHAPECAST_6:%.+]] = VPU.ShapeCast {shape = [1, 64, 512, 64]} inputs([[CONVERT_4]] : tensor<1x512x64x64xf32, {order = #NHWC}>)
     // CHECK-SAME:       -> tensor<1x64x512x64xf32, {order = #NHWC}>
-    
+
     // CHECK:        [[PERMUTECAST_2:%.+]] = VPU.PermuteCast([[SHAPECAST_6]]) {dst_order = #NCHW, mem_perm = #NCHW}
     // CHECK-SAME:       : tensor<1x64x512x64xf32, {order = #NHWC}> -> tensor<1x512x64x64xf32>
 

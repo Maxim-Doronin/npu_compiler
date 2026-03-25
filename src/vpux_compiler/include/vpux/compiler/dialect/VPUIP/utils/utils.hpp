@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -809,6 +809,8 @@ void splitSpaceToDepth(mlir::PatternRewriter& rewriter,
                        int64_t splitCount);
 
 mlir::Value getRootBuffer(mlir::Value buffer);
+
+mlir::SmallVector<mlir::Value> getInputsSanitized(VPUIP::LayerOpInterface layerOp);
 
 }  // namespace VPUIP
 }  // namespace vpux

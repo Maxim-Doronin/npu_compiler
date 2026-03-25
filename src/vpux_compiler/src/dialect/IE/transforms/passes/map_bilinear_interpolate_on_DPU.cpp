@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -13,6 +13,7 @@
 #include "vpux/compiler/dialect/VPU/IR/ops/dpu.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
+#include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/numeric.hpp"
@@ -410,42 +411,25 @@ namespace {
 class MapBilinearInterpolateOnDPUPass final :
         public IE::impl::MapBilinearInterpolateOnDPUBase<MapBilinearInterpolateOnDPUPass> {
 public:
-    explicit MapBilinearInterpolateOnDPUPass(const bool interpolateAsSEOp, Logger& log)
-            : _interpolateAsSEOp(interpolateAsSEOp) {
+    explicit MapBilinearInterpolateOnDPUPass(Logger& log) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
-    mlir::LogicalResult initialize(mlir::MLIRContext* ctx) override;
-
 private:
     void safeRunOnFunc() override;
-
-    bool _interpolateAsSEOp = false;
 };
-
-mlir::LogicalResult MapBilinearInterpolateOnDPUPass::initialize(mlir::MLIRContext* ctx) {
-    if (mlir::failed(Base::initialize(ctx))) {
-        return mlir::failure();
-    }
-
-    // When this parameter has a value, it probably comes from LIT test.
-    // Override the default
-    if (interpolateAsSEOp.hasValue()) {
-        _interpolateAsSEOp = interpolateAsSEOp.getValue();
-    }
-
-    return mlir::success();
-}
 
 void MapBilinearInterpolateOnDPUPass::safeRunOnFunc() {
     auto& ctx = getContext();
     const auto func = getOperation();
+    const auto moduleOp = getModuleOp(func);
     const auto logCb = [&](const formatv_object_base& msg) {
         _log.trace("{0}", msg.str());
     };
 
     auto& strategyFactory = IE::getIEStrategyFactory(&ctx);
-    auto strategy = strategyFactory->getMapBilinearInterpolateOnDPUStrategy(_interpolateAsSEOp);
+    auto strategy =
+            strategyFactory->getMapBilinearInterpolateOnDPUStrategy(config::hasEnableSEPtrsOperations(moduleOp));
 
     mlir::ConversionTarget target(ctx);
     target.addLegalOp<IE::ExpandOp>();
@@ -470,6 +454,6 @@ void MapBilinearInterpolateOnDPUPass::safeRunOnFunc() {
 // createMapBilinearInterpolateOnDPUPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::IE::createMapBilinearInterpolateOnDPUPass(const bool interpolateAsSEOp, Logger log) {
-    return std::make_unique<MapBilinearInterpolateOnDPUPass>(interpolateAsSEOp, log);
+std::unique_ptr<mlir::Pass> vpux::IE::createMapBilinearInterpolateOnDPUPass(Logger log) {
+    return std::make_unique<MapBilinearInterpolateOnDPUPass>(log);
 }

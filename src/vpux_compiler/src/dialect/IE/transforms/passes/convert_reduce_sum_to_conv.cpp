@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -291,8 +291,8 @@ mlir::LogicalResult InnerDimReduceSumToConvRewriter::matchAndRewrite(IE::ReduceS
 
     auto newInputShape = Shape({1, newH, newW, newC});
     const auto newInShapeAttr = getIntArrayAttr(getContext(), newInputShape);
-    auto inReshapeOp = rewriter.create<IE::ReshapeOp>(appendLoc(origLoc, "input_reshape"), origOp->getOperand(0),
-                                                      nullptr, false, newInShapeAttr);
+    auto inReshapeOp =
+            rewriter.create<IE::ReshapeOp>(appendLoc(origLoc, "input_reshape"), origOp->getOperand(0), newInShapeAttr);
 
     // Cast input to NHWC as Conv activation
     auto identityMap = mlir::AffineMap::getMultiDimIdentityMap(checked_cast<uint32_t>(newInputShape.size()), ctx);
@@ -311,9 +311,8 @@ mlir::LogicalResult InnerDimReduceSumToConvRewriter::matchAndRewrite(IE::ReduceS
     // Cast Conv output to the original order and shape
     auto outPermuteCast = rewriter.create<IE::PermuteCastOp>(
             appendLoc(origLoc, "output_permute_cast"), conv.getOutput(), DimsOrder::NCHW.toAffineMap(ctx), identityMap);
-    auto outReshapeOp =
-            rewriter.create<IE::ReshapeOp>(appendLoc(origLoc, "output_reshape"), outPermuteCast.getOutput(), nullptr,
-                                           false, getIntArrayAttr(ctx, getShape(origOp.getOutput())));
+    auto outReshapeOp = rewriter.create<IE::ReshapeOp>(appendLoc(origLoc, "output_reshape"), outPermuteCast.getOutput(),
+                                                       getIntArrayAttr(ctx, getShape(origOp.getOutput())));
 
     rewriter.replaceOp(origOp, outReshapeOp);
 

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -37,10 +37,11 @@ private:
 
 template <typename ConcreteOp>
 mlir::LogicalResult ReduceToNCE<ConcreteOp>::matchAndRewrite(ConcreteOp origOp, mlir::PatternRewriter& rewriter) const {
-    auto axes = getIntArrayAttr(this->getContext(), IE::extractAxes(origOp->getLoc(), origOp));
-    auto ppeAttr = VPU::PpeVersionConfig::retrievePPEAttribute(origOp);
+    auto* ctx = origOp.getContext();
+    auto axes = getIntArrayAttr(ctx, IE::extractAxes(origOp->getLoc(), origOp));
+    auto ppeAttr = VPU::getPpeConfig(ctx).retrievePPEAttribute(origOp);
     auto nceOp = rewriter.create<VPU::NCEReduceOp>(origOp->getLoc(), origOp.getType(), origOp.getInput(), axes, ppeAttr,
-                                                   VPU::ReduceTypeAttr::get(this->getContext(), _opType),
+                                                   VPU::ReduceTypeAttr::get(ctx, _opType),
                                                    /*multiClusterStrategy=*/nullptr, origOp.getOutputPaddingAttr(),
                                                    origOp.getInputPaddingAttr());
 

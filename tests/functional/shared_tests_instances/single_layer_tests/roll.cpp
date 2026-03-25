@@ -1,3 +1,4 @@
+//
 // Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -23,6 +24,10 @@ TEST_P(RollLayerTestCommon, NPU4000) {
 TEST_P(RollLayerTestCommon, NPU5010) {
     setReferenceSoftwareMode();
     run(Platform::NPU5010);
+}
+TEST_P(RollLayerTestCommon, NPU5020) {
+    setReferenceSoftwareMode();
+    run(Platform::NPU5020);
 }
 
 }  // namespace test

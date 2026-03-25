@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,8 @@
 #include "vpux/compiler/dialect/IE/IR/attributes.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/utils/core/array_ref.hpp"
+
+#include <mlir/Interfaces/InferTypeOpInterface.h>
 
 namespace vpux {
 
@@ -91,13 +93,16 @@ ShapeInfo inferMaxPool8OutputShape(const ShapeInfo& inDataShape, ArrayRef<int64_
  * @param dataPaddingBelow:      Builds the beginning of padding shape
  * @param dataPaddingAbove:      Builds the end of padding shape
  * @param windowShape:           The kernel window
+ * @param inputPadding:          Optional padding applied to the input tensor dims before pooling
+ * @param outputPadding:         Optional padding applied to the output tensor dims after pooling
  * @param roundingType:          Whether to use ceiling or floor rounding type while
  *                               computing output shape
  * @return                       The output shape as SmallVector
  */
 ShapeInfo inferAvgPoolOutputShape(const ShapeInfo& inDataShape, ArrayRef<int64_t> windowStrides,
                                   ArrayRef<int64_t> dataPaddingBelow, ArrayRef<int64_t> dataPaddingAbove,
-                                  ArrayRef<int64_t> windowShape,
+                                  ArrayRef<int64_t> windowShape, std::optional<ArrayRef<int64_t>> inputPadding,
+                                  std::optional<ArrayRef<int64_t>> outputPadding,
                                   IE::RoundingType roundingType = IE::RoundingType::FLOOR);
 
 /**
@@ -251,6 +256,39 @@ mlir::FailureOr<SmallVector<mlir::OpFoldResult>> reifyConvPoolTensors(mlir::OpBu
                                                                       ArrayRef<int64_t> strides,
                                                                       ArrayRef<int64_t> padBegin,
                                                                       ArrayRef<int64_t> padEnd, mlir::Location loc);
+
+/**
+ * @brief Reify tensors for reduce operations.
+ *
+ * @param builder - builder to create new operations
+ * @param input - input tensor
+ * @param axes - the axes on which the reduce is performed
+ * @param inputPad - input padding
+ * @param outputPad - output padding
+ * @param keepDims - if true the output tensor rank is the same as the input rank
+ * @param loc - operation location
+ *
+ * @return reified shapes for the output tensor
+ */
+mlir::FailureOr<SmallVector<mlir::OpFoldResult>> reifyReduceTensors(mlir::OpBuilder& builder, mlir::Value input,
+                                                                    ArrayRef<int64_t> axes, ArrayRef<int64_t> inputPad,
+                                                                    ArrayRef<int64_t> outputPad, bool keepDims,
+                                                                    mlir::Location loc);
+/**
+ * @brief Reify tensors for reduce operations.
+ *
+ * The operation is assumed to have no padding.
+ *
+ * @param op - operation to reify
+ * @param builder - builder to create new operations
+ * @param axesAttr - attribute for the reduction axes
+ * @param keepDims - if true the output tensor rank is the same as the input rank
+ * @param reifiedReturnShapes - output parameter containing with the reified dims
+
+ * @return mlir::success() if reification succeeded, mlir::failure() otherwise
+ */
+mlir::LogicalResult reifyReduceTensors(mlir::Operation* op, mlir::OpBuilder& builder, mlir::ArrayAttr axesAttr,
+                                       bool keepDims, mlir::ReifiedRankedShapedTypeDims& reifiedReturnShapes);
 
 /**
  * @brief                        Infers the output shape for a PermuteQuantize operation

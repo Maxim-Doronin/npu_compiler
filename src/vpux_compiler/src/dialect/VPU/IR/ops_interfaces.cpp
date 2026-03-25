@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -110,8 +110,8 @@ mlir::Operation* vpux::VPU::details::addWorkload(mlir::Region& workloads, mlir::
     mlir::OpBuilder::InsertionGuard guard(builder);
     builder.setInsertionPointToEnd(&workloads.front());
 
-    const auto offsetsAttr = getIntArrayAttr(builder.getContext(), offsets);
-    const auto sizesAttr = getIntArrayAttr(builder.getContext(), sizes);
+    const auto offsetsAttr = mlir::DenseI64ArrayAttr::get(builder.getContext(), offsets);
+    const auto sizesAttr = mlir::DenseI64ArrayAttr::get(builder.getContext(), sizes);
 
     return builder.create<DPUWorkloadOp>(loc, offsetsAttr, sizesAttr, pad, mpeMode, clusterId);
 }
@@ -138,11 +138,13 @@ mlir::LogicalResult vpux::VPU::details::verifyInputQuantization(mlir::Operation*
     for (auto operand : op->getOperands()) {
         auto inputType = mlir::cast<vpux::NDTypeInterface>(operand.getType());
         auto elemType = inputType.getElementType();
+
         if (auto inputQType = mlir::dyn_cast<mlir::quant::QuantizedType>(elemType)) {
-            bool is16BitsQuantization = inputQType.getStorageType().isInteger(16);
-            if (is16BitsQuantization) {
-                return mlir::failure();
+            const bool is16BitsQuantization = inputQType.getStorageType().isInteger(16);
+            if (!is16BitsQuantization) {
+                continue;
             }
+            return mlir::failure();
         }
     }
     return mlir::success();
@@ -384,7 +386,7 @@ void vpux::VPU::registerSWTilingInfoOpInterfaceCommon(mlir::DialectRegistry& reg
         VPU::ReduceMinOp::attachInterface<SwLayerTilingInfoOpModel<VPU::ReduceMinOp>>(*ctx);
         VPU::ReduceProdOp::attachInterface<SwLayerTilingInfoOpModel<VPU::ReduceProdOp>>(*ctx);
         VPU::ReduceSumOp::attachInterface<SwLayerTilingInfoOpModel<VPU::ReduceSumOp>>(*ctx);
-        VPU::ReduceMeanSquareOp::attachInterface<SwLayerTilingInfoOpModel<VPU::ReduceMeanSquareOp>>(*ctx);
+        VPU::ReduceSquareOp::attachInterface<SwLayerTilingInfoOpModel<VPU::ReduceSquareOp>>(*ctx);
         VPU::ReverseOp::attachInterface<SwLayerTilingInfoOpModel<VPU::ReverseOp>>(*ctx);
         VPU::ReverseSequenceOp::attachInterface<SwLayerTilingInfoOpModel<VPU::ReverseSequenceOp>>(*ctx);
         VPU::SwishOp::attachInterface<SwLayerTilingInfoOpModel<VPU::SwishOp>>(*ctx);

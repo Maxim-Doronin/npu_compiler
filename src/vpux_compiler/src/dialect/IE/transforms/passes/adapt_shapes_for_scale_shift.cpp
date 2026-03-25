@@ -1,9 +1,10 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/attributes/shape.hpp"
+#include "vpux/compiler/core/tiling.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
@@ -70,8 +71,8 @@ mlir::LogicalResult BroadcastEltwiseRewriter<EltwiseOp>::matchAndTranspose(Eltwi
     const std::array<int64_t, 4> lhs4D = {1, newChannelSize, lhsShape[Dim(broadcastAxis)], 1};
     const auto reshapedLhsType = lhsType.changeShape(ShapeRef(lhs4D));
     const auto reshapedLhsLoc = appendLoc(origOpLoc, "reshape_lhs");
-    auto reshapedLhs = rewriter.create<IE::ReshapeOp>(reshapedLhsLoc, reshapedLhsType, origOp.getInput1(), nullptr,
-                                                      false, getIntArrayAttr(ctx, ShapeRef(lhs4D)));
+    auto reshapedLhs = rewriter.create<IE::ReshapeOp>(reshapedLhsLoc, reshapedLhsType, origOp.getInput1(),
+                                                      getIntArrayAttr(ctx, ShapeRef(lhs4D)));
     _log.trace("[{0}]: reshaped LHS: {1}", this->getDebugName(), reshapedLhsLoc);
 
     // Transpose 1xNxMx1 input 1xMxNx1
@@ -87,8 +88,8 @@ mlir::LogicalResult BroadcastEltwiseRewriter<EltwiseOp>::matchAndTranspose(Eltwi
     const std::array<int64_t, 4> rhs4D = {1, rhsShape[Dim(broadcastAxis)], 1, 1};
     const auto reshapedRhsType = rhsType.changeShape(ShapeRef(rhs4D));
     const auto reshapedRhsLoc = appendLoc(origOpLoc, "reshape_rhs");
-    auto reshapedRhs = rewriter.create<IE::ReshapeOp>(reshapedRhsLoc, reshapedRhsType, origOp.getInput2(), nullptr,
-                                                      false, getIntArrayAttr(ctx, ShapeRef(rhs4D)));
+    auto reshapedRhs = rewriter.create<IE::ReshapeOp>(reshapedRhsLoc, reshapedRhsType, origOp.getInput2(),
+                                                      getIntArrayAttr(ctx, ShapeRef(rhs4D)));
     _log.trace("[{0}]: reshaped RHS: {1}", this->getDebugName(), reshapedRhs);
 
     // Create new IE.Add operation
@@ -109,7 +110,7 @@ mlir::LogicalResult BroadcastEltwiseRewriter<EltwiseOp>::matchAndTranspose(Eltwi
     const auto outputShape = reshapedOutType.getShape();
     const auto reshapedOutLoc = appendLoc(origOpLoc, "reshape_out");
     auto reshapedOut = rewriter.create<IE::ReshapeOp>(reshapedOutLoc, reshapedOutType, transposedOut.getOutput(),
-                                                      nullptr, false, getIntArrayAttr(ctx, outputShape));
+                                                      getIntArrayAttr(ctx, outputShape));
 
     _log.trace("[{0}]: reshaped output: {1}", this->getDebugName(), reshapedOut);
 
@@ -349,8 +350,8 @@ mlir::LogicalResult MultiNonTrivialDimEltwiseRewriter<EltwiseOp>::matchAndRewrit
     const std::array<int64_t, 4> lhs4D = {1, lhsShape[Dim(0)], lhsShape[Dim(1)], lhsShape[Dim(2)] * lhsShape[Dim(3)]};
     const auto reshapedLhsType = lhsType.changeShape(ShapeRef(lhs4D));
     const auto reshapedLhsLoc = appendLoc(origOpLoc, "reshape_lhs");
-    auto reshapedLhs = rewriter.create<IE::ReshapeOp>(reshapedLhsLoc, reshapedLhsType, origOp.getInput1(), nullptr,
-                                                      false, getIntArrayAttr(ctx, ShapeRef(lhs4D)));
+    auto reshapedLhs = rewriter.create<IE::ReshapeOp>(reshapedLhsLoc, reshapedLhsType, origOp.getInput1(),
+                                                      getIntArrayAttr(ctx, ShapeRef(lhs4D)));
     // Transpose 1xNxCx(HxW) -> 1x(HxW)xNxC
     const auto transposeLhsOrder =
             mlir::AffineMapAttr::get(mlir::AffineMap::getPermutationMap(SmallVector<uint32_t>{0, 3, 1, 2}, ctx));
@@ -361,8 +362,8 @@ mlir::LogicalResult MultiNonTrivialDimEltwiseRewriter<EltwiseOp>::matchAndRewrit
     const std::array<int64_t, 4> rhs4D = {1, rhsShape[Dim(2)] * rhsShape[Dim(3)], 1, 1};
     const auto reshapedRhsType = rhsType.changeShape(ShapeRef(rhs4D));
     const auto reshapedRhsLoc = appendLoc(origOpLoc, "reshape_rhs");
-    auto reshapedRhs = rewriter.create<IE::ReshapeOp>(reshapedRhsLoc, reshapedRhsType, origOp.getInput2(), nullptr,
-                                                      false, getIntArrayAttr(ctx, ShapeRef(rhs4D)));
+    auto reshapedRhs = rewriter.create<IE::ReshapeOp>(reshapedRhsLoc, reshapedRhsType, origOp.getInput2(),
+                                                      getIntArrayAttr(ctx, ShapeRef(rhs4D)));
 
     // Create new EltwiseOp operation
     auto newOp = rewriter.create<EltwiseOp>(origOp->getLoc(), transposedLhs, reshapedRhs, origOp.getAutoBroadcast(),
@@ -379,7 +380,7 @@ mlir::LogicalResult MultiNonTrivialDimEltwiseRewriter<EltwiseOp>::matchAndRewrit
     const auto outputShape = reshapedOutType.getShape();
     const auto reshapedOutLoc = appendLoc(origOpLoc, "reshape_out");
     auto reshapedOut = rewriter.create<IE::ReshapeOp>(reshapedOutLoc, reshapedOutType, transposedOut.getOutput(),
-                                                      nullptr, false, getIntArrayAttr(ctx, outputShape));
+                                                      getIntArrayAttr(ctx, outputShape));
 
     _log.trace("[{0}] Reshape and tranpose '{1}' at '{2}'", this->getDebugName(), origOp->getName(), origOp->getLoc());
     rewriter.replaceOp(origOp, reshapedOut.getOutput());

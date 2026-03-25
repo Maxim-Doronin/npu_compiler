@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,6 +12,7 @@
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/compression_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -581,9 +582,7 @@ void CompressSpillDmaPass::safeRunOnModule() {
     auto module = getOperation();
     auto* ctx = module->getContext();
 
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp func;
-    net::NetworkInfoOp::getFromModule(module, netInfo, func);
+    auto func = net::getMainFunc(module);
     mlir::OpBuilder builder(&func.getBody().front().front());
 
     auto tileOp = config::getTileExecutor(module);

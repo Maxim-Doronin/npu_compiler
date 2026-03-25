@@ -1,10 +1,8 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/ShaveCodeGen/passes.hpp"
-#include "vpux/compiler/conversion.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/transforms/rewriters.hpp"
 #include "vpux/compiler/dialect/core/transforms/passes.hpp"
@@ -64,7 +62,7 @@ void vpux::IE::buildOptimizeSliceOpPipeline(mlir::OpPassManager& pm, Logger log)
 }
 
 //
-// buildBatchTransformationPipeline
+// BatchTransformationPipeline
 //
 
 void vpux::IE::buildBatchTransformationPipeline(mlir::OpPassManager& pm,
@@ -81,6 +79,21 @@ void vpux::IE::buildBatchTransformationPipeline(mlir::OpPassManager& pm,
     }
     pm.addPass(IE::createConvertBranchesConcatToConvPass(log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
+}
+
+//
+// SplitAndMapBilinearInterpolateOnDPUPipeline
+//
+
+void vpux::IE::buildSplitAndMapBilinearInterpolateOnDPUPipeline(
+        mlir::OpPassManager& pm, const vpux::IE::SplitAndMapBilinearInterpolateOnDPUOptions& options, Logger log) {
+    if (options.enableSEPtrsOperations && options.enableSplitBilinearIntoHAndW) {
+        pm.addPass(IE::createSplitBilinearIntoHAndWPass(log));
+    }
+
+    if (options.enableBilinearInterpolateOnDPU) {
+        pm.addPass(IE::createMapBilinearInterpolateOnDPUPass(log));
+    }
 }
 
 //
@@ -123,9 +136,6 @@ void vpux::IE::buildExpandAndOptimizeActivationChannelsPipeline(mlir::OpPassMana
         if (options.enableFusePermuteQuantizeExpand) {
             pm.addPass(IE::createPropagateExpandPass(log));
             pm.addPass(IE::createFusePermuteQuantizeExpandPass(log));
-            // Convert reorder to permuteQuantize after OptimizeReordersPass if it's feasible
-            // Such as Reorder(ui8)-Convert(ui->f16)-Expand to Convert(ui8->f16)-Expand-Reorder(f16)
-            pm.addPass(IE::createConvertReorderToPermuteQuantizePass(log));
         }
     }
 
@@ -169,6 +179,12 @@ void vpux::IE::buildInitialTransformationsPipeline(mlir::OpPassManager& pm, cons
     pm.addPass(mlir::createCSEPass());
     pm.addPass(IE::createResolveStridedSlicePass(log));
     pm.addPass(IE::createOptimizeParallelLayersPass(log));
+
+    pm.addPass(IE::createReshapeMatMulInputsPass(options.enableGroupedMatMul, log));
+    pm.addPass(IE::createAdjustFakeQdqParamsPass(log));
+    pm.addPass(IE::createFuseQuantizationMultiplyPass(options.fuseFQAndMulWithNonConstInput, log));
+    pm.addPass(IE::createHandleU16FakeQuantizePass(log));
+
     pm.addPass(IE::createDecomposeLSTMSequencePass(log));
     if (options.enableDecomposeGRUSequence) {
         pm.addPass(IE::createDecomposeGRUSequencePass(log));
@@ -176,34 +192,35 @@ void vpux::IE::buildInitialTransformationsPipeline(mlir::OpPassManager& pm, cons
     pm.addPass(IE::createDecomposeLSTMCellPass(log));
     pm.addPass(IE::createDecomposeGRUCellPass(log));
     pm.addPass(IE::createDecomposeL2OpsPass(log));
+    pm.addPass(IE::createFuseRoPEPass(log));
+    if (options.enableConvertToSdpaExtended) {
+        pm.addPass(IE::createFuseSDPAExtendedPass(log));
+        pm.addPass(mlir::createCanonicalizerPass(grc));
+    }
+    if (options.enableFuseSoftwareSDPA) {
+        pm.addPass(IE::createFuseSDPAPass(log));
+    }
+    pm.addPass(IE::createDecomposeSDPAExtendedPass(log));
     pm.addPass(IE::createReshapeMatMulInputsPass(options.enableGroupedMatMul, log));
-    pm.addPass(IE::createAdjustFakeQdqParamsPass(log));
-    pm.addPass(IE::createFuseFQAndMulPass(options.fuseFQAndMulWithNonConstInput, log));
-    pm.addPass(IE::createHandleU16FakeQuantizePass(log));
     pm.addPass(IE::createSwishFusionPass(log));
     pm.addPass(IE::createFuseSoftmaxPass(log));
     pm.addPass(IE::createFuseColorConversionPass(log));
-    if (options.enableConvertToSdpaExtended) {
-        pm.addPass(IE::createFuseSDPAExtendedPass(log));
-    }
-    pm.addPass(IE::createFuseSDPAPass(log));
-    pm.addPass(IE::createFuseRoPEPass(log));
     pm.addPass(IE::createEltwiseFakeQuantizeFusionPass(log));
     pm.addPass(IE::createUnrollTensorIteratorPass(log));
     pm.addPass(IE::createNormalizeL2FusionPass(log));
     pm.addPass(IE::createMVNFusionPass(log));
-    if (options.enableConvertToReduceMeanSquare) {
-        pm.addPass(IE::createFuseReduceMeanSquarePass(log));
+    if (options.enableConvertToReduceSquare) {
+        pm.addPass(IE::createFuseReduceSquarePass(log));
     }
+    pm.addPass(IE::createDecomposeSTFTPass(log));
     if (options.enableConvertFFTToConv) {
         pm.addPass(IE::createConvertFFTToConvPass(log));
     }
     pm.addPass(IE::createMoveMultiplyDividePostOpPass(log));
     pm.addPass(IE::createUnrollSDPAPatternPass(log));
+    pm.addPass(IE::createEliminateSliceInSoftmaxMatMulPass(log));
     pm.addPass(IE::createShrinkMatmulGroupsPass(log));
-    pm.addPass(IE::createMatMulInputsTo2dPass(options.enableGroupedMatMul, log));
-    pm.addPass(IE::createPropagateOpThroughBatchConcatPass(log));
-    pm.addPass(IE::createMatMulInputsTo2dPass(options.enableGroupedMatMul, log));
+    pm.addPass(IE::createBatchOpProcessingPipelineRewriterExecutorPass(options, log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
     pm.addPass(IE::createConvertMVN6ToMVN1Pass(log));
     pm.addPass(IE::createConvertSubGRUSequenceToConvPass(log));
@@ -304,6 +321,7 @@ void vpux::IE::buildMemPermutePositioningPipeline(mlir::OpPassManager& pm, const
     pm.addPass(IE::createConvertToMemPermutePass(log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
     pm.addPass(IE::createPropagateMemPermuteThroughSoftMaxPass(log));
+    pm.addPass(IE::createOptimizeReduceOpsWithMemPermutePass(log));
     if (options.enableMovePermutePostEltwise) {
         pm.addPass(IE::createMovePermutePostEltwisePass(log));
     }
@@ -373,27 +391,20 @@ void vpux::IE::buildAdjustForVPUPipeline(mlir::OpPassManager& pm, const AdjustFo
     const auto grc = getDefaultGreedyRewriteConfig();
 
     // passes using walk drivers or conversion drivers
-    pm.addPass(
-            IE::createLegalizeDilatedConvolutionPass(isOptionEnabled(options.enableExperimentalSEPtrsOperations), log));
+    pm.addPass(IE::createLegalizeDilatedConvolutionPass(log));
     pm.addPass(IE::createConvertPaddingsToFloorModePass(log));
-    pm.addPass(IE::createConvertNearestToBroadCastOrStridedConcatPass(
-            /*interpolateAsSEOp=*/isOptionEnabled(options.enableSEPtrsOperations), log));
-    pm.addPass(IE::createConvertBilinearToStridedConcatAndConvPass(
-            /*interpolateAsSEOp=*/isOptionEnabled(options.enableSEPtrsOperations), log));
+    pm.addPass(IE::createConvertNearestToBroadCastOrStridedConcatPass(log));
+    pm.addPass(IE::createConvertBilinearToStridedConcatAndConvPass(log));
     pm.addPass(IE::createConvertBroadcastToTilePass(log));
     pm.addPass(IE::createConvertScatterPass(log));
-    pm.addPass(IE::createConvertTransposedConv2DToConv2DPass(
-            /*enableSEPTransposedConv=*/isOptionEnabled(options.enableSEPtrsOperations), log));
-    pm.addPass(IE::createConvertGroupTransposedConvToGroupConvPass(
-            /*enableSEPTransposedConv=*/isOptionEnabled(options.enableSEPtrsOperations), log));
-    pm.addPass(IE::createConvertGroupTransposedConvToTransposedConvPass(
-            /*enableSEPTransposedConv=*/isOptionEnabled(options.enableSEPtrsOperations), log));
+    pm.addPass(IE::createConvertTransposedConv2DToConv2DPass(log));
+    pm.addPass(IE::createConvertGroupTransposedConvToGroupConvPass(log));
+    pm.addPass(IE::createConvertGroupTransposedConvToTransposedConvPass(log));
     pm.addPass(IE::createConvertGroupConvToConvPass(log));
     pm.addPass(IE::createConvertUpsamplingToStridedConcatPass(log));
     pm.addPass(IE::createConvertNegativePadToSlicePass(log));
     if (options.enableConvertNonConstantPadToSliceAndConcat) {
-        pm.addPass(IE::createConvertNonConstantPadToSliceAndConcatPass(
-                /*enableSEPPad=*/isOptionEnabled(options.enableSEPtrsOperations), log));
+        pm.addPass(IE::createConvertNonConstantPadToSliceAndConcatPass(log));
     }
 
     // passes using rewriter drivers
@@ -444,33 +455,19 @@ void vpux::IE::buildOperationConversionPipeline(mlir::OpPassManager& pm, const I
     pm.addPass(IE::createConvertExtractImagePatchesPass(log));
     pm.addPass(IE::createConvertReduceSumToConvPass(log));
     pm.addPass(IE::createUnrollReduceMinAllAxesPass(log));
-    pm.addPass(IE::createDecomposeSTFTPass(log));
     pm.addPass(IE::createConvertReduceToPoolingPass(log));
     pm.addPass(IE::createConvertPowerToMultPass(log));
-    pm.addPass(IE::createConvertGatherToSlicePass(log));
+    pm.addPass(IE::createConvertGatherPass(log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
 }
 
-//
-// ShaveCodeGen specific passes included in DefaultHW and ReferenceSW
-//
-
-void vpux::IE::buildShaveCodeGenPipeline(mlir::OpPassManager& pm, Logger log) {
-    pm.addPass(ShaveCodeGen::createEncapsulateCodeGenOpsPass());
-    pm.addPass(ShaveCodeGen::createEarlyCodeGenCapsuleFusionPass());
-
-    ShaveCodeGen::buildLowerSwLayers2LinalgPipeline(pm, log);
-    pm.addPass(mlir::createLinalgElementwiseOpFusionPass());
-    pm.addPass(mlir::createCanonicalizerPass());
-    pm.addPass(ShaveCodeGen::createFoldUnitDimReshapesPass(log));
-
-    pm.addPass(ShaveCodeGen::createOutlineCodeGenCapsulesPass());
-}
-
-void vpux::IE::buildSplitLargeOpsPipeline(mlir::OpPassManager& pm, Logger log) {
+void vpux::IE::buildSplitLargeOpsPipeline(mlir::OpPassManager& pm, const SplitLargeOpsOptions& options, Logger log) {
     pm.addPass(IE::createUnrollConv3dToConv2dPass(log));
     pm.addPass(IE::createSplitInterpolateAxesPass(log));
     pm.addPass(IE::createHandleExcludePadForAvgPoolPass(log));
+    if (options.enableHandleLargeKernel) {
+        pm.addPass(IE::createHandleLargeKernelsPass(log));
+    }
 }
 
 void vpux::IE::buildConvertToEfficientOpsPipeline(mlir::OpPassManager& pm, const ConvertToEfficientOpsOptions& options,
@@ -484,7 +481,7 @@ void vpux::IE::buildConvertToEfficientOpsPipeline(mlir::OpPassManager& pm, const
     // NOTE: Canonicalizer required after ConvertShapeTo4DPass
     pm.addPass(mlir::createCanonicalizerPass(grc));
     pm.addPass(IE::createConvertGatherElementsToGatherPass(log));
-    pm.addPass(IE::createConvertToSpatialOpPass(false, isOptionEnabled(options.enableSEPtrsOperations), log));
+    pm.addPass(IE::createConvertToSpatialOpPass(false, log));
     pm.addPass(IE::createConvertSubtractToAddPass(log));
     pm.addPass(IE::createSwapTransposeConcatPass(log));
     pm.addPass(IE::createConvertSplitConcatToAffineReshapePass(log));
@@ -517,8 +514,7 @@ void vpux::IE::buildConvertToEfficientOpsPipeline(mlir::OpPassManager& pm, const
                                                     isOptionEnabled(options.enableExperimentalSEPtrsOperations),
                                             log));
     if (options.enableD2SToTransposedConvConversion) {
-        pm.addPass(
-                IE::createConvertDepth2SpaceToTransposedConvPass(isOptionEnabled(options.enableSEPtrsOperations), log));
+        pm.addPass(IE::createConvertDepth2SpaceToTransposedConvPass(log));
     }
     // NOTE: SwapD2SAndScaleShift depends on ConvertDepth2SpaceToTransposedConv
     pm.addPass(IE::createSwapD2SAndScaleShiftPass(log));
@@ -654,8 +650,4 @@ void vpux::IE::registerIEPipelines() {
             [](mlir::OpPassManager& pm, const AdjustLayoutOptions& options) {
                 IE::buildAdjustLayoutPipeline(pm, options);
             });
-
-    mlir::PassPipelineRegistration<>("shavecodegen-ie", "Shavecodegen specific passes", [](mlir::OpPassManager& pm) {
-        IE::buildShaveCodeGenPipeline(pm);
-    });
 }

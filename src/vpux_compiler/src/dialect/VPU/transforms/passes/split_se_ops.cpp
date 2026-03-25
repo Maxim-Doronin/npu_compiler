@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -16,6 +16,7 @@
 #include "vpux/compiler/dialect/VPU/utils/se_roll_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sparsity_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
+#include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
@@ -284,45 +285,23 @@ mlir::LogicalResult SplitRoll::matchAndRewrite(VPU::RollOp origOp, mlir::Pattern
 
 class SplitSEOpsPass final : public VPU::impl::SplitSEOpsBase<SplitSEOpsPass> {
 public:
-    explicit SplitSEOpsPass(const bool seOpsEnabled, const bool seExperimentalOpsEnabled, Logger log)
-            : _seOpsEnabled(seOpsEnabled), _seExperimentalOpsEnabled(seExperimentalOpsEnabled), _log(log) {
+    explicit SplitSEOpsPass(Logger log): _log(log) {
         _log.setName(Base::getArgumentName());
     }
-
-    mlir::LogicalResult initialize(mlir::MLIRContext* ctx) final;
 
 private:
     void safeRunOnFunc() final;
 
 private:
-    bool _seOpsEnabled;
-    bool _seExperimentalOpsEnabled;
     Logger _log;
 };
-
-mlir::LogicalResult SplitSEOpsPass::initialize(mlir::MLIRContext* ctx) {
-    if (mlir::failed(Base::initialize(ctx))) {
-        return mlir::failure();
-    }
-
-    // When this parameter has a value, it probably comes from LIT test.
-    // Override the default
-    if (seOpsEnabled.hasValue()) {
-        _seOpsEnabled = seOpsEnabled.getValue();
-    }
-    if (seExperimentalOpsEnabled.hasValue()) {
-        _seExperimentalOpsEnabled = seExperimentalOpsEnabled.getValue();
-    }
-
-    return mlir::success();
-}
 
 void SplitSEOpsPass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
-
+    auto moduleOp = getModuleOp(func);
     mlir::RewritePatternSet patterns(&ctx);
-    if (!_seOpsEnabled) {
+    if (!config::hasEnableSEPtrsOperations(moduleOp)) {
         return;
     }
 
@@ -338,7 +317,6 @@ void SplitSEOpsPass::safeRunOnFunc() {
 // createSplitSEOpsPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::VPU::createSplitSEOpsPass(const bool seOpsEnabled,
-                                                            const bool seExperimentalOpsEnabled, Logger log) {
-    return std::make_unique<SplitSEOpsPass>(seOpsEnabled, seExperimentalOpsEnabled, log);
+std::unique_ptr<mlir::Pass> vpux::VPU::createSplitSEOpsPass(Logger log) {
+    return std::make_unique<SplitSEOpsPass>(log);
 }

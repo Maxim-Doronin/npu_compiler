@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -26,9 +26,9 @@ func.func @sepInterpolate(%arg0: tensor<1x512x8x8xf16>) -> tensor<1x512x16x16xf1
 
     return %0 : tensor<1x512x16x16xf16>
 
-// CHECK:         VPUIP.NCEClusterTask {input_se_size = 512 : i64,
+// CHECK:         VPUIP.NCEClusterTask <{input_se_size = 512 : i64,
 // CHECK-SAME:        kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
-// CHECK-SAME:        task_type = #VPUIP.nce_task_type<CONV>}
+// CHECK-SAME:        task_type = #VPUIP.nce_task_type<CONV>}>
 // CHECK-SAME:        input_storage_element_table
 // CHECK-SAME:        parent_input_storage_element_table
 

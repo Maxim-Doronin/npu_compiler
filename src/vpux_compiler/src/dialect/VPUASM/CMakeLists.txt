@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2023-2025 Intel Corporation.
+# Copyright (C) 2023-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -14,6 +14,7 @@ add_npu_library(npu_compiler_dialect_vpuasm
         npu_ov_utils
         npu_elf
         npu_compiler_dialect_elf_utils
+        npu_compiler_dialect_vpumi40xx
         # E#98178: remove dependency on firmware headers
         npu_40xx_firmware_headers
     SYSTEM_INCLUDES

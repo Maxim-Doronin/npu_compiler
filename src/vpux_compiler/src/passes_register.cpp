@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/NPU40XX/passes_register.hpp"
 #include "vpux/compiler/NPU50XX/passes_register.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 
 #include "vpux/utils/core/error.hpp"
 

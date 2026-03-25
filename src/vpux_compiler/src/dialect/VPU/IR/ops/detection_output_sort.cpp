@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -190,4 +190,35 @@ bool vpux::VPU::DetectionOutputSortOp::fitIntoCMX(llvm::ArrayRef<vpux::NDTypeInt
 
 bool vpux::VPU::DetectionOutputSortOp::supportCycleCostCalculation() {
     return false;
+}
+
+llvm::LogicalResult VPU::DetectionOutputSortOp::verify() {
+    const auto moduleOp = getModuleOp(getOperation()->getParentOp());
+    // The size of the auxiliary buffers depend on the number of available SHAVE executors
+    // In case the IR is not populated with this information, skip the verification of the buffer sizes
+    auto tileOp = config::getTileExecutor(moduleOp);
+    if (tileOp == nullptr) {
+        return mlir::success();
+    }
+
+    std::vector<int32_t> indicesBufferData;
+    auto expectedAuxBuffTypes = getAuxiliaryBufferTypes(moduleOp, getConfidence(), indicesBufferData);
+    if (expectedAuxBuffTypes.size() != 2) {
+        return errorAt(getOperation(), "Expected two reference auxiliary buffer types, but got {0}",
+                       expectedAuxBuffTypes.size());
+    }
+    auto loc = getOperation()->getLoc();
+    if (mlir::failed(VPU::compareTypes(loc, getIndicesBuffer().getType(), expectedAuxBuffTypes[0]))) {
+        return errorAt(getOperation(), "Invalid indices auxiliary buffer");
+    }
+    if (mlir::failed(VPU::compareTypes(loc, getSortingBuffer().getType(), expectedAuxBuffTypes[1]))) {
+        return errorAt(getOperation(), "Invalid sorting auxiliary buffer");
+    }
+    return mlir::success();
+}
+
+// Auxiliary buffers are additionally put as the output of the operation and should
+// be synced with the SortParams struct that describes how many inputs and outputs the operation has
+SmallVector<mlir::OpOperand*> VPU::DetectionOutputSortOp::getAuxiliaryBuffers() {
+    return {&getIndicesBufferMutable(), &getSortingBufferMutable()};
 }

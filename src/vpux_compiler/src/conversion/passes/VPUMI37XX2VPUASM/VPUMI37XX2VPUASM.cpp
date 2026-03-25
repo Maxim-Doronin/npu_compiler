@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -24,6 +24,7 @@
 #include "vpux/compiler/dialect/VPUMI37XX/kernel_params_utils.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 #include "vpux/compiler/utils/symbolization.hpp"
 
 #include <mlir/IR/IRMapping.h>
@@ -71,9 +72,7 @@ bool ConvertVPUMI37XX2VPUASMPass::isDeclareBufferDistributed(VPURT::DeclareBuffe
 void ConvertVPUMI37XX2VPUASMPass::safeRunOnModule() {
     auto moduleOp = getOperation();
     auto& ctx = getContext();
-    mlir::func::FuncOp netFunc;
-    net::NetworkInfoOp netInfo;
-    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
+    auto netFunc = net::getMainFunc(moduleOp);
 
     llvm::DenseMap<mlir::Value, mlir::SymbolRefAttr> symbolNameMappings;
     std::unordered_map<ELF::SectionSignature, ELF::ElfSectionInterface> sectionMap;

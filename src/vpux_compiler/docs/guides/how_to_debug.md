@@ -8,12 +8,14 @@ The project offers a logging functionality, which different levels of verbosity 
 `LOG_LEVEL LOG_INFO`
 Alternative approach is to use `OV_NPU_LOG_LEVEL` env variable in which log level can be overridden. This is also the only way to set log level when running vpux-opt or unit tests.
 
-If only certain logs are to be printed `IE_NPU_LOG_FILTER` environment variable can be configured. The majority of the logs have a name which can be used for filtering. For passes, the name corresponds to the pass argument name (e.g. `convert-layers-to-VPUIP`). This variable is also compatible with POSIX Regex, which allows capturing more than one pass. Examples of values for the variable:
+If only certain logs are to be printed `IE_NPU_LOG_FILTER` environment variable can be configured. The majority of the logs have a name which can be used for filtering. For passes, filtering accepts both the pass name (e.g. `ConvertLayersToVPUIP`) and the pass argument name (e.g. `convert-layers-to-VPUIP`) from TableGen (.td) files. This variable is also compatible with POSIX Regex, which allows capturing more than one pass. Examples of values for the variable:
 
 ```sh
 export IE_NPU_LOG_FILTER=convert-layers-to-VPUIP
+export IE_NPU_LOG_FILTER=ConvertLayersToVPUIP
 export IE_NPU_LOG_FILTER=convert-layers-to-VPU.*
 export IE_NPU_LOG_FILTER="convert-layers-to-VPU|convert-layers-to-VPUIP"
+export IE_NPU_LOG_FILTER="ConvertLayersToVPU|ConvertLayersToVPUIP"
 ```
 
 The variable can be used with applications which follow the normal compilation flow (e.g. `compile_tool`), as well as tools such as `vpux-opt`.
@@ -55,8 +57,10 @@ This feature can be configured with the `enable-function-statistics-instrumentat
 One of the most useful debug features of MLIR is by printing the Intermediate Representation (IR) of a model. During compilation, the printing can be done before or after passes and can be controlled using the following variables:
 
 - `IE_NPU_IR_PRINTING_FILTER`: accepts a POSIX Regex filter which describes what passes should have their IR printed
+    - the filter matches against both the pass name (e.g., `ConvertLayersToVPUIP`) and the pass argument from TableGen (.td) files (e.g., `convert-layers-to-VPUIP`)
     - examples:
         - `export IE_NPU_IR_PRINTING_FILTER=ConvertLayersToVPUIP`
+        - `export IE_NPU_IR_PRINTING_FILTER=convert-layers-to-VPUIP`
         - `export IE_NPU_IR_PRINTING_FILTER="InitResources|ConvertLayers.*"`
     - by default, it will print to stdout the IRs after the specified passes
 
@@ -98,6 +102,14 @@ One of the most useful debug features of MLIR is by printing the Intermediate Re
 - `IE_NPU_PRINT_DEBUG_INFO_PRETTY_FORM`: controls whether to print the locations of the operations inline with the operations; this variable is only applicable when `IE_NPU_PRINT_DEBUG_INFO` is enabled
     - `export IE_NPU_PRINT_DEBUG_INFO_PRETTY_FORM=0` (default) - the locations will be printed after the module opration, with the operation having an alias after it instead of the direct location
     - `export IE_NPU_PRINT_DEBUG_INFO_PRETTY_FORM=1` - locations will be printed inline with each operation
+
+- `IE_NPU_PRINT_SSA_PRETTY_FORM`: controls whether to print more verbose SSA IDs
+  in the IR. This option is only applicable when any kind of IR printing is
+  enabled
+    - `export IE_NPU_PRINT_SSA_PRETTY_FORM=0` - standard "counter form" SSA IDs
+      will be printed e.g. `%0`, `%1`
+    - `export IE_NPU_PRINT_SSA_PRETTY_FORM=1` (default) - SSA IDs with baked-in
+      locations will be printed (when present) e.g. `%Foo`, `%onnx1234Conv_5678`
 
 ## vpux-opt and vpux-translate
 
@@ -178,14 +190,14 @@ The compiler contains a pass which can generate a Dot Graph representation of th
 
 ## Memory usage visualization
 
-Memory usage plotter is a visualization tool to plot DDR heap utilization over time from logs added in the StaticAllocation pass. 
+Memory usage plotter is a visualization tool to plot DDR heap utilization over time from logs added in the StaticAllocation pass.
 
 Detailed description of the script and how to use it can be found [here](../../../../tools/memory-usage-plotter/README.md).
 
 ## Debugging barrier dependencies
 
-At several stages of compilation the structure of the control graph may change due to adding new tasks, 
-reordering tasks, optimizing tasks dependencies etc. It is possible to check what exactly has changed after applying some 
+At several stages of compilation the structure of the control graph may change due to adding new tasks,
+reordering tasks, optimizing tasks dependencies etc. It is possible to check what exactly has changed after applying some
 transformations either across several passes, within single pass or some individual routine. BarrierInfo class
 offers methods to dump actual state of barrier dependencies at any stage of compilation where the concept of barriers is defined (i.e. in the VPUIP and VPURT dialects). This is typically done
 as follows:

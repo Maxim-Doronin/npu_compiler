@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2021-2026 Intel Corporation.
+// Copyright (C) 2021-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -29,6 +29,9 @@ module @VPU.SW  {
     func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
 }
 
+  // CHECK-LABEL: func.func @main
+  // CHECK-SAME:    [[ARG_0:%[^:]+]]: memref<1x1x1x1000xf16>
+  // CHECK-SAME:    [[ARG_1:%[^:]+]]: memref<1x1x1x1000xf16>
 func.func @main(%arg0: memref<1x1x1x1000xf16>, %arg1: memref<1x1x1x1000xf16>) -> memref<1x1x1x1000xf16> {
     %0 = VPURT.DeclareBuffer <DDR> <0> -> memref<1x1x1x1000xf16, @DDR>
     %1 = VPURT.ConfigureBarrier<0> -> !VPURT.Barrier
@@ -51,7 +54,7 @@ func.func @main(%arg0: memref<1x1x1x1000xf16>, %arg1: memref<1x1x1x1000xf16>) ->
 // CHECK-NEXT: ELFNPU37XX.PutOpInSection [[VAL0]] : !VPURegMapped.Index<0:0:0>
 
 // CHECK: [[VAL2:%.+]] = VPURT.DeclareBuffer <DDR> <0> -> memref<2000xui8, @DDR>
-// CHECK: [[VAL3:%.+]] = VPUMI37XX.NNDMA <{dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 0 : i64, len = 2000 : i64, srcWidth = 2000 : i64, srcStride = 2000 : i64, srcPlaneStride = 0 : i64, dstWidth = 2000 : i64, dstStride = 2000 : i64, dstPlaneStride = 0 : i64>, is_critical, is_out_of_order, port = 0 : si64}> inputs([[VAL2]] : memref<2000xui8, @DDR>) outputs(%arg1 : memref<2000xui8>) waits([[VAL0]] : !VPURegMapped.Index<0:0:0>) start_after(1) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:0>
+// CHECK: [[VAL3:%.+]] = VPUMI37XX.NNDMA <{dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 0 : i64, len = 2000 : i64, srcWidth = 2000 : i64, srcStride = 2000 : i64, srcPlaneStride = 0 : i64, dstWidth = 2000 : i64, dstStride = 2000 : i64, dstPlaneStride = 0 : i64>, is_critical, is_out_of_order, port = 0 : si64}> inputs([[VAL2]] : memref<2000xui8, @DDR>) outputs([[ARG_1]] : memref<2000xui8>) waits([[VAL0]] : !VPURegMapped.Index<0:0:0>) start_after(1) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:0>
 // CHECK: [[VAL4:%.+]] = ELFNPU37XX.CreateSection secType(SHT_PROGBITS) secFlags("SHF_ALLOC|SHF_EXECINSTR|VPU_SHF_PROC_DMA") {secAddrAlign = 64 : i64, secInfo = 0 : i64, secName = ".text.dmaTasks0"} -> !ELFNPU37XX.Section {
 // CHECK-NEXT: ELFNPU37XX.PutOpInSection [[VAL3]] : !VPURegMapped.Index<0:0:0>
 
@@ -93,11 +96,11 @@ func.func @main(%arg0: memref<1x1x1x1000xf16>, %arg1: memref<1x1x1x1000xf16>) ->
 // CHECK: [[VAL23:%.+]] = ELFNPU37XX.CreateSymbolTableSection secName(".symtab.actKernelRtConfig") secFlags("SHF_NONE") -> !ELFNPU37XX.Section {
 // CHECK-NEXT: ELFNPU37XX.PutOpInSection [[VAL22]] : !ELFNPU37XX.Symbol
 
-// CHECK: [[VAL24:%.+]] = ELFNPU37XX.Symbol %arg0 name("input") type(<STT_NOTYPE>) size(2000) {value = 0 : ui64} : memref<2000xui8>
+// CHECK: [[VAL24:%.+]] = ELFNPU37XX.Symbol [[ARG_0]] name("input") type(<STT_NOTYPE>) size(2000) {value = 0 : ui64} : memref<2000xui8>
 // CHECK: [[VAL25:%.+]] = ELFNPU37XX.CreateSymbolTableSection secName(".symtab.input") secFlags(VPU_SHF_USERINPUT) -> !ELFNPU37XX.Section {
 // CHECK-NEXT: ELFNPU37XX.PutOpInSection [[VAL24]] : !ELFNPU37XX.Symbol
 
-// CHECK: [[VAL26:%.+]] = ELFNPU37XX.Symbol %arg1 name("softmax") type(<STT_NOTYPE>) size(2000) {value = 0 : ui64} : memref<2000xui8>
+// CHECK: [[VAL26:%.+]] = ELFNPU37XX.Symbol [[ARG_1]] name("softmax") type(<STT_NOTYPE>) size(2000) {value = 0 : ui64} : memref<2000xui8>
 // CHECK: [[VAL27:%.+]] = ELFNPU37XX.CreateSymbolTableSection secName(".symtab.output") secFlags(VPU_SHF_USEROUTPUT) -> !ELFNPU37XX.Section {
 // CHECK-NEXT: ELFNPU37XX.PutOpInSection [[VAL26]] : !ELFNPU37XX.Symbol
 

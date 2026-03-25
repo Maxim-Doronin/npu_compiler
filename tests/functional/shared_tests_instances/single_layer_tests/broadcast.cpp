@@ -27,6 +27,10 @@ TEST_P(BroadcastLayerTestCommon, NPU5010_SW) {
     setReferenceSoftwareMode();
     run(Platform::NPU5010);
 }
+TEST_P(BroadcastLayerTestCommon, NPU5020_SW) {
+    setReferenceSoftwareMode();
+    run(Platform::NPU5020);
+}
 
 }  // namespace test
 }  // namespace ov

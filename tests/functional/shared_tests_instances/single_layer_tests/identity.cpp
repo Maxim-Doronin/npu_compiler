@@ -31,6 +31,11 @@ TEST_P(IdentityLayerTestCommon, NPU5010_HW) {
     run(Platform::NPU5010);
 }
 
+TEST_P(IdentityLayerTestCommon, NPU5020_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
+}
+
 }  // namespace test
 }  // namespace ov
 

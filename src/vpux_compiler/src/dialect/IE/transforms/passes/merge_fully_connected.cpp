@@ -469,8 +469,8 @@ mlir::Value MergeFullyConnectedWithWeightsAsConstant::buildNewMatMulInput(ArrayR
                                                  getIntArrayAttr(ctx, sliceOffsets), getIntArrayAttr(ctx, sliceSizes));
 
     SmallVector<int64_t> newInputShape{checked_cast<int64_t>(batchSize), IC};
-    return rewriter.create<IE::ReshapeOp>(appendLoc(newSlice->getLoc(), "reshape_{0}", batchIdx), newSlice, nullptr,
-                                          false, getIntArrayAttr(ctx, newInputShape));
+    return rewriter.create<IE::ReshapeOp>(appendLoc(newSlice->getLoc(), "reshape_{0}", batchIdx), newSlice,
+                                          getIntArrayAttr(ctx, newInputShape));
 }
 
 mlir::Value MergeFullyConnectedWithWeightsAsConstant::buildNewMatMulWeights(ArrayRef<UnrolledMatMulBranch> branches,
@@ -561,7 +561,7 @@ mlir::Value MergeFullyConnectedWithWeightsAsConstant::reshapeOutputSlice(mlir::V
     SmallVector<int64_t> newShape{1, 1, shape[Dim(0)], shape[Dim(1)]};
     auto ctx = rewriter.getContext();
     const auto newLoc = appendLoc(sliceOut.getLoc(), "reshape");
-    return rewriter.create<IE::ReshapeOp>(newLoc, sliceOut, nullptr, false, getIntArrayAttr(ctx, newShape));
+    return rewriter.create<IE::ReshapeOp>(newLoc, sliceOut, getIntArrayAttr(ctx, newShape));
 }
 
 void MergeFullyConnectedWithWeightsAsConstant::cleanUpMatMulBranches(ArrayRef<UnrolledMatMulBranch> branches,
@@ -886,7 +886,7 @@ mlir::Value MergeFullyConnectedForDQPatternWithConvert::reshapeOutputSlice(mlir:
     auto shape = getShape(sliceOut);
     SmallVector<int64_t> newShape{1, shape[Dim(0)], shape[Dim(1)]};
     const auto reshapeLoc = appendLoc(sliceOut.getLoc(), "reshape");
-    return rewriter.create<IE::ReshapeOp>(reshapeLoc, sliceOut, nullptr, false, getIntArrayAttr(ctx, newShape));
+    return rewriter.create<IE::ReshapeOp>(reshapeLoc, sliceOut, getIntArrayAttr(ctx, newShape));
 }
 
 void MergeFullyConnectedForDQPatternWithConvert::cleanUpMatMulBranches(ArrayRef<UnrolledMatMulBranch> branches,
@@ -1275,8 +1275,7 @@ mlir::Value MergeFullyConnectedForDQPatternWithDequantize::buildNewMatMulInput(A
 
     SmallVector<int64_t> newInputShape{checked_cast<int64_t>(batchSize), matMulInShape[Dim(1)]};
     const auto reshapeOutShapeAttr = getIntArrayAttr(ctx, newInputShape);
-    return rewriter.createOrFold<IE::ReshapeOp>(appendLoc(matMul.getLoc(), "reshape"), slice, nullptr, false,
-                                                reshapeOutShapeAttr);
+    return rewriter.createOrFold<IE::ReshapeOp>(appendLoc(matMul.getLoc(), "reshape"), slice, reshapeOutShapeAttr);
 }
 
 mlir::Value MergeFullyConnectedForDQPatternWithDequantize::buildNewMatMulWeights(
@@ -1314,7 +1313,7 @@ mlir::Value MergeFullyConnectedForDQPatternWithDequantize::reshapeOutputSlice(ml
     auto shape = getShape(sliceOut);
     SmallVector<int64_t> newShape{1, 1, shape[Dim(0)], shape[Dim(1)]};
     const auto reshapeLoc = appendLoc(sliceOut.getLoc(), "reshape");
-    return rewriter.create<IE::ReshapeOp>(reshapeLoc, sliceOut, nullptr, false, getIntArrayAttr(ctx, newShape));
+    return rewriter.create<IE::ReshapeOp>(reshapeLoc, sliceOut, getIntArrayAttr(ctx, newShape));
 }
 
 void MergeFullyConnectedForDQPatternWithDequantize::cleanUpMatMulBranches(ArrayRef<UnrolledMatMulBranch> branches,

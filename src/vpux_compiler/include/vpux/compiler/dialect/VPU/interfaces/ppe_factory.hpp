@@ -1,13 +1,21 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
+
+#include <mlir/IR/Operation.h>
+
 #include <memory>
 #include <variant>
+#include "vpux/utils/core/array_ref.hpp"
+#include "vpux/utils/core/small_vector.hpp"
 
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+namespace vpux::VPU {
+enum class PPEMode : uint64_t;
+class PPEAttr;
+}  // namespace vpux::VPU
 
 namespace vpux::VPU {
 /*!

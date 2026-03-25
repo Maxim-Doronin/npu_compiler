@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -20,6 +20,7 @@
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 
 #include "vpux/utils/profiling/common.hpp"
 
@@ -73,9 +74,9 @@ void DPUProfilingPass::safeRunOnModule() {
     auto module = getOperation();
     auto* ctx = module->getContext();
 
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp netFunc;
-    net::NetworkInfoOp::getFromModule(module, netInfo, netFunc);
+    auto result = net::getFromModule(module);
+    auto netInfo = result.first;
+    auto netFunc = result.second;
     OpBuilderLogger builderLog(_log.nest());
     mlir::OpBuilder builder(&netFunc.getBody().front().front(), &builderLog);
     unsigned profilingWorkloadSize = VPUIP::getProfWorkloadSize(module);

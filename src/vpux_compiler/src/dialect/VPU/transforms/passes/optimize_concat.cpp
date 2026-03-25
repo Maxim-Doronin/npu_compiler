@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -53,8 +53,19 @@ mlir::LogicalResult EliminateConcat::matchAndRewrite(VPU::ConcatOp origOp, mlir:
     const auto concatOffsets = parseIntArrayOfArrayAttr<int64_t>(origOp.getStaticOffsets().value());
     DenseMap<VPU::SliceOp, std::pair<SmallVector<int64_t>, mlir::Value>> newSliceOffsetsInputMap;
     auto concatOutputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
+    VPU::PermuteCastOp permuteCastOp = nullptr;
+    mlir::Operation* sliceParentOp = origOp;
+    if (origOp->hasOneUse()) {
+        permuteCastOp = mlir::dyn_cast_or_null<VPU::PermuteCastOp>(*origOp->getUsers().begin());
+        if (permuteCastOp != nullptr) {
+            if (getShape(permuteCastOp.getInput()) != getShape(permuteCastOp.getOutput())) {
+                return mlir::failure();
+            }
+            sliceParentOp = permuteCastOp;
+        }
+    }
 
-    const auto allUsersSliceSubTensors = llvm::all_of(origOp->getUsers(), [&](auto userOp) {
+    const auto allUsersSliceSubTensors = llvm::all_of(sliceParentOp->getUsers(), [&](auto userOp) {
         auto maybeSliceOp = mlir::dyn_cast_or_null<VPU::SliceOp>(userOp);
         if (maybeSliceOp == nullptr) {
             return false;
@@ -117,9 +128,15 @@ mlir::LogicalResult EliminateConcat::matchAndRewrite(VPU::ConcatOp origOp, mlir:
     for (const auto& keyValue : newSliceOffsetsInputMap) {
         auto origSlice = keyValue.first;
         const auto sliceOffset = keyValue.second.first;
-        const auto sliceInput = keyValue.second.second;
+        auto sliceInput = keyValue.second.second;
 
         rewriter.setInsertionPoint(origSlice);
+        if (permuteCastOp != nullptr) {
+            sliceInput = rewriter.create<VPU::PermuteCastOp>(permuteCastOp.getLoc(), sliceInput,
+                                                             permuteCastOp.getDstOrderAttr(),
+                                                             permuteCastOp.getMemPermAttr());
+        }
+
         rewriter.replaceOpWithNewOp<VPU::SliceOp>(origSlice, origSlice.getResult().getType(), sliceInput,
                                                   getIntArrayAttr(getContext(), sliceOffset),
                                                   origSlice.getStaticSizes());

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
+#include "vpux/utils/core/numeric.hpp"
 
 using namespace vpux;
 
@@ -105,7 +106,8 @@ bool VPU::canConsumeIDUAutopad(VPU::NCEConvolutionOp nceConvOp, LogCb logCb) {
 
 std::optional<int64_t> VPU::getWeightsChannelsAutopad(mlir::Operation* op) {
     if (VPU::canAutopadOutput(op)) {
-        return vpux::VPU::NCEInvariant::VPU_CHANNEL_ALIGNMENT;
+        const auto outputShape = getShape(op->getResult(0));
+        return alignValUp(outputShape[Dims4D::Act::C], vpux::VPU::NCEInvariant::VPU_CHANNEL_ALIGNMENT);
     }
     return std::nullopt;
 }

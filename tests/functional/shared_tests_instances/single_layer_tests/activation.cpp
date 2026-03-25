@@ -2,6 +2,7 @@
 // Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
+
 #include <common_test_utils/ov_tensor_utils.hpp>
 
 #include <pretty_test_arguments.hpp>
@@ -86,13 +87,16 @@ class ShaveCodeGenActivationLayerTest_Profiling : public ShaveCodeGenActivationL
 DEFINE_ACT_TESTS(NPU3720, /*DISABLED_SW_*/, /*DISABLED_HW_*/, /*CONFIG_SW*/, /*CONFIG_HW*/);
 DEFINE_ACT_TESTS(NPU4000, /*DISABLED_SW_*/, /*DISABLED_HW_*/, /*CONFIG_SW*/, /*CONFIG_HW*/);
 DEFINE_ACT_TESTS(NPU5010, /*DISABLED_SW_*/, /*DISABLED_HW_*/, /*CONFIG_SW*/, /*CONFIG_HW*/);
+DEFINE_ACT_TESTS(NPU5020, /*DISABLED_SW_*/, /*DISABLED_HW_*/, /*CONFIG_SW*/, /*CONFIG_HW*/);
 
 DEFINE_DYNAMIC_ACT_TESTS(NPU3720, /*DISABLED_DYN_SW_*/, /*DISABLED_DYN_HW_*/, /*CONFIG_DYN_SW*/, /*CONFIG_DYN_HW*/);
 DEFINE_DYNAMIC_ACT_TESTS(NPU4000, /*DISABLED_DYN_SW_*/, /*DISABLED_DYN_HW_*/, /*CONFIG_DYN_SW*/, /*CONFIG_DYN_HW*/);
 DEFINE_DYNAMIC_ACT_TESTS(NPU5010, /*DISABLED_DYN_SW_*/, /*DISABLED_DYN_HW_*/, /*CONFIG_DYN_SW*/, /*CONFIG_DYN_HW*/);
+DEFINE_DYNAMIC_ACT_TESTS(NPU5020, /*DISABLED_DYN_SW_*/, /*DISABLED_DYN_HW_*/, /*CONFIG_DYN_SW*/, /*CONFIG_DYN_HW*/);
 
 DEFINE_SHAVE_CODE_GEN_TESTS(NPU4000, /*DISABLED_SW_*/, /*DISABLED_PROF_*/, /*CONFIG_SW*/, /*CONFIG_PROF*/);
 DEFINE_SHAVE_CODE_GEN_TESTS(NPU5010, /*DISABLED_SW_*/, /*DISABLED_PROF_*/, /*CONFIG_SW*/, /*CONFIG_PROF*/);
+DEFINE_SHAVE_CODE_GEN_TESTS(NPU5020, /*DISABLED_SW_*/, /*DISABLED_PROF_*/, /*CONFIG_SW*/, /*CONFIG_PROF*/);
 
 }  // namespace test
 }  // namespace ov
@@ -168,6 +172,7 @@ const std::map<ActivationTypes, std::vector<std::vector<float>>> activationTypes
         {RoundHalfAwayFromZero, {}},
         {Ceiling, {{1.0f}}},
         {Tan, {{1.0f}}},
+        {SoftSign, {{1.0f}}},
 };
 
 const std::map<ActivationTypes, std::vector<std::vector<float>>> activationDynamicTypes = {

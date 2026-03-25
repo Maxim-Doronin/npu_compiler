@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -30,29 +30,43 @@ mlir::LogicalResult inferReduceReturnTypes(mlir::Location loc, mlir::Value input
         return errorAt(loc, "Axes values should be unique");
     }
 
-    if (mlir::failed(IE::unpadInputShape(inShape, inputPadding, loc))) {
-        return errorAt(loc, "Input padding {0} incompatible with input shape {1}", inputPadding, inShape);
-    }
+    auto populateReduceOutShape = [&](SmallVector<int64_t>& outShape, SmallVector<int64_t>& inShape) {
+        if (mlir::failed(IE::unpadInputShape(inShape, inputPadding, loc))) {
+            return errorAt(loc, "Input padding {0} incompatible with shape {1}", inputPadding, inShape);
+        }
+        for (size_t i = 0; i < inShape.size(); i++) {
+            if (std::find(axes.begin(), axes.end(), i) == axes.end()) {
+                outShape.push_back(inShape[i]);
+            } else if (keepDims) {
+                outShape.push_back(1);
+            }
+        }
+        // If axes contains all dimensions of input data, a single reduction value is calculated for the entire input
+        // tensor
+        if (outShape.empty()) {
+            outShape.push_back(1);
+        }
+        if (mlir::failed(IE::padOutputShape(outShape, outputPadding, loc))) {
+            return errorAt(loc, "Output padding {0} incompatible with output shape {1}", outputPadding, outShape);
+        }
+        return mlir::success();
+    };
 
     // Add to outShape the values with indices not found in axes_set.
     SmallVector<int64_t> outShape;
-    for (size_t i = 0; i < inShape.size(); i++) {
-        if (std::find(axes.begin(), axes.end(), i) == axes.end()) {
-            outShape.push_back(inShape[i]);
-        } else if (keepDims) {
-            outShape.push_back(1);
+    auto outShapeRes = populateReduceOutShape(outShape, inShape);
+    if (mlir::failed(outShapeRes)) {
+        return outShapeRes;
+    }
+
+    SmallVector<int64_t> outBounds;
+    if (mlir::isa<Core::BoundedTensorType>(inType)) {
+        auto inBounds = SmallVector<int64_t>(getBoundedShape(inType).raw());
+        auto outBoundsRes = populateReduceOutShape(outBounds, inBounds);
+        if (mlir::failed(outBoundsRes)) {
+            return outBoundsRes;
         }
     }
-
-    // If axes contains all dimensions of input data, a single reduction value is calculated for the entire input tensor
-    if (outShape.empty()) {
-        outShape = {1};
-    }
-
-    if (mlir::failed(IE::padOutputShape(outShape, outputPadding, loc))) {
-        return errorAt(loc, "Output padding {0} incompatible with output shape {1}", outputPadding, outShape);
-    }
-
     const auto newOutputType =
             TypeComponents()
                     .setDimsOrder(keepDims ? inType.getDimsOrder()
@@ -60,7 +74,8 @@ mlir::LogicalResult inferReduceReturnTypes(mlir::Location loc, mlir::Value input
                     .setShape(ShapeRef(outShape));
     vpux::DimsOrder outOrder = newOutputType.dimsOrder.value();
     const auto tensorAttr = vpux::getTensorAttr(inType.getContext(), outOrder.toAffineMap(input.getType().getContext()),
-                                                inType.getMemSpace(), getBounds(input.getType()));
+                                                inType.getMemSpace(),
+                                                outBounds.empty() ? getBounds(input.getType()) : BoundsRef(outBounds));
     auto outputType = mlir::RankedTensorType::get(outShape, inType.getElementType(), tensorAttr);
 
     inferredReturnTypes.push_back(outputType);

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/VPU/utils/scf/scf_utils.hpp"
 #include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/Support/FormatVariadic.h>
@@ -472,6 +473,13 @@ mlir::LogicalResult unrollLoopsAndSetAttributes(mlir::OpBuilder& builder, SmallV
             // The following attributes will be referred in ConvertToLLVMUMD pass
             result->mainLoopOp->getOperation()->setAttr("no_await_all", builder.getBoolAttr(true));
 
+            if (i > 0) {
+                // No need of resetting command list for cascaded unrolling except for the first unroll
+                // as all cascaded unrolls are part of single command list
+                // The following attributes will be referred in ConvertToLLVMUMD pass
+                result->mainLoopOp->getOperation()->setAttr("no_reset_cmdlist", builder.getBoolAttr(true));
+            }
+
             // Post-process main unrolled loop to fix bounds and add runtime guards
             if (mlir::failed(postProcessUnrolledLoop(*result, builder))) {
                 log.error("Failed to post-process unrolled loop with id {0}", loopId.getInt());
@@ -528,9 +536,7 @@ mlir::LogicalResult UnrollSCFLoopPass::initialize(mlir::MLIRContext* ctx) {
 
 void UnrollSCFLoopPass::safeRunOnModule() {
     auto moduleOp = getOperation();
-    net::NetworkInfoOp netInfoOp;
-    mlir::func::FuncOp mainFuncOp;
-    net::NetworkInfoOp::getFromModule(moduleOp, netInfoOp, mainFuncOp);
+    auto mainFuncOp = net::getMainFunc(moduleOp);
     mlir::OpBuilder builder(mainFuncOp);
 
     if (_loopUnrollFactor.empty()) {

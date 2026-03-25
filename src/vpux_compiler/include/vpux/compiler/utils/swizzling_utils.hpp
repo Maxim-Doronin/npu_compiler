@@ -1,15 +1,17 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
+#include "vpux/compiler/utils/hw_settings.hpp"
+#include "vpux/utils/core/mem_size.hpp"
+
 #include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/Types.h>
 
-#include "vpux/compiler/utils/hw_settings.hpp"
-#include "vpux/utils/core/mem_size.hpp"
+#include <cstdint>
 
 namespace vpux::config {
 enum class ArchKind : uint64_t;

@@ -1,11 +1,13 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
+#include <new>
 #include <string_view>
+#include <unordered_map>
 
 #include <llvm/Support/FormatVariadic.h>
 
@@ -41,11 +43,13 @@ public:
     ~HeapBufferManager() = default;
 
     elf::DeviceBuffer allocate(const elf::BufferSpecs& buffSpecs) override {
-        auto ptr = std::aligned_alloc(buffSpecs.alignment, buffSpecs.size);
+        auto ptr = static_cast<uint8_t*>(operator new[](sizeof(uint8_t) * buffSpecs.size,
+                                                        static_cast<std::align_val_t>(buffSpecs.alignment)));
         VPUX_ELF_THROW_UNLESS(ptr, elf::RuntimeError, "Allocation failure");
+        mAllocations[ptr] = buffSpecs.alignment;  // Store alignment for correct deallocation
 
         // All allocations have CPU VA
-        auto cpuAddr = reinterpret_cast<uint8_t*>(ptr);
+        auto cpuAddr = ptr;
         // Only NPU allocations have NPU VA
         // Initializing to 0 could help early detection of faulty allocation logic from loader
         auto npuAddr = static_cast<uint64_t>(0);
@@ -67,7 +71,11 @@ public:
     }
 
     void deallocate(elf::DeviceBuffer& devBuffer) override {
-        free(devBuffer.cpu_addr());
+        auto buffAlignment = mAllocations.find(devBuffer.cpu_addr());
+        VPUX_ELF_THROW_WHEN(buffAlignment == mAllocations.end(), elf::RuntimeError, "Buffer not found in allocations");
+        operator delete[](devBuffer.cpu_addr(), static_cast<std::align_val_t>(buffAlignment->second));
+        mAllocations.erase(buffAlignment);
+
         VPUX_ELF_THROW_WHEN(mAllocStats.mCurrentTotalSize < devBuffer.size(), elf::RuntimeError,
                             "Freeing more memory than allocated");
         mAllocStats.mCurrentTotalSize -= devBuffer.size();
@@ -107,4 +115,5 @@ public:
 private:
     std::string mName = {};
     AllocStats mAllocStats = {};
+    std::unordered_map<uint8_t*, uint64_t> mAllocations = {};
 };

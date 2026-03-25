@@ -92,5 +92,9 @@ TEST_F(FqWithTwoAxesLayerTestCommon, NPU5010_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
+TEST_F(FqWithTwoAxesLayerTestCommon, NPU5020_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
+}
 
 }  // namespace ov::test::subgraph

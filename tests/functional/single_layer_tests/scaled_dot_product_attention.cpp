@@ -1,6 +1,8 @@
+//
 // Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
+
 #include <openvino/opsets/opset14.hpp>
 #include <openvino/opsets/opset3.hpp>
 #include <openvino/pass/manager.hpp>
@@ -196,6 +198,8 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::ValuesIn({
                 SDPAParams{{25, 1, 32, 96}, {25, 1, 32, 96}, {25, 1, 32, 96}, {1, 1, 1, 1}, false, true, false},
                 SDPAParams{{1, 6, 554, 64}, {1, 6, 554, 64}, {1, 6, 554, 64}, {1, 1, 1, 1}, true, true, false},
+                SDPAParams{{1, 1, 1, 64}, {1, 1, 64, 64}, {1, 1, 64, 64}, {1, 1, 1, 1}, true, true, false},
+                SDPAParams{{1, 1, 64, 64}, {1, 1, 64, 64}, {1, 1, 64, 64}, {1, 1, 1, 1}, true, true, false},
                 SDPAParams{{1, 1, 55, 128}, {1, 1, 80, 128}, {1, 1, 80, 128}, {1, 1, 1, 1}, true, true, false},
                 SDPAParams{{1, 1, 55, 128}, {1, 1, 80, 128}, {1, 1, 80, 128}, {1, 1, 1, 1}, false, true, false},
                 SDPAParams{{1, 1, 55, 128}, {1, 1, 80, 128}, {1, 1, 80, 128}, {1, 1, 1, 1}, false, false, false},
@@ -213,5 +217,22 @@ INSTANTIATE_TEST_SUITE_P(
                 SDPAParams{{10, 11, 55, 128}, {10, 11, 77, 128}, {10, 11, 77, 128}, {1, 11, 55, 77}, true, true, false},
                 SDPAParams{
                         {10, 11, 55, 128}, {10, 11, 77, 128}, {10, 11, 77, 128}, {1, 11, 55, 77}, false, true, false},
+        }),
+        ScaledDotProductAttentionV14LayerTestCommon::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(
+        smoke_legal_SDPAExtended, ScaledDotProductAttentionV14LayerTestCommonSdpaExtended,
+        ::testing::ValuesIn({
+                SDPAParams{{16, 12, 225, 16}, {16, 12, 225, 16}, {16, 12, 225, 16}, {1, 1, 1, 1}, false, false, false},
+                SDPAParams{{1, 192, 225, 64}, {1, 192, 225, 64}, {1, 192, 225, 64}, {1, 1, 1, 1}, false, false, false},
+                SDPAParams{{1, 12, 3600, 64}, {1, 12, 3600, 64}, {1, 12, 3600, 64}, {1, 1, 1, 1}, false, false, false},
+                SDPAParams{{1, 8, 300, 64}, {1, 8, 300, 64}, {1, 8, 300, 64}, {1, 1, 1, 1}, false, false, false},
+                SDPAParams{{1, 16, 577, 64}, {1, 16, 577, 64}, {1, 16, 577, 64}, {1, 1, 1, 1}, false, false, false},
+                SDPAParams{{1, 10, 1024, 64}, {1, 10, 1024, 64}, {1, 10, 1024, 64}, {1, 1, 1, 1}, false, false, false},
+                SDPAParams{{1, 10, 1024, 64}, {1, 10, 77, 64}, {1, 10, 77, 64}, {1, 1, 1, 1}, false, false, false},
+                SDPAParams{{1, 20, 256, 64}, {1, 20, 256, 64}, {1, 20, 256, 64}, {1, 1, 1, 1}, false, false, false},
+                SDPAParams{{1, 20, 256, 64}, {1, 20, 77, 64}, {1, 20, 77, 64}, {1, 1, 1, 1}, false, false, false},
+                SDPAParams{{1, 6, 3072, 64}, {1, 6, 3072, 64}, {1, 6, 3072, 64}, {1, 1, 1, 1}, false, false, false},
+                SDPAParams{{1, 6, 151, 64}, {1, 6, 151, 64}, {1, 6, 151, 64}, {1, 1, 1, 1}, false, false, false},
         }),
         ScaledDotProductAttentionV14LayerTestCommon::getTestCaseName);

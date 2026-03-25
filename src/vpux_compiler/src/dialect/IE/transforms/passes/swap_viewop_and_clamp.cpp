@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -88,7 +88,8 @@ bool parentCanFuseClamp(mlir::Operation* parentOp, IE::ClampOp origOp, Logger lo
         const auto logCb = [&](const formatv_object_base& msg) {
             log.trace("{0}", msg.str());
         };
-        if (layerWithPostOp.getPostOp() == nullptr && layerWithPostOp.isSupportedPostOp(origOp, logCb)) {
+        // TODO: #83187 use isSupportedClampOp instead
+        if (!layerWithPostOp.hasPPE() && layerWithPostOp.isSupportedPostOp(origOp, logCb)) {
             return true;
         }
     }

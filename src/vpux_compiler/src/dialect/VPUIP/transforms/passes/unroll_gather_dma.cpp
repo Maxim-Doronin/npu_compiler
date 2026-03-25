@@ -1,9 +1,10 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/attributes/shape.hpp"
+#include "vpux/compiler/dialect/VPU/transforms/factories/gather_dma_constants.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/unroll_dma_analysis.hpp"
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
@@ -124,17 +125,36 @@ mlir::LogicalResult GatherDMARewriter::matchAndRewrite(VPUIP::GatherDMAOp gather
     VPUX_THROW_WHEN(inputBuffers.size() != outputBuffers.size(), "Size of input/output buffers list must match");
     const auto numClusters = inputBuffers.size();
 
-    rewriter.setInsertionPointAfter(vpurtTask);
-
+    auto getUnpairedCluster = [](size_t numClusters, size_t dmaPortCount) -> SmallVector<size_t> {
+        VPUX_THROW_WHEN(numClusters == 0 || dmaPortCount == 0, "Invalid numClusters or dmaPortCount");
+        SmallVector<size_t> unpairedClusters;
+        auto start = (numClusters / dmaPortCount) * dmaPortCount;
+        for (size_t clusterId = start; clusterId < numClusters; ++clusterId) {
+            unpairedClusters.push_back(clusterId);
+        }
+        return unpairedClusters;
+    };
+    auto unpairedClusters = getUnpairedCluster(numClusters, static_cast<size_t>(_dmaPortCount));
     int64_t dmaPort = 0;
+
+    rewriter.setInsertionPointAfter(vpurtTask);
     for (size_t clusterId = 0; clusterId < numClusters; ++clusterId) {
         const auto newLoc = appendLoc(gatherDmaOp->getLoc(), "cluster_{0}", clusterId);
         auto newGatherDMAOp = VPURT::wrapIntoTaskOp<VPUIP::GatherDMAOp>(
                 rewriter, vpurtTask.getWaitBarriers(), vpurtTask.getUpdateBarriers(), newLoc, inputBuffers[clusterId],
                 indicesBuffers[clusterId], outputBuffers[clusterId], gatherDmaOp.getElementSize(),
-                gatherDmaOp.getPadding(), gatherDmaOp.getPort().value());
+                gatherDmaOp.getPadding(), dmaPort);
         dmaPort = (dmaPort + 1) % _dmaPortCount;
-
+        if (std::find(unpairedClusters.begin(), unpairedClusters.end(), static_cast<size_t>(clusterId)) !=
+            unpairedClusters.end()) {
+            auto indices = indicesBuffers[clusterId];
+            const auto indicesType = mlir::cast<vpux::NDTypeInterface>(indices.getType());
+            const auto maybeTileDim = vpux::getHighestNonTrivialDim(indicesType.getShape(), indicesType.getDimsOrder());
+            if (maybeTileDim.has_value() &&
+                indicesType.getShape()[maybeTileDim.value()] % vpux::VPU::INDICES_ALIGNMENT == 0) {
+                newGatherDMAOp.setSplitCandidate(true);
+            }
+        }
         _log.nest().trace("Insert new newGatherDMAOp: '{0}'", newGatherDMAOp);
     }
     rewriter.eraseOp(vpurtTask);
@@ -164,9 +184,7 @@ void UnrollGatherDMAPass::safeRunOnFunc() {
     }
     auto& ctx = getContext();
     auto func = getOperation();
-    auto module = func->getParentOfType<mlir::ModuleOp>();
-    auto dmaOp = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN);
-    auto dmaPortCount = dmaOp.getCount();
+    auto dmaPortCount = config::getNumOfDMAPorts(func);
 
     mlir::RewritePatternSet patterns(&ctx);
     patterns.insert<GatherDMARewriter>(&ctx, dmaPortCount, _log);

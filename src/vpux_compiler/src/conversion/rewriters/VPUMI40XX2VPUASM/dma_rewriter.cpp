@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -224,10 +224,14 @@ mlir::FailureOr<SymbolizationResult> NNDMARewriter::symbolize(VPUMI40XX::NNDMAOp
     auto dmaHwpIdAttr = op.getDmaHwpIdAttr();
     auto addressingModeAttr = op.getAddressingModeAttr();
 
-    auto descriptor = op.getDmaDescriptor().has_value() ? op.getDmaDescriptorAttr() : getDmaDescriptorAttr(op, ctx);
-    if (!descriptor) {
-        _log.warning("Failed to lower DMA descriptor parameters");
+    auto descriptor = op.getDmaDescriptorAttr();
+
+    // Prioritize the newer DMATransactionAttr
+    if (!transaction && !descriptor) {
+        descriptor = getDmaDescriptorAttr(op, ctx);
+        VPUX_THROW_WHEN(!descriptor, "Failed to lower DMA descriptor parameters");
     }
+
     auto newOp = rewriter.create<VPUASM::NNDMAOp>(op.getLoc(), symName, taskIdx, taskLocation, nextLink, input, outputs,
                                                   waitAttr, updateAttr, startAfter, cleanAfter, accelerationMode,
                                                   op.getIsOutOfOrder(), op.getIsCritical(), op.getEnableMsc(),

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,6 +7,7 @@
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
 // CHECK-LABEL: @MaxPool
+// CHECK-SAME:    [[ARG_0:%[^:]+]]: tensor<1x512x38x38xf32>
 func.func @MaxPool(%arg0: tensor<1x512x38x38xf32>) -> tensor<1x512x19x19xf32> {
     %0 = IE.MaxPool(%arg0)
         {
@@ -20,7 +21,7 @@ func.func @MaxPool(%arg0: tensor<1x512x38x38xf32>) -> tensor<1x512x19x19xf32> {
 
     return %0 : tensor<1x512x19x19xf32>
 
-    // CHECK:        [[MAX_POOL:%.+]] = IE.MaxPool(%arg0) {
+    // CHECK:        [[MAX_POOL:%.+]] = IE.MaxPool([[ARG_0]]) {
     // CHECK-SAME:       kernel_size = [1, 1],
     // CHECK-SAME:       pads_begin = [0, 0],
     // CHECK-SAME:       pads_end = [0, 0],
@@ -34,6 +35,7 @@ func.func @MaxPool(%arg0: tensor<1x512x38x38xf32>) -> tensor<1x512x19x19xf32> {
 // -----
 
 // CHECK-LABEL: @AvgPool5D
+// CHECK-SAME:    [[ARG_0:%[^:]+]]: tensor<1x3x38x38x38xf32>
 func.func @AvgPool5D(%arg0: tensor<1x3x38x38x38xf32>) -> tensor<1x3x19x19x19xf32> {
     %0 = IE.AvgPool(%arg0)
         {
@@ -47,7 +49,7 @@ func.func @AvgPool5D(%arg0: tensor<1x3x38x38x38xf32>) -> tensor<1x3x19x19x19xf32
 
     return %0 : tensor<1x3x19x19x19xf32>
 
-    // CHECK:        [[AVG_POOL:%.+]] = IE.AvgPool(%arg0) {
+    // CHECK:        [[AVG_POOL:%.+]] = IE.AvgPool([[ARG_0]]) {
     // CHECK-SAME:       kernel_size = [1, 1, 1],
     // CHECK-SAME:       pads_begin = [0, 0, 0],
     // CHECK-SAME:       pads_end = [0, 0, 0],
@@ -62,6 +64,8 @@ func.func @AvgPool5D(%arg0: tensor<1x3x38x38x38xf32>) -> tensor<1x3x19x19x19xf32
 // -----
 
 // CHECK-LABEL: @Convolution5D
+// CHECK-SAME:    [[ARG_0:%[^:]+]]: tensor<1x3x38x38x38xf32>
+// CHECK-SAME:    [[ARG_1:%[^:]+]]: tensor<16x3x3x3x3xf32>
 func.func @Convolution5D(%arg0: tensor<1x3x38x38x38xf32>, %arg1: tensor<16x3x3x3x3xf32>) -> tensor<1x16x20x20x20xf32> {
     %0 = IE.Convolution(%arg0, %arg1)
         {
@@ -74,7 +78,7 @@ func.func @Convolution5D(%arg0: tensor<1x3x38x38x38xf32>, %arg1: tensor<16x3x3x3
 
     return %0 : tensor<1x16x20x20x20xf32>
 
-    // CHECK:        [[CONV:%.+]] = IE.Convolution(%arg0, %arg1)
+    // CHECK:        [[CONV:%.+]] = IE.Convolution([[ARG_0]], [[ARG_1]])
     // CHECK-SAME:       dilations = [1, 1, 1],
     // CHECK-SAME:       pads_begin = [2, 2, 2],
     // CHECK-SAME:       pads_end = [1, 1, 1],
@@ -87,6 +91,7 @@ func.func @Convolution5D(%arg0: tensor<1x3x38x38x38xf32>, %arg1: tensor<16x3x3x3
 // -----
 
 // CHECK-LABEL: @AvgPoolExcludePadEnabled
+// CHECK-SAME:    [[ARG_0:%[^:]+]]: tensor<1x16x30x30xf32>
 func.func @AvgPoolExcludePadEnabled(%arg0: tensor<1x16x30x30xf32>) -> tensor<1x16x15x15xf32> {
     %0 = IE.AvgPool(%arg0)
         {
@@ -100,7 +105,7 @@ func.func @AvgPoolExcludePadEnabled(%arg0: tensor<1x16x30x30xf32>) -> tensor<1x1
 
     return %0 : tensor<1x16x15x15xf32>
 
-    // CHECK:        [[AVG_POOL:%.+]] = IE.AvgPool(%arg0) {
+    // CHECK:        [[AVG_POOL:%.+]] = IE.AvgPool([[ARG_0]]) {
     // CHECK-SAME:       exclude_pads,
     // CHECK-SAME:       kernel_size = [3, 3],
     // CHECK-SAME:       pads_begin = [0, 0],
@@ -115,6 +120,7 @@ func.func @AvgPoolExcludePadEnabled(%arg0: tensor<1x16x30x30xf32>) -> tensor<1x1
 // -----
 
 // CHECK-LABEL: @AvgPool16ExcludePadEnabled
+// CHECK-SAME:    [[ARG_0:%[^:]+]]: tensor<1x3x300x30xf16>
 func.func @AvgPool16ExcludePadEnabled(%arg0: tensor<1x3x300x30xf16>) -> tensor<1x3x149x26xf16> {
     %0 = IE.AvgPool16(%arg0) {
         dilations = [2, 2],
@@ -126,7 +132,7 @@ func.func @AvgPool16ExcludePadEnabled(%arg0: tensor<1x3x300x30xf16>) -> tensor<1
     } : tensor<1x3x300x30xf16> -> tensor<1x3x149x26xf16>
     return %0 : tensor<1x3x149x26xf16>
 
-    // CHECK:        [[AVG_POOL:%.+]] = IE.AvgPool16(%arg0) {
+    // CHECK:        [[AVG_POOL:%.+]] = IE.AvgPool16([[ARG_0]]) {
     // CHECK-SAME:       dilations = [2, 2],
     // CHECK-SAME:       kernel_size = [3, 5],
     // CHECK-SAME:       pads_begin = [0, 2],

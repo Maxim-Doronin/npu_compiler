@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -340,4 +340,29 @@ func.func @NotConvertDepthwiseGroupConvWithLargePadding(%input: tensor<1x2048x10
     // CHECK-NOT:   IE.Convolution
 
     // CHECK:       IE.GroupConvolution
+}
+
+// -----
+
+// CHECK-LABEL: @ConvertDepthwise1x1KernelGroupConvWithLargePaddingToSingleConv
+// CHECK-SAME:    [[INPUT:%.+]]: tensor<1x672x120x248xf16>
+func.func @ConvertDepthwise1x1KernelGroupConvWithLargePaddingToSingleConv(%input: tensor<1x672x120x248xf16>) -> tensor<1x672x128x256xf16> {
+    %weights = const.Declare tensor<672x1x1x1xf16> = dense<1.0> : tensor<672x1x1x1xf16>
+    %result = IE.GroupConvolution(%input, %weights) {
+        dilations = [1, 1],
+        groups = 672 : i64,
+        pads_begin = [8, 0],
+        pads_end = [0, 8],
+        strides = [1, 1]
+    } : tensor<1x672x120x248xf16>, tensor<672x1x1x1xf16> -> tensor<1x672x128x256xf16>
+
+    return %result : tensor<1x672x128x256xf16>
+
+    // 1x1 kernel depthwise GroupConv with large padding should be converted to single Convolution
+    // by GroupConvToSingleConvConverter, not preserved for NCEDepthConvolution
+    // CHECK-NOT:   IE.GroupConvolution
+
+    // CHECK:       [[CONV:%.+]] = IE.Convolution([[INPUT]]
+    // CHECK-SAME:      {dilations = [1, 1], pads_begin = [8, 0], pads_end = [0, 8], strides = [1, 1]}
+    // CHECK:       return [[CONV]]
 }

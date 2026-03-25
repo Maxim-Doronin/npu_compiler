@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -20,10 +20,10 @@ func.func @InplaceEltwiseSameType(%in: memref<1x32x96x96xf16, #NHWC>, %out: memr
 
     %1 = VPUIP.Copy inputs(%cst0 : memref<1x32x96x96xf16, #NHWC>) outputs(%buf0 : memref<1x32x96x96xf16, #NHWC, @CMX_NN>) -> memref<1x32x96x96xf16, #NHWC, @CMX_NN>
 
-    %2 = VPUIP.NCEClusterTask {
+    %2 = VPUIP.NCEClusterTask <{
                 task_type = #VPUIP.nce_task_type<ELTWISE>,
                 is_inplace = true
-            }
+            }>
             input(%0 : memref<1x32x96x96xf16, #NHWC, @CMX_NN>)
             weights(%1 : memref<1x32x96x96xf16, #NHWC, @CMX_NN>)
             parent_input(%0 : memref<1x32x96x96xf16, #NHWC, @CMX_NN>)
@@ -84,7 +84,7 @@ func.func @InplaceEltwiseFpDistributedOp(%in: memref<1x256x56x56xf16, #NHWC>, %o
     %1 = VPUIP.Copy
         inputs(%in : memref<1x256x56x56xf16, #NHWC>)
         outputs(%buf_in : !VPUIP.DistributedBuffer<1x256x56x56xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)  ->  !VPUIP.DistributedBuffer<1x256x56x56xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
-    %2 = VPUIP.NCEClusterTask {is_inplace = true, minimumHardwareExecutionCost = 31170 : i64, task_type = #VPUIP.nce_task_type<ELTWISE>}
+    %2 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 31170 : i64} <{is_inplace = true, task_type = #VPUIP.nce_task_type<ELTWISE>}>
         input(%0 : !VPUIP.DistributedBuffer<1x256x56x56xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)
         weights(%1 : !VPUIP.DistributedBuffer<1x256x56x56xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)
         parent_input(%0 : !VPUIP.DistributedBuffer<1x256x56x56xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)
@@ -160,7 +160,7 @@ func.func @InplaceEltwiseQuantizedView(%in: !qType0, %in2: !qType1, %out: !qType
     %0 = VPUIP.Copy inputs(%in : !qType0) outputs(%buf_in : !qType0CMX) -> !qType0CMX
     %1 = VPUIP.Copy inputs(%in2 : !qType1) outputs(%buf0 : !qType1CMX) -> !qType1CMX
 
-    %2 = VPUIP.NCEClusterTask {is_inplace = true, minimumHardwareExecutionCost = 11669 : i64, task_type = #VPUIP.nce_task_type<ELTWISE>}
+    %2 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 11669 : i64} <{is_inplace = true, task_type = #VPUIP.nce_task_type<ELTWISE>}>
         input(%0 : !qType0CMX)
         weights(%1 : !qType1CMX)
         parent_input(%0 : !qType0CMX)
@@ -185,7 +185,7 @@ func.func @InplaceEltwiseQuantizedView(%in: !qType0, %in2: !qType1, %out: !qType
 
     // CHECK:       [[INP1:%.+]] = VPUIP.Copy inputs([[ARG0]] : memref<1x256x56x56x!qElemType, #NHWC>) outputs([[BUF0]] : memref<1x256x56x56x!qElemType, #NHWC, @CMX_NN>) -> memref<1x256x56x56x!qElemType, #NHWC, @CMX_NN>
     // CHECK:       [[INP2:%.+]] = VPUIP.Copy inputs([[ARG1]] : memref<1x256x56x56x!qElemType1, #NHWC>) outputs([[BUF2]] : memref<1x256x56x56x!qElemType1, #NHWC, @CMX_NN>) -> memref<1x256x56x56x!qElemType1, #NHWC, @CMX_NN>
-    // CHECK:       [[ELTWISE_OUT:%.+]] = VPUIP.NCEClusterTask {is_inplace = true, minimumHardwareExecutionCost = 11669 : i64, task_type = #VPUIP.nce_task_type<ELTWISE>}
+    // CHECK:       [[ELTWISE_OUT:%.+]] = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 11669 : i64} <{is_inplace = true, task_type = #VPUIP.nce_task_type<ELTWISE>}>
     // CHECK-SAME:      input([[INP1]] : memref<1x256x56x56x!qElemType, #NHWC, @CMX_NN>)
     // CHECK-SAME:      weights([[INP2]] : memref<1x256x56x56x!qElemType1, #NHWC, @CMX_NN>)
     // CHECK-SAME:      parent_input([[INP1]] : memref<1x256x56x56x!qElemType, #NHWC, @CMX_NN>)
@@ -209,6 +209,9 @@ func.func @InplaceEltwiseQuantizedView(%in: !qType0, %in2: !qType1, %out: !qType
 !InputDistType1 = !VPUIP.DistributedBuffer<1x512x28x28xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED|MULTICASTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 !EltwiseDistType = !VPUIP.DistributedBuffer<1x512x28x28xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
 
+// CHECK-LABEL: @InplaceEltwiseNeedsCast
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x512x28x28xf16, #NHWC>,
+// CHECK-SAME: [[ARG_1:%[^:]+]]: memref<1x512x28x28xf16, #NHWC>)
 func.func @InplaceEltwiseNeedsCast(%input : memref<1x512x28x28xf16, #NHWC>, %out: memref<1x512x28x28xf16, #NHWC>) -> memref<1x512x28x28xf16, #NHWC> {
 
     %inputBuf0 = VPURT.AllocDistributed -> !InputDistType0
@@ -224,7 +227,7 @@ func.func @InplaceEltwiseNeedsCast(%input : memref<1x512x28x28xf16, #NHWC>, %out
     %eltwiseIn1 = VPUIP.DistributedCast inputs(%copyInput1 : !InputDistType1) -> !EltwiseDistType
     // This buffer will be eliminated, input 0 will be used insted
     %eltwiseOutBuf = VPURT.AllocDistributed -> !EltwiseDistType
-    %eltwise_output = VPUIP.NCEClusterTask {is_inplace = true, minimumHardwareExecutionCost = 32317 : i64, task_type = #VPUIP.nce_task_type<ELTWISE>}
+    %eltwise_output = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 32317 : i64} <{is_inplace = true, task_type = #VPUIP.nce_task_type<ELTWISE>}>
         input(%eltwiseIn0 : !EltwiseDistType)
         weights(%eltwiseIn1 : !EltwiseDistType)
         parent_input(%eltwiseIn0 : !EltwiseDistType)
@@ -254,11 +257,11 @@ func.func @InplaceEltwiseNeedsCast(%input : memref<1x512x28x28xf16, #NHWC>, %out
     // CHECK:       [[BUF1:%.+]] = VPURT.AllocDistributed
     // CHECK-SAME:       -> !VPUIP.DistributedBuffer<1x512x28x28xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED|MULTICASTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>
     // CHECK:    [[COPY0:%.+]] = VPUIP.Copy
-    // CHECK-SAME:     inputs(%arg0 : memref<1x512x28x28xf16, #NHWC>)
+    // CHECK-SAME:     inputs([[ARG_0]] : memref<1x512x28x28xf16, #NHWC>)
     // CHECK-SAME:     outputs([[BUF0]] : !VPUIP.DistributedBuffer<1x512x28x28xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>)  -> !VPUIP.DistributedBuffer<1x512x28x28xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}
 
     // CHECK:    [[COPY1:%.+]] = VPUIP.Copy
-    // CHECK-SAME:     inputs(%arg0 : memref<1x512x28x28xf16, #NHWC>)
+    // CHECK-SAME:     inputs([[ARG_0]] : memref<1x512x28x28xf16, #NHWC>)
     // CHECK-SAME:     outputs([[BUF1]] : !VPUIP.DistributedBuffer<1x512x28x28xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED|MULTICASTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>)  -> !VPUIP.DistributedBuffer<1x512x28x28xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED|MULTICASTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}
 
     // CHECK:       [[ELTW_IN0:%.+]] = VPUIP.DistributedCast
@@ -275,7 +278,7 @@ func.func @InplaceEltwiseNeedsCast(%input : memref<1x512x28x28xf16, #NHWC>, %out
 
     // CHECK:    [[COPY_OUT:%.+]] = VPUIP.Copy
     // CHECK-SAME:     inputs([[ELTW_OUT]] : !VPUIP.DistributedBuffer<1x512x28x28xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64, alignment = [1, 16, 1, 1]}>)
-    // CHECK-SAME:     outputs(%arg1 : memref<1x512x28x28xf16, #NHWC>)  -> memref<1x512x28x28xf16, #NHWC
+    // CHECK-SAME:     outputs([[ARG_1]] : memref<1x512x28x28xf16, #NHWC>)  -> memref<1x512x28x28xf16, #NHWC
 
     // CHECK:       return [[COPY_OUT]] : memref<1x512x28x28xf16, #NHWC>
 }
@@ -290,7 +293,7 @@ func.func @InplaceEltwiseNeedsCast(%input : memref<1x512x28x28xf16, #NHWC>, %out
     num_clusters = 2 : i64
 }>
 
-// CHECK:    func @InplaceEltwiseFirstInputHas2Consumers(%arg0: memref<1x256x56x56xf16, #NHWC>)
+// CHECK:    func @InplaceEltwiseFirstInputHas2Consumers([[ARG_0:%[^:]+]]: memref<1x256x56x56xf16, #NHWC>)
 func.func @InplaceEltwiseFirstInputHas2Consumers(%in: memref<1x256x56x56xf16, #NHWC>) -> (!DistributedType, !DistributedType) {
 
     %cst0 = const.Declare memref<1x256x56x56xf16, #NHWC> = dense<2.0> : tensor<1x256x56x56xf16>, [#const.Reorder<#NHWC>]
@@ -307,7 +310,7 @@ func.func @InplaceEltwiseFirstInputHas2Consumers(%in: memref<1x256x56x56xf16, #N
     %1 = VPUIP.Copy
         inputs(%in : memref<1x256x56x56xf16, #NHWC>)
         outputs(%buf_in : !DistributedType)  ->  !DistributedType
-    %2 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 31170 : i64, task_type = #VPUIP.nce_task_type<ELTWISE>}
+    %2 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 31170 : i64} <{task_type = #VPUIP.nce_task_type<ELTWISE>}>
         input(%0 : !DistributedType)
         weights(%1 : !DistributedType)
         parent_input(%0 : !DistributedType)
@@ -325,7 +328,7 @@ func.func @InplaceEltwiseFirstInputHas2Consumers(%in: memref<1x256x56x56xf16, #N
     %5 = VPUIP.Copy
         inputs(%in : memref<1x256x56x56xf16, #NHWC>)
         outputs(%buf_in_1 : !DistributedType)  ->  !DistributedType
-    %6 = VPUIP.NCEClusterTask {is_inplace = true, minimumHardwareExecutionCost = 31170 : i64, task_type = #VPUIP.nce_task_type<ELTWISE>}
+    %6 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 31170 : i64} <{is_inplace = true, task_type = #VPUIP.nce_task_type<ELTWISE>}>
         input(%5 : !DistributedType)
         weights(%4 : !DistributedType)
         parent_input(%5 : !DistributedType)
@@ -358,7 +361,7 @@ func.func @InplaceEltwiseFirstInputHas2Consumers(%in: memref<1x256x56x56xf16, #N
     // CHECK-SAME:     outputs([[BUF_0]] : !VPUIP.DistributedBuffer<1x256x56x56xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)  -> !VPUIP.DistributedBuffer<1x256x56x56xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}
 
     // CHECK:    [[COPY_IN1:%.+]] = VPUIP.Copy
-    // CHECK-SAME:     inputs(%arg0 : memref<1x256x56x56xf16, #NHWC>)
+    // CHECK-SAME:     inputs([[ARG_0]] : memref<1x256x56x56xf16, #NHWC>)
     // CHECK-SAME:     outputs([[BUF_IN0]] : !VPUIP.DistributedBuffer<1x256x56x56xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)  -> !VPUIP.DistributedBuffer<1x256x56x56xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}
 
 
@@ -371,7 +374,7 @@ func.func @InplaceEltwiseFirstInputHas2Consumers(%in: memref<1x256x56x56xf16, #N
     // CHECK-SAME:     inputs([[CST]] : memref<1x256x56x56xf16, #NHWC>)
     // CHECK-SAME:     outputs([[BUF_1]] : !VPUIP.DistributedBuffer<1x256x56x56xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)  -> !VPUIP.DistributedBuffer<1x256x56x56xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}
     // CHECK:    [[COPY_IN3:%.+]] = VPUIP.Copy
-    // CHECK-SAME:     inputs(%arg0 : memref<1x256x56x56xf16, #NHWC>)
+    // CHECK-SAME:     inputs([[ARG_0]] : memref<1x256x56x56xf16, #NHWC>)
     // CHECK-SAME:     outputs([[BUF_IN1]] : !VPUIP.DistributedBuffer<1x256x56x56xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)  -> !VPUIP.DistributedBuffer<1x256x56x56xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}
 
 
@@ -426,7 +429,7 @@ func.func @InplaceEltwiseFirstInput2ConsumersSecondInputFromNCEPermute(%in: memr
     %1 = VPUIP.Copy
         inputs(%in : memref<1x256x56x56xf16, #NHWC>)
         outputs(%buf_in : !EltwiseDistributedType)  ->  !EltwiseDistributedType
-    %2 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 31170 : i64, task_type = #VPUIP.nce_task_type<ELTWISE>}
+    %2 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 31170 : i64} <{task_type = #VPUIP.nce_task_type<ELTWISE>}>
         input(%0 : !EltwiseDistributedType)
         weights(%1 : !EltwiseDistributedType)
         parent_input(%0 : !EltwiseDistributedType)
@@ -441,7 +444,7 @@ func.func @InplaceEltwiseFirstInput2ConsumersSecondInputFromNCEPermute(%in: memr
     %4 = VPUIP.Copy
         inputs(%cst1 : memref<1x56x256x56xf16, #NHWC>)
         outputs(%buf_1 : !PermuteInDistributedType)  ->  !PermuteInDistributedType
-    %5 = VPUIP.NCEClusterTask {is_permute_quantize, minimumHardwareExecutionCost = 17144 : i64, task_type = #VPUIP.nce_task_type<ELTWISE>}
+    %5 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 17144 : i64} <{is_permute_quantize, task_type = #VPUIP.nce_task_type<ELTWISE>}>
         input(%4 : !PermuteInDistributedType)
         weights(%4 : !PermuteInDistributedType)
         parent_input(%4 : !PermuteInDistributedType)
@@ -459,8 +462,7 @@ func.func @InplaceEltwiseFirstInput2ConsumersSecondInputFromNCEPermute(%in: memr
 
     %7 = VPUIP.ViewOp %5 : !PermuteOutDistributedType to !EltwiseDistributedType
 
-    %8 = VPUIP.NCEClusterTask
-        {is_inplace = true, minimumHardwareExecutionCost = 31170 : i64, task_type = #VPUIP.nce_task_type<ELTWISE>}
+    %8 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 31170 : i64} <{is_inplace = true, task_type = #VPUIP.nce_task_type<ELTWISE>}>
         input(%6 : !EltwiseDistributedType)
         weights(%7 : !EltwiseDistributedType)
         parent_input(%6 : !EltwiseDistributedType)
@@ -563,7 +565,7 @@ module @VPU.SW {
     func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
 }
 
-// CHECK:    func @InplaceEltwiseSubViewInterp(%arg0: memref<1x128x104x104xf16, #NHWC>, %arg1: memref<1x128x104x104xf16, #NHWC>)
+// CHECK:    func @InplaceEltwiseSubViewInterp([[ARG_0:%[^:]+]]: memref<1x128x104x104xf16, #NHWC>, [[ARG_1:%[^:]+]]: memref<1x128x104x104xf16, #NHWC>)
 func.func @InplaceEltwiseSubViewInterp(%in1: memref<1x128x104x104xf16, #NHWC>, %in2: memref<1x128x104x104xf16, #NHWC>) -> (!DistributedType2, !DistributedType2, !DistributedType1) {
     %buf_0  = VPURT.AllocDistributed -> !DistributedType1
     %buf_2  = VPURT.AllocDistributed -> !DistributedType1
@@ -608,7 +610,7 @@ func.func @InplaceEltwiseSubViewInterp(%in1: memref<1x128x104x104xf16, #NHWC>, %
     %13 = VPUIP.Copy
         inputs(%6 : memref<1x128x52x104xf16, {order = #NHWC, strides = [1384448, 1, 13312, 128]}>)
         outputs(%buf_in_2 : !DistributedType1)  ->  !DistributedType1
-    %14 = VPUIP.NCEClusterTask {is_inplace = true, minimumHardwareExecutionCost = 31170 : i64, task_type = #VPUIP.nce_task_type<ELTWISE>}
+    %14 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 31170 : i64} <{is_inplace = true, task_type = #VPUIP.nce_task_type<ELTWISE>}>
         input(%12 : !DistributedType1)
         weights(%13 : !DistributedType1)
         parent_input(%12 : !DistributedType1)
@@ -636,10 +638,10 @@ func.func @InplaceEltwiseSubViewInterp(%in1: memref<1x128x104x104xf16, #NHWC>, %
     // CHECK-SAME:         -> !VPUIP.DistributedBuffer<1x128x104x208xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
     // CHECK-NOT:         VPURT.AllocDistributed
 
-    // CHECK:        [[SUBVIEW0:%.+]] = VPUIP.SubView %arg0 [0, 0, 0, 0] [1, 128, 52, 104]
+    // CHECK:        [[SUBVIEW0:%.+]] = VPUIP.SubView [[ARG_0]] [0, 0, 0, 0] [1, 128, 52, 104]
     // CHECK-SAME:        : memref<1x128x104x104xf16, #NHWC> to memref<1x128x52x104xf16, {order = #NHWC, strides = [1384448, 1, 13312, 128]}>
 
-    // CHECK:        [[SUBVIEW1:%.+]] = VPUIP.SubView %arg0 [0, 0, 0, 0] [1, 128, 52, 104]
+    // CHECK:        [[SUBVIEW1:%.+]] = VPUIP.SubView [[ARG_0]] [0, 0, 0, 0] [1, 128, 52, 104]
     // CHECK-SAME:        : memref<1x128x104x104xf16, #NHWC> to memref<1x128x52x104xf16, {order = #NHWC, strides = [1384448, 1, 13312, 128]}>
     // CHECK:    [[COPY_IN1:%.+]] = VPUIP.Copy
     // CHECK-SAME:     inputs([[SUBVIEW0]] : memref<1x128x52x104xf16, {order = #NHWC, strides = [1384448, 1, 13312, 128]}>)
@@ -647,13 +649,13 @@ func.func @InplaceEltwiseSubViewInterp(%in1: memref<1x128x104x104xf16, #NHWC>, %
 
 
     // CHECK:        [[INTERP_0:%.+]] = VPUIP.SW.Kernel
-    // CHECK-SAME:        inputs([[COPY_IN1]] as %arg2: memref<1x128x52x104xf16, #NHWC, @CMX_NN>)
-    // CHECK-SAME:        outputs([[OUTPUT_BUF]] as %arg3: memref<1x128x104x208xf16, #NHWC, @CMX_NN>)
+    // CHECK-SAME:        inputs([[COPY_IN1]] as {{%[^:]+}}: memref<1x128x52x104xf16, #NHWC, @CMX_NN>)
+    // CHECK-SAME:        outputs([[OUTPUT_BUF]] as {{%[^:]+}}: memref<1x128x104x208xf16, #NHWC, @CMX_NN>)
     // CHECK-SAME:        -> !VPUIP.DistributedBuffer<1x128x104x208xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
 
-    // CHECK:        [[SUBVIEW2:%.+]] = VPUIP.SubView %arg1 [0, 0, 0, 0] [1, 128, 52, 104]
+    // CHECK:        [[SUBVIEW2:%.+]] = VPUIP.SubView [[ARG_1]] [0, 0, 0, 0] [1, 128, 52, 104]
     // CHECK-SAME:        : memref<1x128x104x104xf16, #NHWC> to memref<1x128x52x104xf16, {order = #NHWC, strides = [1384448, 1, 13312, 128]}>
-    // CHECK:        [[SUBVIEW3:%.+]] = VPUIP.SubView %arg1 [0, 0, 52, 0] [1, 128, 52, 104]
+    // CHECK:        [[SUBVIEW3:%.+]] = VPUIP.SubView [[ARG_1]] [0, 0, 52, 0] [1, 128, 52, 104]
     // CHECK-SAME:        : memref<1x128x104x104xf16, #NHWC> to memref<1x128x52x104xf16, {order = #NHWC, strides = [1384448, 1, 13312, 128]}>
     // CHECK:    [[COPY_IN3:%.+]] = VPUIP.Copy
     // CHECK-SAME:     inputs([[SUBVIEW3]] : memref<1x128x52x104xf16, {order = #NHWC, strides = [1384448, 1, 13312, 128]}>)
@@ -662,8 +664,8 @@ func.func @InplaceEltwiseSubViewInterp(%in1: memref<1x128x104x104xf16, #NHWC>, %
 
 
     // CHECK:        [[INTERP_1:%.+]] = VPUIP.SW.Kernel
-    // CHECK-SAME:        inputs([[COPY_IN3]] as %arg2: memref<1x128x52x104xf16, #NHWC, @CMX_NN>)
-    // CHECK-SAME:        outputs([[OUTPUT_BUF1]] as %arg3: memref<1x128x104x208xf16, #NHWC, @CMX_NN>)
+    // CHECK-SAME:        inputs([[COPY_IN3]] as {{%[^:]+}}: memref<1x128x52x104xf16, #NHWC, @CMX_NN>)
+    // CHECK-SAME:        outputs([[OUTPUT_BUF1]] as {{%[^:]+}}: memref<1x128x104x208xf16, #NHWC, @CMX_NN>)
     // CHECK-SAME:        -> !VPUIP.DistributedBuffer<1x128x104x208xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
 
     // CHECK:    [[COPY_IN4:%.+]] = VPUIP.Copy
@@ -707,7 +709,7 @@ func.func @InplaceEltwiseSubViewInterp(%in1: memref<1x128x104x104xf16, #NHWC>, %
         num_clusters = 2 : i64
 }>
 
-// CHECK:    func @InplaceEltwisePermQuantSubView(%arg0: memref<1x64x52x52x!qElemType>, %arg1: memref<1x64x52x52x!qElemType>)
+// CHECK:    func @InplaceEltwisePermQuantSubView([[ARG_0:%[^:]+]]: memref<1x64x52x52x!qElemType>, [[ARG_1:%[^:]+]]: memref<1x64x52x52x!qElemType>)
 func.func @InplaceEltwisePermQuantSubView(%in1: memref<1x64x52x52x!qElemType1>, %in2: memref<1x64x52x52x!qElemType1>) -> (!DistributedType2, !DistributedType2, !DistributedType1) {
     %wt = const.Declare memref<64x1x1x4xsi32, @CMX_NN> = dense<1> : tensor<64x1x1x4xsi32>
     %buf  = VPURT.AllocDistributed -> !DistributedType1
@@ -732,7 +734,7 @@ func.func @InplaceEltwisePermQuantSubView(%in1: memref<1x64x52x52x!qElemType1>, 
     %4 = VPUIP.Copy
         inputs(%2 : memref<1x64x26x52x!qElemType2, {order = #NHWC, strides = [173056, 1, 3328, 64]}>)
         outputs(%buf_in : !DistributedType1)  ->  !DistributedType1
-    %6 = VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [2, 2], kernel_strides = [2, 2], minimumHardwareExecutionCost = 10325 : i64, task_type = #VPUIP.nce_task_type<MAXPOOL>}
+    %6 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 10325 : i64} <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [2, 2], kernel_strides = [2, 2], task_type = #VPUIP.nce_task_type<MAXPOOL>}>
         input(%4 : !DistributedType1)
         weight_table(%wt : memref<64x1x1x4xsi32, @CMX_NN>)
         parent_input(%4 : !DistributedType1)
@@ -758,7 +760,7 @@ func.func @InplaceEltwisePermQuantSubView(%in1: memref<1x64x52x52x!qElemType1>, 
     %12 = VPUIP.Copy
         inputs(%10 : memref<1x64x26x52x!qElemType2, {order = #NHWC, strides = [173056, 1, 3328, 64]}>)
         outputs(%buf_in_1 : !DistributedType1)  ->  !DistributedType1
-    %13 = VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [2, 2], kernel_strides = [2, 2], minimumHardwareExecutionCost = 10325 : i64, task_type = #VPUIP.nce_task_type<MAXPOOL>}
+    %13 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 10325 : i64} <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [2, 2], kernel_strides = [2, 2], task_type = #VPUIP.nce_task_type<MAXPOOL>}>
         input(%12 : !DistributedType1)
         weight_table(%wt : memref<64x1x1x4xsi32, @CMX_NN>)
         parent_input(%12 : !DistributedType1)
@@ -776,7 +778,7 @@ func.func @InplaceEltwisePermQuantSubView(%in1: memref<1x64x52x52x!qElemType1>, 
     %15 = VPUIP.Copy
         inputs(%11 : memref<1x64x26x52x!qElemType2, {order = #NHWC, strides = [173056, 1, 3328, 64]}>)
         outputs(%buf_in_2 : !DistributedType1)  ->  !DistributedType1
-    %16 = VPUIP.NCEClusterTask {is_inplace = true, minimumHardwareExecutionCost = 31170 : i64, task_type = #VPUIP.nce_task_type<ELTWISE>}
+    %16 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 31170 : i64} <{is_inplace = true, task_type = #VPUIP.nce_task_type<ELTWISE>}>
         input(%14 : !DistributedType1)
         weights(%15 : !DistributedType1)
         parent_input(%14 : !DistributedType1)
@@ -808,7 +810,7 @@ func.func @InplaceEltwisePermQuantSubView(%in1: memref<1x64x52x52x!qElemType1>, 
 
     // CHECK:         [[PERM_CAST:%.+]] = VPUIP.PermuteCast
     // CHECK-SAME:       {dst_order = #NHWC, mem_perm = #NHWC}
-    // CHECK-SAME:       inputs(%arg0 : memref<1x64x52x52x!qElemType>)
+    // CHECK-SAME:       inputs([[ARG_0]] : memref<1x64x52x52x!qElemType>)
     // CHECK-SAME:       -> memref<1x64x52x52x!qElemType, #NHWC>
 
     // CHECK:         [[QUANT_CAST:%.+]] = VPUIP.QuantizeCast
@@ -837,7 +839,7 @@ func.func @InplaceEltwisePermQuantSubView(%in1: memref<1x64x52x52x!qElemType1>, 
 
     // CHECK:         [[PERM_CAST_1:%.+]] = VPUIP.PermuteCast
     // CHECK-SAME:       {dst_order = #NHWC, mem_perm = #NHWC}
-    // CHECK-SAME:       inputs(%arg1 : memref<1x64x52x52x!qElemType>)
+    // CHECK-SAME:       inputs([[ARG_1]] : memref<1x64x52x52x!qElemType>)
     // CHECK-SAME:       -> memref<1x64x52x52x!qElemType, #NHWC>
 
     // CHECK:         [[QUANT_CAST_1:%.+]] = VPUIP.QuantizeCast

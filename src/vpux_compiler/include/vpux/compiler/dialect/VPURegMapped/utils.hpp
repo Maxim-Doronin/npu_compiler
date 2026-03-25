@@ -1,13 +1,15 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
-#include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/ops.hpp"
+#include "vpux/utils/core/checked_cast.hpp"
+#include "vpux/utils/core/custom_float.hpp"
+#include "vpux/utils/core/type/bfloat16.hpp"
+#include "vpux/utils/core/type/float16.hpp"
 
 #include <llvm/ADT/bit.h>
 #include <mlir/IR/Builders.h>
@@ -167,17 +169,6 @@ uint32_t checked_cast_reg(float src) {
 }
 
 std::optional<TaskBufferLayoutOp> getTaskBufferLayoutOp(mlir::Operation* op);
-
-template <typename T>
-struct TaskTypeMapper;
-
-template <>
-struct TaskTypeMapper<VPURegMapped::TaskType> {
-    static VPU::TaskType map(VPURegMapped::TaskType regMappedType) {
-        return static_cast<VPU::TaskType>(
-                static_cast<std::underlying_type<VPURegMapped::TaskType>::type>(regMappedType));
-    }
-};
 
 }  // namespace VPURegMapped
 }  // namespace vpux

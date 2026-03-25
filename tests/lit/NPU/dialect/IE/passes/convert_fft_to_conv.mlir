@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -88,7 +88,7 @@ func.func @IRDFT(%arg0: tensor<4x8x2xf16>) -> tensor<4x14xf16> {
   return %0 : tensor<4x14xf16>
 
     // CHECK: [[CST:%.+]] = const.Declare tensor<2xsi64> = dense<[0, 1]> : tensor<2xsi64>
-    // CHECK: [[VAL0:%.+]] = IE.Transpose(%arg0) {order_value = #HCW} : tensor<4x8x2xf16> -> tensor<8x4x2xf16>
+    // CHECK: [[VAL0:%.+]] = IE.Transpose([[INPUT]]) {order_value = #HCW} : tensor<4x8x2xf16> -> tensor<8x4x2xf16>
     // CHECK: [[VAL1:%.+]] = IE.Reshape([[VAL0]]) {shape_value = [1, 8, 8]} : tensor<8x4x2xf16> -> tensor<1x8x8xf16>
     // CHECK: [[CST_0:%.+]] = const.Declare tensor<8x8xf16> = dense<
     // CHECK: [[VAL2:%.+]] = IE.MatMul([[VAL1]], [[CST_0]]) {transpose_b} : tensor<1x8x8xf16>, tensor<8x8xf16> -> tensor<1x8x8xf16>
@@ -167,7 +167,7 @@ func.func @IRDFTTransformWithSignalSize(%arg0: tensor<4x8x2xf16>) -> tensor<4x14
 
     // CHECK: [[CST:%.+]] = const.Declare tensor<2xsi64> = dense<[0, 1]> : tensor<2xsi64>
     // CHECK: [[CST1:%.+]] = const.Declare tensor<2xsi64> = dense<[4, 14]> : tensor<2xsi64>
-    // CHECK: [[VAL0:%.+]] = IE.Transpose(%arg0) {order_value = #HCW} : tensor<4x8x2xf16> -> tensor<8x4x2xf16>
+    // CHECK: [[VAL0:%.+]] = IE.Transpose([[INPUT]]) {order_value = #HCW} : tensor<4x8x2xf16> -> tensor<8x4x2xf16>
     // CHECK: [[VAL1:%.+]] = IE.Reshape([[VAL0]]) {shape_value = [1, 8, 8]} : tensor<8x4x2xf16> -> tensor<1x8x8xf16>
     // CHECK: [[CST_0:%.+]] = const.Declare tensor<8x8xf16> = dense<
     // CHECK: [[VAL2:%.+]] = IE.MatMul([[VAL1]], [[CST_0]]) {transpose_b} : tensor<1x8x8xf16>, tensor<8x8xf16> -> tensor<1x8x8xf16>

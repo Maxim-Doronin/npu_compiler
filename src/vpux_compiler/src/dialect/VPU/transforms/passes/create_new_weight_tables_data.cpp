@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -62,7 +62,7 @@ SmallVector<int64_t> extractWorkloadChannels(VPU::NCEOpInterface nceOp) {
 
     SmallVector<int64_t> workloadChannels;
     for (auto workload : workloads) {
-        auto outSizes = parseIntArrayAttr<int64_t>(workload.getOutSizesAttr());
+        auto outSizes = workload.getConstOutputSizes();
         workloadChannels.push_back(outSizes[Dims4D::Act::C.ind()]);
     }
 

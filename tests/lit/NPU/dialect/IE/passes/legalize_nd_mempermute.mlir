@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -11,12 +11,13 @@
 #map = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
 
 // CHECK-LABEL:   @IgnoreLegalMemPermutes
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x16x2x3xf32, {order = #NHWC}>
 func.func @IgnoreLegalMemPermutes(%arg0: tensor<1x16x2x3xf32, {order = #NHWC}>) -> tensor<1x16x2x3xf32, {order = #NCHW}> {
     %0 = IE.MemPermute(%arg0) {dst_order = #NCHW, mem_perm = #map} :
         tensor<1x16x2x3xf32, {order = #NHWC}> -> tensor<1x16x2x3xf32, {order = #NCHW}>
     return %0 : tensor<1x16x2x3xf32, {order = #NCHW}>
 
-    // CHECK:     [[VAL_0:%.+]] = IE.MemPermute(%arg0) {dst_order = #NCHW, mem_perm = #NWCH} : tensor<1x16x2x3xf32, {order = #NHWC}> -> tensor<1x16x2x3xf32, {order = #NCHW}>
+    // CHECK:     [[VAL_0:%.+]] = IE.MemPermute([[ARG_0]]) {dst_order = #NCHW, mem_perm = #NWCH} : tensor<1x16x2x3xf32, {order = #NHWC}> -> tensor<1x16x2x3xf32, {order = #NCHW}>
     // CHECK:     return [[VAL_0]] : tensor<1x16x2x3xf32, {order = #NCHW}>
 }
 
@@ -31,12 +32,13 @@ func.func @IgnoreLegalMemPermutes(%arg0: tensor<1x16x2x3xf32, {order = #NHWC}>) 
 // CHECK:     #map2 = affine_map<(d0, d1, d2, d3) -> (d1, d3, d0, d2)>
 
 // CHECK-LABEL:   @MultipleMerge
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x2x3x4x5x6x7x1xf32, {order = #map}>
 func.func @MultipleMerge(%arg0: tensor<1x2x3x4x5x6x7x1xf32, {order = #srcOrder}>) -> tensor<1x2x3x4x5x6x7x1xf32, {order = #dstOrder}> {
     %0 = IE.MemPermute(%arg0) {dst_order = #dstOrder, mem_perm = #map} :
         tensor<1x2x3x4x5x6x7x1xf32, {order = #srcOrder}> -> tensor<1x2x3x4x5x6x7x1xf32, {order = #dstOrder}>
     return %0 : tensor<1x2x3x4x5x6x7x1xf32, {order = #dstOrder}>
 
-    // CHECK:     [[CAST_1:%.+]] = IE.PermuteCast(%arg0) {dst_order = #map, mem_perm = #map} : tensor<1x2x3x4x5x6x7x1xf32, {order = #map}> -> tensor<1x2x3x4x5x6x7x1xf32>
+    // CHECK:     [[CAST_1:%.+]] = IE.PermuteCast([[ARG_0]]) {dst_order = #map, mem_perm = #map} : tensor<1x2x3x4x5x6x7x1xf32, {order = #map}> -> tensor<1x2x3x4x5x6x7x1xf32>
     // CHECK:     [[RESHAPE_1:%.+]] = IE.Reshape([[CAST_1]]) {shape_value = [2, 12, 5, 42]} : tensor<1x2x3x4x5x6x7x1xf32> -> tensor<2x12x5x42xf32>
     // CHECK:     [[PERM:%.+]] = IE.MemPermute([[RESHAPE_1]]) {dst_order = #NCHW, mem_perm = #map2} : tensor<2x12x5x42xf32> -> tensor<12x42x2x5xf32>
     // CHECK:     [[RESHAPE_2:%.+]] = IE.Reshape([[PERM]]) {shape_value = [1, 1, 3, 4, 6, 7, 2, 5]} : tensor<12x42x2x5xf32> -> tensor<1x1x3x4x6x7x2x5xf32>
@@ -51,12 +53,13 @@ func.func @MultipleMerge(%arg0: tensor<1x2x3x4x5x6x7x1xf32, {order = #srcOrder}>
 #NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
 
 // CHECK-LABEL:   @LegalizeNDMemPermute
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x2x3x4x5xf32, {order = #NCDHW}>
 func.func @LegalizeNDMemPermute(%arg0: tensor<1x2x3x4x5xf32, {order = #NCDHW}>) -> tensor<1x2x3x4x5xf32, {order = #NDHWC}> {
     %0 = IE.MemPermute(%arg0) {dst_order = #NDHWC, mem_perm = #NDHWC} :
         tensor<1x2x3x4x5xf32, {order = #NCDHW}> -> tensor<1x2x3x4x5xf32, {order = #NDHWC}>
     return %0 : tensor<1x2x3x4x5xf32, {order = #NDHWC}>
 
-    // CHECK:     [[CAST_1:%.+]] = IE.PermuteCast(%arg0) {dst_order = #NCDHW, mem_perm = #NCDHW} : tensor<1x2x3x4x5xf32, {order = #NCDHW}> -> tensor<1x2x3x4x5xf32>
+    // CHECK:     [[CAST_1:%.+]] = IE.PermuteCast([[ARG_0]]) {dst_order = #NCDHW, mem_perm = #NCDHW} : tensor<1x2x3x4x5xf32, {order = #NCDHW}> -> tensor<1x2x3x4x5xf32>
     // CHECK:     [[RESHAPE_1:%.+]] = IE.Reshape([[CAST_1]]) {shape_value = [1, 2, 12, 5]} : tensor<1x2x3x4x5xf32> -> tensor<1x2x12x5xf32>
     // CHECK:     [[PERM:%.+]] = IE.MemPermute([[RESHAPE_1]]) {dst_order = #NCHW, mem_perm = #NHWC} : tensor<1x2x12x5xf32> -> tensor<1x12x5x2xf32>
     // CHECK:     [[RESHAPE_2:%.+]] = IE.Reshape([[PERM]]) {shape_value = [1, 3, 4, 5, 2]} : tensor<1x12x5x2xf32> -> tensor<1x3x4x5x2xf32>
@@ -70,12 +73,13 @@ func.func @LegalizeNDMemPermute(%arg0: tensor<1x2x3x4x5xf32, {order = #NCDHW}>) 
 #NDHWC = affine_map<(d0, d1, d2, d3, d4) -> (d0, d2, d3, d4, d1)>
 
 // CHECK-LABEL:   @LegalizeNDMemPermuteNo1s
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<2x2x3x4x5xf32, {order = #NCDHW}>
 func.func @LegalizeNDMemPermuteNo1s(%arg0: tensor<2x2x3x4x5xf32, {order = #NCDHW}>) -> tensor<2x2x3x4x5xf32, {order = #NDHWC}> {
     %0 = IE.MemPermute(%arg0) {dst_order = #NDHWC, mem_perm = #NDHWC} :
         tensor<2x2x3x4x5xf32, {order = #NCDHW}> -> tensor<2x2x3x4x5xf32, {order = #NDHWC}>
     return %0 : tensor<2x2x3x4x5xf32, {order = #NDHWC}>
 
-    // CHECK:     [[CAST_1:%.+]] = IE.PermuteCast(%arg0) {dst_order = #NCDHW, mem_perm = #NCDHW} : tensor<2x2x3x4x5xf32, {order = #NCDHW}> -> tensor<2x2x3x4x5xf32>
+    // CHECK:     [[CAST_1:%.+]] = IE.PermuteCast([[ARG_0]]) {dst_order = #NCDHW, mem_perm = #NCDHW} : tensor<2x2x3x4x5xf32, {order = #NCDHW}> -> tensor<2x2x3x4x5xf32>
     // CHECK:     [[RESHAPE_1:%.+]] = IE.Reshape([[CAST_1]]) {shape_value = [1, 2, 2, 60]} : tensor<2x2x3x4x5xf32> -> tensor<1x2x2x60xf32>
     // CHECK:     [[PERM:%.+]] = IE.MemPermute([[RESHAPE_1]]) {dst_order = #NCHW, mem_perm = #NCWH} : tensor<1x2x2x60xf32> -> tensor<1x2x60x2xf32>
     // CHECK:     [[RESHAPE_2:%.+]] = IE.Reshape([[PERM]]) {shape_value = [2, 3, 4, 5, 2]} : tensor<1x2x60x2xf32> -> tensor<2x3x4x5x2xf32>
@@ -94,12 +98,13 @@ func.func @LegalizeNDMemPermuteNo1s(%arg0: tensor<2x2x3x4x5xf32, {order = #NCDHW
 
 
 // CHECK-LABEL:   @LegalizeNDMemPermute6D
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x2x3x4x5x6xf32, {order = #map}>
 func.func @LegalizeNDMemPermute6D(%arg0: tensor<1x2x3x4x5x6xf32, {order = #SIXD}>) -> tensor<1x2x3x4x5x6xf32, {order = #SIXD_PERM}> {
     %0 = IE.MemPermute(%arg0) {dst_order = #SIXD_PERM, mem_perm = #SIXD_PERM} :
         tensor<1x2x3x4x5x6xf32, {order = #SIXD}> -> tensor<1x2x3x4x5x6xf32, {order = #SIXD_PERM}>
     return %0 : tensor<1x2x3x4x5x6xf32, {order = #SIXD_PERM}>
 
-    // CHECK:     [[CAST_1:%.+]] = IE.PermuteCast(%arg0) {dst_order = #map, mem_perm = #map} : tensor<1x2x3x4x5x6xf32, {order = #map}> -> tensor<1x2x3x4x5x6xf32>
+    // CHECK:     [[CAST_1:%.+]] = IE.PermuteCast([[ARG_0]]) {dst_order = #map, mem_perm = #map} : tensor<1x2x3x4x5x6xf32, {order = #map}> -> tensor<1x2x3x4x5x6xf32>
     // CHECK:     [[RESHAPE_1:%.+]] = IE.Reshape([[CAST_1]]) {shape_value = [2, 12, 5, 6]} : tensor<1x2x3x4x5x6xf32> -> tensor<2x12x5x6xf32>
     // CHECK:     [[PERM:%.+]] = IE.MemPermute([[RESHAPE_1]]) {dst_order = #NCHW, mem_perm = #map2} : tensor<2x12x5x6xf32> -> tensor<5x12x2x6xf32>
     // CHECK:     [[RESHAPE_2:%.+]] = IE.Reshape([[PERM]]) {shape_value = [1, 5, 3, 4, 2, 6]} : tensor<5x12x2x6xf32> -> tensor<1x5x3x4x2x6xf32>
@@ -114,12 +119,13 @@ func.func @LegalizeNDMemPermute6D(%arg0: tensor<1x2x3x4x5x6xf32, {order = #SIXD}
 #map = affine_map<(d0, d1, d2) -> (d0, d2, d1)>
 
 // CHECK-LABEL:   @LegalizeNDMemPermute3D
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<8x40x4096xf16, {order = #map}>
 func.func @LegalizeNDMemPermute3D(%arg0: tensor<8x40x4096xf16, {order = #CWH}>) -> tensor<8x40x4096xf16> {
     %0 = IE.MemPermute(%arg0) {dst_order = #CHW, mem_perm = #map} :
         tensor<8x40x4096xf16, {order = #CWH}> -> tensor<8x40x4096xf16>
     return %0 : tensor<8x40x4096xf16>
 
-    // CHECK:     [[CAST_1:%.+]] = IE.PermuteCast(%arg0) {dst_order = #CHW, mem_perm = #CHW} : tensor<8x40x4096xf16, {order = #map}> -> tensor<8x4096x40xf16>
+    // CHECK:     [[CAST_1:%.+]] = IE.PermuteCast([[ARG_0]]) {dst_order = #CHW, mem_perm = #CHW} : tensor<8x40x4096xf16, {order = #map}> -> tensor<8x4096x40xf16>
     // CHECK:     [[RESHAPE_1:%.+]] = IE.Reshape([[CAST_1]]) {shape_value = [1, 8, 4096, 40]} : tensor<8x4096x40xf16> -> tensor<1x8x4096x40xf16>
     // CHECK:     [[PERM:%.+]] = IE.MemPermute([[RESHAPE_1]]) {dst_order = #NCHW, mem_perm = #NCWH} : tensor<1x8x4096x40xf16> -> tensor<1x8x40x4096xf16>
     // CHECK:     [[RESHAPE_2:%.+]] = IE.Reshape([[PERM]]) {shape_value = [8, 40, 4096]} : tensor<1x8x40x4096xf16> -> tensor<8x40x4096xf16>

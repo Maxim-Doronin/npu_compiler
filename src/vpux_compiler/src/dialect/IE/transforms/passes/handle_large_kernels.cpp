@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -140,8 +140,8 @@ mlir::Value getExtendedActivation(IE::ConvolutionOp origOp, mlir::PatternRewrite
 mlir::Value getTransformValue(mlir::PatternRewriter& rewriter, ShapeRef newShape, const mlir::Value newValue,
                               ArrayRef<uint32_t> perm) {
     const auto newShapeAttr = getIntArrayAttr(rewriter.getContext(), newShape);
-    auto reshapeValue = rewriter.createOrFold<IE::ReshapeOp>(appendLoc(newValue.getLoc(), "reshape"), newValue, nullptr,
-                                                             false, newShapeAttr);
+    auto reshapeValue =
+            rewriter.createOrFold<IE::ReshapeOp>(appendLoc(newValue.getLoc(), "reshape"), newValue, newShapeAttr);
     const auto orderAttr = mlir::AffineMapAttr::get(mlir::AffineMap::getPermutationMap(perm, rewriter.getContext()));
     auto newTransOp = rewriter.create<IE::TransposeOp>(appendLoc(newValue.getLoc(), "transpose"), reshapeValue, nullptr,
                                                        orderAttr);
@@ -1276,7 +1276,7 @@ mlir::Value ReshapeLargeConvRewriter::getOutputFromLargeStride(mlir::PatternRewr
     auto newConvOp = IE::cloneConvolutionOp(rewriter, origOp, newInputValue, newFilterValue, newStridesAttr,
                                             newBeginAttr, newEndAttr, origOp.getDilationsAttr());
     return rewriter
-            .create<IE::ReshapeOp>(appendLoc(origOp->getLoc(), "reshape_out"), newConvOp.getOutput(), nullptr, false,
+            .create<IE::ReshapeOp>(appendLoc(origOp->getLoc(), "reshape_out"), newConvOp.getOutput(),
                                    getIntArrayAttr(rewriter.getContext(), getShape(origOp.getOutput())))
             .getOutput();
 }
@@ -1352,8 +1352,8 @@ mlir::Value ReshapeLargeConvRewriter::getOutputFromStrideOne(mlir::PatternRewrit
     auto newTransOutShape = SmallVector<int64_t>{transOutShape[Dims4D::Act::N], transOutShape[Dims4D::Act::C],
                                                  factorsOnKX ? 1 : transOutHW, factorsOnKX ? transOutHW : 1};
     auto outReshapeOp =
-            rewriter.create<IE::ReshapeOp>(appendLoc(origOp->getLoc(), "trans_out_reshape"), convOutTransValue, nullptr,
-                                           false, getIntArrayAttr(rewriter.getContext(), newTransOutShape));
+            rewriter.create<IE::ReshapeOp>(appendLoc(origOp->getLoc(), "trans_out_reshape"), convOutTransValue,
+                                           getIntArrayAttr(rewriter.getContext(), newTransOutShape));
 
     auto outShape = getShape(outReshapeOp.getOutput());
     auto staticOffsets = SmallVector<int64_t>(outShape.size(), 0);
@@ -1659,12 +1659,11 @@ mlir::LogicalResult ReshapeGlobalConvRewriter::matchAndRewrite(IE::ConvolutionOp
             filterShape[Dims4D::Act::N],
             filterShape[Dims4D::Act::C] * filterShape[Dims4D::Act::H] * filterShape[Dims4D::Act::W], 1, 1};
 
-    auto inputReshape =
-            rewriter.create<IE::ReshapeOp>(appendLoc(origOp->getLoc(), "reshape_in"), origOp.getInput(), nullptr, false,
-                                           getIntArrayAttr(rewriter.getContext(), newInShape));
+    auto inputReshape = rewriter.create<IE::ReshapeOp>(appendLoc(origOp->getLoc(), "reshape_in"), origOp.getInput(),
+                                                       getIntArrayAttr(rewriter.getContext(), newInShape));
     auto filterReshape =
-            rewriter.create<IE::ReshapeOp>(appendLoc(origOp->getLoc(), "reshape_filter"), origOp.getFilter(), nullptr,
-                                           false, getIntArrayAttr(rewriter.getContext(), newFilterShape));
+            rewriter.create<IE::ReshapeOp>(appendLoc(origOp->getLoc(), "reshape_filter"), origOp.getFilter(),
+                                           getIntArrayAttr(rewriter.getContext(), newFilterShape));
     SmallVector<int64_t> newStrides = {1, 1};
     auto newConvOp = IE::cloneConvolutionOp(
             rewriter, origOp, inputReshape.getOutput(), filterReshape.getOutput(), origOp.getBias(), origOp.getScale(),

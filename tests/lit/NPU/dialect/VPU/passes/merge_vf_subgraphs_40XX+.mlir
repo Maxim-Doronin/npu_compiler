@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -114,6 +114,8 @@ func.func @BuildLargeSubgraph(%arg0: tensor<1x16x256x256x!qElemType, {order = #N
 !qElemType = !quant.uniform<u8:f16, 0.013744638480392157:128>
 !qElemType1 = !quant.uniform<u8:f16:0, {0.0038832720588235295:128,0.0031929764093137254:128,0.0036142386642156864:128,0.0036563648897058824:128,0.0035060508578431374:128,0.0039905024509803919:128,0.0036659390318627451:128,0.0031968060661764705:128,0.0035213694852941177:128,0.0032619102328431374:128,0.0038411458333333331:128,0.0035251991421568628:128,0.003833486519607843:128,0.003372012867647059:128,0.0035816865808823528:128,0.0037023207720588234:128,0.0038200827205882352:128,0.0036123238357843139:128,0.003345205269607843:128,0.0031163832720588237:128,0.0036506204044117647:128,0.0034888174019607845:128,0.0038736979166666668:128,0.0033758425245098041:128,0.003058938419117647:128,0.0037176393995098037:128,0.0034562653186274508:128,0.0033260569852941175:128,0.003349034926470588:128,0.0041475183823529412:128,0.0041207107843137256:128,0.003490732230392157:128}>
 
+// CHECK-LABEL: @BuildSubgraphEltwiseWithViewLikeOpInput
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x256x256x!qElemType, {order = #NHWC}>, [[ARG_1:%[^:]+]]: tensor<1x16x512x256x!qElemType>)
 func.func @BuildSubgraphEltwiseWithViewLikeOpInput(%arg0: tensor<1x16x256x256x!qElemType, {order = #NHWC}>, %arg1: tensor<1x16x512x256x!qElemType>) -> tensor<1x32x256x256x!qElemType, {order = #NHWC}> {
     %cst_0 = const.Declare tensor<32x16x3x3x!qElemType1, {order = #NHWC}> = dense<1.0> : tensor<32x16x3x3xf16>, [#const.CastElemType<ui8>, #const.CastElemType<!qElemType1>, #const.Reorder<#NHWC>]
 
@@ -141,8 +143,8 @@ func.func @BuildSubgraphEltwiseWithViewLikeOpInput(%arg0: tensor<1x16x256x256x!q
 
     //CHECK-DAG: [[WEIGHT:%.+]] = const.Declare tensor<32x16x3x3x!qElemType1, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x16x3x3xf16>, [#const.CastElemType<ui8>, #const.CastElemType<!qElemType1>, #const.Reorder<#NHWC>]
 
-    //CHECK: [[LAYOUTCAST:%.+]] = VPU.LayoutCast(%arg1) {dst_order = #NHWC} : tensor<1x16x512x256x!qElemType> -> tensor<1x16x512x256x!qElemType, {order = #NHWC}>
-    //CHECK: [[SHAPECAST:%.+]] = VPU.ShapeCast {shape = [1, 32, 256, 256]} inputs(%0 : tensor<1x16x512x256x!qElemType, {order = #NHWC}>) -> tensor<1x32x256x256x!qElemType, {order = #NHWC}>
+    //CHECK: [[LAYOUTCAST:%.+]] = VPU.LayoutCast([[ARG_1]]) {dst_order = #NHWC} : tensor<1x16x512x256x!qElemType> -> tensor<1x16x512x256x!qElemType, {order = #NHWC}>
+    //CHECK: [[SHAPECAST:%.+]] = VPU.ShapeCast {shape = [1, 32, 256, 256]} inputs([[LAYOUTCAST]] : tensor<1x16x512x256x!qElemType, {order = #NHWC}>) -> tensor<1x32x256x256x!qElemType, {order = #NHWC}>
 
     //CHECK: [[VERTICAL_FUSION:%.+]] = VPU.VerticalFusion ({{[^ ]+}} as [[INPUT:%.+]]: tensor<1x16x256x256x!qElemType, {order = #NHWC}>,
     //CHECK-SAME:              [[WEIGHT]] as [[CONV_WEIGHT:%.+]]: tensor<32x16x3x3x!qElemType1, {order = #NHWC}>,
@@ -199,13 +201,15 @@ func.func @BuildSubgraphConvSwishGroupConvVF(%arg0: tensor<1x16x176x176xf16, {or
 
     return %2 : tensor<1x96x176x176xf16, {order = #NHWC}>
 
-    //CHECK:      [[VERTICAL_FUSION:%.+]] = VPU.VerticalFusion (%arg0 as %arg1: tensor<1x16x176x176xf16, {order = #NHWC}>,
-    //CHECK-SAME:                        %cst as %arg2: tensor<96x16x1x1xf16, {order = #NHWC}>)
+    // CHECK-DAG:   [[CST:%.+]] = const.Declare tensor<96x16x1x1xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<96x16x1x1xf16>
+
+    //CHECK:      [[VERTICAL_FUSION:%.+]] = VPU.VerticalFusion ([[ARG_0]] as [[ARG_1:%[^:]+]]: tensor<1x16x176x176xf16, {order = #NHWC}>,
+    //CHECK-SAME:                        [[CST]] as [[ARG_2:%[^:]+]]: tensor<96x16x1x1xf16, {order = #NHWC}>)
     //CHECK-SAME:                        scenario = #VPU.vf_scenario<FULL_PREFETCHING>
-    //CHECK:      [[CONV0:%.+]] = VPU.NCE.Convolution(%arg1, %arg2) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>, rawFilterShape = [96, 16, 1, 1], strides = [1, 1]}
+    //CHECK:      [[CONV0:%.+]] = VPU.NCE.Convolution([[ARG_1]], [[ARG_2]]) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>, rawFilterShape = [96, 16, 1, 1], strides = [1, 1]}
     //CHECK-SAME:      -> tensor<1x96x176x176xf16, {order = #NHWC}>
     //CHECK:      [[SWISH0:%.+]] = VPU.Swish([[CONV0]]) {beta_value = 1.000000e+00 : f64, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>} : tensor<1x96x176x176xf16, {order = #NHWC}> -> tensor<1x96x176x176xf16, {order = #NHWC}>
-    //CHECK:      [[DWCONV0:%.+]] = VPU.NCE.DepthConvolution([[SWISH0]], %arg2) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>, rawFilterShape = [96, 1, 1, 1], strides = [1, 1]} -> tensor<1x96x176x176xf16, {order = #NHWC}>
+    //CHECK:      [[DWCONV0:%.+]] = VPU.NCE.DepthConvolution([[SWISH0]], [[ARG_2]]) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>, rawFilterShape = [96, 1, 1, 1], strides = [1, 1]} -> tensor<1x96x176x176xf16, {order = #NHWC}>
     //CHECK:        VPU.Yield [[DWCONV0]]
 
     //CHECK: return [[VERTICAL_FUSION]] : tensor<1x96x176x176xf16, {order = #NHWC}>
@@ -219,6 +223,8 @@ func.func @BuildSubgraphConvSwishGroupConvVF(%arg0: tensor<1x16x176x176xf16, {or
 !qElemType1 = !quant.uniform<u8:f16:0, {0.0038832720588235295:128,0.0031929764093137254:128,0.0036142386642156864:128,0.0036563648897058824:128,0.0035060508578431374:128,0.0039905024509803919:128,0.0036659390318627451:128,0.0031968060661764705:128,0.0035213694852941177:128,0.0032619102328431374:128,0.0038411458333333331:128,0.0035251991421568628:128,0.003833486519607843:128,0.003372012867647059:128,0.0035816865808823528:128,0.0037023207720588234:128,0.0038200827205882352:128,0.0036123238357843139:128,0.003345205269607843:128,0.0031163832720588237:128,0.0036506204044117647:128,0.0034888174019607845:128,0.0038736979166666668:128,0.0033758425245098041:128,0.003058938419117647:128,0.0037176393995098037:128,0.0034562653186274508:128,0.0033260569852941175:128,0.003349034926470588:128,0.0041475183823529412:128,0.0041207107843137256:128,0.003490732230392157:128}>
 !qElemType2 = !quant.uniform<u8:f16, 0.013744638480392158:128>
 
+// CHECK-LABEL: @BuildSubgraphVFInput
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<1x16x256x256x!qElemType, {order = #NHWC}>, [[ARG_1:%[^:]+]]: tensor<1x16x256x256x!qElemType1, {order = #NHWC}>
 func.func @BuildSubgraphVFInput(%arg0: tensor<1x16x256x256x!qElemType, {order = #NHWC}>, %arg1: tensor<1x16x256x256x!qElemType2, {order = #NHWC}>) -> (tensor<1x32x256x256x!qElemType, {order = #NHWC}>) {
     %cst_0 = const.Declare tensor<32x16x3x3x!qElemType1, {order = #NHWC}> = dense<1.0> : tensor<32x16x3x3xf16>, [#const.CastElemType<ui8>, #const.CastElemType<!qElemType2>, #const.Reorder<#NHWC>]
     %0 = VPU.VerticalFusion (%arg1 as %arg2: tensor<1x16x256x256x!qElemType2, {order = #NHWC}>, %cst_0 as %arg3: tensor<32x16x3x3x!qElemType1, {order = #NHWC}>) attributes {tilingStrategy = [1, 1, 1, 1]} -> tensor<1x32x256x256x!qElemType2, {order = #NHWC}> {
@@ -248,14 +254,19 @@ func.func @BuildSubgraphVFInput(%arg0: tensor<1x16x256x256x!qElemType, {order = 
 
     return %3 : tensor<1x32x256x256x!qElemType, {order = #NHWC}>
 
-    //CHECK: [[VERTICAL_FUSION0:%.+]] = VPU.VerticalFusion
-    //CHECK: [[CONV0:%.+]] = VPU.NCE.Convolution(%arg2, %arg3)
+    // CHECK-DAG:   [[CST:%.+]] = const.Declare tensor<32x16x3x3x!qElemType2, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x16x3x3xf16>
+
+    //CHECK: [[VERTICAL_FUSION0:%.+]] = VPU.VerticalFusion ([[ARG_1]] as [[ARG_2:%[^:]+]]: tensor<1x16x256x256x!qElemType1, {order = #NHWC}>
+    //CHECK-SAME:                        [[CST]] as [[ARG_3:%[^:]+]]: tensor<32x16x3x3x!qElemType2, {order = #NHWC}>)
+    //CHECK: [[CONV0:%.+]] = VPU.NCE.Convolution([[ARG_2]], [[ARG_3]])
     //CHECK: VPU.Yield [[CONV0]]
 
     //CHECK: [[QUANTCAST:%.+]] = VPU.QuantizeCast([[VERTICAL_FUSION0]]) {dstElemType = !qElemType}
-    //CHECK: [[VERTICAL_FUSION1:%.+]] = VPU.VerticalFusion
-    //CHECK: [[CONV1:%.+]] = VPU.NCE.Convolution(%arg2, %arg3)
-    //CHECK: [[ELTWISE:%.+]] = VPU.NCE.Eltwise([[CONV1]], %arg4)
+    //CHECK: [[VERTICAL_FUSION1:%.+]] = VPU.VerticalFusion ([[ARG_0]] as [[ARG_2:%[^:]+]]: tensor<1x16x256x256x!qElemType, {order = #NHWC}>,
+    //CHECK-SAME:                        [[CST]] as [[ARG_3:%[^:]+]]: tensor<32x16x3x3x!qElemType2, {order = #NHWC}>
+    //CHECK-SAME:                        [[QUANTCAST]] as [[ARG_4:%[^:]+]]: tensor<1x32x256x256x!qElemType, {order = #NHWC}>)
+    //CHECK: [[CONV1:%.+]] = VPU.NCE.Convolution([[ARG_2]], [[ARG_3]])
+    //CHECK: [[ELTWISE:%.+]] = VPU.NCE.Eltwise([[CONV1]], [[ARG_4]])
     //CHECK: VPU.Yield [[ELTWISE]]
 
     //CHECK: return [[VERTICAL_FUSION1]] : tensor<1x32x256x256x!qElemType, {order = #NHWC}>
@@ -430,6 +441,8 @@ func.func @PartialBuildWithWeightsConstraints(%arg0: tensor<1x256x48x14xf16, {or
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: @BuildSubgraphConvWithDepthToSpace
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x180x270xf16, {order = #NHWC}>)
 func.func @BuildSubgraphConvWithDepthToSpace(%arg0: tensor<1x16x180x270xf16, {order = #NHWC}>) -> tensor<1x1x720x1080xf16, {order = #NHWC}> {
     %cst_0 = const.Declare tensor<16x16x5x5xf16, {order = #NHWC}> = dense<1.0> : tensor<16x16x5x5xf32>, [#const.CastElemType<f16>, #const.Reorder<#NHWC>]
     %0 = VPU.VerticalFusion (%arg0 as %arg1: tensor<1x16x180x270xf16, {order = #NHWC}>, %cst_0 as %arg2: tensor<16x16x5x5xf16, {order = #NHWC}>) attributes {tilingStrategy = [1, 1, 4, 1]} -> tensor<1x16x180x270xf16, {order = #NHWC}> {
@@ -447,11 +460,12 @@ func.func @BuildSubgraphConvWithDepthToSpace(%arg0: tensor<1x16x180x270xf16, {or
 
     return %1 : tensor<1x1x720x1080xf16, {order = #NHWC}>
 
+    // CHECK-DAG:   [[CST:%.+]] = const.Declare tensor<16x16x5x5xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<16x16x5x5xf32>
 
-    //CHECK:      [[VERTICAL_FUSION:%.+]] = VPU.VerticalFusion (%arg0 as %arg1: tensor<1x16x180x270xf16, {order = #NHWC}>,
-    //CHECK-SAME:                         %cst as %arg2: tensor<16x16x5x5xf16, {order = #NHWC}>)
+    //CHECK:      [[VERTICAL_FUSION:%.+]] = VPU.VerticalFusion ([[ARG_0]] as [[ARG_1:%[^:]+]]: tensor<1x16x180x270xf16, {order = #NHWC}>,
+    //CHECK-SAME:                         [[CST]] as [[ARG_2:%[^:]+]]: tensor<16x16x5x5xf16, {order = #NHWC}>)
     //CHECK-SAME:                         attributes {scenario = #VPU.vf_scenario<FULL_PREFETCHING>, tilingStrategy = [1, 1, 4, 1]} -> tensor<1x1x720x1080xf16, {order = #NHWC}> {
-    //CHECK:      [[CONV0:%.+]] = VPU.NCE.Convolution(%arg1, %arg2)
+    //CHECK:      [[CONV0:%.+]] = VPU.NCE.Convolution([[ARG_1]], [[ARG_2]])
     //CHECK:      [[D2S:%.+]] = VPU.DepthToSpace([[CONV0]])
     //CHECK:        VPU.Yield [[D2S]]
 
@@ -462,6 +476,8 @@ func.func @BuildSubgraphConvWithDepthToSpace(%arg0: tensor<1x16x180x270xf16, {or
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: @BuildMultiplySoftmaxSubgraph
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x4x160x160xf16, {order = #NHWC}>, [[ARG_1:%[^:]+]]: tensor<1x4x160x160xf16, {order = #NHWC}>)
 func.func @BuildMultiplySoftmaxSubgraph(%arg0: tensor<1x4x160x160xf16, {order = #NHWC}>, %arg1: tensor<1x4x160x160xf16, {order = #NHWC}>) -> tensor<1x4x160x160xf16, {order = #NHWC}> {
     %0 = VPU.VerticalFusion (%arg0 as %arg2: tensor<1x4x160x160xf16, {order = #NHWC}>, %arg1 as %arg3: tensor<1x4x160x160xf16, {order = #NHWC}>) attributes {tilingStrategy = [1, 1, 4, 1]} -> tensor<1x4x160x160xf16, {order = #NHWC}> {
       %3 = VPU.Multiply(%arg2, %arg3)
@@ -475,8 +491,8 @@ func.func @BuildMultiplySoftmaxSubgraph(%arg0: tensor<1x4x160x160xf16, {order = 
 
     return %1: tensor<1x4x160x160xf16, {order = #NHWC}>
 
-    //CHECK: [[VERTICAL_FUSION:%.+]] = VPU.VerticalFusion (%arg0 as %arg2: tensor<1x4x160x160xf16, {order = #NHWC}>, %arg1 as %arg3: tensor<1x4x160x160xf16, {order = #NHWC}>) attributes {scenario = #VPU.vf_scenario<FULL_PREFETCHING>, tilingStrategy = [1, 1, 4, 1]} -> tensor<1x4x160x160xf16, {order = #NHWC}> {
-    //CHECK: [[MUL:%.+]] = VPU.Multiply(%arg2, %arg3) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>} : tensor<1x4x160x160xf16, {order = #NHWC}>, tensor<1x4x160x160xf16, {order = #NHWC}> -> tensor<1x4x160x160xf16, {order = #NHWC}>
+    //CHECK: [[VERTICAL_FUSION:%.+]] = VPU.VerticalFusion ([[ARG_0]] as [[ARG_2:%[^:]+]]: tensor<1x4x160x160xf16, {order = #NHWC}>, [[ARG_1]] as [[ARG_3:%[^:]+]]: tensor<1x4x160x160xf16, {order = #NHWC}>) attributes {scenario = #VPU.vf_scenario<FULL_PREFETCHING>, tilingStrategy = [1, 1, 4, 1]} -> tensor<1x4x160x160xf16, {order = #NHWC}> {
+    //CHECK: [[MUL:%.+]] = VPU.Multiply([[ARG_2]], [[ARG_3]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>} : tensor<1x4x160x160xf16, {order = #NHWC}>, tensor<1x4x160x160xf16, {order = #NHWC}> -> tensor<1x4x160x160xf16, {order = #NHWC}>
     //CHECK: [[SOFTMAX:%.+]] = VPU.SoftMax([[MUL]]) {axisInd = 1 : i64, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>} : tensor<1x4x160x160xf16, {order = #NHWC}> -> tensor<1x4x160x160xf16, {order = #NHWC}>
     //CHECK:  VPU.Yield [[SOFTMAX]]
 
@@ -561,9 +577,9 @@ func.func @BuildSubgraphEltwiseQuantizeCastVF(%arg0: tensor<1x32x48x48x!qElemTyp
   }
   return %1 : tensor<1x32x48x48xf16, {order = #NHWC}>
 
-  //CHECK:  VPU.VerticalFusion ([[INPUT]] as %arg1: tensor<1x32x48x48x!qElemType, {order = #NHWC}>)
+  //CHECK:  VPU.VerticalFusion ([[INPUT]] as [[ARG_1:%[^:]+]]: tensor<1x32x48x48x!qElemType, {order = #NHWC}>)
   //CHECK-SAME: attributes {scenario = #VPU.vf_scenario<FULL_PREFETCHING>, tilingStrategy = [1, 1, 2, 1]}
-  //CHECK:  [[ELTWISE_0:%.+]] = VPU.NCE.Eltwise(%arg1, %arg1)
+  //CHECK:  [[ELTWISE_0:%.+]] = VPU.NCE.Eltwise([[ARG_1]], [[ARG_1]])
   //CHECK:  [[QUANTIZE_CAST:%.+]] = VPU.QuantizeCast([[ELTWISE_0]])
   //CHECK:  [[ELTWISE_1:%.+]] = VPU.NCE.Eltwise([[QUANTIZE_CAST]], [[QUANTIZE_CAST]])
   //CHECK:  VPU.Yield [[ELTWISE_1]]
@@ -604,6 +620,8 @@ func.func @BuildSubgraphConvAbsVF(%arg0: tensor<1x16x128x128xf16, {order = #NHWC
 // -----
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+// CHECK-LABEL: @NotBuildNotPipelinedSubgraph
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x128x32x64xf16, {order = #NHWC}>)
 func.func @NotBuildNotPipelinedSubgraph(%arg0: tensor<1x128x32x64xf16, {order = #NHWC}>) -> tensor<1x64x64x128xf16> {
     %cst_0 = const.Declare tensor<1x128x67x131xi1, {order = #NHWC}> = dense<1> : tensor<1x128x67x131xi8>, [#const.Reorder<#NHWC>, #const.CastElemType<i1>]
     %cst_1 = const.Declare tensor<64x128x4x4xf16, {order = #NHWC}> = dense<1.0> : tensor<64x128x4x4xf16>, [#const.Reorder<#NHWC>]
@@ -623,7 +641,7 @@ func.func @NotBuildNotPipelinedSubgraph(%arg0: tensor<1x128x32x64xf16, {order = 
 
     return %1  : tensor<1x64x64x128xf16>
 
-    //CHECK:  [[VF_0:%.+]] = VPU.VerticalFusion (%arg0
+    //CHECK:  [[VF_0:%.+]] = VPU.VerticalFusion ([[ARG_0]]
     //CHECK:  [[VF_1:%.+]] = VPU.VerticalFusion ([[VF_0]]
 
     //CHECK: return [[VF_1]]  : tensor<1x64x64x128xf16>
@@ -632,6 +650,9 @@ func.func @NotBuildNotPipelinedSubgraph(%arg0: tensor<1x128x32x64xf16, {order = 
 // -----
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @NotBuildSOKDuplicatedSubgraph
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x32x1x5375xf16, {order = #NHWC}>)
 func.func @NotBuildSOKDuplicatedSubgraph(%arg0: tensor<1x32x1x5375xf16, {order = #NHWC}>) -> tensor<1x384x1x5375xf16> {
     %cst_0 = const.Declare tensor<384x1x1x128xi1> = dense<1.0> : tensor<384x32x1x1xf16, {order = #NHWC}>, [#const.GetSparsityMap]
     %cst_1 = const.Declare tensor<384x32x1x1xf16, {order = #NHWC}> = dense<1.0> : tensor<384x32x1x1xf16, {order = #NHWC}>, [#const.Sparsify<false>]
@@ -656,7 +677,7 @@ func.func @NotBuildSOKDuplicatedSubgraph(%arg0: tensor<1x32x1x5375xf16, {order =
 
     return %2  : tensor<1x384x1x5375xf16>
 
-    //CHECK:  [[VF_0:%.+]] = VPU.VerticalFusion (%arg0
+    //CHECK:  [[VF_0:%.+]] = VPU.VerticalFusion ([[ARG_0]]
     //CHECK:  [[VF_1:%.+]] = VPU.VerticalFusion ([[VF_0]]
     //CHECK:  [[VF_2:%.+]] = VPU.VerticalFusion ([[VF_1]]
 
@@ -834,7 +855,7 @@ func.func @BuildSubgraphMemPermuteClustered(%arg0: tensor<1x16x256x256xf16, {ord
     return %1 : tensor<1x32x256x256xf16, {order = #NHWC}>
     // CHECK:      [[CST_0:%.+]] = const.Declare tensor<32x16x1x1xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x16x1x1xf16, {order = #NHWC}>
     // CHECK:      [[VERTICAL_FUSION:%.+]] = VPU.VerticalFusion
-    // CHECK:          [[INPUT]] as %arg1
+    // CHECK:          [[INPUT]] as {{%[^:]+}}
     // CHECK:          [[CST_0]] as [[CONV_WEIGHTS:%[^:]+]]
     // CHECK:      [[PERMUTE:%.+]] = VPU.MemPermute
     // CHECK:      [[CONV:%.+]] = VPU.NCE.Convolution([[PERMUTE]], [[CONV_WEIGHTS]])

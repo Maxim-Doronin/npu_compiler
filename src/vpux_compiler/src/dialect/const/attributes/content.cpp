@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -318,7 +318,16 @@ void SplatnessCache::cacheRawDataAndSplatness(mlir::DenseResourceElementsAttr de
     auto blob = denseResource.getRawHandle().getBlob();
     if (blob != nullptr) {
         std::lock_guard<std::recursive_mutex> lock(_cacheMutex);
-        _cache[key] = detectSplatManually(denseResource.getShapedType(), blob->getData());
+        auto& entry = _cache[key];
+
+        // Note: In an unlikely but possible event, the same dense_resource<>
+        // can already be cached (OV model is compressed). In this case, there
+        // is no need to run the possibly expensive calculation again.
+        if (bool alreadyCached = (entry.first.data() != nullptr); alreadyCached) {
+            return;
+        }
+
+        entry = detectSplatManually(denseResource.getShapedType(), blob->getData());
     }
 }
 
@@ -352,13 +361,14 @@ Const::Content wrapBaseContent(mlir::ElementsAttr baseContent) {
 }  // namespace
 
 mlir::DenseResourceElementsAttr Const::createExternalConstContent(mlir::ShapedType type, ArrayRef<char> rawData,
-                                                                  StringRef resourcePrefix, bool deepCopyConstData) {
-    constexpr size_t defaultAlignment =
-            alignof(std::max_align_t);  // seemingly used nowhere except deleter - use C++ default
-    constexpr bool isMutable = false;
+                                                                  StringRef resourceName,
+                                                                  ExternalConstContentCreationOptions options) {
+    auto createNewBlob = [&]() -> mlir::AsmResourceBlob {
+        constexpr size_t defaultAlignment =
+                alignof(std::max_align_t);  // seemingly used nowhere except deleter - use C++ default
+        constexpr bool isMutable = false;
 
-    auto blob = [&]() -> mlir::AsmResourceBlob {
-        if (deepCopyConstData) {
+        if (options.deepCopyConstData) {
             // copy and manage the memory internally (debug)
             auto ownedData = std::make_unique<char[]>(rawData.size());
             std::memcpy(ownedData.get(), rawData.data(), rawData.size());
@@ -373,13 +383,26 @@ mlir::DenseResourceElementsAttr Const::createExternalConstContent(mlir::ShapedTy
             constexpr auto noopDeleter = [](void*, size_t, size_t) {};
             return mlir::AsmResourceBlob(rawData, defaultAlignment, noopDeleter, isMutable);
         }
+    };
+
+    auto blobHandle = [&]() -> mlir::DenseResourceElementsHandle {
+        auto& builtinDialectManager = mlir::DenseResourceElementsHandle::getManagerInterface(type.getContext());
+        // assumption (as per MLIR documented behavior): inserting a new blob
+        // with the same key would internally cause the key to change, so that
+        // there are no collisions - thus, the blob is never overwritten here
+        if (!options.allowDuplicatesForTheSameResourceName) {
+            return builtinDialectManager.insert(resourceName, createNewBlob());
+        }
+
+        if (auto existingBlob = builtinDialectManager.getBlobManager().lookup(resourceName)) {
+            return mlir::DenseResourceElementsHandle(
+                    existingBlob,
+                    mlir::cast<mlir::DenseResourceElementsHandle::Dialect>(builtinDialectManager.getDialect()));
+        }
+        return builtinDialectManager.insert(resourceName, createNewBlob());
     }();
 
-    auto& builtinDialectManager = mlir::DenseResourceElementsHandle::getManagerInterface(type.getContext());
-    // assumption (as per MLIR documented behavior): inserting a new blob with the same key would internally cause
-    // the key to change, so that there are no collisions - thus, the blob is never overwritten here
-    auto res =
-            mlir::DenseResourceElementsAttr::get(type, builtinDialectManager.insert(resourcePrefix, std::move(blob)));
+    auto res = mlir::DenseResourceElementsAttr::get(type, blobHandle);
     ::getCache<SplatnessCache>(type.getContext()).cacheRawDataAndSplatness(res);
     return res;
 }

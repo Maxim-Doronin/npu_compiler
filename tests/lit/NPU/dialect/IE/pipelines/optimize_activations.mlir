@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,6 +7,7 @@
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
 // CHECK-LABEL: @OptimizeActivationsConvMaxPoolRelu
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<1x16x5x5xf16>
 func.func @OptimizeActivationsConvMaxPoolRelu(%arg0: tensor<1x16x5x5xf16>) -> tensor<1x16x3x3xf16> {
     %filters = const.Declare tensor<16x16x2x2xf16> = dense<1.0> : tensor<16x16x2x2xf16>
     %conv = IE.Convolution(%arg0, %filters)
@@ -34,7 +35,7 @@ func.func @OptimizeActivationsConvMaxPoolRelu(%arg0: tensor<1x16x5x5xf16>) -> te
     return %relu : tensor<1x16x3x3xf16>
 
     // CHECK:       [[CST:%.+]] = const.Declare
-    // CHECK:       [[CONV:%.+]] = IE.Convolution(%arg0, [[CST]])
+    // CHECK:       [[CONV:%.+]] = IE.Convolution([[ARG_0]], [[CST]])
     // CHECK-SAME:  post_op = #IE.Relu<>
     // CHECK:       [[MAX_POOL:%.+]] = IE.MaxPool([[CONV]])
     // CHECK:       return [[MAX_POOL]]
@@ -44,6 +45,8 @@ func.func @OptimizeActivationsConvMaxPoolRelu(%arg0: tensor<1x16x5x5xf16>) -> te
 // -----
 
 // CHECK-LABEL: @OptimizeActivationsConv
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<4x512x1x1xf16>
+// CHECK-SAME: [[ARG_1:%[^:]+]]: tensor<4x2048x2x1xf16>
 func.func @OptimizeActivationsConv(%arg0: tensor<4x512x1x1xf16>, %arg1: tensor<4x2048x2x1xf16>) -> tensor<4x2048x3x1xf16> {
    %cst = const.Declare tensor<2048x512x1x1xf16> = dense<1.000000e+00> : tensor<2048x512xf16>, [#const.Reshape<[2048, 512, 1, 1]>]
    %0 = IE.Convolution(%arg0, %cst) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<4x512x1x1xf16>, tensor<2048x512x1x1xf16> -> tensor<4x2048x1x1xf16>
@@ -54,7 +57,7 @@ func.func @OptimizeActivationsConv(%arg0: tensor<4x512x1x1xf16>, %arg1: tensor<4
     return %2 : tensor<4x2048x3x1xf16>
 
     // CHECK:       [[CST:%.+]] = const.Declare tensor<2048x512x1x1xf16> = dense<1.000000e+00> : tensor<2048x512xf16>, [#const.Reshape<[2048, 512, 1, 1]>]
-    // CHECK:       [[CONV:%.+]] = IE.Convolution(%arg0, [[CST]]) {
+    // CHECK:       [[CONV:%.+]] = IE.Convolution([[ARG_0]], [[CST]]) {
     // CHECK-SAME:   clamp = {max = 0.69999999999999996 : f64, min = 0.000000e+00 : f64},
     // CHECK-SAME:   dilations = [1, 1],
     // CHECK-SAME:   pads_begin = [0, 0],
@@ -62,7 +65,7 @@ func.func @OptimizeActivationsConv(%arg0: tensor<4x512x1x1xf16>, %arg1: tensor<4
     // CHECK-SAME:   strides = [1, 1]
     // CHECK-SAME:   } : tensor<4x512x1x1xf16>, tensor<2048x512x1x1xf16> -> tensor<4x2048x1x1xf16>
     // CHECK-NOT:   IE.Clamp
-    // CHECK:       [[AVG_POOL:%.+]] =  IE.AvgPool(%arg1) {
+    // CHECK:       [[AVG_POOL:%.+]] =  IE.AvgPool([[ARG_1]]) {
     // CHECK-SAME:   clamp = {max = 0.69999999999999996 : f64, min = 0.000000e+00 : f64},
     // CHECK-SAME:   exclude_pads,
     // CHECK-SAME:   kernel_size = [1, 1],
@@ -80,6 +83,9 @@ func.func @OptimizeActivationsConv(%arg0: tensor<4x512x1x1xf16>, %arg1: tensor<4
 // -----
 
 // CHECK-LABEL: @OptimizeActivationsAddWithMultipleUsers
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<1x32x4x4xf16>
+// CHECK-SAME: [[ARG_1:%[^:]+]]: tensor<1x128x4x4xf16>
+// CHECK-SAME: [[ARG_2:%[^:]+]]: tensor<1x128x4x4xf16>
 func.func @OptimizeActivationsAddWithMultipleUsers(%arg0: tensor<1x32x4x4xf16>, %arg1: tensor<1x128x4x4xf16>, %arg2: tensor<1x128x4x4xf16>) -> (tensor<1x128x8x2xf16>, tensor<1x128x4x4xf16>) {
     %cst = const.Declare tensor<128x32x1x1xf16> = dense<1.000000e+00> : tensor<128x32xf16>, [#const.Reshape<[128, 32, 1, 1]>]
     %conv = IE.Convolution(%arg0, %cst) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x32x4x4xf16>, tensor<128x32x1x1xf16> -> tensor<1x128x4x4xf16>
@@ -91,12 +97,12 @@ func.func @OptimizeActivationsAddWithMultipleUsers(%arg0: tensor<1x32x4x4xf16>, 
     return %relu, %add1 : tensor<1x128x8x2xf16>, tensor<1x128x4x4xf16>
 
     // CHECK:    [[CST:%.+]] = const.Declare tensor<128x32x1x1xf16> = dense<1.000000e+00> : tensor<128x32xf16>, [#const.Reshape<[128, 32, 1, 1]>]
-    // CHECK:    [[CONV:%.+]] = IE.Convolution(%arg0, [[CST]]) {
+    // CHECK:    [[CONV:%.+]] = IE.Convolution([[ARG_0]], [[CST]]) {
     // CHECK-SAME: dilations = [1, 1],
     // CHECK-SAME: pads_begin = [0, 0],
     // CHECK-SAME: pads_end = [0, 0], strides = [1, 1]
     // CHECK-SAME: } : tensor<1x32x4x4xf16>, tensor<128x32x1x1xf16> -> tensor<1x128x4x4xf16>
-    // CHECK:    [[ADD0:%.+]] = IE.Add([[CONV]], %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x4x4xf16>, tensor<1x128x4x4xf16> -> tensor<1x128x4x4xf16>
+    // CHECK:    [[ADD0:%.+]] = IE.Add([[CONV]], [[ARG_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x4x4xf16>, tensor<1x128x4x4xf16> -> tensor<1x128x4x4xf16>
     // CHECK:    [[AVGPOOL:%.+]] = IE.AvgPool([[ADD0]]) {
     // CHECK-SAME: exclude_pads,
     // CHECK-SAME: kernel_size = [1, 1],
@@ -107,7 +113,7 @@ func.func @OptimizeActivationsAddWithMultipleUsers(%arg0: tensor<1x32x4x4xf16>, 
     // CHECK-SAME: strides = [1, 1]
     // CHECK-SAME: } : tensor<1x128x4x4xf16> -> tensor<1x128x4x4xf16>
     // CHECK:    [[RESHAPE:%.+]] = IE.Reshape([[AVGPOOL]]) {shape_value = [1, 128, 8, 2]} : tensor<1x128x4x4xf16> -> tensor<1x128x8x2xf16>
-    // CHECK:    [[ADD1:%.+]] = IE.Add([[ADD0]], %arg2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x4x4xf16>, tensor<1x128x4x4xf16> -> tensor<1x128x4x4xf16>
+    // CHECK:    [[ADD1:%.+]] = IE.Add([[ADD0]], [[ARG_2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x4x4xf16>, tensor<1x128x4x4xf16> -> tensor<1x128x4x4xf16>
 
     // CHECK:    return [[RESHAPE]], [[ADD1]] : tensor<1x128x8x2xf16>, tensor<1x128x4x4xf16>
 }
@@ -115,6 +121,8 @@ func.func @OptimizeActivationsAddWithMultipleUsers(%arg0: tensor<1x32x4x4xf16>, 
 // -----
 
 // CHECK-LABEL: @OptimizeActivationsGroupConv
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<2x512x32x48xf16>
+// CHECK-SAME: [[ARG_1:%[^:]+]]: tensor<2x512x32x48xf16>
 func.func @OptimizeActivationsGroupConv(%arg0: tensor<2x512x32x48xf16>,
                                         %arg1: tensor<2x512x32x48xf16>)
         -> tensor<2x512x64x48xf16> {
@@ -136,7 +144,7 @@ func.func @OptimizeActivationsGroupConv(%arg0: tensor<2x512x32x48xf16>,
     return %2 : tensor<2x512x64x48xf16>
 
     // CHECK:   [[CST:%.+]] = const.Declare tensor<512x1x3x3xf16> = dense<1.000000e+00>
-    // CHECK:   [[DWCONV:%.+]] = IE.GroupConvolution(%arg0, [[CST]]) {
+    // CHECK:   [[DWCONV:%.+]] = IE.GroupConvolution([[ARG_0]], [[CST]]) {
     // CHECK-SAME:      dilations = [1, 1],
     // CHECK-SAME:      groups = 512 : i64,
     // CHECK-SAME:      pads_begin = [1, 1],
@@ -146,7 +154,7 @@ func.func @OptimizeActivationsGroupConv(%arg0: tensor<2x512x32x48xf16>,
     // CHECK-SAME:  } : tensor<2x512x32x48xf16>, tensor<512x1x3x3xf16> -> tensor<2x512x32x48xf16>
 
     // CHECK-NOT:   IE.ReLU
-    // CHECK:   [[AVG_POOL:%.+]] =  IE.AvgPool(%arg1) {
+    // CHECK:   [[AVG_POOL:%.+]] =  IE.AvgPool([[ARG_1]]) {
     // CHECK-SAME:      exclude_pads,
     // CHECK-SAME:      kernel_size = [1, 1],
     // CHECK-SAME:      pads_begin = [0, 0],

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -121,8 +121,8 @@ def IE_LessEqualOp :
     let summary = "InferenceEngine LessEqual layer";
 
     let arguments = (ins
-        RankedTensorOf<[F16, F32, F64, SI32, SI64]>:$input1,
-        RankedTensorOf<[F16, F32, F64, SI32, SI64]>:$input2,
+        RankedTensorOf<[F16, F32, F64, SI32, SI64, Bool8]>:$input1,
+        RankedTensorOf<[F16, F32, F64, SI32, SI64, Bool8]>:$input2,
 
         IE_AutoBroadcastTypeAttr:$auto_broadcast
     );

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -574,16 +574,18 @@ func.func @EltwiseAddToDistributedOpSOH(%arg0: tensor<1x32x112x112xf16, {order =
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @EltwiseAddToDistributedOpClustering
+// CHECK-SAME:  ([[ARG_0:%[^:]+]]: tensor<1x32x14x14xf16, {order = #NHWC}>,
+// CHECK-SAME:  [[ARG_1:%[^:]+]]: tensor<1x32x14x14xf16, {order = #NHWC}>)
 func.func @EltwiseAddToDistributedOpClustering(%arg0: tensor<1x32x14x14xf16, {order = #NHWC}>, %arg1: tensor<1x32x14x14xf16, {order = #NHWC}>) -> tensor<1x32x14x14xf16, {order = #NHWC}> {
     %0 = VPU.NCE.Eltwise(%arg0, %arg1) { multiClusterStrategy = #VPU.multi_cluster_strategy<Clustering>, ppe = #VPU.PPEStub<>, op_type = #VPU.eltwise_type<ADD> } :
          tensor<1x32x14x14xf16, {order = #NHWC}>, tensor<1x32x14x14xf16, {order = #NHWC}>
          -> tensor<1x32x14x14xf16, {order = #NHWC}>
     return %0: tensor<1x32x14x14xf16, {order = #NHWC}>
 
-    //CHECK:        [[INPUT0_CMX:%.+]] = VPU.Copy
+    //CHECK:        [[INPUT0_CMX:%.+]] = VPU.Copy([[ARG_0]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x32x14x14xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
 
-    //CHECK:        [[INPUT1_CMX:%.+]] = VPU.Copy(%arg1
+    //CHECK:        [[INPUT1_CMX:%.+]] = VPU.Copy([[ARG_1]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x32x14x14xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
 
     //CHECK:        [[OUT_CMX:%.+]] = VPU.NCE.Eltwise([[INPUT0_CMX]], [[INPUT1_CMX]])
@@ -678,6 +680,8 @@ func.func @AvgPoolToDistributedOpSOB(%input: tensor<2x32x112x112xf16, {order = #
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @SparseConvToDistributedOpSOH
+// CHECK-SAME:  ([[ARG_0:%[^:]+]]: tensor<1x64x28x28xf16, {order = #NHWC}>,
+// CHECK-SAME:  [[ARG_1:%[^:]+]]: tensor<1x64x28x28xi1, {order = #NHWC}>)
 func.func @SparseConvToDistributedOpSOH(%arg0 : tensor<1x64x28x28xf16, {order = #NHWC}>, %arg1 : tensor<1x64x28x28xi1, {order = #NHWC}>)
         -> !VPU.SparseTensor<data=tensor<1x80x28x28xf16, {order = #NHWC}>,
                              sparsity_map=tensor<1x80x28x28xi1, {order = #NHWC}>> {
@@ -702,13 +706,13 @@ func.func @SparseConvToDistributedOpSOH(%arg0 : tensor<1x64x28x28xf16, {order = 
             strides = [1, 1]
         } : !VPU.SparseTensor<data=tensor<1x64x28x28xf16, {order = #NHWC}>, sparsity_map=tensor<1x64x28x28xi1, {order = #NHWC}>>, !VPU.SparseTensor<data=tensor<80x64x3x3xf16, {order = #NHWC}>, sparsity_map=tensor<80x1x1x640xi1>, is_weights>, tensor<80x1x1x4xsi32> -> !VPU.SparseTensor<data=tensor<1x80x28x28xf16, {order = #NHWC}>,
                                sparsity_map=tensor<1x80x28x28xi1, {order = #NHWC}>> {
-            VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 32, 16, 16] <left = 0 , right = 0, top = 0, bottom = 0> #VPU.mpe_mode<VECTOR_FP16>
+            VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 32, 16, 16] pad [0, 0, 0, 0] #VPU.mpe_mode<VECTOR_FP16>
         }
 
     return %0 : !VPU.SparseTensor<data=tensor<1x80x28x28xf16, {order = #NHWC}>,
                                   sparsity_map=tensor<1x80x28x28xi1, {order = #NHWC}>>
 
-    // CHECK:       [[INPUT_SPARSE:%.+]] = VPU.GroupSparseTensor(%arg0, %arg1)
+    // CHECK:       [[INPUT_SPARSE:%.+]] = VPU.GroupSparseTensor([[ARG_0]], [[ARG_1]])
     // CHECK-SAME:      -> !VPU.SparseTensor<data=tensor<1x64x28x28xf16, {order = #NHWC}>,
     // CHECK-SAME:                           sparsity_map=tensor<1x64x28x28xi1, {order = #NHWC}>>
 
@@ -800,6 +804,8 @@ func.func @OptimizeSOHAlignmentForEltwiseCase1(%arg0: tensor<1x16x22x22xf16, {or
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @OptimizeSOHAlignmentForEltwiseCase2
+// CHECK-SAME:  ([[ARG_0:%[^:]+]]: tensor<1x16x22x22xf16, {order = #NHWC}>,
+// CHECK-SAME:  [[ARG_1:%[^:]+]]: tensor<1x16x22x22xf16, {order = #NHWC}>)
 func.func @OptimizeSOHAlignmentForEltwiseCase2(%arg0: tensor<1x16x22x22xf16, {order = #NHWC}>, %arg1: tensor<1x16x22x22xf16, {order = #NHWC}>) -> tensor<1x16x22x22xf16, {order = #NHWC}> {
     %0 = VPU.NCE.Eltwise(%arg0, %arg1) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>, ppe = #VPU.PPEStub<>, op_type = #VPU.eltwise_type<ADD>} -> tensor<1x16x22x22xf16, {order = #NHWC}>
     %1 = VPU.NCE.Eltwise(%0, %arg1) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>, ppe = #VPU.PPEStub<>, op_type = #VPU.eltwise_type<ADD>} -> tensor<1x16x22x22xf16, {order = #NHWC}>
@@ -808,9 +814,9 @@ func.func @OptimizeSOHAlignmentForEltwiseCase2(%arg0: tensor<1x16x22x22xf16, {or
     %2 = VPU.NCE.Convolution(%1, %cst_0, %cst) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>, ppe = #VPU.PPEStub<>, pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, rawFilterShape = [16, 16, 3, 3], strides = [1, 1]} : tensor<1x16x22x22xf16, {order = #NHWC}>, tensor<16x16x3x3xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x22x22xf16, {order = #NHWC}>
     return %2 : tensor<1x16x22x22xf16, {order = #NHWC}>
 
-    //CHECK:        [[INPUT0_CMX_0:%.+]] = VPU.Copy
+    //CHECK:        [[INPUT0_CMX_0:%.+]] = VPU.Copy([[ARG_0]]
 
-    //CHECK:        [[INPUT1_CMX_0:%.+]] = VPU.Copy(%arg1
+    //CHECK:        [[INPUT1_CMX_0:%.+]] = VPU.Copy([[ARG_1]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x16x22x22xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, alignment = [1, 1, 2, 1]}>
 
     //CHECK:        [[OUT_CMX_0:%.+]] = VPU.NCE.Eltwise([[INPUT0_CMX_0]], [[INPUT1_CMX_0]])
@@ -821,7 +827,7 @@ func.func @OptimizeSOHAlignmentForEltwiseCase2(%arg0: tensor<1x16x22x22xf16, {or
     //CHECK:        [[INPUT0_CMX_1:%.+]] = VPU.Copy([[OUT_0]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x16x22x22xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, alignment = [1, 1, 2, 1]}>
 
-    //CHECK:        [[INPUT1_CMX_1:%.+]] = VPU.Copy(%arg1
+    //CHECK:        [[INPUT1_CMX_1:%.+]] = VPU.Copy([[ARG_1]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x16x22x22xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, alignment = [1, 1, 2, 1]}>
 
     //CHECK:        [[OUT_CMX_1:%.+]] = VPU.NCE.Eltwise([[INPUT0_CMX_1]], [[INPUT1_CMX_1]])
@@ -1717,6 +1723,7 @@ func.func @MultiplySWSetAlignmentPerInputType(%arg0: tensor<1x128x8x8xf16, {orde
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @NCEInterpolateToDistributedOpClustering
+// CHECK-SAME:  ([[ARG_0:%[^:]+]]: tensor<1x16x1x1xf16, {order = #NHWC}>)
 func.func @NCEInterpolateToDistributedOpClustering(%arg0: tensor<1x16x1x1xf16, {order = #NHWC}>) -> tensor<1x16x2x2xf16, {order = #NHWC}> {
     %weights = const.Declare tensor<16x16x1x1xf16, {order = #NHWC}> = dense<1.0> : tensor<16x16x1x1xf16>, [#const.Reorder<#NHWC>]
     %weights_table = const.Declare tensor<16x1x1x4xsi32> = dense<1> : tensor<16x1x1x4xsi32>
@@ -1761,7 +1768,7 @@ func.func @NCEInterpolateToDistributedOpClustering(%arg0: tensor<1x16x1x1xf16, {
     // CHECK-SAME:                                   scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 16, 2, 2]>,
     // CHECK-SAME:       seDepth = 1 : i64, seSize = [16]}
     // CHECK-SAME:       -> tensor<1x1x2x2xi32, {order = #NHWC}>
-    // CHECK:        [[INPUT_SPARSE:%.+]] = VPU.GroupSparseTensor(%arg0, [[INPUT_SM]], [[INPUT_SE]])
+    // CHECK:        [[INPUT_SPARSE:%.+]] = VPU.GroupSparseTensor([[ARG_0]], [[INPUT_SM]], [[INPUT_SE]])
     // CHECK:        [[INPUT_CMX:%.+]] = VPU.Copy([[INPUT_SPARSE]]
     // CHECK-SAME:           -> !VPU.SparseTensor<data=!VPU.DistributedTensor<1x16x1x1xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>,
     // CHECK-SAME:                                sparsity_map=!VPU.DistributedTensor<1x16x2x2xi1, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>,
@@ -1791,6 +1798,7 @@ func.func @NCEInterpolateToDistributedOpClustering(%arg0: tensor<1x16x1x1xf16, {
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @NCEInterpolateToDistributedOpSOH
+// CHECK-SAME:  ([[ARG_0:%[^:]+]]: tensor<1x64x5x10xf16, {order = #NHWC}>)
 func.func @NCEInterpolateToDistributedOpSOH(%arg0: tensor<1x64x5x10xf16, {order = #NHWC}>) -> tensor<1x64x10x20xf16, {order = #NHWC}> {
     %weights = const.Declare tensor<64x64x1x1xf16, {order = #NHWC}> = dense<1.0> : tensor<64x64x1x1xf16>, [#const.Reorder<#NHWC>]
     %weights_table = const.Declare tensor<64x1x1x4xsi32> = dense<1> : tensor<64x1x1x4xsi32>
@@ -1836,7 +1844,7 @@ func.func @NCEInterpolateToDistributedOpSOH(%arg0: tensor<1x64x5x10xf16, {order 
     // CHECK-SAME:       seDepth = 1 : i64, seSize = [64]}
     // CHECK-SAME:       -> tensor<1x1x10x20xi32, {order = #NHWC}>
 
-    // CHECK:        [[INPUT_SPARSE:%.+]] = VPU.GroupSparseTensor(%arg0, [[INPUT_SM]], [[INPUT_SE]])
+    // CHECK:        [[INPUT_SPARSE:%.+]] = VPU.GroupSparseTensor([[ARG_0]], [[INPUT_SM]], [[INPUT_SE]])
     // CHECK:        [[INPUT_CMX:%.+]] = VPU.Copy([[INPUT_SPARSE]]
     // CHECK-SAME:           -> !VPU.SparseTensor<data=!VPU.DistributedTensor<1x64x5x10xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>,
     // CHECK-SAME:                                sparsity_map=!VPU.DistributedTensor<1x64x10x20xi1, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, alignment = [1, 1, 2, 1]}>,
@@ -1866,6 +1874,7 @@ func.func @NCEInterpolateToDistributedOpSOH(%arg0: tensor<1x64x5x10xf16, {order 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @NCEInterpolateToDistributedOpSOK
+// CHECK-SAME:  ([[ARG_0:%[^:]+]]: tensor<1x64x5x10xf16, {order = #NHWC}>)
 func.func @NCEInterpolateToDistributedOpSOK(%arg0: tensor<1x64x5x10xf16, {order = #NHWC}>) -> tensor<1x64x10x20xf16, {order = #NHWC}> {
     %weights = const.Declare tensor<64x64x1x1xf16, {order = #NHWC}> = dense<1.0> : tensor<64x64x1x1xf16>, [#const.Reorder<#NHWC>]
     %weights_table = const.Declare tensor<64x1x1x4xsi32> = dense<1> : tensor<64x1x1x4xsi32>
@@ -1910,7 +1919,7 @@ func.func @NCEInterpolateToDistributedOpSOK(%arg0: tensor<1x64x5x10xf16, {order 
     // CHECK-SAME:                                   scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 64, 10, 20]>,
     // CHECK-SAME:       seDepth = 1 : i64, seSize = [64]}
     // CHECK-SAME:       -> tensor<1x1x10x20xi32, {order = #NHWC}>
-    // CHECK:        [[INPUT_SPARSE:%.+]] = VPU.GroupSparseTensor(%arg0, [[INPUT_SM]], [[INPUT_SE]])
+    // CHECK:        [[INPUT_SPARSE:%.+]] = VPU.GroupSparseTensor([[ARG_0]], [[INPUT_SM]], [[INPUT_SE]])
     // CHECK:        [[INPUT_CMX:%.+]] = VPU.Copy([[INPUT_SPARSE]]
     // CHECK-SAME:           -> !VPU.SparseTensor<data=!VPU.DistributedTensor<1x64x5x10xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>,
     // CHECK-SAME:                                sparsity_map=!VPU.DistributedTensor<1x64x10x20xi1, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>,
@@ -1940,6 +1949,7 @@ func.func @NCEInterpolateToDistributedOpSOK(%arg0: tensor<1x64x5x10xf16, {order 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @EltwiseAddToDistributedOpSOHDuplicatedIn
+// CHECK-SAME:  ([[ARG_0:%[^:]+]]: tensor<1x3x52x104xf16, {order = #NHWC}>)
 func.func @EltwiseAddToDistributedOpSOHDuplicatedIn(%arg0: tensor<1x3x52x104xf16, {order = #NHWC}>) -> tensor<1x16x39x26xf16, {order = #NHWC}> {
     %0 = VPU.ShapeCast {shape = [1, 16, 39, 26]} inputs(%arg0 : tensor<1x3x52x104xf16, {order = #NHWC}>) -> tensor<1x16x39x26xf16, {order = #NHWC}>
     %1 = VPU.NCE.Eltwise(%0, %0) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>, ppe = #VPU.PPEStub<>, op_type = #VPU.eltwise_type<ADD> } -> tensor<1x16x39x26xf16, {order = #NHWC}>
@@ -1947,7 +1957,7 @@ func.func @EltwiseAddToDistributedOpSOHDuplicatedIn(%arg0: tensor<1x3x52x104xf16
 
     return %1: tensor<1x16x39x26xf16, {order = #NHWC}>
 
-    //CHECK:        [[INPUT_SHAPE_CAST:%.+]] = VPU.ShapeCast {shape = [1, 16, 39, 26]} inputs(%arg0 : tensor<1x3x52x104xf16, {order = #NHWC}>) -> tensor<1x16x39x26xf16, {order = #NHWC}>
+    //CHECK:        [[INPUT_SHAPE_CAST:%.+]] = VPU.ShapeCast {shape = [1, 16, 39, 26]} inputs([[ARG_0]] : tensor<1x3x52x104xf16, {order = #NHWC}>) -> tensor<1x16x39x26xf16, {order = #NHWC}>
     //CHECK:        [[INPUT0_CMX:%.+]] = VPU.Copy([[INPUT_SHAPE_CAST]]
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x16x39x26xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
 
@@ -2032,7 +2042,7 @@ func.func @TopKSWTilingSOK(%arg0: tensor<1x103x513x31xf16, {order = #NHWC}>) -> 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @SliceConvConcatGeluSOK
-
+// CHECK-SAME:  ([[ARG_0:%[^:]+]]: tensor<1x80x1x3008xf16, {order = #NHWC}>)
 func.func @SliceConvConcatGeluSOK(%arg0: tensor<1x80x1x3008xf16, {order = #NHWC}>) -> tensor<1x512x1x3000xf16, {order = #NHWC}> {
     %weights_0 = const.Declare tensor<256x80x1x3xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<256x80x1x3xf16>, [#const.Reorder<#NHWC>]
     %weights_table_0 = const.Declare tensor<256x1x1x4xsi32> = dense<10> : tensor<256x1x1x4xsi32>
@@ -2059,7 +2069,7 @@ func.func @SliceConvConcatGeluSOK(%arg0: tensor<1x80x1x3008xf16, {order = #NHWC}
     // CHECK-DAG:   [[WEIGHTS_1:%.+]] = const.Declare tensor<256x80x1x3xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<256x80x1x3xf16>, [#const.Reorder<#NHWC>]
     // CHECK-DAG:   [[WEIGHTSTABLE_1:%.+]] = const.Declare tensor<256x1x1x4xsi32> = dense<10> : tensor<256x1x1x4xsi32>
 
-    // CHECK: [[CONV_INPUT:%.+]] = VPU.Slice %arg0 [0, 0, 0, 0] [1, 80, 1, 3000] : tensor<1x80x1x3008xf16, {order = #NHWC}> to tensor<1x80x1x3000xf16, {order = #NHWC}>
+    // CHECK: [[CONV_INPUT:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 0, 0] [1, 80, 1, 3000] : tensor<1x80x1x3008xf16, {order = #NHWC}> to tensor<1x80x1x3000xf16, {order = #NHWC}>
     // CHECK: [[CONV0_INPUT_CMX:%.+]] = VPU.Copy([[CONV_INPUT]]
     // CHECK-SAME: -> !VPU.DistributedTensor<1x80x1x3000xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
 
@@ -2347,6 +2357,8 @@ func.func @DivideSWSOHTileNotAtBroadcastAxis(%arg0: tensor<1x32x44x44xf16>,
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
 // CHECK-LABEL: @DivideSWSOHTileAtBroadcastAxis
+// CHECK-SAME:  ([[ARG_0:%[^:]+]]: tensor<1x32x44x44xf16>,
+// CHECK-SAME:  [[ARG_1:%[^:]+]]: tensor<1x1x1x44xf16>)
 func.func @DivideSWSOHTileAtBroadcastAxis(%arg0: tensor<1x32x44x44xf16>,
                 %arg1: tensor<1x1x1x44xf16>) -> tensor<1x32x44x44xf16> {
     %0 = VPU.Divide(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>} :
@@ -2355,10 +2367,10 @@ func.func @DivideSWSOHTileAtBroadcastAxis(%arg0: tensor<1x32x44x44xf16>,
 
     return %0 : tensor<1x32x44x44xf16>
 
-    //CHECK:        [[INPUT0:%.+]] = VPU.Copy(%arg0
+    //CHECK:        [[INPUT0:%.+]] = VPU.Copy([[ARG_0]]
     //CHECK-SAME:                       -> !VPU.DistributedTensor<1x32x44x44xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
 
-    //CHECK:        [[INPUT1:%.+]] = VPU.Copy(%arg1
+    //CHECK:        [[INPUT1:%.+]] = VPU.Copy([[ARG_1]]
     //CHECK-SAME:                       -> !VPU.DistributedTensor<1x1x1x44xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
 
     //CHECK:        [[DIVIDE:%.+]] = VPU.Divide([[INPUT0]], [[INPUT1]])

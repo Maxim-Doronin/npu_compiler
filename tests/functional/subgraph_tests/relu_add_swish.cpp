@@ -36,5 +36,9 @@ TEST_F(ReluAddSwishTest, NPU5010_HW_TestKindSubgraph) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
+TEST_F(ReluAddSwishTest, NPU5020_HW_TestKindSubgraph) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
+}
 
 }  // namespace ov::test::subgraph

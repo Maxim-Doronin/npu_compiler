@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,6 +7,7 @@
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
 // CHECK-LABEL: @UnrollHighValues
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x2x16x32xf16>)
 func.func @UnrollHighValues(%arg0: tensor<1x2x16x32xf16>) -> tensor<1x2x16x32xf16> {
     %IN_LOW = const.Declare tensor<1x1x1x1xf16> = dense<-1.280000e+02> : tensor<1x1x1x1xf16>
     // CHECK-DAG:   [[IN_LOW:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<-1.280000e+02>
@@ -19,8 +20,8 @@ func.func @UnrollHighValues(%arg0: tensor<1x2x16x32xf16>) -> tensor<1x2x16x32xf1
     // CHECK-DAG:   [[OUT_HIGH_0:%.+]] = const.Declare tensor<1x1x1x32xf16> = dense<6.400000e+01> : tensor<1x2x1x32xf16>, [#const.SubView<[0, 0, 0, 0], [1, 1, 1, 32]>]
     // CHECK-DAG:   [[OUT_HIGH_1:%.+]] = const.Declare tensor<1x1x1x32xf16> = dense<6.400000e+01> : tensor<1x2x1x32xf16>, [#const.SubView<[0, 1, 0, 0], [1, 1, 1, 32]>]
 
-    // CHECK:   [[DATA_0:%.+]] = IE.Slice %arg0 [0, 0, 0, 0] [1, 1, 16, 32]
-    // CHECK:   [[DATA_1:%.+]] = IE.Slice %arg0 [0, 1, 0, 0] [1, 1, 16, 32]
+    // CHECK:   [[DATA_0:%.+]] = IE.Slice [[ARG_0]] [0, 0, 0, 0] [1, 1, 16, 32]
+    // CHECK:   [[DATA_1:%.+]] = IE.Slice [[ARG_0]] [0, 1, 0, 0] [1, 1, 16, 32]
     %0 = IE.FakeQuantize(%arg0, %IN_LOW, %IN_HIGH, %OUT_LOW, %OUT_HIGH) {
         auto_broadcast = #IE.auto_broadcast_type<NUMPY>,
         levels = 256 : i64
@@ -51,6 +52,7 @@ func.func @UnrollHighValues(%arg0: tensor<1x2x16x32xf16>) -> tensor<1x2x16x32xf1
 // -----
 
 // CHECK-LABEL: @UnrollAllValues
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x2x16x32xf16>)
 func.func @UnrollAllValues(%arg0: tensor<1x2x16x32xf16>) -> tensor<1x2x16x32xf16> {
     %IN_LOW = const.Declare tensor<1x2x1x32xf16> = dense<-1.280000e+02> : tensor<1x2x1x32xf16>
     // CHECK-DAG:   [[IN_LOW_0:%.+]] = const.Declare tensor<1x1x1x32xf16> = dense<-1.280000e+02> : tensor<1x2x1x32xf16>, [#const.SubView<[0, 0, 0, 0], [1, 1, 1, 32]>]
@@ -65,8 +67,8 @@ func.func @UnrollAllValues(%arg0: tensor<1x2x16x32xf16>) -> tensor<1x2x16x32xf16
     // CHECK-DAG:   [[OUT_HIGH_0:%.+]] = const.Declare tensor<1x1x1x32xf16> = dense<6.400000e+01> : tensor<1x2x1x32xf16>, [#const.SubView<[0, 0, 0, 0], [1, 1, 1, 32]>]
     // CHECK-DAG:   [[OUT_HIGH_1:%.+]] = const.Declare tensor<1x1x1x32xf16> = dense<6.400000e+01> : tensor<1x2x1x32xf16>, [#const.SubView<[0, 1, 0, 0], [1, 1, 1, 32]>]
 
-    // CHECK:   [[DATA_0:%.+]] = IE.Slice %arg0 [0, 0, 0, 0] [1, 1, 16, 32]
-    // CHECK:   [[DATA_1:%.+]] = IE.Slice %arg0 [0, 1, 0, 0] [1, 1, 16, 32]
+    // CHECK:   [[DATA_0:%.+]] = IE.Slice [[ARG_0]] [0, 0, 0, 0] [1, 1, 16, 32]
+    // CHECK:   [[DATA_1:%.+]] = IE.Slice [[ARG_0]] [0, 1, 0, 0] [1, 1, 16, 32]
     %0 = IE.FakeQuantize(%arg0, %IN_LOW, %IN_HIGH, %OUT_LOW, %OUT_HIGH) {
         auto_broadcast = #IE.auto_broadcast_type<NUMPY>,
         levels = 256 : i64
@@ -97,6 +99,7 @@ func.func @UnrollAllValues(%arg0: tensor<1x2x16x32xf16>) -> tensor<1x2x16x32xf16
 // -----
 
 // CHECK-LABEL: @UnrollLow1x2x1x1
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x2x16x32xf16>)
 func.func @UnrollLow1x2x1x1(%arg0: tensor<1x2x16x32xf16>) -> tensor<1x2x16x32xf16> {
     %IN_LOW = const.Declare tensor<1x2x1x1xf16> = dense<-1.280000e+02> : tensor<1x2x1x1xf16>
     // CHECK-DAG:   [[IN_LOW_0:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<-1.280000e+02> : tensor<1x2x1x1xf16>, [#const.SubView<[0, 0, 0, 0], [1, 1, 1, 1]>]
@@ -111,8 +114,8 @@ func.func @UnrollLow1x2x1x1(%arg0: tensor<1x2x16x32xf16>) -> tensor<1x2x16x32xf1
     // CHECK-DAG:   [[OUT_HIGH_0:%.+]] = const.Declare tensor<1x1x1x32xf16> = dense<6.400000e+01> : tensor<1x2x1x32xf16>, [#const.SubView<[0, 0, 0, 0], [1, 1, 1, 32]>]
     // CHECK-DAG:   [[OUT_HIGH_1:%.+]] = const.Declare tensor<1x1x1x32xf16> = dense<6.400000e+01> : tensor<1x2x1x32xf16>, [#const.SubView<[0, 1, 0, 0], [1, 1, 1, 32]>]
 
-    // CHECK:   [[DATA_0:%.+]] = IE.Slice %arg0 [0, 0, 0, 0] [1, 1, 16, 32]
-    // CHECK:   [[DATA_1:%.+]] = IE.Slice %arg0 [0, 1, 0, 0] [1, 1, 16, 32]
+    // CHECK:   [[DATA_0:%.+]] = IE.Slice [[ARG_0]] [0, 0, 0, 0] [1, 1, 16, 32]
+    // CHECK:   [[DATA_1:%.+]] = IE.Slice [[ARG_0]] [0, 1, 0, 0] [1, 1, 16, 32]
 
     %0 = IE.FakeQuantize(%arg0, %IN_LOW, %IN_HIGH, %OUT_LOW, %OUT_HIGH) {
         auto_broadcast = #IE.auto_broadcast_type<NUMPY>,
@@ -143,6 +146,7 @@ func.func @UnrollLow1x2x1x1(%arg0: tensor<1x2x16x32xf16>) -> tensor<1x2x16x32xf1
 // -----
 
 // CHECK-LABEL: @UnrollThreeAxes
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x2x2x32xf16>)
 func.func @UnrollThreeAxes(%arg0: tensor<1x2x2x32xf16>) -> tensor<1x2x2x32xf16> {
     %IN_LOW = const.Declare tensor<1x2x2x32xf16> = dense<-1.280000e+02> : tensor<1x2x2x32xf16>
     // CHECK-DAG:   [[IN_LOW_0_0:%.+]] = const.Declare tensor<1x1x1x32xf16> = dense<-1.280000e+02> : tensor<1x2x2x32xf16>, [#const.SubView<[0, 0, 0, 0], [1, 1, 1, 32]>]
@@ -176,8 +180,8 @@ func.func @UnrollThreeAxes(%arg0: tensor<1x2x2x32xf16>) -> tensor<1x2x2x32xf16> 
         tensor<1x2x2x32xf16>,
         tensor<1x2x2x32xf16>,
         tensor<1x2x2x32xf16> -> tensor<1x2x2x32xf16>
-    // CHECK:   [[DATA_0:%.+]] = IE.Slice %arg0 [0, 0, 0, 0] [1, 1, 2, 32]
-    // CHECK:   [[DATA_1:%.+]] = IE.Slice %arg0 [0, 1, 0, 0] [1, 1, 2, 32]
+    // CHECK:   [[DATA_0:%.+]] = IE.Slice [[ARG_0]] [0, 0, 0, 0] [1, 1, 2, 32]
+    // CHECK:   [[DATA_1:%.+]] = IE.Slice [[ARG_0]] [0, 1, 0, 0] [1, 1, 2, 32]
 
     // CHECK:   [[DATA_0_0:%.+]] = IE.Slice [[DATA_0]] [0, 0, 0, 0] [1, 1, 1, 32]
     // CHECK:   [[DATA_0_1:%.+]] = IE.Slice [[DATA_0]] [0, 0, 1, 0] [1, 1, 1, 32]
@@ -222,6 +226,7 @@ func.func @UnrollThreeAxes(%arg0: tensor<1x2x2x32xf16>) -> tensor<1x2x2x32xf16> 
 // -----
 
 // CHECK-LABEL: @SkipUnrollWithOneAxis
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x2x16x32xf16>)
 func.func @SkipUnrollWithOneAxis(%arg0: tensor<1x2x16x32xf16>) -> tensor<1x2x16x32xf16> {
     %IN_LOW = const.Declare tensor<1x1x1x32xf16> = dense<-1.280000e+02> : tensor<1x1x1x32xf16>
     // CHECK:  [[IN_LOW:%.+]] = const.Declare tensor<1x1x1x32xf16> = dense<-1.280000e+02>
@@ -240,7 +245,7 @@ func.func @SkipUnrollWithOneAxis(%arg0: tensor<1x2x16x32xf16>) -> tensor<1x2x16x
         tensor<1x1x1x32xf16>,
         tensor<1x1x1x32xf16>,
         tensor<1x1x1x32xf16> -> tensor<1x2x16x32xf16>
-    // CHECK:   [[FQ:%.+]] = IE.FakeQuantize(%arg0, [[IN_LOW]], [[IN_HIGH]], [[OUT_LOW]], [[OUT_HIGH]])
+    // CHECK:   [[FQ:%.+]] = IE.FakeQuantize([[ARG_0]], [[IN_LOW]], [[IN_HIGH]], [[OUT_LOW]], [[OUT_HIGH]])
 
     return %0 : tensor<1x2x16x32xf16>
     // CHECK:   return [[FQ]] : tensor<1x2x16x32xf16>
@@ -249,6 +254,7 @@ func.func @SkipUnrollWithOneAxis(%arg0: tensor<1x2x16x32xf16>) -> tensor<1x2x16x
 // -----
 
 // CHECK-LABEL: @SkipUnrollWithNoAxes
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x2x16x32xf16>)
 func.func @SkipUnrollWithNoAxes(%arg0: tensor<1x2x16x32xf16>) -> tensor<1x2x16x32xf16> {
     %IN_LOW = const.Declare tensor<1x1x1x1xf16> = dense<-1.280000e+02> : tensor<1x1x1x1xf16>
     // CHECK:  [[IN_LOW:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<-1.280000e+02>
@@ -267,7 +273,7 @@ func.func @SkipUnrollWithNoAxes(%arg0: tensor<1x2x16x32xf16>) -> tensor<1x2x16x3
         tensor<1x1x1x1xf16>,
         tensor<1x1x1x1xf16>,
         tensor<1x1x1x1xf16> -> tensor<1x2x16x32xf16>
-    // CHECK:   [[FQ:%.+]] = IE.FakeQuantize(%arg0, [[IN_LOW]], [[IN_HIGH]], [[OUT_LOW]], [[OUT_HIGH]])
+    // CHECK:   [[FQ:%.+]] = IE.FakeQuantize([[ARG_0]], [[IN_LOW]], [[IN_HIGH]], [[OUT_LOW]], [[OUT_HIGH]])
 
     return %0 : tensor<1x2x16x32xf16>
     // CHECK:   return [[FQ]] : tensor<1x2x16x32xf16>

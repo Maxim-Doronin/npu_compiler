@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -18,8 +18,8 @@
 #include <mlir/Transforms/DialectConversion.h>
 
 namespace vpux::IE {
-#define GEN_PASS_DECL_SPLITBILINERINTOHANDW
-#define GEN_PASS_DEF_SPLITBILINERINTOHANDW
+#define GEN_PASS_DECL_SPLITBILINEARINTOHANDW
+#define GEN_PASS_DEF_SPLITBILINEARINTOHANDW
 #include "vpux/compiler/dialect/IE/passes.hpp.inc"
 }  // namespace vpux::IE
 
@@ -28,12 +28,12 @@ using namespace vpux;
 namespace {
 
 //
-// SplitBilinerIntoHAndWPass
+// SplitBilinearIntoHAndWPass
 //
 
-class SplitBilinerIntoHAndWPass final : public IE::impl::SplitBilinerIntoHAndWBase<SplitBilinerIntoHAndWPass> {
+class SplitBilinearIntoHAndWPass final : public IE::impl::SplitBilinearIntoHAndWBase<SplitBilinearIntoHAndWPass> {
 public:
-    explicit SplitBilinerIntoHAndWPass(Logger log) {
+    explicit SplitBilinearIntoHAndWPass(Logger log) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
@@ -45,7 +45,7 @@ private:
 };
 
 // BilinearInterpolateOpConverter
-class SplitBilinerIntoHAndWPass::BilinearInterpolateOpConverter final :
+class SplitBilinearIntoHAndWPass::BilinearInterpolateOpConverter final :
         public mlir::OpRewritePattern<IE::InterpolateOp> {
 public:
     BilinearInterpolateOpConverter(mlir::MLIRContext* ctx, Logger log)
@@ -182,7 +182,7 @@ C2: 12.5    17.5    22.5    27.5        C2  10              C2  30
                         70  72.5    77.5    82.5    87.5    90
 */
 
-mlir::LogicalResult SplitBilinerIntoHAndWPass::BilinearInterpolateOpConverter::matchAndRewrite(
+mlir::LogicalResult SplitBilinearIntoHAndWPass::BilinearInterpolateOpConverter::matchAndRewrite(
         IE::InterpolateOp origOp, mlir::PatternRewriter& rewriter) const {
     const auto logCb = [&](const formatv_object_base& msg) {
         _log.trace("{0}", msg.str());
@@ -323,7 +323,7 @@ mlir::LogicalResult SplitBilinerIntoHAndWPass::BilinearInterpolateOpConverter::m
 // safeRunOnFunc
 //
 
-void SplitBilinerIntoHAndWPass::safeRunOnFunc() {
+void SplitBilinearIntoHAndWPass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
 
@@ -339,9 +339,9 @@ void SplitBilinerIntoHAndWPass::safeRunOnFunc() {
 }  // namespace
 
 //
-// createSplitBilinerIntoHAndWPass
+// createSplitBilinearIntoHAndWPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::IE::createSplitBilinerIntoHAndWPass(Logger log) {
-    return std::make_unique<SplitBilinerIntoHAndWPass>(log);
+std::unique_ptr<mlir::Pass> vpux::IE::createSplitBilinearIntoHAndWPass(Logger log) {
+    return std::make_unique<SplitBilinearIntoHAndWPass>(log);
 }

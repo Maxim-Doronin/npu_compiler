@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -20,8 +20,8 @@
 #include "npu_driver_compiler.h"
 #include "vcl_logger.hpp"
 
+#include "vpux/compiler/icompiler.hpp"
 #include "vpux/utils/IE/config.hpp"
-#include "vpux/utils/IE/icompiler.hpp"
 
 namespace VPUXDriverCompiler {
 

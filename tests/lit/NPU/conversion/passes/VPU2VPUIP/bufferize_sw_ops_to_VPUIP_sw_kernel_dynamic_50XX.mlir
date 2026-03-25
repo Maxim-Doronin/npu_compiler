@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -46,7 +46,7 @@
     memory_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>
 
 
-// CHECK: func.func private @builtin_LSTMSequence(memref<*xf16, @CMX_NN>, memref<*xsi32, @CMX_NN>, memref<*xf16, @CMX_NN>, memref<*xf16, @CMX_NN>, memref<*xf16, @CMX_NN>, memref<*xsi32, @CMX_NN>, memref<*xf16, @CMX_NN>, memref<*xsi32, @CMX_NN>, memref<*xf16, @CMX_NN>, memref<*xf16, @CMX_NN>, i64)
+// CHECK: func.func private @builtin_LSTMSequence(memref<*xf16, @CMX_NN>, memref<*xsi32, @CMX_NN>, memref<*xf16, @CMX_NN>, memref<*xf16, @CMX_NN>, memref<*xf16, @CMX_NN>, memref<*xsi32, @CMX_NN>, memref<*xf16, @CMX_NN>, memref<*xsi32, @CMX_NN>, memref<*xf16, @CMX_NN>, memref<*xf16, @CMX_NN>, none, i64, none)
 // CHECK-SAME: attributes {VPU.kernel_code = "lstm_dpu.cpp", VPU.kernel_entry = "lstm_dpu", VPU.kernel_name = "lstm_dpu", VPU.task_type = @COMPUTE}
 // CHECK-LABEL:  func.func @DynamicLSTMSequence
 module attributes {config.arch = #config.arch_kind<NPU50XX>} {
@@ -81,7 +81,7 @@ func.func @DynamicLSTMSequence(
 
       %outputHiddenValues, %outputHiddenState, %outputCellState = VPU.LSTMSequence(%cmx_input1, %cmx_input2,
         %cmx_input3, %cmx_input4, %cmx_input5)
-            {direction = #IE.rnn_seq_direction<BIDIRECTIONAL>, useDpu = true}
+            {direction = #IE.rnn_seq_direction<BIDIRECTIONAL>, operandSegmentSizes = array<i32: 1, 1, 1, 0, 1, 0, 1>, useDpu = true}
         : !InputDistributed1, !InputDistributed2, !InputDistributed2, !InputDistributed3, !InputDistributed4
         -> !OutputDistributed1, !OutputDistributed2, !OutputDistributed3
 

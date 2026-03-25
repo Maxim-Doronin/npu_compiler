@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -16,7 +16,8 @@ namespace vpux::IE::arch50xx {
 class WeightsDequantizeToFakeQuantizeStrategy final : public IDynamicRewriterStrategy {
 public:
     explicit WeightsDequantizeToFakeQuantizeStrategy(ArrayRef<mlir::PatternBenefit> benefitLevels, size_t index)
-            : _benefitLevels(benefitLevels), _index(index) {};
+            : _benefitLevels(benefitLevels), _index(index) {
+    }
 
     void registerRewriters(RewriterRegistry& registry, Logger& log) const override;
 

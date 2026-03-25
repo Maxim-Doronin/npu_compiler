@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -14,6 +14,7 @@
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 #include "vpux/utils/profiling/common.hpp"
 
 namespace vpux::VPUIP {
@@ -136,9 +137,7 @@ void DMATaskProfilingAfterBarrierSchedPass::safeRunOnModule() {
     const auto isOutOfOrderOptimizationApplicable =
             (arch == config::ArchKind::NPU37XX);  // For 37XX PROFBEGIN and profiled DMA may be proceeded by different
                                                   // channels, which allow such DMAs issued out of order
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp func;
-    net::NetworkInfoOp::getFromModule(module, netInfo, func);
+    auto [netInfo, func] = net::getFromModule(module);
     mlir::OpBuilder builder(&func.getBody().front().front());
 
     auto dmaOp = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN);

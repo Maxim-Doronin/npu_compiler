@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,6 +7,9 @@
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
 // CHECK-LABEL: @DecomposeLSTMCell
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<5x67xf16>
+// CHECK-SAME:      [[ARG_1:%[^:]+]]: tensor<5x64xf16>
+// CHECK-SAME:      [[ARG_2:%[^:]+]]: tensor<5x64xf16>
 func.func @DecomposeLSTMCell(%arg0: tensor<5x67xf16>, %arg1: tensor<5x64xf16>, %arg2: tensor<5x64xf16>, %arg3: tensor<256x67xf16>, %arg4: tensor<256x64xf16>, %arg5: tensor<256xf16>) -> (tensor<5x64xf16>, tensor<5x64xf16>) {
     %cst = const.Declare tensor<256x67xf16> = dense<1.0> : tensor<256x67xf16>
     %cst_0 = const.Declare tensor<256x64xf16> = dense<2.0> : tensor<256x64xf16>
@@ -20,12 +23,12 @@ func.func @DecomposeLSTMCell(%arg0: tensor<5x67xf16>, %arg1: tensor<5x64xf16>, %
     // CHECK:   [[CST_1:%.+]] = const.Declare tensor<256x64xf16> = dense<2.000000e+00> : tensor<256x64xf16>
     // CHECK:   [[CST_2:%.+]] = const.Declare tensor<256xf16> = dense<3.000000e+00> : tensor<256xf16>
 
-    // CHECK:   [[MATMUL_0:%.+]] = IE.MatMul(%arg0, [[CST_0]]) {transpose_b} : tensor<5x67xf16>, tensor<256x67xf16> -> tensor<5x256xf16>
+    // CHECK:   [[MATMUL_0:%.+]] = IE.MatMul([[ARG_0]], [[CST_0]]) {transpose_b} : tensor<5x67xf16>, tensor<256x67xf16> -> tensor<5x256xf16>
     // CHECK:   [[ADD_0:%.+]] = IE.Add([[MATMUL_0]], [[CST_2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<5x256xf16>, tensor<256xf16> -> tensor<5x256xf16>
-    // CHECK:   [[MATMUL_1:%.+]] = IE.MatMul(%arg1, [[CST_1]]) {transpose_b} : tensor<5x64xf16>, tensor<256x64xf16> -> tensor<5x256xf16>
+    // CHECK:   [[MATMUL_1:%.+]] = IE.MatMul([[ARG_1]], [[CST_1]]) {transpose_b} : tensor<5x64xf16>, tensor<256x64xf16> -> tensor<5x256xf16>
     // CHECK:   [[ADD_1:%.+]] = IE.Add([[ADD_0]], [[MATMUL_1]]) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<5x256xf16>, tensor<5x256xf16> -> tensor<5x256xf16>
 
-    // CHECK:   [[LSTMGATES_0:%.+]], [[LSTMGATES_1:%.+]] = IE.LSTMGates([[ADD_1]], %arg2) : tensor<5x256xf16>, tensor<5x64xf16> -> tensor<5x64xf16>, tensor<5x64xf16>
+    // CHECK:   [[LSTMGATES_0:%.+]], [[LSTMGATES_1:%.+]] = IE.LSTMGates([[ADD_1]], [[ARG_2]]) : tensor<5x256xf16>, tensor<5x64xf16> -> tensor<5x64xf16>, tensor<5x64xf16>
     // CHECK:   return [[LSTMGATES_0]], [[LSTMGATES_1]] : tensor<5x64xf16>, tensor<5x64xf16>
 }
 

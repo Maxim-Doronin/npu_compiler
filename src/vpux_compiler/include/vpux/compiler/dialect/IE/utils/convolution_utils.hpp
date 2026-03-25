@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -159,7 +159,8 @@ IE::ConvolutionOp cloneConvolutionOp(Builder& builder, IE::ConvolutionOp convOp,
             convOp.getOutputPaddingAttr(), convOp.getInputPaddingAttr());
 }
 
-mlir::LogicalResult canConvertGroupConvToConv(IE::GroupConvolutionOp groupconv, bool isAttrCheckEnabled = true);
+mlir::LogicalResult canConvertGroupConvToConv(IE::GroupConvolutionOp groupconv, bool isAttrCheckEnabled = true,
+                                              bool checkHandleLargePads = false);
 bool isEltwiseGroupConv(IE::GroupConvolutionOp convOp, bool isConstFilter = true);
 
 //

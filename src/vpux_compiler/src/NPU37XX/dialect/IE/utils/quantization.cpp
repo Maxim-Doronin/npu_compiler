@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -62,21 +62,23 @@ bool IE::arch37xx::isMixPrecisionSupported(mlir::Operation* origOp, const bool i
 bool IE::arch37xx::checkPostOp(IE::LayerWithPostOpInterface layerWithPostOp, bool isPerAxisQuantizedOutput,
                                bool isFloatInput) {
     const auto postOp = layerWithPostOp.getPostOp();
-    if (postOp == nullptr) {
+    if (postOp == nullptr && layerWithPostOp.getClampAttr() == nullptr) {
         return true;
     }
 
-    if (!isFloatInput && mlir::isa<IE::LeakyReluAttr>(postOp)) {
+    if (!isFloatInput && mlir::isa_and_nonnull<IE::LeakyReluAttr>(postOp)) {
         // The PPE prelu alpha multiplier is unsigned for integer input and signed for float input.
         const auto alpha = mlir::cast<IE::LeakyReluAttr>(postOp).getNegativeSlope().getValueAsDouble();
-        if (alpha < 0.0) {
-            return false;
-        }
-    } else if (isPerAxisQuantizedOutput && !mlir::isa<IE::ReluAttr>(postOp)) {
+        return alpha >= 0.0;
+    }
+
+    if (isPerAxisQuantizedOutput) {
         // Because in the PPE pipeline the quantization scale happens before post-op effects are applied, the following
         // limitation occurs: If we have per axis quantization at output this would produce per axis Clamp intervals and
         // LeakyReLU alphas which would not be supported.
-        return false;
+        bool isRelu = mlir::isa_and_nonnull<IE::ReluAttr>(postOp);
+        bool noClamp = layerWithPostOp.getClampAttr() == nullptr;
+        return isRelu && noClamp;
     }
 
     return true;

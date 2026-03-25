@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/func_dialect.hpp"
@@ -145,9 +146,7 @@ void ConvertFuncArgsToDeclarationsPass::safeRunOnModule() {
         replaceUse(funcOp.getArguments().drop_front(numInputs), VPURT::BufferSection::NetworkOutput);
     };
 
-    mlir::func::FuncOp netFunc;
-    net::NetworkInfoOp netInfo;
-    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
+    auto netFunc = net::getMainFunc(moduleOp);
 
     replaceArgs(netFunc, buildNewDecl);
     SmallVector<mlir::func::FuncOp> funcOps;

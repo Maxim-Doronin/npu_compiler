@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -37,7 +37,9 @@ namespace {
 struct SDPAPattern {
     IE::MatMulOp matMulOp;
     IE::AddOp addOp;
+    IE::ConcatOp concatOp;  // Optional: Concat before Softmax
     IE::SoftMaxOp softmaxOp;
+    IE::SliceOp sliceOp;  // Optional: Slice after Softmax
     IE::MatMulOp matMulV;
 };
 
@@ -65,7 +67,9 @@ private:
 
 //
 // SDPA Pattern Detection
-// Currently support the SDPA pattern as below:
+// Currently support two SDPA patterns:
+//
+// Pattern 1 (Regular SDPA):
 // InputQ --------------> MatMul ---> Add ---> Softmax ---> MatMul ---> Output
 //                           ^         ^                       ^
 //                           |         |                       |
@@ -75,6 +79,18 @@ private:
 //                                                             |
 // InputV ------------------------------------------------------
 //
+// Pattern 2 (SDPA with sink input: Concat/Slice around Softmax):
+// InputQ --------------> MatMul ---> Add ---> Concat ---> Softmax ---> Slice ---> MatMul ---> Output
+//                           ^         ^         ^                                     ^
+//                           |         |         |                                     |
+// InputK ----> Multiply -----         |         |                                     |
+//                                     |         |                                     |
+// InputMask ---------------------------         |                                     |
+//                                               |                                     |
+// ConcatInput -----------------------------------                                     |
+//                                                                                     |
+// InputV -----------------------------------------------------------------------------|
+//
 
 bool UnrollSDPAPattern::detectSDPAPattern(IE::SoftMaxOp softmaxOp, SDPAPattern& pattern) const {
     // Validate SoftMax
@@ -82,12 +98,46 @@ bool UnrollSDPAPattern::detectSDPAPattern(IE::SoftMaxOp softmaxOp, SDPAPattern& 
         return false;
     }
 
-    // Backward - check if softmax input is add
+    // Backward - check if softmax input is Concat (optional) or Add
     auto softmaxInput = softmaxOp.getInput();
     if (!softmaxInput || !softmaxInput.hasOneUse()) {
         return false;
     }
-    auto addOp = mlir::dyn_cast_or_null<IE::AddOp>(softmaxInput.getDefiningOp());
+
+    IE::ConcatOp concatOp = nullptr;
+    IE::AddOp addOp = nullptr;
+
+    // Check if there's a Concat before Softmax
+    if (auto concat = mlir::dyn_cast_or_null<IE::ConcatOp>(softmaxInput.getDefiningOp())) {
+        concatOp = concat;
+        // Concat must have exactly 2 inputs
+        auto concatInputs = concat.getInputs();
+        if (concatInputs.size() != 2) {
+            return false;
+        }
+
+        auto addInputCount = llvm::count_if(concatInputs, [](mlir::Value input) {
+            return mlir::isa_and_nonnull<IE::AddOp>(input.getDefiningOp());
+        });
+        if (addInputCount != 1) {
+            return false;
+        }
+
+        // Find which input comes from Add (don't assume order)
+        for (auto input : concatInputs) {
+            if (!input.hasOneUse()) {
+                continue;
+            }
+            if (auto maybeAddInput = mlir::dyn_cast_or_null<IE::AddOp>(input.getDefiningOp())) {
+                addOp = maybeAddInput;
+                break;
+            }
+        }
+    } else {
+        // No Concat, directly get Add from softmax input
+        addOp = mlir::dyn_cast_or_null<IE::AddOp>(softmaxInput.getDefiningOp());
+    }
+
     if (!addOp) {
         return false;
     }
@@ -106,20 +156,41 @@ bool UnrollSDPAPattern::detectSDPAPattern(IE::SoftMaxOp softmaxOp, SDPAPattern& 
         return false;
     }
 
-    // Forward - check if softmax output is MatMul2
+    // Forward - check if softmax output is Slice (optional) or MatMul2
     auto softmaxOutput = softmaxOp.getOutput();
     if (!softmaxOutput || !softmaxOutput.hasOneUse()) {
         return false;
     }
-    auto matMulV = mlir::dyn_cast_or_null<IE::MatMulOp>(*softmaxOutput.getUsers().begin());
+
+    IE::SliceOp sliceOp = nullptr;
+    mlir::Value matMulVInput = softmaxOutput;
+
+    // Check if there's a Slice after Softmax
+    if (auto slice = mlir::dyn_cast_or_null<IE::SliceOp>(*softmaxOutput.getUsers().begin())) {
+        sliceOp = slice;
+        auto sliceOutput = slice.getResult();
+        if (!sliceOutput || !sliceOutput.hasOneUse()) {
+            return false;
+        }
+        matMulVInput = sliceOutput;
+    }
+
+    auto matMulV = mlir::dyn_cast_or_null<IE::MatMulOp>(*matMulVInput.getUsers().begin());
     if (!matMulV) {
+        return false;
+    }
+
+    // Pattern 2: Concat and Slice must appear together
+    if ((concatOp && !sliceOp) || (!concatOp && sliceOp)) {
         return false;
     }
 
     // SDPA pattern detected successfully!
     pattern.matMulOp = matMulOp;
     pattern.addOp = addOp;
+    pattern.concatOp = concatOp;
     pattern.softmaxOp = softmaxOp;
+    pattern.sliceOp = sliceOp;
     pattern.matMulV = matMulV;
 
     return true;
@@ -129,6 +200,16 @@ bool UnrollSDPAPattern::detectSDPAPattern(IE::SoftMaxOp softmaxOp, SDPAPattern& 
 // If one MatMul gets shrunk while the other doesn't, they end up with different group counts, breaking pipeline
 // efficiency. Unrolling ensures consistent grouping.
 bool UnrollSDPAPattern::isUnrollingBeneficial(const SDPAPattern& pattern) const {
+    if (pattern.concatOp != nullptr && pattern.sliceOp != nullptr) {
+        auto softmax = pattern.softmaxOp;
+        const auto softmaxShape = getShape(softmax.getOutput());
+        if (softmaxShape[Dim(softmaxShape.size() - 2)] == 1) {
+            // If the second-to-last dimension is 1, it's a decoding case where unrolling is not beneficial
+            return false;
+        }
+        return true;
+    }
+
     return IE::shouldShrinkMatmulGroups(pattern.matMulOp) != IE::shouldShrinkMatmulGroups(pattern.matMulV);
 }
 
@@ -172,7 +253,9 @@ mlir::LogicalResult UnrollSDPAPattern::unrollAndRearrangePattern(const SDPAPatte
     // Step 1: Get input tensors
     auto matMulOp = const_cast<IE::MatMulOp&>(pattern.matMulOp);
     auto addOp = const_cast<IE::AddOp&>(pattern.addOp);
+    auto concatOp = const_cast<IE::ConcatOp&>(pattern.concatOp);
     auto softmaxOp = const_cast<IE::SoftMaxOp&>(pattern.softmaxOp);
+    auto sliceOp = const_cast<IE::SliceOp&>(pattern.sliceOp);
     auto matMulV = const_cast<IE::MatMulOp&>(pattern.matMulV);
 
     auto inputQ = matMulOp.getInput1();
@@ -208,8 +291,29 @@ mlir::LogicalResult UnrollSDPAPattern::unrollAndRearrangePattern(const SDPAPatte
     // unroll inputV
     SmallVector<mlir::Value> vParts = splitTensor(inputV, batch, channelDim, rewriter, loc, "v_slice");
 
-    // Step 3: create  MatMul1_split -> Add_split -> Softmax_split -> MatMul2_split chain
+    // Step 3: create  MatMul1_split -> Add_split -> [Concat_split] -> Softmax_split -> [Slice_split] -> MatMul2_split
+    // chain
     SmallVector<mlir::Value> finalResults;
+
+    // Get concat additional input and determine input order if exists
+    mlir::Value concatAdditionalInput = nullptr;
+    int addInputIndex = -1;  // Track which index the Add output is at
+    if (concatOp) {
+        auto concatInputs = concatOp.getInputs();
+        // Concat is guaranteed to have exactly 2 inputs from detection
+        VPUX_THROW_UNLESS(concatInputs.size() == 2, "Concat must have exactly 2 inputs");
+
+        // Find the input that is NOT from Add (the additional input) and track Add's position
+        for (size_t idx = 0; idx < concatInputs.size(); ++idx) {
+            if (concatInputs[idx].getDefiningOp() == addOp.getOperation()) {
+                addInputIndex = idx;
+            } else {
+                concatAdditionalInput = concatInputs[idx];
+            }
+        }
+        VPUX_THROW_UNLESS(concatAdditionalInput, "Failed to find concat additional input");
+        VPUX_THROW_UNLESS(addInputIndex >= 0, "Failed to find Add output in concat inputs");
+    }
 
     for (int64_t i = 0; i < batch; ++i) {
         // Matmul1_split operation
@@ -222,13 +326,54 @@ mlir::LogicalResult UnrollSDPAPattern::unrollAndRearrangePattern(const SDPAPatte
                 /*auto_broadcast=*/IE::AutoBroadcastTypeAttr::get(rewriter.getContext(), IE::AutoBroadcastType::NUMPY),
                 nullptr, nullptr, nullptr, nullptr);
 
+        mlir::Value softmaxInput = addNewOp.getOutput();
+
+        // Concat_split operation (if exists)
+        if (concatOp && concatAdditionalInput) {
+            // Split the concat additional input if needed
+            SmallVector<mlir::Value> concatAdditionalParts = splitTensor(
+                    concatAdditionalInput, batch, channelDim, rewriter, concatOp->getLoc(), "concat_additional");
+
+            // Preserve the original input order
+            SmallVector<mlir::Value> concatInputsOrdered(2);
+            concatInputsOrdered[addInputIndex] = addNewOp.getOutput();
+            concatInputsOrdered[1 - addInputIndex] = concatAdditionalParts[i];
+
+            auto concatNewOp = rewriter.create<IE::ConcatOp>(
+                    appendLoc(concatOp->getLoc(), "_concat_" + std::to_string(i)),
+                    mlir::ValueRange(concatInputsOrdered), concatOp.getPerAxisAttr(), concatOp.getStaticOffsetsAttr());
+            softmaxInput = concatNewOp.getOutput();
+        }
+
         // Softmax_split operation
         auto softmaxNewOp =
                 rewriter.create<IE::SoftMaxOp>(appendLoc(softmaxOp->getLoc(), "_softmax_" + std::to_string(i)),
-                                               addNewOp.getOutput(), softmaxOp.getAxisIndAttr(), nullptr);
+                                               softmaxInput, softmaxOp.getAxisIndAttr(), nullptr);
+
+        mlir::Value matMulVInput = softmaxNewOp.getOutput();
+
+        // Slice_split operation (if exists)
+        if (sliceOp) {
+            // Adjust slice offsets and sizes for the unrolled dimension
+            auto origOffsets = parseIntArrayAttr<int64_t>(sliceOp.getStaticOffsetsAttr());
+            auto origSizes = parseIntArrayAttr<int64_t>(sliceOp.getStaticSizesAttr());
+
+            // Update the batch dimension (channelDim) to be 0 offset and size 1
+            SmallVector<int64_t> newOffsets(origOffsets.begin(), origOffsets.end());
+            SmallVector<int64_t> newSizes(origSizes.begin(), origSizes.end());
+
+            newOffsets[channelDim.ind()] = 0;
+            newSizes[channelDim.ind()] = 1;
+
+            auto sliceNewOp = rewriter.create<IE::SliceOp>(appendLoc(sliceOp->getLoc(), "_slice_" + std::to_string(i)),
+                                                           softmaxNewOp.getOutput(),
+                                                           getIntArrayAttr(rewriter.getContext(), newOffsets),
+                                                           getIntArrayAttr(rewriter.getContext(), newSizes));
+            matMulVInput = sliceNewOp.getResult();
+        }
 
         // MatMul2_split operation
-        auto matMulVOp = cloneMatMulOp(rewriter, matMulV, softmaxNewOp.getOutput(), vParts[i]);
+        auto matMulVOp = cloneMatMulOp(rewriter, matMulV, matMulVInput, vParts[i]);
         matMulVOp->setLoc(appendLoc(matMulV->getLoc(), "_matmul_v_" + std::to_string(i)));
 
         finalResults.push_back(matMulVOp->getResult(0));
@@ -246,11 +391,16 @@ mlir::LogicalResult UnrollSDPAPattern::unrollAndRearrangePattern(const SDPAPatte
     rewriter.replaceOp(matMulV, finalValue);
 
     // Step 6: Delete the original SDPA chain operations
-    // After replacing matMulV, the chain matMulOp -> addOp -> softmaxOp has no more use
-    // Delete in reverse order: softmaxOp -> addOp -> matMulOp
-    // This ensures we don't break dependencies when erasing operations
+    // After replacing matMulV, the chain matMulOp -> addOp -> [concatOp] -> softmaxOp -> [sliceOp] has no more use
+    // Delete in reverse order to avoid breaking dependencies
+    if (sliceOp && sliceOp->use_empty()) {
+        rewriter.eraseOp(sliceOp);
+    }
     if (softmaxOp->use_empty()) {
         rewriter.eraseOp(softmaxOp);
+    }
+    if (concatOp && concatOp->use_empty()) {
+        rewriter.eraseOp(concatOp);
     }
     if (addOp->use_empty()) {
         rewriter.eraseOp(addOp);

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -19,6 +19,7 @@
 
 #include <llvm/ADT/TypeSwitch.h>
 #include <mlir/Dialect/Quant/IR/QuantTypes.h>
+#include <cassert>
 #include <limits>
 
 using namespace vpux;
@@ -129,6 +130,69 @@ void PpeFactory::calculateFpPReluAlpha(mlir::Operation* operation, PpeFactory::A
     }
 }
 
+struct ClampIntersectionResult {
+    int32_t low;
+    int32_t high;
+    PPEMode mode;
+};
+
+static ClampIntersectionResult calcClampIntersection(const int32_t currentLow, const int32_t currentHigh,
+                                                     const double newLow, const double newHigh,
+                                                     mlir::Type outputElemType) {
+    VPUX_THROW_WHEN(outputElemType == nullptr, "Expected a valid output element type but got NULL.");
+
+    if (auto quantizedType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(outputElemType)) {
+        const auto scale = quantizedType.getScale();
+        const auto zp = quantizedType.getZeroPoint();
+        const auto storageMin = quantizedType.getStorageTypeMin();
+        const auto storageMax = quantizedType.getStorageTypeMax();
+
+        // Adapt the new interval to include scale and zp, since clamping occurs after scaling and zp-shifting on HW
+        const auto qMin = checked_cast<int32_t>(std::round(newLow / scale) + zp);
+        const auto qMax = checked_cast<int32_t>(std::round(newHigh / scale) + zp);
+
+        const auto targetLow = std::max<int64_t>(storageMin, std::max(qMin, currentLow));
+        const auto targetHigh = std::min<int64_t>(storageMax, std::min(qMax, currentHigh));
+        const auto mode =
+                targetLow - zp == 0 && targetHigh - zp < storageMax ? VPU::PPEMode::LRELUX : VPU::PPEMode::NOOP;
+
+        return {checked_cast<int32_t>(targetLow), checked_cast<int32_t>(targetHigh), mode};
+
+    } else if (outputElemType.isF16()) {
+        auto targetLow = static_cast<type::float16>(newLow);
+        auto targetHigh = static_cast<type::float16>(newHigh);
+
+        if (currentHigh < std::numeric_limits<int32_t>::max()) {
+            const auto [fLow, fHigh] = unpackClamp<type::float16>(currentHigh);
+            targetLow = std::max(fLow, targetLow);
+            targetHigh = std::min(fHigh, targetHigh);
+        }
+
+        const auto floatMax = checked_cast<double>(std::numeric_limits<vpux::type::float16>::max());
+        const auto mode = targetHigh < floatMax ? VPU::PPEMode::LRELUX : VPU::PPEMode::LRELU;
+
+        return {std::numeric_limits<int32_t>::min(), packClamp(targetLow, targetHigh), mode};
+
+    } else if (outputElemType.isBF16()) {
+        auto targetLow = static_cast<type::bfloat16>(newLow);
+        auto targetHigh = static_cast<type::bfloat16>(newHigh);
+
+        if (currentHigh < std::numeric_limits<int32_t>::max()) {
+            const auto [fLow, fHigh] = unpackClamp<type::bfloat16>(currentHigh);
+            targetLow = std::max(fLow, targetLow);
+            targetHigh = std::min(fHigh, targetHigh);
+        }
+
+        const auto floatMax = checked_cast<double>(std::numeric_limits<vpux::type::bfloat16>::max());
+        const auto mode = targetHigh < floatMax ? VPU::PPEMode::LRELUX : VPU::PPEMode::LRELU;
+
+        return {std::numeric_limits<int32_t>::min(), packClamp(targetLow, targetHigh), mode};
+
+    } else {
+        VPUX_THROW("Got invalid PPE output element type: {0}", outputElemType);
+    }
+}
+
 template <>
 PpeFactory::AttrBuilder PpeFactory::callback<IE::ReluAttr>(vpux::IE::LayerWithPostOpInterface operation,
                                                            IE::ReluAttr) const {
@@ -155,47 +219,17 @@ PpeFactory::AttrBuilder PpeFactory::callback<IE::ClampAttr>(vpux::IE::LayerWithP
                                                             IE::ClampAttr clamp) const {
     PpeFactory::AttrBuilder builder(operation.getContext());
 
-    auto outputElemType = mlir::cast<vpux::NDTypeInterface>(operation->getResult(0).getType()).getElementType();
-    if (auto outElemQType = mlir::dyn_cast<mlir::quant::QuantizedType>(outputElemType)) {
-        const auto scalesAndZp = extractScalesAndZeroPoints(outElemQType);
-        const auto scale = scalesAndZp.first.front();
-        const auto zp = scalesAndZp.second.front();
+    const auto defaultLow = builder.clampLow;
+    const auto defaultHigh = builder.clampHigh;
+    const auto clampMin = clamp.getMin().getValueAsDouble();
+    const auto clampMax = clamp.getMax().getValueAsDouble();
+    const auto outputElemType = mlir::cast<vpux::NDTypeInterface>(operation->getResult(0).getType()).getElementType();
 
-        auto clampLowStorageMin = outElemQType.getStorageTypeMin();
-        auto clampHighStorageMax = outElemQType.getStorageTypeMax();
+    const auto intersection = calcClampIntersection(defaultLow, defaultHigh, clampMin, clampMax, outputElemType);
 
-        auto qMin = checked_cast<int64_t>(std::round(clamp.getMin().getValueAsDouble() / scale)) + zp;
-        auto qMax = checked_cast<int64_t>(std::round(clamp.getMax().getValueAsDouble() / scale)) + zp;
-
-        auto clampLow = std::max(clampLowStorageMin, qMin);
-        auto clampHigh = std::min(clampHighStorageMax, qMax);
-
-        builder.clampLow = clampLow;
-        builder.clampHigh = clampHigh;
-        if (std::max(clampLowStorageMin, qMin) - zp == 0 &&
-            std::min(clampHighStorageMax, qMax) - zp < outElemQType.getStorageTypeMax()) {
-            builder.mode = VPU::PPEMode::LRELUX;
-        }
-
-    } else if (outputElemType.isF16()) {
-        auto clampMax = clamp.getMax().getValueAsDouble();
-        if (clampMax < checked_cast<double>(std::numeric_limits<vpux::type::float16>::max())) {
-            builder.clampHigh = packClamp<type::float16>(clamp.getMin().getValueAsDouble(), clampMax);
-            builder.mode = VPU::PPEMode::LRELUX;
-        } else {
-            builder.mode = VPU::PPEMode::LRELU;
-        }
-    } else if (outputElemType.isBF16()) {  // bf16 is supported by the FuseClampPass
-        auto clampMax = clamp.getMax().getValueAsDouble();
-        if (clampMax < checked_cast<double>(std::numeric_limits<vpux::type::bfloat16>::max())) {
-            builder.clampHigh = packClamp<type::bfloat16>(clamp.getMin().getValueAsDouble(), clampMax);
-            builder.mode = VPU::PPEMode::LRELUX;
-        } else {
-            builder.mode = VPU::PPEMode::LRELU;
-        }
-    } else {
-        VPUX_THROW("Got invalid PPE output element type: {0}", outputElemType);
-    }
+    builder.clampLow = intersection.low;
+    builder.clampHigh = intersection.high;
+    builder.mode = intersection.mode;
 
     configureAttrForAvgPool(operation, builder);
     calculateFpPReluAlpha(operation, builder);
@@ -246,17 +280,33 @@ PpeFactory::AttrBuilder PpeFactory::retrieveNonEltwisePPEAttribute(mlir::Operati
         }
         configureAttrForAvgPool(operation, builder);
         calculateFpPReluAlpha(operation, builder);
-        return builder;
+    } else {
+        llvm::TypeSwitch<IE::PostOpAttr, void>(layerWithPostOpIfc.getPostOp())
+                .Case<IE::ReluAttr, IE::ClampAttr, IE::LeakyReluAttr>([&](const auto postOp) {
+                    builder = this->callback(layerWithPostOpIfc, postOp);
+                })
+                .Default([](const auto postOp) {
+                    VPUX_THROW("Received unknown PPE post-op: {0}", postOp.getName());
+                });
     }
 
-    return llvm::TypeSwitch<IE::PostOpAttr, AttrBuilder>(layerWithPostOpIfc.getPostOp())
-            .Case<IE::ReluAttr, IE::ClampAttr, IE::LeakyReluAttr>([&](const auto postOp) {
-                return this->callback(layerWithPostOpIfc, postOp);
-            })
-            .Default([](const auto postOp) {
-                VPUX_THROW("Received unknown PPE post-op: {0}", postOp.getName());
-                return nullptr;
-            });
+    if (layerWithPostOpIfc != nullptr && layerWithPostOpIfc.getClampAttr() != nullptr) {
+        const auto clamp = layerWithPostOpIfc.getClampAttr();
+        const auto clampMin = clamp.getAs<mlir::FloatAttr>("min").getValueAsDouble();
+        const auto clampMax = clamp.getAs<mlir::FloatAttr>("max").getValueAsDouble();
+
+        auto outputElemType = mlir::cast<vpux::NDTypeInterface>(operation->getResult(0).getType()).getElementType();
+        const auto isQuantized = mlir::isa<mlir::quant::UniformQuantizedType>(outputElemType);
+
+        const auto intersection =
+                calcClampIntersection(builder.clampLow, builder.clampHigh, clampMin, clampMax, outputElemType);
+
+        builder.clampLow = intersection.low;
+        builder.clampHigh = intersection.high;
+        builder.mode = isQuantized ? builder.mode : intersection.mode;
+    }
+
+    return builder;
 }
 
 PpeFactory::AttrBuilder PpeFactory::retrievePermuteQuantizePPEAttribute(mlir::Operation* operation) const {

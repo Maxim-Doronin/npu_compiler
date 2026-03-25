@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,11 +7,13 @@
 
 #include "vpux/compiler/dialect/VPU/utils/tiling_algorithm/tiling_context.hpp"
 
+#include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/tiling_algorithm/multicluster_tiling_scf_algorithm.hpp"
 #include "vpux/compiler/dialect/VPU/utils/tiling_algorithm/tiling_general_algorithm.hpp"
 #include "vpux/compiler/dialect/VPU/utils/tiling_algorithm/tiling_scf_algorithm.hpp"
 
 #include "vpux/compiler/dialect/VPU/IR/types.hpp"
+#include "vpux/compiler/utils/attributes.hpp"
 
 #include <mlir/Interfaces/InferTypeOpInterface.h>
 
@@ -50,9 +52,20 @@ bool isSCFSupported(mlir::Operation* operation) {
     }
 
     // E-172335 add sparse tensors support
-    if (mlir::isa<VPU::SparseTensorType>(operation->getOperand(0).getType())) {
-        return false;
+    if (operation->hasAttr(tilingStrategy)) {
+        auto sparseCheckOperandInd = 0;
+        auto strategy =
+                Shape(parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(operation->getAttr(tilingStrategy))));
+        if (auto nceOperation = mlir::dyn_cast<VPU::NCEOpInterface>(operation)) {
+            if (nceOperation.getWeightsOperand() != 0 && strategy[Dims4D::Act::C] > 1) {
+                sparseCheckOperandInd = 1;
+            }
+        }
+        if (mlir::isa<VPU::SparseTensorType>(operation->getOperand(sparseCheckOperandInd).getType())) {
+            return false;
+        }
     }
+
     return true;
 }
 

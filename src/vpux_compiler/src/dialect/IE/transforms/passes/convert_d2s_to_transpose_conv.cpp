@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
@@ -10,6 +11,7 @@
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
+#include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -218,7 +220,6 @@ mlir::LogicalResult ConvertDepth2SpaceToTransposedConv::matchAndRewrite(IE::Dept
     _log.nest().debug("d2sOp = '{0}'", d2sOp);
 
     auto ctx = rewriter.getContext();
-
     auto input = d2sOp.getInput();
     auto inputShape = mlir::cast<vpux::NDTypeInterface>(input.getType()).getShape();
 
@@ -260,27 +261,15 @@ mlir::LogicalResult ConvertDepth2SpaceToTransposedConv::matchAndRewrite(IE::Dept
 class ConvertDepth2SpaceToTransposedConvPass final :
         public IE::impl::ConvertDepth2SpaceToTransposedConvBase<ConvertDepth2SpaceToTransposedConvPass> {
 public:
-    explicit ConvertDepth2SpaceToTransposedConvPass(const bool seOpsEnabled, Logger log): _seOpsEnabled(seOpsEnabled) {
+    explicit ConvertDepth2SpaceToTransposedConvPass(Logger log) {
         Base::initLogger(log, Base::getArgumentName());
     }
-    mlir::LogicalResult initialize(mlir::MLIRContext* ctx) final;
 
 private:
     void safeRunOnFunc() override;
 
 private:
-    bool _seOpsEnabled;
 };
-
-mlir::LogicalResult ConvertDepth2SpaceToTransposedConvPass::initialize(mlir::MLIRContext* ctx) {
-    if (mlir::failed(Base::initialize(ctx))) {
-        return mlir::failure();
-    }
-    if (seOpsEnabled.hasValue()) {
-        _seOpsEnabled = seOpsEnabled.getValue();
-    }
-    return mlir::success();
-}
 
 //
 // safeRunOnFunc
@@ -289,12 +278,14 @@ mlir::LogicalResult ConvertDepth2SpaceToTransposedConvPass::initialize(mlir::MLI
 void ConvertDepth2SpaceToTransposedConvPass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
+    auto moduleOp = getModuleOp(func);
 
     auto& strategyFactory = IE::getIEStrategyFactory(&ctx);
     auto benefitVerifier = strategyFactory->getD2SToTransposedConvVerifier();
 
     mlir::RewritePatternSet patterns(&ctx);
-    patterns.insert<ConvertDepth2SpaceToTransposedConv>(&ctx, std::move(benefitVerifier), _seOpsEnabled, _log);
+    patterns.insert<ConvertDepth2SpaceToTransposedConv>(&ctx, std::move(benefitVerifier),
+                                                        config::hasEnableSEPtrsOperations(moduleOp), _log);
     collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
@@ -304,7 +295,6 @@ void ConvertDepth2SpaceToTransposedConvPass::safeRunOnFunc() {
 // createConvertDepth2SpaceToTransposedConvPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::IE::createConvertDepth2SpaceToTransposedConvPass(const bool seOpsEnabled,
-                                                                                   Logger log) {
-    return std::make_unique<ConvertDepth2SpaceToTransposedConvPass>(seOpsEnabled, log);
+std::unique_ptr<mlir::Pass> vpux::IE::createConvertDepth2SpaceToTransposedConvPass(Logger log) {
+    return std::make_unique<ConvertDepth2SpaceToTransposedConvPass>(log);
 }

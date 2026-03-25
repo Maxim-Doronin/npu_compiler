@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -144,6 +144,10 @@ void VFCase::approveScheduling() {
 
     _config.getSubgraph().setScenario(_vfScheduling->getType());
     _config.getSubgraph().setTilingStrategyAttr(getTiling());
+}
+
+const TilingOperationStorage::UPtr& VFCase::getTilingStorage() const {
+    return _vfTilingStorage;
 }
 
 bool VFCase::isInitialized() {

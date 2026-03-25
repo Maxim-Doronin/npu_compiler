@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -13,6 +13,7 @@ func.func private @builtin_relu(%input : memref<*xf16>, %output : memref<*xf16>)
 }
 
 // CHECK-LABEL: @LinearGraph
+// CHECK-SAME: [[ARG_0:%[^:]+]]: memref<10xf16>,
 func.func @LinearGraph(%arg0: memref<10xf16>, %arg1: memref<10xf16>) -> memref<10xf16> {
     %0 = memref.alloc() : memref<10xf16>
     %1 = memref.alloc() : memref<10xf16>
@@ -40,7 +41,7 @@ func.func @LinearGraph(%arg0: memref<10xf16>, %arg1: memref<10xf16>) -> memref<1
 
     // CHECK:       [[T1:%.+]], [[F1:%.+]] = async.execute
     // CHECK:       VPUIP.SW.Kernel
-    // CHECK-SAME:      inputs(%arg0
+    // CHECK-SAME:      inputs([[ARG_0]]
     // CHECK-SAME:      outputs([[BUF0]]
     // CHECK:       async.yield [[BUF0]] : memref<10xf16>
 

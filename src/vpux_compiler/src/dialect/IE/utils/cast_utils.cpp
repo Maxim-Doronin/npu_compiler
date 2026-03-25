@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -19,13 +19,13 @@ mlir::LogicalResult isQuantizeCastValid(mlir::Location loc, mlir::Type srcType, 
                        dstBitSize);
     }
 
-    if (mlir::isa<FloatType>(srcType) || mlir::isa<FloatType>(dstType)) {
+    if (mlir::isa<mlir::FloatType>(srcType) || mlir::isa<mlir::FloatType>(dstType)) {
         if (srcBitSize > 8 || dstBitSize > 8) {
             return errorAt(
                     loc, "Maximum low precision bit width is 8 for both src and dst types, but got src: {0}, dst: {0}",
                     srcBitSize, dstBitSize);
         }
-    } else if (mlir::isa<IntegerType>(srcType) || mlir::isa<IntegerType>(dstType)) {
+    } else if (mlir::isa<mlir::IntegerType>(srcType) || mlir::isa<mlir::IntegerType>(dstType)) {
         if (srcBitSize > 16 || dstBitSize > 16) {
             return errorAt(loc,
                            "Maximum integer bit width is 16 for both src and dst types, but got src: {0}, dst: {1}",

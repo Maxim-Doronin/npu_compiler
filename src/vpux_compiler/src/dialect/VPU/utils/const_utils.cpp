@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -414,10 +414,7 @@ mlir::Value alignConvWeightsTensor(mlir::OpBuilder& builder, mlir::Location loc,
     const auto padding = alignment - remainder;
 
     if (mlir::isa<mlir::BlockArgument>(origFilter)) {
-        auto reshape =
-                builder.create<VPU::ReshapeOp>(loc, origFilter,
-                                               /*shape=*/nullptr,
-                                               /*special_zero=*/false, getIntArrayAttr(builder, flatWeightShape));
+        auto reshape = builder.create<VPU::ReshapeOp>(loc, origFilter, getIntArrayAttr(builder, flatWeightShape));
 
         auto padBeginAttr = getIntArrayAttr(builder, Shape{{0, 0, 0, 0}});
         auto padEndAttr = getIntArrayAttr(builder, Shape{{0, 0, 0, padding}});

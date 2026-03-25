@@ -1,4 +1,5 @@
-// Copyright (C) 2024-2025 Intel Corporation
+//
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,7 +11,7 @@
 namespace vpux {
 namespace type {
 
-QuantileFloatType QuantileFloatType::get(MLIRContext* ctx, Type storageType, Type quantileType,
+QuantileFloatType QuantileFloatType::get(mlir::MLIRContext* ctx, mlir::Type storageType, mlir::Type quantileType,
                                          ArrayRef<double> quantiles) {
     if (storageType.isUnsignedInteger(4)) {
         return getNF4(ctx, storageType, quantileType, quantiles);
@@ -34,11 +35,11 @@ unsigned QuantileFloatType::getStorageTypeIntegralWidth() const {
     llvm_unreachable("unexpected quantile float type");
 }
 
-Type QuantileFloatType::getStorageType() const {
+mlir::Type QuantileFloatType::getStorageType() const {
     return static_cast<ImplType*>(impl)->getStorageType();
 }
 
-Type QuantileFloatType::getQuantileType() const {
+mlir::Type QuantileFloatType::getQuantileType() const {
     return static_cast<ImplType*>(impl)->getQuantileType();
 }
 

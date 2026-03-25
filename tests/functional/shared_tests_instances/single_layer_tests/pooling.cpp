@@ -1,3 +1,4 @@
+//
 // Copyright (C) 2020-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -251,6 +252,29 @@ TEST_P(PoolingLayerTest_NPU5010_SOB, HW) {
     run(Platform::NPU5010);
 }
 
+class PoolingLayerTest_NPU5020 : public PoolingLayerTest, virtual public VpuOv2LayerTest {};
+class PoolingLayerTest_NPU5020_SOB : public PoolingLayerTestWithUnrollBatchingCompileMethod {};
+
+TEST_P(PoolingLayerTest_NPU5020, SW) {
+    abs_threshold = 0.02;
+    setSkipCompilationCallback([this](std::stringstream& skip) {
+        const auto& poolParams = std::get<0>(GetParam());
+        PoolingTypes poolType = std::get<0>(poolParams);
+        const auto netPrecision = std::get<1>(GetParam());
+        if (((poolType == PoolingTypes::MAX) || poolType == (PoolingTypes::AVG)) &&
+            (netPrecision == ov::element::i8 || netPrecision == ov::element::u8)) {
+            skip << "Max pool SingleLayerTest is not enabled with precision: " << netPrecision;
+        }
+    });
+    setReferenceSoftwareMode();
+    run(Platform::NPU5020);
+}
+
+TEST_P(PoolingLayerTest_NPU5020_SOB, HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
+}
+
 class MaxPoolingV8LayerTestCommon : public MaxPoolingV8LayerTest, virtual public VpuOv2LayerTest {};
 class MaxPoolingV8LayerTestCommonHW : public MaxPoolingV8LayerTest, virtual public VpuOv2LayerTest {};
 
@@ -298,6 +322,16 @@ TEST_P(MaxPoolingV8LayerTestCommon, NPU5010_SW) {
     setReferenceSoftwareMode();
     run(Platform::NPU5010);
 }
+TEST_P(MaxPoolingV8LayerTestCommon, NPU5020_SW) {
+    setSkipCompilationCallback([this](std::stringstream& skip) {
+        const auto netPrecision = std::get<1>(GetParam());
+        if (netPrecision == ov::element::i8 || netPrecision == ov::element::u8) {
+            skip << "MaxPool8 SingleLayerTest is not enabled with precision: " << netPrecision;
+        }
+    });
+    setReferenceSoftwareMode();
+    run(Platform::NPU5020);
+}
 
 class AvgPoolingV16LayerTestCommon : public AvgPoolingV16LayerTest, virtual public VpuOv2LayerTest {};
 
@@ -332,6 +366,16 @@ TEST_P(AvgPoolingV16LayerTestCommon, NPU5010_SW) {
     });
     setReferenceSoftwareMode();
     run(Platform::NPU5010);
+}
+TEST_P(AvgPoolingV16LayerTestCommon, NPU5020_SW) {
+    setSkipCompilationCallback([this](std::stringstream& skip) {
+        const auto netPrecision = std::get<1>(GetParam());
+        if (netPrecision == ov::element::i8 || netPrecision == ov::element::u8) {
+            skip << "AvgPool16 SingleLayerTest is not enabled with precision: " << netPrecision;
+        }
+    });
+    setReferenceSoftwareMode();
+    run(Platform::NPU5020);
 }
 
 class PoolingLayerTest_HostCompile : public PoolingLayerTest, virtual public VpuOv2LayerTest {};
@@ -1303,6 +1347,20 @@ INSTANTIATE_TEST_SUITE_P(smoke_Pooling_SOB, PoolingLayerTest_NPU5010_SOB,
                          generateSOBParamsFromInputShape({{3, 64, 28, 28}}),
                          PoolingLayerTest_NPU5010_SOB::getTestCaseName);
 
+/* ============= NPU 5020 ============= */
+
+INSTANTIATE_TEST_SUITE_P(smoke_Pooling_NoPadding, PoolingLayerTest_NPU5020, pool_ExplicitNoPadding_Params,
+                         PoolingLayerTest_NPU5020::getTestCaseName);
+
+// U-net usecase
+
+INSTANTIATE_TEST_SUITE_P(smoke_precommit_Pooling_unet, PoolingLayerTest_NPU5020, pool_unet_Params,
+                         PoolingLayerTest_NPU5020::getTestCaseName);
+
+// Integer Input/Output
+INSTANTIATE_TEST_SUITE_P(smoke_Pooling_InputOutputInteger, PoolingLayerTest_NPU5020, pool_inputOutputInteger,
+                         PoolingLayerTest_NPU5020::getTestCaseName);
+
 /* ============= MaxPool8 ============= */
 
 INSTANTIATE_TEST_SUITE_P(smoke_precommit_MaxPool8_ExplicitPad_FloorRounding, MaxPoolingV8LayerTestCommon,
@@ -1368,15 +1426,15 @@ const std::vector<std::vector<ov::test::InputShape>> inTilingShapes = {{
 }};
 
 const auto SCFTiling_Params =
-        ::testing::Combine(::testing::Combine(::testing::Values(PoolingTypes::MAX),                //
-                                              ::testing::ValuesIn<std::vector<size_t>>({{1, 1}}),  // kernels
-                                              ::testing::ValuesIn<ov::Strides>({{1, 1}}),          // strides
-                                              ::testing::ValuesIn<std::vector<size_t>>({{0, 0}}),  // padBegins
-                                              ::testing::ValuesIn<std::vector<size_t>>({{0, 0}}),  // padEnds
-                                              ::testing::Values(ov::op::RoundingType::FLOOR),      //
-                                              ::testing::Values(ov::op::PadType::VALID),           //
-                                              ::testing::Values(false)),                           // excludePad
-                           ::testing::Values(ov::element::f16),                                    // netPrc
+        ::testing::Combine(::testing::Combine(::testing::Values(PoolingTypes::MAX, PoolingTypes::AVG),  //
+                                              ::testing::ValuesIn<std::vector<size_t>>({{1, 1}}),       // kernels
+                                              ::testing::ValuesIn<ov::Strides>({{1, 1}}),               // strides
+                                              ::testing::ValuesIn<std::vector<size_t>>({{0, 0}}),       // padBegins
+                                              ::testing::ValuesIn<std::vector<size_t>>({{0, 0}}),       // padEnds
+                                              ::testing::Values(ov::op::RoundingType::FLOOR),           //
+                                              ::testing::Values(ov::op::PadType::VALID),                //
+                                              ::testing::Values(false)),                                // excludePad
+                           ::testing::Values(ov::element::f16),                                         // netPrc
                            ::testing::ValuesIn(inTilingShapes), ::testing::Values(test_utils::TARGET_DEVICE));
 
 INSTANTIATE_TEST_SUITE_P(smoke_SCFTiling, PoolingLayerTest_SCFTiling, SCFTiling_Params,

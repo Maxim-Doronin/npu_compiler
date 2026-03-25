@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -27,6 +27,8 @@ std::unique_ptr<mlir::Pass> createReplaceAllocsWithSingleAllocAndViewsPass(Logge
 std::unique_ptr<mlir::Pass> createSerializeNetworkMetadataPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createExtractReturnShapesPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createOutlineDimOperationsPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createGenerateExecutionContextFuncsPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createWrapFuncCallPass(Logger log = Logger::global());
 
 void buildHostExecPipeline(mlir::OpPassManager& pm, Logger log = Logger::global());
 

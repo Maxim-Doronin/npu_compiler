@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -40,7 +40,8 @@ void vpux::IE::arch37xx::buildInitialLowPrecisionTransformationsPipeline(
     pm.addPass(IE::createConvertScalarToTensorPass(log));
     pm.addPass(IE::createQDQOptimizationAggressivePass(options.fuseFQAndMulWithNonConstInput, log));
     pm.addPass(IE::createConsolidateNF4WeightsPatternPass(log));
-    pm.addPass(IE::createInitialLowPrecisionTransformationsPipelineRewriterExecutorPass(log));
+    pm.addPass(IE::createInitialLowPrecisionTransformationsPipelineRewriterExecutorPass(
+            options.enableDynamicQuantizationForStaticCase, log));
     pm.addPass(IE::createFuseInputScaleShiftPass(log));
     pm.addPass(IE::createConvertMinMaxToClampPass(log));
     pm.addPass(IE::createFoldActivationBeforeFQPass(log));
@@ -70,8 +71,7 @@ void vpux::IE::arch37xx::buildLowPrecisionPipeline(mlir::OpPassManager& pm, cons
     pm.addPass(IE::createConvertToQuantizedOpsPass(log));
     if (options.enablePropagateQuantDequant) {
         pm.addPass(mlir::createCanonicalizerPass(grc));
-        pm.addPass(
-                IE::createPropagateAndFuseQuantizeDequantizePass(isOptionEnabled(options.enableSEPtrsOperations), log));
+        pm.addPass(IE::createPropagateAndFuseQuantizeDequantizePass(log));
     }
     pm.addPass(IE::createFuseConvertWithQDQPass(log));
     if (options.enableSwapTransposeWithFQ) {
@@ -108,8 +108,9 @@ void vpux::IE::arch37xx::buildLowPrecisionPipeline(mlir::OpPassManager& pm, cons
             /*seOpsEnabled=*/isOptionEnabled(options.enableSEPtrsOperations),
             /*seExperimentalOpsEnabled=*/isOptionEnabled(options.enableExperimentalSEPtrsOperations), log));
     if (options.enableFuseOutstandingDequant) {
-        pm.addPass(IE::createFuseOutstandingDequant(log));
-
+        if (!options.functionOutlining.hasValue()) {
+            pm.addPass(IE::createFuseOutstandingDequant(log));
+        }
         // This is a short term solution to call ConvertToMixedPrecision when we have
         //     Original subgraph
         //         Conv -> FQ1 -> FQ2 -> Conv (FQ1 and FQ2 have different params)
@@ -126,8 +127,8 @@ void vpux::IE::arch37xx::buildLowPrecisionPipeline(mlir::OpPassManager& pm, cons
     pm.addPass(mlir::createCanonicalizerPass(grc));
     pm.addPass(IE::createDequantizeConstPass(options.runtimeDequantizationLimit,
                                              isOptionEnabled(options.enableRuntimeDequant), log));
-    if (options.enableDynamicQuant) {
-        pm.addPass(IE::createWeightsQuantFusedIntoTaskPass(log));
+    if (options.enableLogDynamicQuant) {
+        pm.addPass(IE::createLoggingWeightsQuantFusedIntoTaskPass(log));
     }
     pm.addPass(IE::createOptimizePrecisionAcrossFunctionCallsPass(log));
 
@@ -191,7 +192,7 @@ void vpux::IE::arch37xx::buildDefaultHWPipeline(mlir::OpPassManager& pm, const I
     IE::buildOperationConversionPipeline(pm, IE::OperationConversionOptions(options), log);
 
     IE::buildAdjustShapePipeline(pm, log);
-    IE::buildSplitLargeOpsPipeline(pm, log);
+    IE::buildSplitLargeOpsPipeline(pm, IE::SplitLargeOpsOptions(options), log);
     IE::buildConvertToEfficientOpsPipeline(pm, IE::ConvertToEfficientOpsOptions(options), log);
 
     IE::buildAdjustForVPUPipeline(pm, IE::AdjustForVPUOptions(options), log);
@@ -214,13 +215,8 @@ void vpux::IE::arch37xx::buildDefaultHWPipeline(mlir::OpPassManager& pm, const I
 
     IE::buildOptimizeActivationsPipeline(pm, IE::OptimizeActivationsOptions(options), log);
 
-    if (options.enableSEPtrsOperations && options.enableSplitBilinerIntoHAndW) {
-        pm.addPass(IE::createSplitBilinerIntoHAndWPass(log));
-    }
-
-    if (options.enableBilinearInterpolateOnDPU) {
-        pm.addPass(IE::createMapBilinearInterpolateOnDPUPass(isOptionEnabled(options.enableSEPtrsOperations), log));
-    }
+    IE::buildSplitAndMapBilinearInterpolateOnDPUPipeline(pm, IE::SplitAndMapBilinearInterpolateOnDPUOptions(options),
+                                                         log);
 
     IE::buildBatchTransformationPipeline(pm, BatchUnrollOptions::create(options, log), options.enableUpstreamSlice,
                                          log);
@@ -281,7 +277,7 @@ void vpux::IE::arch37xx::buildReferenceSWPipeline(mlir::OpPassManager& pm,
     pm.addPass(IE::createConvertNceOpsTo4DPass(log));
     pm.addPass(IE::createConvertShapeTo4DPass(isOptionEnabled(options.forceConvertGatherTo4D), log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
-    pm.addPass(IE::createConvertToSpatialOpPass(false, isOptionEnabled(options.enableSEPtrsOperations), log));
+    pm.addPass(IE::createConvertToSpatialOpPass(false, log));
     pm.addPass(IE::createConvertGRNToNormalizeL2Pass(log));
     pm.addPass(IE::createResolveScatterUpdateByTransposePass(log));
     IE::buildAdjustForVPUPipeline(pm, IE::AdjustForVPUOptions(options), log);

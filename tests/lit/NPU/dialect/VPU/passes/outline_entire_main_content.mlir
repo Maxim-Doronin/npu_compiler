@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -408,7 +408,7 @@ module @OutlineSparseTypes {
     }
 
     // CHECK:       func.func private @fn([[ARG0:%.+]]: tensor<1x48x32x32xf16, {order = #NHWC}>) -> tensor<1x48x32x32xf16, {order = #NHWC}> {
-    // CHECK:           [[FN_SOFTMAX:%.+]] = VPU.SoftMax(%arg0)
+    // CHECK:           [[FN_SOFTMAX:%.+]] = VPU.SoftMax([[ARG0]])
     // CHECK:           return [[FN_SOFTMAX]]
     // CHECK:       }
     // CHECK:       func.func private @main_outline1([[ARG0:%.+]]: tensor<1x48x32x32xf16, {order = #NHWC}>) -> (tensor<1x48x32x32xf16, {order = #NHWC}>, tensor<1x48x32x32xi1, {order = #NHWC}>) {
@@ -475,7 +475,7 @@ module @OutlineSparseTypesCMX {
     }
 
     // CHECK:       func.func private @fn([[ARG0:%.+]]: tensor<1x48x32x32xf16, {mem_space = @DDR, order = #NHWC}>) -> tensor<1x48x32x32xf16, {mem_space = @DDR, order = #NHWC}> {
-    // CHECK:           [[FN_SOFTMAX:%.+]] = VPU.SoftMax(%arg0)
+    // CHECK:           [[FN_SOFTMAX:%.+]] = VPU.SoftMax([[ARG0]])
     // CHECK:           return [[FN_SOFTMAX]]
     // CHECK:       }
     // CHECK:       func.func private @main_outline1([[ARG0:%.+]]: tensor<1x48x32x32xf16, {mem_space = @DDR, order = #NHWC}>)
@@ -558,7 +558,7 @@ module @OutlineSparseWeights {
         %conv = VPU.NCE.Convolution(%call, %sparse_weights_cmx) {
                     pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>, rawFilterShape = [16, 16, 1, 1], strides = [1, 1]
                 } : !TensorType, !SparseDistributedType -> !TensorType {
-                    VPU.DPU.Workload inOffsets [0, 0, 0, 0] inSizes [1, 16, 1, 480] outOffsets [0, 0, 0, 0] outSizes [1, 16, 1, 480] <left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+                    VPU.DPU.Workload inOffsets [0, 0, 0, 0] inSizes [1, 16, 1, 480] outOffsets [0, 0, 0, 0] outSizes [1, 16, 1, 480] pad [1, 1, 0, 0] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
             }
 
         return %call, %conv : !TensorType, !TensorType

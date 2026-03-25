@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -20,33 +20,22 @@
 
 using namespace vpux;
 
-//
-// getOutShape
-//
+namespace vpux::IE::Reshape {
 
-namespace {
-
-mlir::FailureOr<SmallVector<int64_t>> getOutShape(IE::ReshapeOpAdaptor reshape, mlir::Location loc) {
-    if (reshape.getShape() != nullptr && reshape.getShapeValue().has_value()) {
-        return errorAt(loc, "Ambiguous shape representation");
-    }
-    if (reshape.getShape() == nullptr && !reshape.getShapeValue().has_value()) {
-        return errorAt(loc, "Missed shape representation");
+llvm::FailureOr<llvm::SmallVector<int64_t>> parseOutShape(mlir::Location loc, mlir::ValueRange opInputs,
+                                                          bool specialZero) {
+    if (opInputs.size() != 2) {
+        return errorAt(loc, "Invalid IE.Reshape operation: expected 2 inputs got {0}", opInputs.size());
     }
 
-    if (reshape.getShapeValue().has_value()) {
-        return parseIntArrayAttr<int64_t>(reshape.getShapeValue().value());
-    }
-
-    auto shapeConst = reshape.getShape().getDefiningOp<Const::DeclareOp>();
+    // Note: by definition in .td file, IE.Reshape's operand #1 is the shape.
+    auto shapeConst = opInputs[1].getDefiningOp<Const::DeclareOp>();
     if (shapeConst == nullptr) {
         return errorAt(loc, "Only constant input is supported for shape");
     }
 
     const auto shapeContent = shapeConst.getContent();
     auto shapeVec = to_small_vector(shapeContent.getValues<int64_t>());
-
-    const auto specialZero = reshape.getSpecialZero();
 
     const auto zeroDims = std::count_if(shapeVec.begin(), shapeVec.end(), [](int64_t v) {
         return v == 0;
@@ -62,7 +51,7 @@ mlir::FailureOr<SmallVector<int64_t>> getOutShape(IE::ReshapeOpAdaptor reshape, 
     if (!(zeroDims != 0 && specialZero) && negativeDims == 0) {
         return shapeVec;
     } else {
-        const auto inShape = to_small_vector(mlir::cast<mlir::ShapedType>(reshape.getInput().getType()).getShape());
+        const auto inShape = to_small_vector(mlir::cast<mlir::ShapedType>(opInputs[0].getType()).getShape());
 
         auto dividend = std::accumulate(inShape.begin(), inShape.end(), int64_t(1), std::multiplies<int64_t>());
 
@@ -97,7 +86,7 @@ mlir::FailureOr<SmallVector<int64_t>> getOutShape(IE::ReshapeOpAdaptor reshape, 
     }
 }
 
-}  // namespace
+}  // namespace vpux::IE::Reshape
 
 //
 // inferReturnTypeComponents
@@ -114,19 +103,16 @@ mlir::LogicalResult vpux::IE::ReshapeOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto outShape = getOutShape(reshape, loc);
-    if (mlir::failed(outShape)) {
-        return mlir::failure();
-    }
+    const auto outShape = parseIntArrayAttr<int64_t>(reshape.getShapeValue());
 
     const auto inType = mlir::cast<mlir::RankedTensorType>(reshape.getInput().getType());
 
     VPUX_THROW_UNLESS(!mlir::isa<Core::BoundedTensorType>(inType), "{0} doesn't support dynamic shapes",
                       IE::ReshapeOp::getOperationName());
     const auto outDesc =
-            vpux::getTensorAttr(ctx, DimsOrder::fromNumDims(outShape->size()), vpux::getMemorySpace(inType));
+            vpux::getTensorAttr(ctx, DimsOrder::fromNumDims(outShape.size()), vpux::getMemorySpace(inType));
 
-    inferredReturnShapes.emplace_back(outShape.value(), inType.getElementType(), outDesc);
+    inferredReturnShapes.emplace_back(outShape, inType.getElementType(), outDesc);
     return mlir::success();
 }
 
@@ -178,44 +164,8 @@ mlir::LogicalResult FuseReshapes::matchAndRewrite(IE::ReshapeOp origOp, mlir::Pa
     const auto outputShape = origOp.getType().getShape();
     const auto outputShapeAttr = getIntArrayAttr(getContext(), outputShape);
 
-    auto newOp =
-            rewriter.replaceOpWithNewOp<IE::ReshapeOp>(origOp, prevOp->getOperand(0), nullptr, false, outputShapeAttr);
+    auto newOp = rewriter.replaceOpWithNewOp<IE::ReshapeOp>(origOp, prevOp->getOperand(0), outputShapeAttr);
     extendOpLoc(newOp, "fused_with_other");
-    return mlir::success();
-}
-
-}  // namespace
-
-//
-// ConvertConstToAttr
-//
-
-namespace {
-
-class ConvertConstToAttr final : public mlir::OpRewritePattern<IE::ReshapeOp> {
-public:
-    ConvertConstToAttr(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit = 1)
-            : mlir::OpRewritePattern<IE::ReshapeOp>(ctx, benefit) {
-        this->setDebugName("ConvertConstToAttr");
-    }
-
-public:
-    mlir::LogicalResult matchAndRewrite(IE::ReshapeOp origOp, mlir::PatternRewriter& rewriter) const final;
-};
-
-mlir::LogicalResult ConvertConstToAttr::matchAndRewrite(IE::ReshapeOp origOp, mlir::PatternRewriter& rewriter) const {
-    if (origOp.getShapeValue().has_value()) {
-        return mlir::failure();
-    }
-
-    const auto outShape = getOutShape(origOp, origOp->getLoc());
-    if (mlir::failed(outShape)) {
-        return mlir::failure();
-    }
-
-    const auto outShapeAttr = getIntArrayAttr(getContext(), outShape.value());
-
-    rewriter.replaceOpWithNewOp<IE::ReshapeOp>(origOp, origOp.getInput(), nullptr, false, outShapeAttr);
     return mlir::success();
 }
 
@@ -279,13 +229,11 @@ mlir::LogicalResult ConvertToAffineReshape::matchAndRewrite(IE::ReshapeOp origOp
 
 void vpux::IE::ReshapeOp::getCanonicalizationPatterns(mlir::RewritePatternSet& patterns, mlir::MLIRContext* ctx) {
     patterns.add<FuseReshapes>(ctx);
-    patterns.add<ConvertConstToAttr>(ctx);
     patterns.add<ConvertToAffineReshape>(ctx);
 }
 
 void vpux::IE::registerReshapeOpRewriters(RewriterRegistry& registry, ArrayRef<mlir::PatternBenefit> benefitLevels,
                                           size_t index) {
     registry.registerRewriter<FuseReshapes>("fuse-reshapes", benefitLevels[index]);
-    registry.registerRewriter<ConvertConstToAttr>("convert-const-to-attr", benefitLevels[index]);
     registry.registerRewriter<ConvertToAffineReshape>("convert-to-affine-reshape", benefitLevels[index]);
 }

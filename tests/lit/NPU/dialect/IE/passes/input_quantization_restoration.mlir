@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -43,7 +43,7 @@ func.func @InputQuantizationRestoration3D(%arg0: tensor<1x300x560xui8>) -> tenso
     // CHECK-DAG: [[IN_HIGH:%.+]] = const.Declare tensor<1x1x1xf32> = dense<2.550000e+02> : tensor<1x1x1xf32>
     // CHECK-DAG: [[OUT_LOW:%.+]] = const.Declare tensor<1x1x1xf32> = dense<-0.000000e+00> : tensor<1x1x1xf32>
     // CHECK-DAG: [[OUT_HIGH:%.+]] = const.Declare tensor<1x1x1xf32> = dense<1.275000e+02> : tensor<1x1x1xf32>
-    // CHECK: [[CONVERT:%.+]] = IE.Convert(%arg0) {dstElemType = f32} : tensor<1x300x560xui8> -> tensor<1x300x560xf32>
+    // CHECK: [[CONVERT:%.+]] = IE.Convert([[INPUT]]) {dstElemType = f32} : tensor<1x300x560xui8> -> tensor<1x300x560xf32>
     // CHECK: [[FAKEQUANTIZE:%.+]] = IE.FakeQuantize([[CONVERT]], [[IN_LOW]], [[IN_HIGH]], [[OUT_LOW]], [[OUT_HIGH]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x300x560xf32>, tensor<1x1x1xf32>, tensor<1x1x1xf32>, tensor<1x1x1xf32>, tensor<1x1x1xf32> -> tensor<1x300x560xf32>
     // CHECK: [[ADD:%.+]] = IE.Add([[FAKEQUANTIZE]], [[ADD_CONST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x300x560xf32>, tensor<1x1x1xf32> -> tensor<1x300x560xf32>
     // CHECK: return [[ADD]] : tensor<1x300x560xf32>

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -831,8 +831,8 @@ def IE_SelectOp :
 
     let arguments = (ins
         AnyRankedTensor:$input1,
-        RankedTensorOf<[SI32, SI64, F16, F32, F64]>:$input2,
-        RankedTensorOf<[SI32, SI64, F16, F32, F64]>:$input3,
+        RankedTensorOf<[SI16, SI32, SI64, F16, F32, F64]>:$input2,
+        RankedTensorOf<[SI16, SI32, SI64, F16, F32, F64]>:$input3,
         IE_AutoBroadcastTypeAttr:$auto_broadcast
     );
 

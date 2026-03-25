@@ -1,15 +1,17 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 
+#include "vpux/compiler/dialect/HostExec/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/outlining_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/scf/scf_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 #include "vpux/compiler/utils/abstract_tree.hpp"
 #include "vpux/compiler/utils/logging.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -297,7 +299,8 @@ llvm::SmallVector<llvm::SmallVector<mlir::Operation*>> getComputeOps(mlir::Opera
     for (auto& reg : currentOp->getRegions()) {
         for (auto& block : reg.getBlocks()) {
             for (auto& innerOp : block) {
-                if (mlir::isa<vpux::VPU::VPUDialect>(innerOp.getDialect())) {
+                if (mlir::isa<vpux::VPU::VPUDialect>(innerOp.getDialect()) ||
+                    innerOp.hasAttr(SKIP_CONNECTION_SLICE_MARKER_ATTR_NAME)) {
                     if (!VPU::isConstOperandOp(&innerOp)) {
                         currentGroup.push_back(&innerOp);
                     }
@@ -394,8 +397,11 @@ void moveExtractSliceBeforeVPUInSCFFor(mlir::scf::ForOp forOp) {
     }
 
     for (auto& op : llvm::make_early_inc_range(block)) {
-        if (mlir::isa<mlir::tensor::ExtractSliceOp>(op)) {
+        if (mlir::isa<mlir::tensor::ExtractSliceOp>(op) || mlir::isa<mlir::affine::AffineDialect>(op.getDialect())) {
             if (op.isBeforeInBlock(firstVPUOp)) {
+                continue;
+            }
+            if (op.hasAttr(SKIP_CONNECTION_SLICE_MARKER_ATTR_NAME)) {
                 continue;
             }
             op.moveBefore(firstVPUOp);
@@ -405,9 +411,7 @@ void moveExtractSliceBeforeVPUInSCFFor(mlir::scf::ForOp forOp) {
 
 void ScfComputeOpsOutliningPass::safeRunOnModule() {
     auto moduleOp = getOperation();
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp mainFuncOp;
-    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, mainFuncOp);
+    auto mainFuncOp = net::getMainFunc(moduleOp);
 
     // move all tensor.extract slices before VPU ops to avoid unnecessary splitting of compute blocks
     mainFuncOp.walk([&](mlir::scf::ForOp forOp) {
@@ -438,6 +442,7 @@ void ScfComputeOpsOutliningPass::safeRunOnModule() {
     });
 
     config::setPureHostCompileFuncAttribute(mainFuncOp);
+    vpux::HostExec::setHostCompileInferenceExecFuncAttribute(mainFuncOp);
 }
 
 }  // namespace

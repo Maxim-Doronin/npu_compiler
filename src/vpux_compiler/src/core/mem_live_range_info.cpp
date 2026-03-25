@@ -1,15 +1,13 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/mem_live_range_info.hpp"
-
-#include "vpux/compiler/utils/analysis.hpp"
-
-#include "vpux/utils/core/error.hpp"
-
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
+#include "vpux/compiler/utils/analysis.hpp"
+#include "vpux/utils/core/error.hpp"
 
 #include <algorithm>
 
@@ -74,7 +72,7 @@ void vpux::MemLiveRangeInfo::buildRangeInfo(mlir::func::FuncOp funcOp) {
                 auto* bodyBlock = curExecOp.getBody();
                 for (auto& innerOp : bodyBlock->getOperations()) {
                     if (auto layerOp = mlir::dyn_cast<VPUIP::LayerOpInterface>(innerOp)) {
-                        auto inputs = getInputsSanitized(layerOp);
+                        auto inputs = VPUIP::getInputsSanitized(layerOp);
                         auto outputs = layerOp.getOutputs();
 
                         updateConsProdMap(std::move(inputs), _opInputBuffersMap, curExecOp);

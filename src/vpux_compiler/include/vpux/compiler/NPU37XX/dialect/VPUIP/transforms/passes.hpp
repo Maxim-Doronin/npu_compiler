@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -47,6 +47,9 @@ struct DefaultHWOptions :
             *this, "enable-multi-schedule-heuristic",
             ::llvm::cl::desc("Enables compiler to schedule with different heuristic logics and compare costs"),
             ::llvm::cl::init(false)};
+    BoolOption enableLoopAllocation{*this, "enable-loop-allocation",
+                                    ::llvm::cl::desc("Enables loop allocation for tiling and vertical fusion regions"),
+                                    ::llvm::cl::init(false)};
 };
 
 void buildDefaultHWPipeline(mlir::OpPassManager& pm, const DefaultHWOptions& options, Logger log = Logger::global());

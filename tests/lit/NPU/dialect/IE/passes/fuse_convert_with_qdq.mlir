@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -98,9 +98,9 @@ func.func @PerTensorSI8(%arg0: tensor<1x12x19x19x!qElemType>) -> tensor<1x12x19x
 
    return %1 : tensor<1x12x19x19xsi8>
 
-   //CHECK: [[VAL0:%.+]] IE.Dequantize([[ARG]]) {dstElemType = f16} :
+   //CHECK: [[VAL0:%.+]] = IE.Dequantize([[ARG]]) {dstElemType = f16} :
    //CHECK-SAME: tensor<1x12x19x19x!qElemType> -> tensor<1x12x19x19xf16>
-   //CHECK: [[VAL1:%.+]]  = IE.Convert(%0) {dstElemType = si8} :
+   //CHECK: [[VAL1:%.+]] = IE.Convert([[VAL0]]) {dstElemType = si8} :
    //CHECK-SAME: tensor<1x12x19x19xf16> -> tensor<1x12x19x19xsi8>
    //CHECK: return [[VAL1]] :  tensor<1x12x19x19xsi8>
 

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -19,13 +19,13 @@
 #include "vpux/compiler/dialect/VPU/IR/ops/image.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/internal.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/logical.hpp"
-#include "vpux/compiler/dialect/VPU/IR/ops/m2i.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/normalization.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/pooling.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/recurrent.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/reduce.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/specialized.hpp"
+#include "vpux/compiler/dialect/VPU/utils/ppe_version_config.hpp"
 #include "vpux/compiler/dialect/VPU/utils/singleton_cache.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
@@ -136,10 +136,6 @@ void vpux::VPU::VPUDialect::initialize() {
             >();
     addOperations<
 #define GET_OP_LIST
-#include <vpux/compiler/dialect/VPU/ops/m2i.cpp.inc>
-            >();
-    addOperations<
-#define GET_OP_LIST
 #include <vpux/compiler/dialect/VPU/ops/normalization.cpp.inc>
             >();
     addOperations<
@@ -168,6 +164,7 @@ void vpux::VPU::VPUDialect::initialize() {
 
     addInterface<VPUInlinerInterface>();
     addInterface<SingletonCache>();
+    addInterface<PPEVersionConfig>();
 }
 
 //

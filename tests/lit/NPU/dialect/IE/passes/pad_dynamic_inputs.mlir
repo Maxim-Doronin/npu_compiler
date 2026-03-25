@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -640,3 +640,42 @@ func.func @SecondDynamicInputsSubgraph(%IN1: tensor<1x1x768xf32>, %IN2: tensor<1
   // CHECK:   [[RESHAPE_OUT:%.+]] = IE.DynamicReshape([[ADD]], [[CONCAT]]) {output_bounds = [1, 10, 768], output_shape = [1, -9223372036854775808, 768]} : tensor<1x10x768xf32>, tensor<3xsi64> -> tensor<1x?x768xf32, {bounds = #const.OpaqueI64Elements<[1, 10, 768]> : tensor<3xsi64>, order = #CHW}>
   // CHECK:   return [[RESHAPE_OUT]] : tensor<1x?x768xf32, {bounds = #const.OpaqueI64Elements<[1, 10, 768]> : tensor<3xsi64>, order = #CHW}>
 }
+
+// -----
+
+#C = affine_map<(d0) -> (d0)>
+#NC = affine_map<(d0, d1) -> (d0, d1)>
+
+// CHECK-LABEL: @DynamicMultiply
+// CHECK-SAME: ([[ARG0:%.+]]: tensor<?xf32, {bounds = #const.OpaqueI64Elements<[16800]> : tensor<1xsi64>, order = #C}>)
+func.func @DynamicMultiply(%arg0: tensor<?xf32, {bounds = #const.OpaqueI64Elements<[16800]> : tensor<1xsi64>, order = #C}>) -> tensor<?xf32, {bounds = #const.OpaqueI64Elements<[16800]> : tensor<1xsi64>, order = #C}> {
+    // CHECK: [[CST:%.+]] = const.Declare tensor<1xf32> = dense_resource<INTERNAL_CONSTANT_175> : tensor<1xf32> isSplat
+    // CHECK: [[CST_0:%.+]] = const.Declare tensor<2xsi64> = dense_resource<INTERNAL_CONSTANT_153> : tensor<2xsi64>
+    // CHECK: [[CST_1:%.+]] = const.Declare tensor<1xf32> = dense_resource<INTERNAL_CONSTANT_152> : tensor<1xf32> isSplat
+    %cst_0 = const.Declare tensor<1xf32> = dense_resource<INTERNAL_CONSTANT_175> : tensor<1xf32> isSplat
+    %cst_1 = const.Declare tensor<2xsi64> = dense_resource<INTERNAL_CONSTANT_153> : tensor<2xsi64>
+    %cst_2 = const.Declare tensor<1xf32> = dense_resource<INTERNAL_CONSTANT_152> : tensor<1xf32> isSplat
+    // CHECK: [[EXPAND:%.+]] = IE.DynamicExpand([[ARG0]]) : tensor<?xf32, {bounds = #const.OpaqueI64Elements<[16800]> : tensor<1xsi64>, order = #C}> -> tensor<16800xf32>
+    // CHECK: [[ADD:%.+]] = IE.Add([[EXPAND]], [[CST_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<16800xf32>, tensor<1xf32> -> tensor<16800xf32>
+    %1 = IE.Add(%arg0, %cst_2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<?xf32, {bounds = #const.OpaqueI64Elements<[16800]> : tensor<1xsi64>, order = #C}>, tensor<1xf32> -> tensor<?xf32, {bounds = #const.OpaqueI64Elements<[16800]> : tensor<1xsi64>, order = #C}>
+    // CHECK: [[RESHAPE_0:%.+]] = IE.DynamicReshape([[ADD]], [[CST_0]]) {output_bounds = [16800, 1], output_shape = [-9223372036854775808, 1]} : tensor<16800xf32>, tensor<2xsi64> -> tensor<?x1xf32, {bounds = #const.OpaqueI64Elements<[16800, 1]> : tensor<2xsi64>, order = #NC}>
+    %3 = IE.DynamicReshape(%1, %cst_1) {output_bounds = [16800, 1], output_shape = [-9223372036854775808, 1]} : tensor<?xf32, {bounds = #const.OpaqueI64Elements<[16800]> : tensor<1xsi64>, order = #C}>, tensor<2xsi64> -> tensor<?x1xf32, {bounds = #const.OpaqueI64Elements<[16800, 1]> : tensor<2xsi64>, order = #NC}>
+    // CHECK: [[MULTIPLY:%.+]] = IE.Multiply([[ADD]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<16800xf32>, tensor<1xf32> -> tensor<16800xf32>
+    %4 = IE.Multiply(%1, %cst_0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<?xf32, {bounds = #const.OpaqueI64Elements<[16800]> : tensor<1xsi64>, order = #C}>, tensor<1xf32> -> tensor<?xf32, {bounds = #const.OpaqueI64Elements<[16800]> : tensor<1xsi64>, order = #C}>
+    // CHECK: [[SHAPEOF:%.+]] = IE.ShapeOf([[ARG0]]) {dstElemType = si64} : tensor<?xf32, {bounds = #const.OpaqueI64Elements<[16800]> : tensor<1xsi64>, order = #C}> -> tensor<1xsi64>
+    %5 = IE.ShapeOf(%arg0) {dstElemType = si64} : tensor<?xf32, {bounds = #const.OpaqueI64Elements<[16800]> : tensor<1xsi64>, order = #C}> -> tensor<1xsi64>
+    // CHECK: [[RESHAPE_1:%.+]] = IE.DynamicReshape([[MULTIPLY]], [[SHAPEOF]]) {only_set_shape, output_bounds = [16800], output_shape = [-9223372036854775808]} : tensor<16800xf32>, tensor<1xsi64> -> tensor<?xf32, {bounds = #const.OpaqueI64Elements<[16800]> : tensor<1xsi64>, order = #C}>
+    %6 = IE.DynamicReshape(%4, %5) {only_set_shape, output_bounds = [16800], output_shape = [-9223372036854775808]} : tensor<?xf32, {bounds = #const.OpaqueI64Elements<[16800]> : tensor<1xsi64>, order = #C}>, tensor<1xsi64> -> tensor<?xf32, {bounds = #const.OpaqueI64Elements<[16800]> : tensor<1xsi64>, order = #C}>
+    // CHECK: return [[RESHAPE_1]] : tensor<?xf32, {bounds = #const.OpaqueI64Elements<[16800]> : tensor<1xsi64>, order = #C}>
+    return %6 : tensor<?xf32, {bounds = #const.OpaqueI64Elements<[16800]> : tensor<1xsi64>, order = #C}>
+}
+
+{-#
+  dialect_resources: {
+    builtin: {
+      INTERNAL_CONSTANT_175: "0x1000000000000045",
+      INTERNAL_CONSTANT_153: "0x10000000FFFFFFFFFFFFFFFF0100000000000000",
+      INTERNAL_CONSTANT_152: "0x10000000000080BF"
+    }
+  }
+#-}

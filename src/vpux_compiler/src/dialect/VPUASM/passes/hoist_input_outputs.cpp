@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,6 +12,7 @@
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/net/IR/dialect.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 #include "vpux/compiler/utils/passes.hpp"
 
 namespace vpux::VPUASM {
@@ -41,12 +42,10 @@ std::string HoistInputOutputsPass::symbolizeIO(net::DataInfoOp di) {
 }
 
 void HoistInputOutputsPass::safeRunOnModule() {
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp netFunc;
     auto moduleOp = getOperation();
     auto ctx = moduleOp.getContext();
 
-    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
+    auto [netInfo, netFunc] = net::getFromModule(moduleOp);
     // Build the initial IOBinder container OP
     auto moduleBuilder = mlir::OpBuilder(netFunc.getOperation());
     auto ioBindingsOp = moduleBuilder.create<VPUASM::IOBindingsOp>(netFunc.getLoc());

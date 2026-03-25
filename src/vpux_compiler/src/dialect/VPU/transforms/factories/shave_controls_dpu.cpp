@@ -1,9 +1,10 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/transforms/factories/shave_controls_dpu.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/utils/core/error.hpp"
 #include "vpux/utils/profiling/parser/hw.hpp"
 namespace npu37xx {

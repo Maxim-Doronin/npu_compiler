@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -123,12 +123,12 @@ module @dual_tile attributes {config.arch = #config.arch_kind<NPU37XX>, config.c
     }
 
     VPURT.Task waits(%inputs_ready : !VPURT.Barrier) updates(%conv_complete : !VPURT.Barrier) {
-      VPUIP.NCEClusterTask {
+      VPUIP.NCEClusterTask <{
           kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
           kernel_size = [1, 8],
           kernel_strides = [1, 1],
           task_type = #VPUIP.nce_task_type<CONV>
-        }
+        }>
         input(%input_0 : memref<1x16x16x16x!qtype, #NHWC, [@CMX_NN, 0]>)
         weights(%weights0 : memref<16x1x1x16x!qtype, #NHWC, [@CMX_NN, 0]>)
         weight_table(%weight_table0 : memref<16x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>)
@@ -149,12 +149,12 @@ module @dual_tile attributes {config.arch = #config.arch_kind<NPU37XX>, config.c
     }
 
     VPURT.Task waits(%inputs_ready : !VPURT.Barrier) updates(%conv_complete : !VPURT.Barrier) {
-      VPUIP.NCEClusterTask {
+      VPUIP.NCEClusterTask <{
           kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
           kernel_size = [1, 8],
           kernel_strides = [1, 1],
           task_type = #VPUIP.nce_task_type<CONV>
-        }
+        }>
         input(%input_1 : memref<1x16x16x16x!qtype, #NHWC, [@CMX_NN, 1]>)
         weights(%weights1 : memref<16x1x1x16x!qtype, #NHWC, [@CMX_NN, 1]>)
         weight_table(%weight_table1 : memref<16x1x1x4xsi32, #NHWC, [@CMX_NN, 1]>)

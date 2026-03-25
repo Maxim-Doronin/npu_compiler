@@ -281,7 +281,7 @@ SmallVector<mlir::Value> UnrollFullyConnected::buildMatMuls(IE::FullyConnectedOp
             // fullyconnectOp output shape size is always 2, reshape to 4
             SmallVector<int64_t> newShapeOut{1, 1, matMulShape[Dim(0)], matMulShape[Dim(1)]};
             const auto reshapeLoc = appendLoc(loc, "reshape_{0}", idx);
-            auto reshape = rewriter.create<IE::ReshapeOp>(reshapeLoc, newMatMul.getOutput(), nullptr, false,
+            auto reshape = rewriter.create<IE::ReshapeOp>(reshapeLoc, newMatMul.getOutput(),
                                                           getIntArrayAttr(ctx, newShapeOut));
             matMuls.push_back(reshape.getOutput());
         }
@@ -338,8 +338,8 @@ mlir::Value UnrollFullyConnected::reduceSumForAccumulateMatMuls(const mlir::Valu
     SmallVector<int64_t> newShapeOut{newMatMulShape[Dim(1)], newMatMulShape[Dim(2)]};
 
     const auto reshapeLoc = appendLoc(matMuls.front().getLoc(), "reshape_out");
-    auto reshape = rewriter.create<IE::ReshapeOp>(reshapeLoc, newReduceSumOp.getOutput(), nullptr, false,
-                                                  getIntArrayAttr(ctx, newShapeOut));
+    auto reshape =
+            rewriter.create<IE::ReshapeOp>(reshapeLoc, newReduceSumOp.getOutput(), getIntArrayAttr(ctx, newShapeOut));
     return reshape.getOutput();
 }
 
@@ -352,7 +352,7 @@ SmallVector<mlir::Value> UnrollFullyConnected::reshapeTo2d(mlir::ValueRange valu
         const SmallVector<int64_t> target2dShape = {sliceShape[Dim(0)] * sliceShape[Dim(1)], sliceShape[Dim(2)]};
         const auto target2dShapeAttr = getIntArrayAttr(rewriter.getContext(), target2dShape);
         const auto reshapeLoc = appendLoc(getValueLocation(val), "reshape_{0}", counter++);
-        auto reshape = rewriter.create<IE::ReshapeOp>(reshapeLoc, val, nullptr, false, target2dShapeAttr);
+        auto reshape = rewriter.create<IE::ReshapeOp>(reshapeLoc, val, target2dShapeAttr);
         return reshape.getOutput();
     };
     std::transform(values.begin(), values.end(), std::back_inserter(reshapedValues), to2d);

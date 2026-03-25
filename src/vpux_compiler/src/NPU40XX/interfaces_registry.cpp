@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -26,6 +26,8 @@ void InterfacesRegistry40XX::registerInterfaces(mlir::DialectRegistry& registry)
     IE::arch37xx::registerElemTypeInfoOpInterfaces(registry);
     // NB: arch40xx uses its own ExecutorOpModel logic
     IE::arch40xx::registerExecutorOpInterfaces(registry);
+    // NB: arch37xx::QuantizedLayerOpModel can be re-used for 40XX
+    IE::arch37xx::registerQuantizedLayerOpInterfaces(registry);
     // NB: arch37xx::LayerWithPostOpModel can be re-used for 40XX
     VPU::arch37xx::registerLayerWithPostOpModelInterface(registry);
     // NB: arch37xx::LayoutInfo can be re-used for 40XX

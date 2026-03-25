@@ -39,6 +39,11 @@ TEST_P(ROIAlignV9LayerTestCommon, NPU5010_SW) {
     setReferenceSoftwareMode();
     run(Platform::NPU5010);
 }
+TEST_P(ROIAlignV9LayerTestCommon, NPU5020_SW) {
+    abs_threshold = 0.03;
+    setReferenceSoftwareMode();
+    run(Platform::NPU5020);
+}
 
 }  // namespace test
 }  // namespace ov

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -145,8 +145,8 @@ func.func @main(%arg0: tensor<1xf16>, %arg1: tensor<1xf16>) -> tensor<1xf16> {
     %3 = IE.Convert(%2) {dstElemType = f16} : tensor<1xi8> -> tensor<1xf16>
     return %3 : tensor<1xf16>
 
-    // CHECK:  %0 = IE.And([[ARG0]], [[ARG1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1xf16>, tensor<1xf16> -> tensor<1xf16>
-    // CHECK:  return %0 : tensor<1xf16>
+    // CHECK:  [[AND:%.+]] = IE.And([[ARG0]], [[ARG1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1xf16>, tensor<1xf16> -> tensor<1xf16>
+    // CHECK:  return [[AND]] : tensor<1xf16>
 }
 
 }
@@ -423,7 +423,7 @@ func.func @main(%arg0: tensor<1x1024xf16>) -> tensor<1x1024xf16> {
     %4 = IE.BitwiseXor(%0, %3) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1024xi8>, tensor<1x1024xi8> -> tensor<1x1024xi8>
     %5 = IE.Convert(%4) {dstElemType = f16} : tensor<1x1024xi8> -> tensor<1x1024xf16>
     return %5 : tensor<1x1024xf16>
-    // CHECK:       [[CONVER:%.+]] = IE.Convert(%arg0) {dstElemType = i8} : tensor<1x1024xf16> -> tensor<1x1024xi8>
+    // CHECK:       [[CONVER:%.+]] = IE.Convert([[ARG0]]) {dstElemType = i8} : tensor<1x1024xf16> -> tensor<1x1024xi8>
 
     // CHECK:       [[BITWISENOT:%.+]] = IE.BitwiseNot([[CONVER]]) : tensor<1x1024xi8> -> tensor<1x1024xi8>
     // CHECK:       [[BITWISEAND:%.+]] = IE.BitwiseAnd([[CONVER]], [[BITWISENOT]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1024xi8>, tensor<1x1024xi8> -> tensor<1x1024xi8>
@@ -501,8 +501,8 @@ module @FP32GreaterEqual {
 
 // -----
 
-// CHECK-LABEL: @SelectOpSi32ToFP16
-module @SelectOpSi32ToFP16 {
+// CHECK-LABEL: @SelectOpDoNotConvertSi32ToFP16
+module @SelectOpDoNotConvertSi32ToFP16 {
 
 net.NetworkInfo
     entryPoint : @main
@@ -524,15 +524,11 @@ func.func @main(%arg0: tensor<1x1024xi8>, %arg1: tensor<1x1024xsi32>) -> tensor<
     %0 = IE.Select(%arg0, %cst, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1024xi8>, tensor<1xsi32>, tensor<1x1024xsi32> -> tensor<1x1024xsi32>
     return %0 : tensor<1x1024xsi32>
 
-    // CHECK-DAG: [[FLAG_CONST:%.+]] = const.Declare tensor<1xf16> = dense<256> : tensor<1xsi32>, [#const.CastElemType<f16>]
-    // CHECK:     [[CONVERT_DATA:%.+]] = IE.Convert([[ARG1]])
-    // CHECK-SAME:      {dstElemType = f16} : tensor<1x1024xsi32> -> tensor<1x1024xf16>
-    // CHECK:     [[SELECT:%.+]] = IE.Select([[ARG0]], [[FLAG_CONST]], [[CONVERT_DATA]])
+    // CHECK:     [[CST:%.+]] = const.Declare tensor<1xsi32> = dense<256> : tensor<1xsi32>
+    // CHECK:     [[SELECT:%.+]] = IE.Select([[ARG0]], [[CST]], [[ARG1]])
     // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
-    // CHECK-SAME:      tensor<1x1024xf16>, tensor<1xf16>, tensor<1x1024xf16> -> tensor<1x1024xf16>
-    // CHECK:     [[CONVERT_OUT:%.+]] = IE.Convert([[SELECT]])
-    // CHECK-SAME:      {dstElemType = si32} : tensor<1x1024xf16> -> tensor<1x1024xsi32>
-    // CHECK:     return [[CONVERT_OUT]] : tensor<1x1024xsi32>
+    // CHECK-SAME:      tensor<1x1024xf16>, tensor<1xsi32>, tensor<1x1024xsi32> -> tensor<1x1024xsi32>
+    // CHECK:     return [[SELECT]] : tensor<1x1024xsi32>
 }
 
 }
@@ -571,6 +567,44 @@ func.func @main(%arg0: tensor<1x1024xi8>, %arg1: tensor<1x1024xsi64>) -> tensor<
     // CHECK:     [[CONVERT_OUT:%.+]] = IE.Convert([[SELECT]])
     // CHECK-SAME:      {dstElemType = si64} : tensor<1x1024xf16> -> tensor<1x1024xsi64>
     // CHECK:     return [[CONVERT_OUT]] : tensor<1x1024xsi64>
+}
+
+}
+
+// -----
+
+// CHECK-LABEL: @SelectOpSi16ToFP16
+module @SelectOpSi16ToFP16 {
+
+net.NetworkInfo
+    entryPoint : @main
+    inputsInfo : {
+        // CHECK: DataInfo "flag" : tensor<1x1024xi8>
+        // CHECK: DataInfo "data" : tensor<1x1024xsi16>
+        DataInfo "flag" : tensor<1x1024xi8>
+        DataInfo "data" : tensor<1x1024xsi16>
+    }
+    outputsInfo : {
+        // CHECK: DataInfo "out" : tensor<1x1024xsi16>
+        DataInfo "out" : tensor<1x1024xsi16>
+    }
+
+// CHECK: @main([[ARG0:[^:]+]]: tensor<1x1024xf16>, [[ARG1:[^:]+]]: tensor<1x1024xsi16>)
+// CHECK:  -> tensor<1x1024xsi16>
+func.func @main(%arg0: tensor<1x1024xi8>, %arg1: tensor<1x1024xsi16>) -> tensor<1x1024xsi16> {
+    %cst = const.Declare tensor<1xsi16> = dense<256> : tensor<1xsi16>
+    %0 = IE.Select(%arg0, %cst, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1024xi8>, tensor<1xsi16>, tensor<1x1024xsi16> -> tensor<1x1024xsi16>
+    return %0 : tensor<1x1024xsi16>
+
+    // CHECK-DAG: [[FLAG_CONST:%.+]] = const.Declare tensor<1xf16> = dense<256> : tensor<1xsi16>, [#const.CastElemType<f16>]
+    // CHECK:     [[CONVERT_DATA:%.+]] = IE.Convert([[ARG1]])
+    // CHECK-SAME:      {dstElemType = f16} : tensor<1x1024xsi16> -> tensor<1x1024xf16>
+    // CHECK:     [[SELECT:%.+]] = IE.Select([[ARG0]], [[FLAG_CONST]], [[CONVERT_DATA]])
+    // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+    // CHECK-SAME:      tensor<1x1024xf16>, tensor<1xf16>, tensor<1x1024xf16> -> tensor<1x1024xf16>
+    // CHECK:     [[CONVERT_OUT:%.+]] = IE.Convert([[SELECT]])
+    // CHECK-SAME:      {dstElemType = si16} : tensor<1x1024xf16> -> tensor<1x1024xsi16>
+    // CHECK:     return [[CONVERT_OUT]] : tensor<1x1024xsi16>
 }
 
 }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -41,13 +41,13 @@ func.func @UnrollSwKernel()
     // CHECK:   [[TILE1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <1187904> -> memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>
     // CHECK:   [[OUTPUT1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <1450048> -> memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>
     // CHECK:   VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier) {
-    // CHECK:           VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_MVN inputs([[TILE0]] as %arg0: memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>) outputs([[OUTPUT0]] as %arg1: memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>) on tile 0 -> memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>{
-    // CHECK:                    VPUIP.SW.Kernel.run {attrs = [false, true, 6.0892105102539063E-4]}(%arg0, %arg1) : memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>, memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>
+    // CHECK:           VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_MVN inputs([[TILE0]] as [[ARG_0:%[^:]+]]: memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>) outputs([[OUTPUT0]] as [[ARG_1:%[^:]+]]: memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>) on tile 0 -> memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>{
+    // CHECK:                    VPUIP.SW.Kernel.run {attrs = [false, true, 6.0892105102539063E-4]}([[ARG_0]], [[ARG_1]]) : memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>, memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>
     // CHECK:           }
     // CHECK:   }
     // CHECK:   VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier) {
-    // CHECK:           VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_MVN inputs([[TILE1]] as %arg0: memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>) outputs([[OUTPUT1]] as %arg1: memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>) on tile 0 -> memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>{
-    // CHECK:                    VPUIP.SW.Kernel.run {attrs = [false, true, 6.0892105102539063E-4]}(%arg0, %arg1) : memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>, memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>
+    // CHECK:           VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_MVN inputs([[TILE1]] as [[ARG_0:%[^:]+]]: memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>) outputs([[OUTPUT1]] as [[ARG_1:%[^:]+]]: memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>) on tile 0 -> memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>{
+    // CHECK:                    VPUIP.SW.Kernel.run {attrs = [false, true, 6.0892105102539063E-4]}([[ARG_0]], [[ARG_1]]) : memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>, memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>
     // CHECK:           }
     // CHECK:   }
     // CHECK:   return [[OUTPUT0]], [[OUTPUT1]] : memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>, memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>
@@ -99,11 +99,11 @@ func.func @UnrollSwKernelWithProfiling()
     // CHECK:           VPUIP.SW.Kernel {
     // CHECK-SAME:                  profilingMetadata = #VPUIP.SwProfilingMetadataAttr<bufferId = 0 : i64, bufferOffset = 0 : i64, clusterSize = 2 : i64, dataIndex = 0 : i64, tileId = 0 : i64, clusterId = 0 : i64>,
     // CHECK-SAME:                  resultSegmentSizes = array<i32: 1, 0, 1>} @VPU.SW::@builtin_MVN
-    // CHECK-SAME:                  inputs([[TILE0]] as %arg0: memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>)
-    // CHECK-SAME:                  outputs([[OUTPUT0]] as %arg1: memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>)
+    // CHECK-SAME:                  inputs([[TILE0]] as [[ARG_0:%[^:]+]]: memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>)
+    // CHECK-SAME:                  outputs([[OUTPUT0]] as [[ARG_1:%[^:]+]]: memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>)
     // CHECK-SAME:                  profiling_data([[PROF0]] : memref<8xui32, [@CMX_NN, 0]>)
     // CHECK-SAME:                  on tile 0 -> (memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>, memref<8xui32, [@CMX_NN, 0]>){
-    // CHECK:                    VPUIP.SW.Kernel.run {attrs = [false, true, 6.0892105102539063E-4]}(%arg0, %arg1) : memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>, memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>
+    // CHECK:                    VPUIP.SW.Kernel.run {attrs = [false, true, 6.0892105102539063E-4]}([[ARG_0]], [[ARG_1]]) : memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>, memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>
     // CHECK:           }
     // CHECK:   }
 
@@ -112,11 +112,11 @@ func.func @UnrollSwKernelWithProfiling()
     // CHECK:           VPUIP.SW.Kernel {
     // CHECK-SAME:                  profilingMetadata = #VPUIP.SwProfilingMetadataAttr<bufferId = 0 : i64, bufferOffset = 0 : i64, clusterSize = 2 : i64, dataIndex = 1 : i64, tileId = 1 : i64, clusterId = 0 : i64>,
     // CHECK-SAME:                  resultSegmentSizes = array<i32: 1, 0, 1>} @VPU.SW::@builtin_MVN
-    // CHECK-SAME:                  inputs([[TILE1]] as %arg0: memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>)
-    // CHECK-SAME:                  outputs([[OUTPUT1]] as %arg1: memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>)
+    // CHECK-SAME:                  inputs([[TILE1]] as [[ARG_0:%[^:]+]]: memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>)
+    // CHECK-SAME:                  outputs([[OUTPUT1]] as [[ARG_1:%[^:]+]]: memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>)
     // CHECK-SAME:                  profiling_data([[PROF1]] : memref<8xui32, [@CMX_NN, 0]>)
     // CHECK-SAME:                  on tile 0 -> (memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>, memref<8xui32, [@CMX_NN, 0]>){
-    // CHECK:                    VPUIP.SW.Kernel.run {attrs = [false, true, 6.0892105102539063E-4]}(%arg0, %arg1) : memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>, memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>
+    // CHECK:                    VPUIP.SW.Kernel.run {attrs = [false, true, 6.0892105102539063E-4]}([[ARG_0]], [[ARG_1]]) : memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>, memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>
     // CHECK:           }
     // CHECK:   }
     // CHECK:   return [[OUTPUT0]], [[OUTPUT1]] : memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>, memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>
@@ -159,14 +159,14 @@ func.func @DistributedBufferUnrollSwKernel() -> (!DistributedT, !DistributedT) {
     // CHECK:   [[TILE1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0, 1] <1187904> -> !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
     // CHECK:   [[OUTPUT1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0, 1] <1450048> -> !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
     // CHECK:   VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier) {
-    // CHECK:           VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_MVN inputs([[TILE0]] as %arg0: !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>) outputs([[OUTPUT0]] as %arg1: !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>) outputStrides({{\[\[}}131072, 1, 64, 2048], [131072, 1, 64, 2048]]) on tile 0
+    // CHECK:           VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_MVN inputs([[TILE0]] as [[ARG_0:%[^:]+]]: !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>) outputs([[OUTPUT0]] as [[ARG_1:%[^:]+]]: !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>) outputStrides({{\[\[}}131072, 1, 64, 2048], [131072, 1, 64, 2048]]) on tile 0
     // CHECK-SAME: -> !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>{
-    // CHECK:                    VPUIP.SW.Kernel.run {attrs = [false, true, 6.0892105102539063E-4]}(%arg0, %arg1) : !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>, !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    // CHECK:                    VPUIP.SW.Kernel.run {attrs = [false, true, 6.0892105102539063E-4]}([[ARG_0]], [[ARG_1]]) : !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>, !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
     // CHECK:           }
     // CHECK:   }
     // CHECK:   VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier) {
-    // CHECK:           VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_MVN inputs([[TILE1]] as %arg0: !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>) outputs([[OUTPUT1]] as %arg1: !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>) outputStrides({{\[\[}}131072, 1, 64, 2048], [131072, 1, 64, 2048]]) on tile 0 -> !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>{
-    // CHECK:                    VPUIP.SW.Kernel.run {attrs = [false, true, 6.0892105102539063E-4]}(%arg0, %arg1) : !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>, !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    // CHECK:           VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_MVN inputs([[TILE1]] as [[ARG_0:%[^:]+]]: !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>) outputs([[OUTPUT1]] as [[ARG_1:%[^:]+]]: !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>) outputStrides({{\[\[}}131072, 1, 64, 2048], [131072, 1, 64, 2048]]) on tile 0 -> !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>{
+    // CHECK:                    VPUIP.SW.Kernel.run {attrs = [false, true, 6.0892105102539063E-4]}([[ARG_0]], [[ARG_1]]) : !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>, !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
     // CHECK:           }
     // CHECK:   }
     // CHECK:   return [[OUTPUT0]], [[OUTPUT1]] : !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>, !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
@@ -226,13 +226,13 @@ func.func @DistributedBufferUnrollSwKernelWithProfiling() -> (!DistributedT, !Di
     // CHECK-SAME:          profilingMetadata = #VPUIP.SwProfilingMetadataAttr<bufferId = 0 : i64, bufferOffset = 0 : i64, clusterSize = 2 : i64, dataIndex = 0 : i64, tileId = 0 : i64, clusterId = 0 : i64>,
     // CHECK-SAME:          resultSegmentSizes = array<i32: 1, 0, 1>}
     // CHECK-SAME:          @VPU.SW::@builtin_MVN
-    // CHECK-SAME:          inputs([[TILE0]] as %arg0: !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
-    // CHECK-SAME:          outputs([[OUTPUT0]] as %arg1: !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
+    // CHECK-SAME:          inputs([[TILE0]] as [[ARG_0:%[^:]+]]: !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
+    // CHECK-SAME:          outputs([[OUTPUT0]] as [[ARG_1:%[^:]+]]: !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
     // CHECK-SAME:          profiling_data([[PROF0]] : !VPUIP.DistributedBuffer<16xui32, #C, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2], num_clusters = 2 : i64, uniform_distributed_segments}>)
     // CHECK-SAME:          outputStrides({{\[\[}}131072, 1, 64, 2048], [131072, 1, 64, 2048]]) on tile 0
     // CHECK-SAME:      -> (!VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>,
     // CHECK-SAME:          !VPUIP.DistributedBuffer<16xui32, #C, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2], num_clusters = 2 : i64, uniform_distributed_segments}>){
-    // CHECK:                    VPUIP.SW.Kernel.run {attrs = [false, true, 6.0892105102539063E-4]}(%arg0, %arg1) : !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>, !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    // CHECK:                    VPUIP.SW.Kernel.run {attrs = [false, true, 6.0892105102539063E-4]}([[ARG_0]], [[ARG_1]]) : !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>, !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
     // CHECK:           }
     // CHECK:   }
 
@@ -242,13 +242,13 @@ func.func @DistributedBufferUnrollSwKernelWithProfiling() -> (!DistributedT, !Di
     // CHECK-SAME:          profilingMetadata = #VPUIP.SwProfilingMetadataAttr<bufferId = 0 : i64, bufferOffset = 0 : i64, clusterSize = 2 : i64, dataIndex = 1 : i64, tileId = 1 : i64, clusterId = 0 : i64>,
     // CHECK-SAME:          resultSegmentSizes = array<i32: 1, 0, 1>}
     // CHECK-SAME:          @VPU.SW::@builtin_MVN
-    // CHECK-SAME:          inputs([[TILE1]] as %arg0: !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
-    // CHECK-SAME:          outputs([[OUTPUT1]] as %arg1: !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
+    // CHECK-SAME:          inputs([[TILE1]] as [[ARG_0:%[^:]+]]: !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
+    // CHECK-SAME:          outputs([[OUTPUT1]] as [[ARG_1:%[^:]+]]: !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
     // CHECK-SAME:          profiling_data([[PROF1]] : !VPUIP.DistributedBuffer<16xui32, #C, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2], num_clusters = 2 : i64, uniform_distributed_segments}>)
     // CHECK-SAME:          outputStrides({{\[\[}}131072, 1, 64, 2048], [131072, 1, 64, 2048]]) on tile 0
     // CHECK-SAME:      -> (!VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>,
     // CHECK-SAME:          !VPUIP.DistributedBuffer<16xui32, #C, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2], num_clusters = 2 : i64, uniform_distributed_segments}>){
-    // CHECK:                    VPUIP.SW.Kernel.run {attrs = [false, true, 6.0892105102539063E-4]}(%arg0, %arg1) : !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>, !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    // CHECK:                    VPUIP.SW.Kernel.run {attrs = [false, true, 6.0892105102539063E-4]}([[ARG_0]], [[ARG_1]]) : !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>, !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
     // CHECK:           }
     // CHECK:   }
     // CHECK:   return [[OUTPUT0]], [[OUTPUT1]] : !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>, !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
@@ -260,7 +260,7 @@ func.func @DistributedBufferUnrollSwKernelWithProfiling() -> (!DistributedT, !Di
 #NWHC = affine_map<(d0, d1, d2, d3) -> (d0, d3, d2, d1)>
 
 module @VPU.SW {
-  func.func private @builtin_LSTMSequence(memref<*xf16, [@CMX_NN, 0]>, memref<*xsi32, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, memref<*xsi32, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, memref<*xsi32, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, i64) attributes {VPU.kernel_code = "lstm_sequence.cpp", VPU.kernel_entry = "lstm_sequence"}
+  func.func private @builtin_LSTMSequence(memref<*xf16, [@CMX_NN, 0]>, memref<*xsi32, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, memref<*xsi32, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, memref<*xsi32, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, none, i64) attributes {VPU.kernel_code = "lstm_sequence.cpp", VPU.kernel_entry = "lstm_sequence"}
   func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
 }
 
@@ -312,7 +312,7 @@ func.func @UnrollDynamicSwKernel() -> (memref<1x1x35x128xf16, [@CMX_NN, 0]>, mem
               %9 as %arg23: memref<1x1x1x128xf16, [@CMX_NN, 0]>
             )
             dynamicOutputShapes(%7 : memref<4xsi32, [@CMX_NN, 0]>) on tile 0 -> (memref<1x1x35x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<1x1x35x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<4xsi32, [@CMX_NN, 0]>){
-        VPUIP.SW.Kernel.run {attrs = [0, 0]}(%arg8, %arg9, %arg10, %arg11, %arg12, %arg18, %arg19, %arg20) :
+        VPUIP.SW.Kernel.run {attrs = [[-9223372036854775808, 1023], 0, 0]}(%arg8, %arg9, %arg10, %arg11, %arg12, %arg18, %arg19, %arg20) :
             memref<1x1x35x512xf16, [@CMX_NN, 0]>,
             memref<1x1x1x128xf16, [@CMX_NN, 0]>,
             memref<1x1x1x128xf16, [@CMX_NN, 0]>,
@@ -321,7 +321,7 @@ func.func @UnrollDynamicSwKernel() -> (memref<1x1x35x128xf16, [@CMX_NN, 0]>, mem
             memref<1x1x35x128xf16, [@CMX_NN, 0]>,
             memref<1x1x1x128xf16, [@CMX_NN, 0]>,
             memref<1x1x1x128xf16, [@CMX_NN, 0]>
-        VPUIP.SW.Kernel.run {attrs = [0, 0]}(%arg13, %arg14, %arg15, %arg16, %arg17, %arg21, %arg22, %arg23) :
+        VPUIP.SW.Kernel.run {attrs = [[-9223372036854775808, 1023], 0, 0]}(%arg13, %arg14, %arg15, %arg16, %arg17, %arg21, %arg22, %arg23) :
             memref<1x1x35x512xf16, [@CMX_NN, 0]>,
             memref<1x1x1x128xf16, [@CMX_NN, 0]>,
             memref<1x1x1x128xf16, [@CMX_NN, 0]>,
@@ -355,40 +355,40 @@ func.func @UnrollDynamicSwKernel() -> (memref<1x1x35x128xf16, [@CMX_NN, 0]>, mem
     // CHECK:   VPURT.Task waits([[BAR_0]], [[BAR_1]], [[BAR_2:%.+]], [[BAR_3]], [[BAR_4]] : !VPURT.Barrier, !VPURT.Barrier, !VPURT.Barrier, !VPURT.Barrier, !VPURT.Barrier) updates(%15 : !VPURT.Barrier) {
     // CHECK:     [[RESULTS:%.+]]:3, [[DYN_OUT_SHAPES:%.+]] = VPUIP.SW.Kernel {dynamicInputShapesMap = array<i32: 0, -1, -1, -1, -1>, dynamicOutputShapesMap = array<i32: 0, -1, -1>, resultSegmentSizes = array<i32: 3, 1, 0>} @VPU.SW::@builtin_LSTMSequence
     // CHECK:       inputs(
-    // CHECK:         [[BUFF_0]] as %arg0: memref<1x1x35x512xf16, [@CMX_NN, 0]>,
-    // CHECK:         [[BUFF_2]] as %arg1: memref<1x1x1x128xf16, [@CMX_NN, 0]>,
-    // CHECK:         [[BUFF_3]] as %arg2: memref<1x1x1x128xf16, [@CMX_NN, 0]>,
-    // CHECK:         [[BUFF_4]] as %arg3: memref<1x4x128x128xf16, #NWHC, [@CMX_NN, 0]>,
-    // CHECK:         [[BUFF_5]] as %arg4: memref<1x1x1x2xsi32, [@CMX_NN, 0]>
+    // CHECK:         [[BUFF_0]] as [[ARG_0:%[^:]+]]: memref<1x1x35x512xf16, [@CMX_NN, 0]>,
+    // CHECK:         [[BUFF_2]] as [[ARG_1:%[^:]+]]: memref<1x1x1x128xf16, [@CMX_NN, 0]>,
+    // CHECK:         [[BUFF_3]] as [[ARG_2:%[^:]+]]: memref<1x1x1x128xf16, [@CMX_NN, 0]>,
+    // CHECK:         [[BUFF_4]] as [[ARG_3:%[^:]+]]: memref<1x4x128x128xf16, #NWHC, [@CMX_NN, 0]>,
+    // CHECK:         [[BUFF_5]] as [[ARG_4:%[^:]+]]: memref<1x1x1x2xsi32, [@CMX_NN, 0]>
     // CHECK:       )
     // CHECK:       dynamicInputShapes([[BUFF_1]] : memref<4xsi32, [@CMX_NN, 0]>)
     // CHECK:       outputs(
-    // CHECK:         [[BUFF_6]] as %arg5: memref<1x1x35x128xf16, [@CMX_NN, 0]>,
-    // CHECK:         [[BUFF_8]] as %arg6: memref<1x1x1x128xf16, [@CMX_NN, 0]>,
-    // CHECK:         [[BUFF_9]] as %arg7: memref<1x1x1x128xf16, [@CMX_NN, 0]>
+    // CHECK:         [[BUFF_6]] as [[ARG_5:%[^:]+]]: memref<1x1x35x128xf16, [@CMX_NN, 0]>,
+    // CHECK:         [[BUFF_8]] as [[ARG_6:%[^:]+]]: memref<1x1x1x128xf16, [@CMX_NN, 0]>,
+    // CHECK:         [[BUFF_9]] as [[ARG_7:%[^:]+]]: memref<1x1x1x128xf16, [@CMX_NN, 0]>
     // CHECK:       )
     // CHECK:       dynamicOutputShapes([[BUFF_7]] : memref<4xsi32, [@CMX_NN, 0]>) on tile 0 -> (memref<1x1x35x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<4xsi32, [@CMX_NN, 0]>){
-    // CHECK:       VPUIP.SW.Kernel.run {attrs = [0, 0]}(
+    // CHECK{LITERAL}: VPUIP.SW.Kernel.run {attrs = [[-9223372036854775808, 1023], 0, 0]}(
     // CHECK:         : memref<1x1x35x512xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<1x4x128x128xf16, #NWHC, [@CMX_NN, 0]>, memref<1x1x1x2xsi32, [@CMX_NN, 0]>, memref<1x1x35x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>
     // CHECK:     }
     // CHECK:   }
     // CHECK:   VPURT.Task waits([[BAR_0]], [[BAR_1]], [[BAR_2:%.+]], [[BAR_3]], [[BAR_4]] : !VPURT.Barrier, !VPURT.Barrier, !VPURT.Barrier, !VPURT.Barrier, !VPURT.Barrier) updates([[BAR_5]] : !VPURT.Barrier) {
     // CHECK:     [[RESULTS:%.+]]:3, [[DYN_OUT_SHAPES:%.+]] = VPUIP.SW.Kernel {dynamicInputShapesMap = array<i32: 0, -1, -1, -1, -1>, dynamicOutputShapesMap = array<i32: 0, -1, -1>, resultSegmentSizes = array<i32: 3, 1, 0>} @VPU.SW::@builtin_LSTMSequence
     // CHECK:       inputs(
-    // CHECK:         [[BUFF_0]] as %arg0: memref<1x1x35x512xf16, [@CMX_NN, 0]>,
-    // CHECK:         [[BUFF_2]] as %arg1: memref<1x1x1x128xf16, [@CMX_NN, 0]>,
-    // CHECK:         [[BUFF_3]] as %arg2: memref<1x1x1x128xf16, [@CMX_NN, 0]>,
-    // CHECK:         [[BUFF_4]] as %arg3: memref<1x4x128x128xf16, #NWHC, [@CMX_NN, 0]>,
-    // CHECK:         [[BUFF_5]] as %arg4: memref<1x1x1x2xsi32, [@CMX_NN, 0]>
+    // CHECK:         [[BUFF_0]] as [[ARG_0:%[^:]+]]: memref<1x1x35x512xf16, [@CMX_NN, 0]>,
+    // CHECK:         [[BUFF_2]] as [[ARG_1:%[^:]+]]: memref<1x1x1x128xf16, [@CMX_NN, 0]>,
+    // CHECK:         [[BUFF_3]] as [[ARG_2:%[^:]+]]: memref<1x1x1x128xf16, [@CMX_NN, 0]>,
+    // CHECK:         [[BUFF_4]] as [[ARG_3:%[^:]+]]: memref<1x4x128x128xf16, #NWHC, [@CMX_NN, 0]>,
+    // CHECK:         [[BUFF_5]] as [[ARG_4:%[^:]+]]: memref<1x1x1x2xsi32, [@CMX_NN, 0]>
     // CHECK:       )
     // CHECK:       dynamicInputShapes([[BUFF_1]] : memref<4xsi32, [@CMX_NN, 0]>)
     // CHECK:       outputs(
-    // CHECK:         [[BUFF_6]] as %arg5: memref<1x1x35x128xf16, [@CMX_NN, 0]>,
-    // CHECK:         [[BUFF_8]] as %arg6: memref<1x1x1x128xf16, [@CMX_NN, 0]>,
-    // CHECK:         [[BUFF_9]] as %arg7: memref<1x1x1x128xf16, [@CMX_NN, 0]>
+    // CHECK:         [[BUFF_6]] as [[ARG_5:%[^:]+]]: memref<1x1x35x128xf16, [@CMX_NN, 0]>,
+    // CHECK:         [[BUFF_8]] as [[ARG_6:%[^:]+]]: memref<1x1x1x128xf16, [@CMX_NN, 0]>,
+    // CHECK:         [[BUFF_9]] as [[ARG_7:%[^:]+]]: memref<1x1x1x128xf16, [@CMX_NN, 0]>
     // CHECK:       )
     // CHECK:       dynamicOutputShapes([[BUFF_7]] : memref<4xsi32, [@CMX_NN, 0]>) on tile 0 -> (memref<1x1x35x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<4xsi32, [@CMX_NN, 0]>){
-    // CHECK:       VPUIP.SW.Kernel.run {attrs = [0, 0]}(
+    // CHECK{LITERAL}: VPUIP.SW.Kernel.run {attrs = [[-9223372036854775808, 1023], 0, 0]}(
     // CHECK:         : memref<1x1x35x512xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<1x4x128x128xf16, #NWHC, [@CMX_NN, 0]>, memref<1x1x1x2xsi32, [@CMX_NN, 0]>, memref<1x1x35x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>
     // CHECK:     }
     // CHECK:   }

@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2022-2026 Intel Corporation.
+# Copyright (C) 2022-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -87,6 +87,8 @@ ov_add_test_target(
 )
 
 set_target_properties(${TARGET_NAME} PROPERTIES FOLDER "tests")
+
+ov_build_target_faster(${TARGET_NAME} PCH PUBLIC "precomp.hpp")
 
 enable_warnings_as_errors(${TARGET_NAME})
 

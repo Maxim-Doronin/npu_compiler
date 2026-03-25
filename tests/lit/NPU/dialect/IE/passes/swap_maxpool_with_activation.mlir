@@ -1,11 +1,13 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --swap-maxpool-with-act %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
+// CHECK-LABEL: @MaxPoolWithReluTest
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x16x5x5xf16>
 func.func @MaxPoolWithReluTest(%arg0: tensor<1x16x5x5xf16>) -> tensor<1x16x3x3xf16> {
     %filters = const.Declare tensor<16x16x2x2xf16> = dense<1.0> : tensor<16x16x2x2xf16>
     %0 = IE.Convolution(%arg0, %filters)
@@ -33,7 +35,7 @@ func.func @MaxPoolWithReluTest(%arg0: tensor<1x16x5x5xf16>) -> tensor<1x16x3x3xf
     return %2 : tensor<1x16x3x3xf16>
 
     // CHECK-DAG:       [[FILTERS:%.+]] = const.Declare
-    // CHECK:       [[VAR0:%.+]] = IE.Convolution(%arg0, [[FILTERS]])
+    // CHECK:       [[VAR0:%.+]] = IE.Convolution([[ARG_0]], [[FILTERS]])
     // CHECK:       [[VAR1:%.+]] = IE.ReLU([[VAR0]])
     // CHECK:       [[VAR2:%.+]] = IE.MaxPool([[VAR1]])
 

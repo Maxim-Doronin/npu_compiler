@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -47,11 +47,6 @@ struct DefaultHWOptionsDeviceBase : public virtual vpux::DefaultHWOptionsBase {
             ::llvm::cl::init(DMAFifoType::HW),
             ::llvm::cl::values(clEnumValN(DMAFifoType::SW, "SW", "Enable SW DMA FIFO upfront HW DMA FIFO type"),
                                clEnumValN(DMAFifoType::HW, "HW", "Use HW DMA FIFO directly"))};
-
-    BoolOption wlmRollback{
-            *this, "wlm-rollback",
-            llvm::cl::desc("When compilation with WLM fails, automatically switch to WLM-disabled pipeline"),
-            llvm::cl::init(false)};
 
     BoolOption enableSwKernelFifoPerShaveEngine{*this, "enable-sw-kernel-fifo-per-shave-engine",
                                                 llvm::cl::desc("Enable dedicated FIFO for each ActShave engine"),

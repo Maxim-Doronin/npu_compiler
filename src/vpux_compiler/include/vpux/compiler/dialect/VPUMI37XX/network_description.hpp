@@ -1,12 +1,12 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
 #include <mlir/IR/BuiltinOps.h>
-#include "vpux/utils/IE/network_metadata.hpp"
+#include "vpux/compiler/network_metadata.hpp"
 
 namespace vpux::VPUMI37XX {
 

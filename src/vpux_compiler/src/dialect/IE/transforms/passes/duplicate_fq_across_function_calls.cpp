@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/func_dialect.hpp"
@@ -101,9 +102,7 @@ public:
         }
 
         auto moduleOp = getOperation();
-        net::NetworkInfoOp netInfo;
-        mlir::func::FuncOp netFunc;
-        net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
+        auto netFunc = net::getMainFunc(moduleOp);
 
         duplicateFQOpsOutside(moduleOp, netFunc);
         duplicateFQOpsInside(moduleOp, netFunc);
@@ -353,8 +352,7 @@ private:
 
         const auto shape = mlir::cast<NDTypeInterface>(input.getType()).getShape();
         auto newOperand = builder.createOrFold<IE::ReshapeOp>(
-                appendLoc(fqOp->getLoc(), "reshape"), newFqOp->getResult(0), /*shape=*/nullptr,
-                /*specialZero=*/nullptr, getIntArrayAttr(builder, shape.raw()));
+                appendLoc(fqOp->getLoc(), "reshape"), newFqOp->getResult(0), getIntArrayAttr(builder, shape.raw()));
         ++_cloneInstanceIdx;
         return newOperand;
     }
@@ -368,9 +366,8 @@ private:
         mlir::Operation* newInputUserOp = nullptr;
         const auto shape = mlir::cast<NDTypeInterface>(fqOp->getOperand(0).getType()).getShape();
         if (shape != mlir::cast<NDTypeInterface>(input.getType()).getShape()) {
-            auto reshapeOp =
-                    builder.create<IE::ReshapeOp>(appendLoc(fqOp->getLoc(), "reshape"), input, /*shape=*/nullptr,
-                                                  /*specialZero=*/nullptr, getIntArrayAttr(builder, shape.raw()));
+            auto reshapeOp = builder.create<IE::ReshapeOp>(appendLoc(fqOp->getLoc(), "reshape"), input,
+                                                           getIntArrayAttr(builder, shape.raw()));
             reshapeOp->setLoc(appendLoc(reshapeOp->getLoc(), "duplicate{0}", _cloneInstanceIdx));
             inputValue = reshapeOp->getResult(0);
             newInputUserOp = reshapeOp;

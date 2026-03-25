@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -14,12 +14,13 @@ include "vpux/compiler/dialect/VPU/ops_interfaces.td"
 include "vpux/compiler/dialect/VPU/types.td"
 
 include "mlir/Dialect/Quant/IR/QuantBase.td"
-
+include "mlir/Interfaces/ViewLikeInterface.td"
 
 def VPU_DPUWorkloadOp :
         VPU_Op<
             "DPU.Workload",
             [
+                AttrSizedOperandSegments,
                 ParentOneOf<[
                     "vpux::VPU::NCEConvolutionOp",
                     "vpux::VPU::NCEMatMulOp",
@@ -37,45 +38,83 @@ def VPU_DPUWorkloadOp :
     let summary = "Workload for a single DPU tile";
 
     let arguments = (ins
-        I64ArrayAttr:$outOffsets,
-        I64ArrayAttr:$outSizes,
+        Variadic<Index>:$outOffsets,
+        Variadic<Index>:$outSizes,
+        DenseI64ArrayAttr:$static_out_offsets,
+        DenseI64ArrayAttr:$static_out_sizes,
 
-        OptionalAttr<I64ArrayAttr>:$inOffsets,
-        OptionalAttr<I64ArrayAttr>:$inSizes,
+        Variadic<Index>:$inOffsets,
+        Variadic<Index>:$inSizes,
 
-        VPU_PaddingAttr:$pad,
+        OptionalAttr<DenseI64ArrayAttr>:$static_in_offsets,
+        OptionalAttr<DenseI64ArrayAttr>:$static_in_sizes,
+
         VPU_MPEModeAttr:$mpe_mode,
 
+        Variadic<Index>:$pad,
+        DenseI64ArrayAttr:$static_pad,
         OptionalAttr<IntAttr>:$cluster_id
     );
 
     let builders = [
         OpBuilder<(ins
-            "mlir::ArrayAttr":$outOffsets,
-            "mlir::ArrayAttr":$outSizes,
-            "vpux::VPU::PaddingAttr":$kernelFunction,
+            "mlir::ArrayRef<mlir::OpFoldResult>":$outOffsets,
+            "mlir::ArrayRef<mlir::OpFoldResult>":$outSizes,
+            "mlir::ArrayRef<mlir::OpFoldResult>":$pad,
             "vpux::VPU::MPEMode":$mpe_mode
         )>,
 
         OpBuilder<(ins
-            "mlir::ArrayAttr":$outOffsets,
-            "mlir::ArrayAttr":$outSizes,
-            "vpux::VPU::PaddingAttr":$kernelFunction,
+            "mlir::ArrayRef<mlir::OpFoldResult>":$outOffsets,
+            "mlir::ArrayRef<mlir::OpFoldResult>":$outSizes,
+            "mlir::ArrayRef<mlir::OpFoldResult>":$pad,
             "vpux::VPU::MPEModeAttr":$mpe_mode,
             "mlir::IntegerAttr":$cluster_id
         )>,
 
         OpBuilder<(ins
-            "mlir::ArrayAttr":$outOffsets,
-            "mlir::ArrayAttr":$outSizes,
-            "vpux::VPU::PaddingAttr":$kernelFunction,
+            "mlir::DenseI64ArrayAttr":$outOffsets,
+            "mlir::DenseI64ArrayAttr":$outSizes,
+            "VPU::PaddingAttr":$pad,
+            "vpux::VPU::MPEModeAttr":$mpe_mode,
+            "mlir::IntegerAttr":$cluster_id
+        )>,
+
+        OpBuilder<(ins
+            "mlir::DenseI64ArrayAttr":$outOffsets,
+            "mlir::DenseI64ArrayAttr":$outSizes,
+            "mlir::DenseI64ArrayAttr":$inOffsets,
+            "mlir::DenseI64ArrayAttr":$inSizes,
+            "VPU::PaddingAttr":$pad,
+            "vpux::VPU::MPEModeAttr":$mpe_mode,
+            "mlir::IntegerAttr":$cluster_id
+        )>,
+
+        OpBuilder<(ins
+            "mlir::DenseI64ArrayAttr":$outOffsets,
+            "mlir::DenseI64ArrayAttr":$outSizes,
+            "VPU::PaddingAttr":$pad,
             "vpux::VPU::MPEMode":$mpe_mode,
             "mlir::IntegerAttr":$cluster_id
         )>
     ];
 
     let assemblyFormat = [{
-        ( `inOffsets` $inOffsets^ )? ( `inSizes` $inSizes^ )? `outOffsets` $outOffsets `outSizes` $outSizes $pad $mpe_mode attr-dict-with-keyword
+        ( `inOffsets` custom<DynamicIndexList>($inOffsets, $static_in_offsets)^ )? ( `inSizes` custom<DynamicIndexList>($inSizes, $static_in_sizes)^ )? `outOffsets` custom<DynamicIndexList>($outOffsets, $static_out_offsets) `outSizes` custom<DynamicIndexList>($outSizes, $static_out_sizes) `pad` custom<DynamicIndexList>($pad, $static_pad) $mpe_mode attr-dict-with-keyword
+    }];
+
+    let extraClassDeclaration = [{
+        VPU::PaddingAttr getPadAttribute();
+
+        SmallVector<mlir::OpFoldResult> getMixedOutputOffsets();
+        SmallVector<mlir::OpFoldResult> getMixedOutputSizes();  
+        std::optional<SmallVector<mlir::OpFoldResult>> getMixedInputOffsets();  
+        std::optional<SmallVector<mlir::OpFoldResult>> getMixedInputSizes();
+
+        SmallVector<int64_t> getConstOutputOffsets();
+        SmallVector<int64_t> getConstOutputSizes();  
+        std::optional<SmallVector<int64_t>> getConstInputOffsets();  
+        std::optional<SmallVector<int64_t>> getConstInputSizes();           
     }];
 }
 
@@ -425,7 +464,9 @@ def VPU_NCECompressConvolutionOp :
                                                                      "doesLayerFitIntoCMX",
                                                                      "doesLayerChangeOutputAlignmentFitIntoCMX",
                                                                      "getDistributedTypeForOpOperand"]>,
-                DeclareOpInterfaceMethods<VPU_SparseOpInterface>
+                DeclareOpInterfaceMethods<VPU_SparseOpInterface>,
+                DeclareOpInterfaceMethods<VPU_VerticalFusionOpInterface>,
+                DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>
 ]
         > {
     let summary = "NCE version of Compressed Convolution layer";
@@ -575,7 +616,8 @@ def VPU_NCEAveragePoolOp :
                                                                      "doesLayerChangeOutputAlignmentFitIntoCMX",
                                                                      "getDistributedTypeForOpOperand"]>,
                 DeclareOpInterfaceMethods<VPU_SparseOpInterface>,
-                DeclareOpInterfaceMethods<VPU_VerticalFusionOpInterface>
+                DeclareOpInterfaceMethods<VPU_VerticalFusionOpInterface>,
+                DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>
             ]
         > {
     let summary = "NCE version of AveragePool layer";
@@ -720,7 +762,8 @@ def VPU_NCEReduceOp :
                                                                      "isOperationSplitOverBatchCompatible",
                                                                      "doesLayerChangeOutputAlignmentFitIntoCMX",
                                                                      "getDistributedTypeForOpOperand"]>,
-                DeclareOpInterfaceMethods<VPU_VerticalFusionOpInterface>
+                DeclareOpInterfaceMethods<VPU_VerticalFusionOpInterface>,
+                DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>
             ]
         > {
     let summary = "NCE version of Reduce layer";

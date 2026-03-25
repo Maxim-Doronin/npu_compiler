@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -92,9 +92,22 @@ mlir::LogicalResult vpux::IE::MultiplyOp::reifyResultShapes(mlir::OpBuilder& bui
 bool vpux::IE::MultiplyOp::requiresStaticShape() {
     // MultiplyOp might require static shapes in some cases. Currently we handle only one case when MultiplyOp is
     // involved into BoundaryCorrection logic
-    // return true in case one of the operand is a DynamicDataMaskOp
-    return llvm::any_of(getOperands(), [](mlir::Value operand) {
+    // return true in case one of the operand is a DynamicDataMaskOp or all operands have static shapes or operand will
+    // require static shape, to avoid shape mismatch during static shape propagation across dynamic subgraphs.
+    auto allParentsAreStatic = llvm::all_of(getOperands(), [](mlir::Value operand) {
+        return mlir::dyn_cast<vpux::NDTypeInterface>(operand.getType()).getShape().isStatic();
+    });
+    auto hasDynamicAndWillRequireStaticShape = llvm::any_of(getOperands(), [](mlir::Value operand) {
+        auto isDynamic = mlir::dyn_cast<vpux::NDTypeInterface>(operand.getType()).getShape().isDynamic();
+        auto requiresStaticShape = false;
+        if (auto staticShapeOpInterface = mlir::dyn_cast_or_null<StaticShapeOpInterface>(operand.getDefiningOp())) {
+            requiresStaticShape = staticShapeOpInterface.requiresStaticShape();
+        }
+        return isDynamic && requiresStaticShape;
+    });
+    auto hasDynamicDataMaskOp = llvm::any_of(getOperands(), [](mlir::Value operand) {
         auto defOp = operand.getDefiningOp();
         return mlir::isa_and_nonnull<IE::DynamicDataMaskOp>(defOp);
     });
+    return allParentsAreStatic || hasDynamicAndWillRequireStaticShape || hasDynamicDataMaskOp;
 }

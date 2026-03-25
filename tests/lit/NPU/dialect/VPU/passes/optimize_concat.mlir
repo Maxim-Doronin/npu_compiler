@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -40,6 +40,7 @@ func.func @OptimizeConcatNonHighestDimWithoutCheck(%arg0: tensor<1x32x125x250xf1
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: EliminateConcat
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x32x125x250xf16, {order = #NHWC}>, [[ARG_1:%[^:]+]]: tensor<1x32x125x250xf16, {order = #NHWC}>)
 func.func @EliminateConcat(%arg0: tensor<1x32x125x250xf16, {order = #NHWC}>,
                          %arg1: tensor<1x32x125x250xf16, {order = #NHWC}>)
     -> (tensor<1x16x64x128xf16, {order = #NHWC}>, tensor<1x16x64x128xf16, {order = #NHWC}>) {
@@ -59,8 +60,8 @@ func.func @EliminateConcat(%arg0: tensor<1x32x125x250xf16, {order = #NHWC}>,
     return %slice_0, %slice_1 : tensor<1x16x64x128xf16, {order = #NHWC}>, tensor<1x16x64x128xf16, {order = #NHWC}>
 
     // CHECK-NOT: Concat
-    // CHECK: [[SLICE_0:%.+]] = VPU.Slice %arg0 [0, 0, 0, 64] [1, 16, 64, 128] : tensor<1x32x125x250xf16, {order = #NHWC}> to tensor<1x16x64x128xf16, {order = #NHWC}>
-    // CHECK: [[SLICE_1:%.+]] = VPU.Slice %arg1 [0, 0, 1, 0] [1, 16, 64, 128] : tensor<1x32x125x250xf16, {order = #NHWC}> to tensor<1x16x64x128xf16, {order = #NHWC}>
+    // CHECK: [[SLICE_0:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 0, 64] [1, 16, 64, 128] : tensor<1x32x125x250xf16, {order = #NHWC}> to tensor<1x16x64x128xf16, {order = #NHWC}>
+    // CHECK: [[SLICE_1:%.+]] = VPU.Slice [[ARG_1]] [0, 0, 1, 0] [1, 16, 64, 128] : tensor<1x32x125x250xf16, {order = #NHWC}> to tensor<1x16x64x128xf16, {order = #NHWC}>
     // return [[SLICE_0]], [[SLICE_1]] : tensor<1x16x64x128xf16, {order = #NHWC}>, tensor<1x16x64x128xf16, {order = #NHWC}>
 }
 
@@ -69,6 +70,7 @@ func.func @EliminateConcat(%arg0: tensor<1x32x125x250xf16, {order = #NHWC}>,
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: NotOptimizeConcatWithNotSliceUser
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x32x125x250xf16, {order = #NHWC}>, [[ARG_1:%[^:]+]]: tensor<1x32x125x250xf16, {order = #NHWC}>)
 func.func @NotOptimizeConcatWithNotSliceUser(%arg0: tensor<1x32x125x250xf16, {order = #NHWC}>,
                          %arg1: tensor<1x32x125x250xf16, {order = #NHWC}>)
     -> (tensor<1x48x250x250xf16, {order = #NHWC}>, tensor<1x16x64x128xf16, {order = #NHWC}>) {
@@ -95,7 +97,7 @@ func.func @NotOptimizeConcatWithNotSliceUser(%arg0: tensor<1x32x125x250xf16, {or
 
     return %concat_1, %slice_1 : tensor<1x48x250x250xf16, {order = #NHWC}>, tensor<1x16x64x128xf16, {order = #NHWC}>
 
-    // CHECK: [[CONCAT_0:%.+]] = VPU.Concat(%arg0, %arg1)
+    // CHECK: [[CONCAT_0:%.+]] = VPU.Concat([[ARG_0]], [[ARG_1]])
     // CHECK-SAME:   {static_offsets = [
     // CHECK-SAME:     [0, 0, 0, 0], [0, 0, 125, 0]
     // CHECK-SAME:    ]} :
@@ -115,6 +117,7 @@ func.func @NotOptimizeConcatWithNotSliceUser(%arg0: tensor<1x32x125x250xf16, {or
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: NotEliminateConcatWithNotSubTensorDueToShape
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x32x125x250xf16, {order = #NHWC}>, [[ARG_1:%[^:]+]]: tensor<1x32x125x250xf16, {order = #NHWC}>)
 func.func @NotEliminateConcatWithNotSubTensorDueToShape(%arg0: tensor<1x32x125x250xf16, {order = #NHWC}>,
                          %arg1: tensor<1x32x125x250xf16, {order = #NHWC}>)
     -> (tensor<1x32x126x250xf16, {order = #NHWC}>) {
@@ -131,7 +134,7 @@ func.func @NotEliminateConcatWithNotSubTensorDueToShape(%arg0: tensor<1x32x125x2
     %slice = VPU.Slice %concat [0, 0, 0, 0] [1, 32, 126, 250] : tensor<1x32x250x250xf16, {order = #NHWC}> to tensor<1x32x126x250xf16, {order = #NHWC}>
     return %slice : tensor<1x32x126x250xf16, {order = #NHWC}>
 
-    // CHECK: [[CONCAT:%.+]] = VPU.Concat(%arg0, %arg1)
+    // CHECK: [[CONCAT:%.+]] = VPU.Concat([[ARG_0]], [[ARG_1]])
     // CHECK-SAME:   {static_offsets = [
     // CHECK-SAME:     [0, 0, 0, 0], [0, 0, 125, 0]
     // CHECK-SAME:    ]} :
@@ -145,6 +148,7 @@ func.func @NotEliminateConcatWithNotSubTensorDueToShape(%arg0: tensor<1x32x125x2
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: NotEliminateConcatWithNotSubTensorDueToOffset
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x32x125x250xf16, {order = #NHWC}>, [[ARG_1:%[^:]+]]: tensor<1x32x125x250xf16, {order = #NHWC}>)
 func.func @NotEliminateConcatWithNotSubTensorDueToOffset(%arg0: tensor<1x32x125x250xf16, {order = #NHWC}>,
                          %arg1: tensor<1x32x125x250xf16, {order = #NHWC}>)
     -> (tensor<1x16x64x128xf16, {order = #NHWC}>) {
@@ -161,7 +165,7 @@ func.func @NotEliminateConcatWithNotSubTensorDueToOffset(%arg0: tensor<1x32x125x
     %slice = VPU.Slice %concat [0, 0, 100, 0] [1, 16, 64, 128] : tensor<1x32x250x250xf16, {order = #NHWC}> to tensor<1x16x64x128xf16, {order = #NHWC}>
     return %slice : tensor<1x16x64x128xf16, {order = #NHWC}>
 
-    // CHECK: [[CONCAT:%.+]] = VPU.Concat(%arg0, %arg1)
+    // CHECK: [[CONCAT:%.+]] = VPU.Concat([[ARG_0]], [[ARG_1]])
     // CHECK-SAME:   {static_offsets = [
     // CHECK-SAME:     [0, 0, 0, 0], [0, 0, 125, 0]
     // CHECK-SAME:    ]} :
@@ -175,6 +179,7 @@ func.func @NotEliminateConcatWithNotSubTensorDueToOffset(%arg0: tensor<1x32x125x
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: NotEliminateConcatWithNotAllSubTensors
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x32x125x250xf16, {order = #NHWC}>, [[ARG_1:%[^:]+]]: tensor<1x32x125x250xf16, {order = #NHWC}>)
 func.func @NotEliminateConcatWithNotAllSubTensors(%arg0: tensor<1x32x125x250xf16, {order = #NHWC}>,
                          %arg1: tensor<1x32x125x250xf16, {order = #NHWC}>)
     -> (tensor<1x16x64x128xf16, {order = #NHWC}>, tensor<1x16x64x128xf16, {order = #NHWC}>) {
@@ -194,7 +199,7 @@ func.func @NotEliminateConcatWithNotAllSubTensors(%arg0: tensor<1x32x125x250xf16
     %slice_1 = VPU.Slice %concat [0, 0, 100, 0] [1, 16, 64, 128] : tensor<1x32x250x250xf16, {order = #NHWC}> to tensor<1x16x64x128xf16, {order = #NHWC}>
     return %slice_0, %slice_1 : tensor<1x16x64x128xf16, {order = #NHWC}>, tensor<1x16x64x128xf16, {order = #NHWC}>
 
-    // CHECK: [[CONCAT:%.+]] = VPU.Concat(%arg0, %arg1)
+    // CHECK: [[CONCAT:%.+]] = VPU.Concat([[ARG_0]], [[ARG_1]])
     // CHECK-SAME:   {static_offsets = [
     // CHECK-SAME:     [0, 0, 0, 0], [0, 0, 125, 0]
     // CHECK-SAME:    ]} :
@@ -209,6 +214,7 @@ func.func @NotEliminateConcatWithNotAllSubTensors(%arg0: tensor<1x32x125x250xf16
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: NotEliminateConcatWithInputMultiUsers
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x32x125x250xf16, {order = #NHWC}>, [[ARG_1:%[^:]+]]: tensor<1x32x125x250xf16, {order = #NHWC}>)
 func.func @NotEliminateConcatWithInputMultiUsers(%arg0: tensor<1x32x125x250xf16, {order = #NHWC}>,
                          %arg1: tensor<1x32x125x250xf16, {order = #NHWC}>)
     -> (tensor<1x32x164x250xf16, {order = #NHWC}>) {
@@ -235,8 +241,8 @@ func.func @NotEliminateConcatWithInputMultiUsers(%arg0: tensor<1x32x125x250xf16,
 
     return %output_concat : tensor<1x32x164x250xf16, {order = #NHWC}>
 
-    // CHECK: [[INPUT_SLICE:%.+]] = VPU.Slice %arg0 [0, 0, 0, 0] [1, 32, 100, 250] : tensor<1x32x125x250xf16, {order = #NHWC}> to tensor<1x32x100x250xf16, {order = #NHWC}>
-    // CHECK: [[CONCAT:%.+]] = VPU.Concat([[INPUT_SLICE]], %arg1) {
+    // CHECK: [[INPUT_SLICE:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 0, 0] [1, 32, 100, 250] : tensor<1x32x125x250xf16, {order = #NHWC}> to tensor<1x32x100x250xf16, {order = #NHWC}>
+    // CHECK: [[CONCAT:%.+]] = VPU.Concat([[INPUT_SLICE]], [[ARG_1]]) {
     // CHECK:    static_offsets = [
     // CHECK-SAME:  [0, 0, 0, 0], [0, 0, 100, 0]
     // CHECK:    tensor<1x32x100x250xf16, {order = #NHWC}>, tensor<1x32x125x250xf16, {order = #NHWC}> -> tensor<1x32x225x250xf16, {order = #NHWC}>
@@ -599,4 +605,33 @@ func.func @NotOptimizeMultipleReshapeConcatAroundGatherDMA(%input: tensor<4x8192
     // CHECK-SAME:            : tensor<1x8192xf16> -> tensor<1x1x32x256xf16>
     // CHECK:   [[CONCAT_1:%.+]] = VPU.Concat([[RESHAPE]], [[RESHAPE]], [[RESHAPE]], [[RESHAPE]]) {per_axis = #IE.Concat<axis = 2 : i64, offset = 1 : i64, stride = 4 : i64>} : tensor<1x1x32x256xf16>, tensor<1x1x32x256xf16>, tensor<1x1x32x256xf16>, tensor<1x1x32x256xf16> -> tensor<1x1x128x256xf16>
     // CHECK:   return [[CONCAT_1]] : tensor<1x1x128x256xf16>
+}
+
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: EliminateConcatWithPermuteCast
+// CHECK-SAME:  ([[INPUT_1:%.+]]: tensor<128x32x1x1xf16>, [[INPUT_2:%.+]]: tensor<64x32x1x1xf16>)
+func.func @EliminateConcatWithPermuteCast(%arg0: tensor<128x32x1x1xf16>, %arg1: tensor<64x32x1x1xf16>)
+    -> (tensor<128x32x1x1xf16, {order = #NHWC}>, tensor<64x32x1x1xf16, {order = #NHWC}>) {
+
+    %concat = VPU.Concat(%arg0, %arg1) {
+        static_offsets = [
+            [0, 0, 0, 0],
+            [128, 0, 0, 0]
+        ]
+    } : tensor<128x32x1x1xf16>, tensor<64x32x1x1xf16> -> tensor<192x32x1x1xf16>
+
+    %permutecast = VPU.PermuteCast(%concat) {dst_order = #NHWC, mem_perm = #NHWC} : tensor<192x32x1x1xf16> -> tensor<192x32x1x1xf16, {order = #NHWC}>
+
+    %slice_0 = VPU.Slice %permutecast [0, 0, 0, 0] [128, 32, 1, 1] : tensor<192x32x1x1xf16, {order = #NHWC}> to tensor<128x32x1x1xf16, {order = #NHWC}>
+    %slice_1 = VPU.Slice %permutecast [128, 0, 0, 0] [64, 32, 1, 1] : tensor<192x32x1x1xf16, {order = #NHWC}> to tensor<64x32x1x1xf16, {order = #NHWC}>
+
+    return %slice_0, %slice_1 : tensor<128x32x1x1xf16, {order = #NHWC}>, tensor<64x32x1x1xf16, {order = #NHWC}>
+
+    // CHECK:   [[PERMUTECAST_1:%.+]] = VPU.PermuteCast([[INPUT_1]]) {dst_order = #NHWC, mem_perm = #NHWC} : tensor<128x32x1x1xf16> -> tensor<128x32x1x1xf16, {order = #NHWC}>
+    // CHECK:   [[PERMUTECAST_2:%.+]] = VPU.PermuteCast([[INPUT_2]]) {dst_order = #NHWC, mem_perm = #NHWC} : tensor<64x32x1x1xf16> -> tensor<64x32x1x1xf16, {order = #NHWC}>
+    // CHECK:   return [[PERMUTECAST_1]], [[PERMUTECAST_2]] : tensor<128x32x1x1xf16, {order = #NHWC}>, tensor<64x32x1x1xf16, {order = #NHWC}>
 }

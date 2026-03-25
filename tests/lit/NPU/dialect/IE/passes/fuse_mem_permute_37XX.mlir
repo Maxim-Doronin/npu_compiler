@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -363,7 +363,7 @@ func.func @MemPermuteNCWHOrderNHWC(%arg0: tensor<1x16x32x64xf16, {order = #NHWC}
     // CHECK-SAME: -> tensor<1x16x32x64xf16, {order = #NHCW}>
     // CHECK-NOT: IE.MemPermute
 
-    // CHECK:   [[PERMUTE_CAST:%.+]] = IE.PermuteCast(%0) {dst_order = #NHWC, mem_perm = #NCHW}
+    // CHECK:   [[PERMUTE_CAST:%.+]] = IE.PermuteCast([[CONV]]) {dst_order = #NHWC, mem_perm = #NCHW}
     // CHECK-SAME:  tensor<1x16x32x64xf16, {order = #NHCW}>
     // CHECK-SAME:  -> tensor<1x64x32x16xf16, {order = #NHWC}>
     // CHECK:   return [[PERMUTE_CAST]] : tensor<1x64x32x16xf16, {order = #NHWC}>
@@ -474,7 +474,7 @@ func.func @PoolMemPermuteDstOrderNHWC(%arg0: tensor<1x3x16x32xf16>) -> tensor<16
 
     return %1 : tensor<16x32x1x3xf16, {order = #HNCW}>
 
-    // CHECK:   [[POOL:%.+]] = IE.AvgPool(%arg0) {kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x3x16x32xf16> -> tensor<1x3x16x32xf16, {order = #NHWC}>
+    // CHECK:   [[POOL:%.+]] = IE.AvgPool([[VAL_0]]) {kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x3x16x32xf16> -> tensor<1x3x16x32xf16, {order = #NHWC}>
     // CHECK:   [[PERMUTE_CAST:%.+]] = IE.PermuteCast([[POOL]]) {dst_order = #map, mem_perm = #NCHW} : tensor<1x3x16x32xf16, {order = #NHWC}> -> tensor<16x32x1x3xf16, {order = #map}>
     // CHECK:   return     [[PERMUTE_CAST]]
 
@@ -504,7 +504,7 @@ func.func @PoolMemPermuteMemPermuteNHWC(%arg0: tensor<1x3x16x32xf16, {order = #N
 
     return %1 : tensor<32x3x1x16xf16, {order = #NHWC}>
 
-    // CHECK:   [[POOL:%.+]] = IE.AvgPool(%arg0) {kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x3x16x32xf16, {order = #NHWC}> -> tensor<1x3x16x32xf16, {order = #NWHC}>
+    // CHECK:   [[POOL:%.+]] = IE.AvgPool([[VAL_0]]) {kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x3x16x32xf16, {order = #NHWC}> -> tensor<1x3x16x32xf16, {order = #NWHC}>
     // CHECK:   [[PERMUTE_CAST:%.+]] = IE.PermuteCast([[POOL]]) {dst_order = #NHWC, mem_perm = #map} : tensor<1x3x16x32xf16, {order = #NWHC}> -> tensor<32x3x1x16xf16, {order = #NHWC}>
     // CHECK:   return     [[PERMUTE_CAST]]
 
@@ -517,6 +517,7 @@ func.func @PoolMemPermuteMemPermuteNHWC(%arg0: tensor<1x3x16x32xf16, {order = #N
 #NWHC = affine_map<(d0, d1, d2, d3) -> (d0, d3, d2, d1)>
 
 // CHECK-LABEL: @TransposedConvWithMemPermuteNWHC
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x16x32x64xf16, {order = #NHWC}>
 func.func @TransposedConvWithMemPermuteNWHC(%arg0: tensor<1x16x32x64xf16, {order = #NHWC}>) -> tensor<1x16x129x65xf16> {
     %cst = const.Declare tensor<16x16x2x2xf16, {order = #NHWC}>
         = dense<1.000000e+00> : tensor<16x16x2x2xf16, {order = #NHWC}>
@@ -540,7 +541,7 @@ func.func @TransposedConvWithMemPermuteNWHC(%arg0: tensor<1x16x32x64xf16, {order
     return %1 : tensor<1x16x129x65xf16>
 
     // CHECK:   [[CST:%.+]] = const.Declare tensor<16x16x2x2xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<16x16x2x2xf16, {order = #NHWC}>
-    // CHECK:   [[TransposedConv:%.+]] = IE.TransposedConvolution(%arg0, [[CST]]) {
+    // CHECK:   [[TransposedConv:%.+]] = IE.TransposedConvolution([[ARG_0]], [[CST]]) {
     // CHECK-SAME:      dilations = [1, 1],
     // CHECK-SAME:      operandSegmentSizes = array<i32: 1, 1, 0, 0>,
     // CHECK-SAME:      pads_begin = [0, 0],
@@ -565,6 +566,7 @@ func.func @TransposedConvWithMemPermuteNWHC(%arg0: tensor<1x16x32x64xf16, {order
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
 
 // CHECK-LABEL: @TransposedConvWithMemPermuteNWCH
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x16x32x64xf16, {order = #NHWC}>
 func.func @TransposedConvWithMemPermuteNWCH(%arg0: tensor<1x16x32x64xf16, {order = #NHWC}>) -> tensor<1x16x65x129xf16> {
     %cst = const.Declare tensor<16x16x2x2xf16, {order = #NHWC}>
         = dense<1.000000e+00> : tensor<16x16x2x2xf16, {order = #NHWC}>
@@ -588,7 +590,7 @@ func.func @TransposedConvWithMemPermuteNWCH(%arg0: tensor<1x16x32x64xf16, {order
     return %1 : tensor<1x16x65x129xf16>
 
     // CHECK:   [[CST:%.+]] = const.Declare tensor<16x16x2x2xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<16x16x2x2xf16, {order = #NHWC}>
-    // CHECK:   [[TransposedConv:%.+]] = IE.TransposedConvolution(%arg0, [[CST]]) {
+    // CHECK:   [[TransposedConv:%.+]] = IE.TransposedConvolution([[ARG_0]], [[CST]]) {
     // CHECK-SAME:      dilations = [1, 1],
     // CHECK-SAME:      operandSegmentSizes = array<i32: 1, 1, 0, 0>,
     // CHECK-SAME:      pads_begin = [0, 0],
@@ -608,6 +610,7 @@ func.func @TransposedConvWithMemPermuteNWCH(%arg0: tensor<1x16x32x64xf16, {order
 #NHCW = affine_map<(d0, d1, d2, d3) -> (d0, d2, d1, d3)>
 
 // CHECK-LABEL: @TransposedConvWithMemPermuteNHCW
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x16x32x64xf16, {order = #NHWC}>
 func.func @TransposedConvWithMemPermuteNHCW(%arg0: tensor<1x16x32x64xf16, {order = #NHWC}>) -> tensor<1x129x65x16xf16> {
     %cst = const.Declare tensor<16x16x2x2xf16, {order = #NHWC}>
         = dense<1.000000e+00> : tensor<16x16x2x2xf16, {order = #NHWC}>
@@ -631,7 +634,7 @@ func.func @TransposedConvWithMemPermuteNHCW(%arg0: tensor<1x16x32x64xf16, {order
     return %1 : tensor<1x129x65x16xf16>
 
     // CHECK:   [[CST:%.+]] = const.Declare tensor<16x16x2x2xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<16x16x2x2xf16, {order = #NHWC}>
-    // CHECK:   [[TransposedConv:%.+]] = IE.TransposedConvolution(%arg0, [[CST]]) {
+    // CHECK:   [[TransposedConv:%.+]] = IE.TransposedConvolution([[ARG_0]], [[CST]]) {
     // CHECK-SAME:      dilations = [1, 1],
     // CHECK-SAME:      operandSegmentSizes = array<i32: 1, 1, 0, 0>,
     // CHECK-SAME:      pads_begin = [0, 0],
@@ -655,6 +658,7 @@ func.func @TransposedConvWithMemPermuteNHCW(%arg0: tensor<1x16x32x64xf16, {order
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @TransposedConvWithMemPermuteNHWC
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x16x32x64xf16, {order = #NHWC}>
 func.func @TransposedConvWithMemPermuteNHWC(%arg0: tensor<1x16x32x64xf16, {order = #NHWC}>) -> tensor<1x129x16x65xf16> {
     %cst = const.Declare tensor<16x16x2x2xf16, {order = #NHWC}>
         = dense<1.000000e+00> : tensor<16x16x2x2xf16, {order = #NHWC}>
@@ -678,7 +682,7 @@ func.func @TransposedConvWithMemPermuteNHWC(%arg0: tensor<1x16x32x64xf16, {order
     return %1 : tensor<1x129x16x65xf16>
 
     // CHECK:   [[CST:%.+]] = const.Declare tensor<16x16x2x2xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<16x16x2x2xf16, {order = #NHWC}>
-    // CHECK:   [[TransposedConv:%.+]] = IE.TransposedConvolution(%arg0, [[CST]]) {
+    // CHECK:   [[TransposedConv:%.+]] = IE.TransposedConvolution([[ARG_0]], [[CST]]) {
     // CHECK-SAME:      dilations = [1, 1],
     // CHECK-SAME:      operandSegmentSizes = array<i32: 1, 1, 0, 0>,
     // CHECK-SAME:      pads_begin = [0, 0],
@@ -703,6 +707,7 @@ func.func @TransposedConvWithMemPermuteNHWC(%arg0: tensor<1x16x32x64xf16, {order
 #NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
 
 // CHECK-LABEL: @TransposedConvWithMemPermuteNCWH
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x16x32x64xf16, {order = #NHWC}>
 func.func @TransposedConvWithMemPermuteNCWH(%arg0: tensor<1x16x32x64xf16, {order = #NHWC}>) -> tensor<1x65x16x129xf16> {
     %cst = const.Declare tensor<16x16x2x2xf16, {order = #NHWC}>
         = dense<1.000000e+00> : tensor<16x16x2x2xf16, {order = #NHWC}>
@@ -726,7 +731,7 @@ func.func @TransposedConvWithMemPermuteNCWH(%arg0: tensor<1x16x32x64xf16, {order
     return %1 : tensor<1x65x16x129xf16>
 
     // CHECK:   [[CST:%.+]] = const.Declare tensor<16x16x2x2xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<16x16x2x2xf16, {order = #NHWC}>
-    // CHECK:   [[TransposedConv:%.+]] = IE.TransposedConvolution(%arg0, [[CST]]) {
+    // CHECK:   [[TransposedConv:%.+]] = IE.TransposedConvolution([[ARG_0]], [[CST]]) {
     // CHECK-SAME:      dilations = [1, 1],
     // CHECK-SAME:      operandSegmentSizes = array<i32: 1, 1, 0, 0>,
     // CHECK-SAME:      pads_begin = [0, 0],

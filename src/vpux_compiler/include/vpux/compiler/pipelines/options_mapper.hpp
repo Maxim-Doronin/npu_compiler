@@ -1,18 +1,15 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
-#include "vpux/utils/IE/config.hpp"
-
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
-#include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/init.hpp"
+#include "vpux/utils/core/mem_size.hpp"
 
-#include <memory>
+#include <intel_npu/config/config.hpp>
 
 namespace vpux {
 
@@ -22,7 +19,6 @@ config::CompilationMode getCompilationMode(const intel_npu::Config& config);
 std::optional<int> getRevisionID(const intel_npu::Config& config);
 std::optional<int> getNumberOfDPUGroups(const intel_npu::Config& config);
 std::optional<int> getNumberOfDMAEngines(const intel_npu::Config& config);
-std::optional<bool> getWlmRollback(const intel_npu::Config& config);
 Byte getAvailableCmx(const intel_npu::Config& config);
 std::optional<bool> getWlmEnabled(const intel_npu::Config& config);
 std::optional<bool> getQDQOptimization(const intel_npu::Config& config);

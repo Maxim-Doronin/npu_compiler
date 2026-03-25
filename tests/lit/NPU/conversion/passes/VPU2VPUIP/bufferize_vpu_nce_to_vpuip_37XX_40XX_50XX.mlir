@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -26,7 +26,7 @@ func.func @NceConv(%arg0: tensor<1x16x16x16xf16, {mem_space = @CMX_NN, order = #
                 rawFilterShape = [16, 16, 1, 1],
                 strides = [1, 1]
             } : tensor<1x16x16x16xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<16x16x1x1xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<16x1x1x4xsi32, {mem_space = @CMX_NN}> -> tensor<1x16x16x16xf16, {mem_space = @CMX_NN, order = #NHWC}> {
-        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 16, 16] <left = 0 , right = 0, top = 0, bottom = 0> #VPU.mpe_mode<VECTOR_FP16>
+        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 16, 16] pad [0, 0, 0, 0] #VPU.mpe_mode<VECTOR_FP16>
     }
 
     return %0 : tensor<1x16x16x16xf16, {mem_space = @CMX_NN, order = #NHWC}>
@@ -66,7 +66,7 @@ func.func @NceMaxPool(%arg0: tensor<1x16x1x4xf16, {order = #NHWC, mem_space = @C
                 pad = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 strides = [1, 1]
             } -> tensor<1x16x1x4xf16, {mem_space = @CMX_NN, order = #NHWC}> {
-        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 1, 4] <left = 0 , right = 0, top = 0, bottom = 0> #VPU.mpe_mode<VECTOR_FP16>
+        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 1, 4] pad [0, 0, 0, 0] #VPU.mpe_mode<VECTOR_FP16>
     }
 
     return %0 : tensor<1x16x1x4xf16, {order = #NHWC, mem_space = @CMX_NN}>
@@ -107,7 +107,7 @@ func.func @NceDepthConv(%arg0: tensor<1x16x40x80xf16, {order = #NHWC, mem_space 
                 rawFilterShape = [16, 1, 4, 8],
                 strides = [1, 1]
             } -> tensor<1x16x37x73xf16, {order = #NHWC, mem_space = @CMX_NN}> {
-        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 37, 73] <left = 0 , right = 0, top = 0, bottom = 0> #VPU.mpe_mode<VECTOR_FP16>
+        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 37, 73] pad [0, 0, 0, 0] #VPU.mpe_mode<VECTOR_FP16>
     }
 
     return %0 : tensor<1x16x37x73xf16, {order = #NHWC, mem_space = @CMX_NN}>
@@ -167,7 +167,7 @@ func.func @NceInterpolate(
         scales_attr = [2, 2],
         ppe = #VPU.PPEStub<>
     } -> tensor<1x64x10x20xf16, {order = #NHWC, mem_space = @CMX_NN}> {
-        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 64, 10, 20] <left = 0 , right = 0, top = 0, bottom = 0> #VPU.mpe_mode<VECTOR_FP16>
+        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 64, 10, 20] pad [0, 0, 0, 0] #VPU.mpe_mode<VECTOR_FP16>
     }
 
     return %0 : tensor<1x64x10x20xf16, {order = #NHWC, mem_space = @CMX_NN}>
@@ -215,7 +215,7 @@ func.func @NceEltwiseAdd(%arg0: tensor<1x64x28x28xf16, {order = #NHWC, mem_space
                 op_type = #VPU.eltwise_type<ADD>,
                 ppe = #VPU.PPEStub<>
             } -> tensor<1x64x28x28xf16, {mem_space = @CMX_NN, order = #NHWC}> {
-        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 64, 28, 28] <left = 0 , right = 0, top = 0, bottom = 0> #VPU.mpe_mode<VECTOR_FP16>
+        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 64, 28, 28] pad [0, 0, 0, 0] #VPU.mpe_mode<VECTOR_FP16>
     }
 
     return %0 : tensor<1x64x28x28xf16, {order = #NHWC, mem_space = @CMX_NN}>
@@ -256,7 +256,7 @@ func.func @NceCompressConv(%arg0: tensor<1x4x112x112xf16, {order = #NHWC, mem_sp
             pad = #VPU.Padding<left = 3 : i64, right = 2 : i64, top = 3 : i64, bottom = 2 : i64>,
             rawFilterShape = [64, 4, 7, 7], strides = [2, 2]
         } -> tensor<1x64x56x56xf16, {order = #NHWC, mem_space = @CMX_NN}> {
-        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 64, 56, 56] <left = 3 : i64, right = 2 : i64, top = 3 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 0 : i64}
+        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 64, 56, 56] pad [3, 2, 3, 0] #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 0 : i64}
     }
 
     return %0 : tensor<1x64x56x56xf16, {order = #NHWC, mem_space = @CMX_NN}>
@@ -301,7 +301,7 @@ func.func @NceAvgPool(%arg0: tensor<1x16x15x15xf16, {order = #NHWC, mem_space = 
         ppe = #VPU.PPEStub<>,
         strides = [1, 1]
     } -> tensor<1x16x15x15xf16, {mem_space = @CMX_NN, order = #NHWC}> {
-        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 15, 15] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 13 : i64> #VPU.mpe_mode<CUBOID_16x16>
+        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 15, 15] pad [0, 0, 0, 13] #VPU.mpe_mode<CUBOID_16x16>
     }
 
     return %0 : tensor<1x16x15x15xf16, {order = #NHWC, mem_space = @CMX_NN}>
@@ -331,7 +331,7 @@ func.func @SparseInPlaceNCEEltwise(%arg0: !VPU.SparseTensor<data=tensor<1x32x368
                 op_type = #VPU.eltwise_type<ADD>,
                 ppe = #VPU.PPEStub<>
             } -> tensor<1x32x368x29xf16, {mem_space = @CMX_NN, order = #NHWC}> {
-                VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 64, 123, 29] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_8x16> attributes {cluster_id = 0 : i64}
+                VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 64, 123, 29] pad [0, 0, 0, 0] <CUBOID_8x16> attributes {cluster_id = 0 : i64}
             }
 
     return %0 : tensor<1x32x368x29xf16, {mem_space = @CMX_NN, order = #NHWC}>
@@ -340,10 +340,10 @@ func.func @SparseInPlaceNCEEltwise(%arg0: !VPU.SparseTensor<data=tensor<1x32x368
     //CHECK:      [[DATA2:%.+]], [[SM2:%.+]] = VPUIP.UngroupSparseBuffer([[ARG0]]) {resultSegmentSizes = array<i32: 1, 1, 0>} -> memref<1x32x368x29xf16, #NHWC, @CMX_NN>, memref<1x64x368x29xi1, #NHWC, @CMX_NN>
     //CHECK:      [[DATA1:%.+]], [[SM1:%.+]] = VPUIP.UngroupSparseBuffer([[ARG0]]) {resultSegmentSizes = array<i32: 1, 1, 0>} -> memref<1x32x368x29xf16, #NHWC, @CMX_NN>, memref<1x64x368x29xi1, #NHWC, @CMX_NN>
 
-    //CHECK:        [[OUT:%.+]] = VPUIP.NCEClusterTask {
+    //CHECK:        [[OUT:%.+]] = VPUIP.NCEClusterTask <{
     //CHECK-SAME:       eltwise_type = #VPU.eltwise_type<ADD>,
     //CHECK-SAME:       task_type = #VPUIP.nce_task_type<ELTWISE>
-    //CHECK-SAME:   }
+    //CHECK-SAME:   }>
     //CHECK-SAME:       input([[DATA2]] : memref<1x32x368x29xf16, #NHWC, @CMX_NN>)
     //CHECK-SAME:       input_sparsity_map([[SM2]]
     //CHECK-SAME:       weights([[DATA1]]

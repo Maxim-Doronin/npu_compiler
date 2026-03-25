@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -38,6 +38,7 @@ func.func @ConstFold() -> tensor<1x2x3x4xf32> {
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @FuseLayoutCasts
+// CHECK-SAME:    [[ARG_0:%[^:]+]]: tensor<1x4x8x64xf32>
 func.func @FuseLayoutCasts(%arg0: tensor<1x4x8x64xf32>) -> tensor<1x4x8x64xf32, {order = #NHWC}> {
     %0 = IE.LayoutCast(%arg0) {
         dst_order = #NCWH
@@ -49,7 +50,7 @@ func.func @FuseLayoutCasts(%arg0: tensor<1x4x8x64xf32>) -> tensor<1x4x8x64xf32, 
 
     return %1 : tensor<1x4x8x64xf32, {order = #NHWC}>
 
-    // CHECK:   [[LAYOUT_CAST:%.+]] = IE.LayoutCast(%arg0) {
+    // CHECK:   [[LAYOUT_CAST:%.+]] = IE.LayoutCast([[ARG_0]]) {
     // CHECK-SAME:      order = #NHWC
     // CHECK-SAME:  } : tensor<1x4x8x64xf32> -> tensor<1x4x8x64xf32, {order = #NHWC}>
 

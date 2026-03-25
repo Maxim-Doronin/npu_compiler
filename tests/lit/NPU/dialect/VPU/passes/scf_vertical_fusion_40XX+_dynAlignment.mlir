@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -281,8 +281,8 @@ module @test {
     // CHECK: [[DIM_W:%.+]] = tensor.dim [[INPUT]], [[DIM_INDEX_W]] : tensor<1x16x?x?x!qElemType, {bounds = #const.OpaqueI64Elements<[1, 16, 1080, 1920]> : tensor<4xsi64>, order = #NHWC}>
     // CHECK: [[HALF_WIDTH:%.+]] = arith.divsi [[DIM_W]], [[DIM_INDEX_H]] : index
     // CHECK: [[OUTPUT_BUF:%.+]] = tensor.empty([[HALF_HEIGHT]], [[HALF_WIDTH]]) : tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 540, 960]> : tensor<4xsi64>, order = #NHWC}>
-    // CHECK: [[LOOP_H:%.+]] = scf.for [[LOOP_ITER:%arg[0-9]]] = [[START_INDEX:%c0]] to [[HALF_HEIGHT:%0]] step [[TILE_STEP_H]] iter_args([[LOOP_ITER_1:%arg[0-9]]] = [[OUTPUT_BUF:%2]]) -> (tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 540, 960]> : tensor<4xsi64>, order = #NHWC}>) {
-    // CHECK: [[LOOP_W:%.+]] = scf.for [[LOOP_ITER_2:%arg[0-9]]] = [[START_INDEX:%c0]] to [[HALF_WIDTH:%1]] step [[TILE_STEP_W]] iter_args([[LOOP_ITER_3:%arg[0-9]]] = [[LOOP_ITER_1]]) -> (tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 540, 960]> : tensor<4xsi64>, order = #NHWC}>) {
+    // CHECK: [[LOOP_H:%.+]] = scf.for [[LOOP_ITER:%arg[0-9]]] = [[START_INDEX]] to [[HALF_HEIGHT]] step [[TILE_STEP_H]] iter_args([[LOOP_ITER_1:%arg[0-9]]] = [[OUTPUT_BUF]]) -> (tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 540, 960]> : tensor<4xsi64>, order = #NHWC}>) {
+    // CHECK: [[LOOP_W:%.+]] = scf.for [[LOOP_ITER_2:%arg[0-9]]] = [[START_INDEX]] to [[HALF_WIDTH]] step [[TILE_STEP_W]] iter_args([[LOOP_ITER_3:%arg[0-9]]] = [[LOOP_ITER_1]]) -> (tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 540, 960]> : tensor<4xsi64>, order = #NHWC}>) {
     // CHECK:     [[MIN_HEIGHT:%.+]] = affine.min #[[$MAP]]([[LOOP_ITER]])[[[HALF_HEIGHT]]]
     // CHECK:     [[MIN_WIDTH:%.+]] = affine.min #[[$MAP1]]([[LOOP_ITER_2]])[[[HALF_WIDTH]]]
 

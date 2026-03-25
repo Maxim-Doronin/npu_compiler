@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -92,6 +92,99 @@ func.func @ConvertQuantizedConvBackpropDataToTransposedConv(%input: tensor<1x16x
 
     // CHECK-NOT:   IE.ConvolutionBackpropData
     // CHECK:       [[OUTPUT:%.+]] = IE.TransposedConvolution([[INPUT_FQ]], [[FILTER_FQ]]) {
+    // CHECK-SAME:      dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, pads_begin = [0, 0], pads_end = [0, 0], spatial_output_padding = [0, 0], strides = [2, 2]
+    // CHECK-SAME:  } : tensor<1x16x23x30xf16>, tensor<32x16x2x1xf16> -> tensor<1x32x46x59xf16>
+
+    // CHECK:       [[OUTPUT_FQ:%.+]] = IE.FakeQuantize([[OUTPUT]], [[OUTPUT_LOW]], [[OUTPUT_HIGH]], [[OUTPUT_LOW]], [[OUTPUT_HIGH]]) {
+    // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64
+    // CHECK-SAME:  } : tensor<1x32x46x59xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16> -> tensor<1x32x46x59xf16>
+
+    // CHECK:       return [[OUTPUT_FQ]]
+}
+
+// -----
+!qElemType = !quant.uniform<u8:f16, 2.4627450980392158>
+// CHECK:  #map = affine_map<(d0, d1, d2, d3) -> (d1, d0, d2, d3)>
+
+// CHECK-LABEL: @ConvertDequantizedConvBackpropDataToTransposedConvPerTensor
+// CHECK-SAME:    ([[INPUT:%.+]]: tensor<1x16x23x30x!qElemType>)
+func.func @ConvertDequantizedConvBackpropDataToTransposedConvPerTensor(%input: tensor<1x16x23x30x!qElemType>) -> tensor<1x32x46x59xf16> {
+    %input_dq = IE.Dequantize(%input) {dstElemType = f16} : tensor<1x16x23x30x!qElemType> -> tensor<1x16x23x30xf16>
+    %filter = const.Declare tensor<16x32x2x1x!qElemType> = dense<1.000000e+00> : tensor<16x32x2x1xf16>, [#const.CastElemType<ui8>, #const.CastElemType<!qElemType>]
+    %filter_dq = IE.Dequantize(%filter) {dstElemType = f16} : tensor<16x32x2x1x!qElemType> -> tensor<16x32x2x1xf16>
+    %output = IE.ConvolutionBackpropData(%input_dq, %filter_dq) {
+            dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, spatial_output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]
+        } : tensor<1x16x23x30xf16>, tensor<16x32x2x1xf16> -> tensor<1x32x46x59xf16>
+
+    %output_low = const.Declare tensor<1xf16> = dense<1.0> : tensor<1xf16>
+    %output_high = const.Declare tensor<1xf16> = dense<254.0> : tensor<1xf16>
+    %output_fq = IE.FakeQuantize(%output, %output_low, %output_high, %output_low, %output_high) {
+            auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256
+        } : tensor<1x32x46x59xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16> -> tensor<1x32x46x59xf16>
+
+    return %output_fq : tensor<1x32x46x59xf16>
+
+    // CHECK-DAG:   [[FILTER:%.+]] = const.Declare tensor<32x16x2x1x!qElemType> = dense<1.000000e+00> : tensor<16x32x2x1xf16>, [#const.CastElemType<ui8>, #const.CastElemType<!qElemType>, #const.Reverse<1 : i64>, #const.Transpose<#map>]
+    // CHECK-DAG:   [[OUTPUT_LOW:%.+]] = const.Declare tensor<1xf16> = dense<1.000000e+00> : tensor<1xf16>
+    // CHECK-DAG:   [[OUTPUT_HIGH:%.+]] = const.Declare tensor<1xf16> = dense<2.540000e+02> : tensor<1xf16>
+
+    // CHECK:       [[INPUT_DQ:%.+]] = IE.Dequantize([[INPUT]]) {
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:  } : tensor<1x16x23x30x!qElemType> -> tensor<1x16x23x30xf16>
+
+    // CHECK:       [[FILTER_DQ:%.+]] = IE.Dequantize([[FILTER]]) {
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:  } : tensor<32x16x2x1x!qElemType> -> tensor<32x16x2x1xf16>
+
+    // CHECK-NOT:   IE.ConvolutionBackpropData
+    // CHECK:       [[OUTPUT:%.+]] = IE.TransposedConvolution([[INPUT_DQ]], [[FILTER_DQ]]) {
+    // CHECK-SAME:      dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, pads_begin = [0, 0], pads_end = [0, 0], spatial_output_padding = [0, 0], strides = [2, 2]
+    // CHECK-SAME:  } : tensor<1x16x23x30xf16>, tensor<32x16x2x1xf16> -> tensor<1x32x46x59xf16>
+
+    // CHECK:       [[OUTPUT_FQ:%.+]] = IE.FakeQuantize([[OUTPUT]], [[OUTPUT_LOW]], [[OUTPUT_HIGH]], [[OUTPUT_LOW]], [[OUTPUT_HIGH]]) {
+    // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64
+    // CHECK-SAME:  } : tensor<1x32x46x59xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16> -> tensor<1x32x46x59xf16>
+
+    // CHECK:       return [[OUTPUT_FQ]]
+}
+
+// -----
+!qElemType = !quant.uniform<u8:f16, 2.4627450980392158>
+!qElemType1 = !quant.uniform<u8:f16:1, {1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0,9.0,10.0,11.0,12.0,13.0,14.0,15.0,16.0,17.0,18.0,19.0,20.0,21.0,22.0,23.0,24.0,25.0,26.0,27.0,28.0,29.0,30.0,31.0,32.0}>
+// CHECK:  #map = affine_map<(d0, d1, d2, d3) -> (d1, d0, d2, d3)>
+
+// CHECK-LABEL: @ConvertDequantizedConvBackpropDataToTransposedConvPerAxis
+// CHECK-SAME:    ([[INPUT:%.+]]: tensor<1x16x23x30x!qElemType>)
+func.func @ConvertDequantizedConvBackpropDataToTransposedConvPerAxis(%input: tensor<1x16x23x30x!qElemType>) -> tensor<1x32x46x59xf16> {
+    %input_dq = IE.Dequantize(%input) {dstElemType = f16} : tensor<1x16x23x30x!qElemType> -> tensor<1x16x23x30xf16>
+    %filter = const.Declare tensor<16x32x2x1x!qElemType1> = dense<128> : tensor<16x32x2x1xui8>, [#const.CastElemType<!qElemType1>]
+    %filter_dq = IE.Dequantize(%filter) {dstElemType = f16} : tensor<16x32x2x1x!qElemType1> -> tensor<16x32x2x1xf16>
+    %output = IE.ConvolutionBackpropData(%input_dq, %filter_dq) {
+            dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, spatial_output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]
+        } : tensor<1x16x23x30xf16>, tensor<16x32x2x1xf16> -> tensor<1x32x46x59xf16>
+
+    %output_low = const.Declare tensor<1xf16> = dense<1.0> : tensor<1xf16>
+    %output_high = const.Declare tensor<1xf16> = dense<254.0> : tensor<1xf16>
+    %output_fq = IE.FakeQuantize(%output, %output_low, %output_high, %output_low, %output_high) {
+            auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256
+        } : tensor<1x32x46x59xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16> -> tensor<1x32x46x59xf16>
+
+    return %output_fq : tensor<1x32x46x59xf16>
+
+    // CHECK-DAG:   [[FILTER:%.+]] = const.Declare tensor<32x16x2x1x!qElemType1> = dense<128> : tensor<16x32x2x1xui8>, [#const.CastElemType<!qElemType2>, #const.CastElemType<ui8>, #const.Reverse<1 : i64>, #const.Transpose<#map>, #const.CastElemType<!qElemType1>]
+    // CHECK-DAG:   [[OUTPUT_LOW:%.+]] = const.Declare tensor<1xf16> = dense<1.000000e+00> : tensor<1xf16>
+    // CHECK-DAG:   [[OUTPUT_HIGH:%.+]] = const.Declare tensor<1xf16> = dense<2.540000e+02> : tensor<1xf16>
+
+    // CHECK:       [[INPUT_DQ:%.+]] = IE.Dequantize([[INPUT]]) {
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:  } : tensor<1x16x23x30x!qElemType> -> tensor<1x16x23x30xf16>
+
+    // CHECK:       [[FILTER_DQ:%.+]] = IE.Dequantize([[FILTER]]) {
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:  } : tensor<32x16x2x1x!qElemType1> -> tensor<32x16x2x1xf16>
+
+    // CHECK-NOT:   IE.ConvolutionBackpropData
+    // CHECK:       [[OUTPUT:%.+]] = IE.TransposedConvolution([[INPUT_DQ]], [[FILTER_DQ]]) {
     // CHECK-SAME:      dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, pads_begin = [0, 0], pads_end = [0, 0], spatial_output_padding = [0, 0], strides = [2, 2]
     // CHECK-SAME:  } : tensor<1x16x23x30xf16>, tensor<32x16x2x1xf16> -> tensor<1x32x46x59xf16>
 
@@ -201,6 +294,101 @@ func.func @ConvertQuantizedGroupConvBackpropDataToGroupTransposedConv(%input: te
 }
 
 // -----
+!qElemType = !quant.uniform<u8:f16, 2.4627450980392158>
+// CHECK:  #map = affine_map<(d0, d1, d2, d3, d4) -> (d0, d2, d1, d3, d4)>
+
+// CHECK-LABEL: @ConvertDequantizedGroupConvBackpropDataToGroupTransposedConvPerTensor
+// CHECK-SAME:    ([[INPUT:%.+]]: tensor<1x32x23x30x!qElemType>)
+func.func @ConvertDequantizedGroupConvBackpropDataToGroupTransposedConvPerTensor(%input: tensor<1x32x23x30x!qElemType>) -> tensor<1x64x46x59xf16> {
+    %input_dq = IE.Dequantize(%input) {dstElemType = f16} : tensor<1x32x23x30x!qElemType> -> tensor<1x32x23x30xf16>
+    %filter = const.Declare tensor<2x16x32x2x1x!qElemType> = dense<1.000000e+00> : tensor<2x16x32x2x1xf16>, [#const.CastElemType<ui8>, #const.CastElemType<!qElemType>]
+    %filter_dq = IE.Dequantize(%filter) {dstElemType = f16} : tensor<2x16x32x2x1x!qElemType> -> tensor<2x16x32x2x1xf16>
+
+    %output = IE.GroupConvolutionBackpropData(%input_dq, %filter_dq) {
+            dilations = [1, 1], spatial_output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]
+        } : tensor<1x32x23x30xf16>, tensor<2x16x32x2x1xf16> -> tensor<1x64x46x59xf16>
+
+    %output_low = const.Declare tensor<1xf16> = dense<1.0> : tensor<1xf16>
+    %output_high = const.Declare tensor<1xf16> = dense<254.0> : tensor<1xf16>
+    %output_fq = IE.FakeQuantize(%output, %output_low, %output_high, %output_low, %output_high) {
+            auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256
+        } : tensor<1x64x46x59xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16> -> tensor<1x64x46x59xf16>
+
+    return %output_fq : tensor<1x64x46x59xf16>
+
+    // CHECK-DAG:   [[FILTER:%.+]] = const.Declare tensor<2x32x16x2x1x!qElemType> = dense<1.000000e+00> : tensor<2x16x32x2x1xf16>, [#const.CastElemType<ui8>, #const.CastElemType<!qElemType>, #const.Reverse<2 : i64>, #const.Transpose<#map>]
+    // CHECK-DAG:   [[OUTPUT_LOW:%.+]] = const.Declare tensor<1xf16> = dense<1.000000e+00> : tensor<1xf16>
+    // CHECK-DAG:   [[OUTPUT_HIGH:%.+]] = const.Declare tensor<1xf16> = dense<2.540000e+02> : tensor<1xf16>
+
+    // CHECK:       [[INPUT_DQ:%.+]] = IE.Dequantize([[INPUT]]) {
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:  } : tensor<1x32x23x30x!qElemType> -> tensor<1x32x23x30xf16>
+
+    // CHECK:       [[FILTER_DQ:%.+]] = IE.Dequantize([[FILTER]]) {
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:  } : tensor<2x32x16x2x1x!qElemType> -> tensor<2x32x16x2x1xf16>
+
+    // CHECK-NOT:   IE.GroupConvolutionBackpropData
+    // CHECK:       [[OUTPUT:%.+]] = IE.GroupTransposedConvolution([[INPUT_DQ]], [[FILTER_DQ]]) {
+    // CHECK-SAME:      dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], spatial_output_padding = [0, 0], strides = [2, 2]
+    // CHECK-SAME:  } : tensor<1x32x23x30xf16>, tensor<2x32x16x2x1xf16> -> tensor<1x64x46x59xf16>
+
+    // CHECK:       [[OUTPUT_FQ:%.+]] = IE.FakeQuantize([[OUTPUT]], [[OUTPUT_LOW]], [[OUTPUT_HIGH]], [[OUTPUT_LOW]], [[OUTPUT_HIGH]]) {
+    // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64
+    // CHECK-SAME:  } : tensor<1x64x46x59xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16> -> tensor<1x64x46x59xf16>
+
+    // CHECK:       return [[OUTPUT_FQ]]
+}
+
+// -----
+!qElemType = !quant.uniform<u8:f16, 2.4627450980392158>
+!qElemType1 = !quant.uniform<u8:f16:2, {1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0,9.0,10.0,11.0,12.0,13.0,14.0,15.0,16.0,17.0,18.0,19.0,20.0,21.0,22.0,23.0,24.0,25.0,26.0,27.0,28.0,29.0,30.0,31.0,32.0}>
+// CHECK:  #map = affine_map<(d0, d1, d2, d3, d4) -> (d0, d2, d1, d3, d4)>
+
+// CHECK-LABEL: @ConvertDequantizedGroupConvBackpropDataToGroupTransposedConvPerAxis
+// CHECK-SAME:    ([[INPUT:%.+]]: tensor<1x32x23x30x!qElemType>)
+func.func @ConvertDequantizedGroupConvBackpropDataToGroupTransposedConvPerAxis(%input: tensor<1x32x23x30x!qElemType>) -> tensor<1x64x46x59xf16> {
+    %input_dq = IE.Dequantize(%input) {dstElemType = f16} : tensor<1x32x23x30x!qElemType> -> tensor<1x32x23x30xf16>
+    %filter = const.Declare tensor<2x16x32x2x1x!qElemType1> = dense<128> : tensor<2x16x32x2x1xui8>, [#const.CastElemType<!qElemType1>]
+    %filter_dq = IE.Dequantize(%filter) {dstElemType = f16} : tensor<2x16x32x2x1x!qElemType1> -> tensor<2x16x32x2x1xf16>
+
+    %output = IE.GroupConvolutionBackpropData(%input_dq, %filter_dq) {
+            dilations = [1, 1], spatial_output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]
+        } : tensor<1x32x23x30xf16>, tensor<2x16x32x2x1xf16> -> tensor<1x64x46x59xf16>
+
+    %output_low = const.Declare tensor<1xf16> = dense<1.0> : tensor<1xf16>
+    %output_high = const.Declare tensor<1xf16> = dense<254.0> : tensor<1xf16>
+    %output_fq = IE.FakeQuantize(%output, %output_low, %output_high, %output_low, %output_high) {
+            auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256
+        } : tensor<1x64x46x59xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16> -> tensor<1x64x46x59xf16>
+
+    return %output_fq : tensor<1x64x46x59xf16>
+
+    // CHECK-DAG:   [[FILTER:%.+]] = const.Declare tensor<2x32x16x2x1x!qElemType1> = dense<128> : tensor<2x16x32x2x1xui8>, [#const.CastElemType<!qElemType2>, #const.CastElemType<ui8>, #const.Reverse<2 : i64>, #const.Transpose<#map>, #const.CastElemType<!qElemType1>]
+    // CHECK-DAG:   [[OUTPUT_LOW:%.+]] = const.Declare tensor<1xf16> = dense<1.000000e+00> : tensor<1xf16>
+    // CHECK-DAG:   [[OUTPUT_HIGH:%.+]] = const.Declare tensor<1xf16> = dense<2.540000e+02> : tensor<1xf16>
+
+    // CHECK:       [[INPUT_DQ:%.+]] = IE.Dequantize([[INPUT]]) {
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:  } : tensor<1x32x23x30x!qElemType> -> tensor<1x32x23x30xf16>
+
+    // CHECK:       [[FILTER_DQ:%.+]] = IE.Dequantize([[FILTER]]) {
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:  } : tensor<2x32x16x2x1x!qElemType1> -> tensor<2x32x16x2x1xf16>
+
+    // CHECK-NOT:   IE.GroupConvolutionBackpropData
+    // CHECK:       [[OUTPUT:%.+]] = IE.GroupTransposedConvolution([[INPUT_DQ]], [[FILTER_DQ]]) {
+    // CHECK-SAME:      dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], spatial_output_padding = [0, 0], strides = [2, 2]
+    // CHECK-SAME:  } : tensor<1x32x23x30xf16>, tensor<2x32x16x2x1xf16> -> tensor<1x64x46x59xf16>
+
+    // CHECK:       [[OUTPUT_FQ:%.+]] = IE.FakeQuantize([[OUTPUT]], [[OUTPUT_LOW]], [[OUTPUT_HIGH]], [[OUTPUT_LOW]], [[OUTPUT_HIGH]]) {
+    // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64
+    // CHECK-SAME:  } : tensor<1x64x46x59xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16> -> tensor<1x64x46x59xf16>
+
+    // CHECK:       return [[OUTPUT_FQ]]
+}
+
+// -----
 
 // CHECK:  #map = affine_map<(d0, d1, d2, d3) -> (d1, d0, d2, d3)>
 
@@ -265,6 +453,111 @@ func.func @ConvertQuantizedConvertedConvBackpropDataToTransposedConv(%input: ten
 }
 
 // -----
+!qElemType = !quant.uniform<u8:f16, 2.4627450980392158>
+// CHECK:  #map = affine_map<(d0, d1, d2, d3) -> (d1, d0, d2, d3)>
+
+// CHECK-LABEL: @ConvertDequantizedConvertedConvBackpropDataToTransposedConvPerTensor
+// CHECK-SAME:    ([[INPUT:%.+]]: tensor<1x16x23x30x!qElemType>)
+func.func @ConvertDequantizedConvertedConvBackpropDataToTransposedConvPerTensor(%input: tensor<1x16x23x30x!qElemType>) -> tensor<1x32x46x59xf16> {
+    %input_dq = IE.Dequantize(%input) {dstElemType = f16} : tensor<1x16x23x30x!qElemType> -> tensor<1x16x23x30xf16>
+
+    %filter = const.Declare tensor<16x32x2x1x!qElemType> = dense<1.000000e+00> : tensor<16x32x2x1xf16>, [#const.CastElemType<ui8>, #const.CastElemType<!qElemType>]
+    %filter_dq = IE.Dequantize(%filter) {dstElemType = f16} : tensor<16x32x2x1x!qElemType> -> tensor<16x32x2x1xf16>
+
+    %filter_convert = IE.Convert(%filter_dq) {dstElemType = f32} : tensor<16x32x2x1xf16> -> tensor<16x32x2x1xf32>
+
+    %output = IE.ConvolutionBackpropData(%input_dq, %filter_convert) {
+            dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, spatial_output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]
+        } : tensor<1x16x23x30xf16>, tensor<16x32x2x1xf32> -> tensor<1x32x46x59xf16>
+
+    %output_low = const.Declare tensor<1xf16> = dense<1.0> : tensor<1xf16>
+    %output_high = const.Declare tensor<1xf16> = dense<254.0> : tensor<1xf16>
+    %output_fq = IE.FakeQuantize(%output, %output_low, %output_high, %output_low, %output_high) {
+            auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256
+        } : tensor<1x32x46x59xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16> -> tensor<1x32x46x59xf16>
+
+    return %output_fq : tensor<1x32x46x59xf16>
+
+    // CHECK-DAG:   [[FILTER:%.+]] = const.Declare tensor<32x16x2x1x!qElemType> = dense<1.000000e+00> : tensor<16x32x2x1xf16>, [#const.CastElemType<ui8>, #const.CastElemType<!qElemType>, #const.Reverse<1 : i64>, #const.Transpose<#map>]
+    // CHECK-DAG:   [[OUTPUT_LOW:%.+]] = const.Declare tensor<1xf16> = dense<1.000000e+00> : tensor<1xf16>
+    // CHECK-DAG:   [[OUTPUT_HIGH:%.+]] = const.Declare tensor<1xf16> = dense<2.540000e+02> : tensor<1xf16>
+
+    // CHECK:       [[INPUT_DQ:%.+]] = IE.Dequantize([[INPUT]]) {
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:  } : tensor<1x16x23x30x!qElemType> -> tensor<1x16x23x30xf16>
+
+    // CHECK:       [[FILTER_DQ:%.+]] = IE.Dequantize([[FILTER]]) {
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:  } : tensor<32x16x2x1x!qElemType> -> tensor<32x16x2x1xf16>
+
+    // CHECK:       [[FILTER_CONVERT:%.+]] = IE.Convert([[FILTER_DQ]]) {dstElemType = f32} : tensor<32x16x2x1xf16> -> tensor<32x16x2x1xf32>
+
+    // CHECK-NOT:   IE.ConvolutionBackpropData
+    // CHECK:       [[OUTPUT:%.+]] = IE.TransposedConvolution([[INPUT_DQ]], [[FILTER_CONVERT]]) {
+    // CHECK-SAME:      dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, pads_begin = [0, 0], pads_end = [0, 0], spatial_output_padding = [0, 0], strides = [2, 2]
+    // CHECK-SAME:  } : tensor<1x16x23x30xf16>, tensor<32x16x2x1xf32> -> tensor<1x32x46x59xf16>
+
+    // CHECK:       [[OUTPUT_FQ:%.+]] = IE.FakeQuantize([[OUTPUT]], [[OUTPUT_LOW]], [[OUTPUT_HIGH]], [[OUTPUT_LOW]], [[OUTPUT_HIGH]]) {
+    // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64
+    // CHECK-SAME:  } : tensor<1x32x46x59xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16> -> tensor<1x32x46x59xf16>
+
+    // CHECK:       return [[OUTPUT_FQ]]
+}
+
+// -----
+!qElemType = !quant.uniform<u8:f16, 2.4627450980392158>
+!qElemType1 = !quant.uniform<u8:f16:1, {1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0,9.0,10.0,11.0,12.0,13.0,14.0,15.0,16.0,17.0,18.0,19.0,20.0,21.0,22.0,23.0,24.0,25.0,26.0,27.0,28.0,29.0,30.0,31.0,32.0}>
+// CHECK:  #map = affine_map<(d0, d1, d2, d3) -> (d1, d0, d2, d3)>
+
+// CHECK-LABEL: @ConvertDequantizedConvertedConvBackpropDataToTransposedConvPerAxis
+// CHECK-SAME:    ([[INPUT:%.+]]: tensor<1x16x23x30x!qElemType>)
+func.func @ConvertDequantizedConvertedConvBackpropDataToTransposedConvPerAxis(%input: tensor<1x16x23x30x!qElemType>) -> tensor<1x32x46x59xf16> {
+    %input_dq = IE.Dequantize(%input) {dstElemType = f16} : tensor<1x16x23x30x!qElemType> -> tensor<1x16x23x30xf16>
+
+    %filter = const.Declare tensor<16x32x2x1x!qElemType1> = dense<128> : tensor<16x32x2x1xui8>, [#const.CastElemType<!qElemType1>]
+    %filter_dq = IE.Dequantize(%filter) {dstElemType = f16} : tensor<16x32x2x1x!qElemType1> -> tensor<16x32x2x1xf16>
+
+    %filter_convert = IE.Convert(%filter_dq) {dstElemType = f32} : tensor<16x32x2x1xf16> -> tensor<16x32x2x1xf32>
+
+    %output = IE.ConvolutionBackpropData(%input_dq, %filter_convert) {
+            dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, spatial_output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]
+        } : tensor<1x16x23x30xf16>, tensor<16x32x2x1xf32> -> tensor<1x32x46x59xf16>
+
+    %output_low = const.Declare tensor<1xf16> = dense<1.0> : tensor<1xf16>
+    %output_high = const.Declare tensor<1xf16> = dense<254.0> : tensor<1xf16>
+    %output_fq = IE.FakeQuantize(%output, %output_low, %output_high, %output_low, %output_high) {
+            auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256
+        } : tensor<1x32x46x59xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16> -> tensor<1x32x46x59xf16>
+
+    return %output_fq : tensor<1x32x46x59xf16>
+
+    // CHECK-DAG:   [[FILTER:%.+]] = const.Declare tensor<32x16x2x1x!qElemType1> = dense<128> : tensor<16x32x2x1xui8>, [#const.CastElemType<!qElemType2>, #const.CastElemType<ui8>, #const.Reverse<1 : i64>, #const.Transpose<#map>, #const.CastElemType<!qElemType1>]
+    // CHECK-DAG:   [[OUTPUT_LOW:%.+]] = const.Declare tensor<1xf16> = dense<1.000000e+00> : tensor<1xf16>
+    // CHECK-DAG:   [[OUTPUT_HIGH:%.+]] = const.Declare tensor<1xf16> = dense<2.540000e+02> : tensor<1xf16>
+
+    // CHECK:       [[INPUT_DQ:%.+]] = IE.Dequantize([[INPUT]]) {
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:  } : tensor<1x16x23x30x!qElemType> -> tensor<1x16x23x30xf16>
+
+    // CHECK:       [[FILTER_DQ:%.+]] = IE.Dequantize([[FILTER]]) {
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:  } : tensor<32x16x2x1x!qElemType1> -> tensor<32x16x2x1xf16>
+
+    // CHECK:       [[FILTER_CONVERT:%.+]] = IE.Convert([[FILTER_DQ]]) {dstElemType = f32} : tensor<32x16x2x1xf16> -> tensor<32x16x2x1xf32>
+
+    // CHECK-NOT:   IE.ConvolutionBackpropData
+    // CHECK:       [[OUTPUT:%.+]] = IE.TransposedConvolution([[INPUT_DQ]], [[FILTER_CONVERT]]) {
+    // CHECK-SAME:      dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, pads_begin = [0, 0], pads_end = [0, 0], spatial_output_padding = [0, 0], strides = [2, 2]
+    // CHECK-SAME:  } : tensor<1x16x23x30xf16>, tensor<32x16x2x1xf32> -> tensor<1x32x46x59xf16>
+
+    // CHECK:       [[OUTPUT_FQ:%.+]] = IE.FakeQuantize([[OUTPUT]], [[OUTPUT_LOW]], [[OUTPUT_HIGH]], [[OUTPUT_LOW]], [[OUTPUT_HIGH]]) {
+    // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64
+    // CHECK-SAME:  } : tensor<1x32x46x59xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16> -> tensor<1x32x46x59xf16>
+
+    // CHECK:       return [[OUTPUT_FQ]]
+}
+
+// -----
 
 // CHECK:  #map = affine_map<(d0, d1, d2, d3, d4) -> (d0, d2, d1, d3, d4)>
 
@@ -318,6 +611,111 @@ func.func @ConvertQuantizedConvertedGroupConvBackpropDataToGroupTransposedConv(%
 
     // CHECK-NOT:   IE.GroupConvolutionBackpropData
     // CHECK:       [[OUTPUT:%.+]] = IE.GroupTransposedConvolution([[INPUT_FQ]], [[FILTER_CONVERT]]) {
+    // CHECK-SAME:      dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], spatial_output_padding = [0, 0], strides = [2, 2]
+    // CHECK-SAME:  } : tensor<1x32x23x30xf16>, tensor<2x32x16x2x1xf32> -> tensor<1x64x46x59xf16>
+
+    // CHECK:       [[OUTPUT_FQ:%.+]] = IE.FakeQuantize([[OUTPUT]], [[OUTPUT_LOW]], [[OUTPUT_HIGH]], [[OUTPUT_LOW]], [[OUTPUT_HIGH]]) {
+    // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64
+    // CHECK-SAME:  } : tensor<1x64x46x59xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16> -> tensor<1x64x46x59xf16>
+
+    // CHECK:       return [[OUTPUT_FQ]]
+}
+
+// -----
+!qElemType = !quant.uniform<u8:f16, 2.4627450980392158>
+// CHECK:  #map = affine_map<(d0, d1, d2, d3, d4) -> (d0, d2, d1, d3, d4)>
+
+// CHECK-LABEL: @ConvertQuantizedConvertedGroupConvBackpropDataToGroupTransposedConvPerTensor
+// CHECK-SAME:    ([[INPUT:%.+]]: tensor<1x32x23x30x!qElemType>)
+func.func @ConvertQuantizedConvertedGroupConvBackpropDataToGroupTransposedConvPerTensor(%input: tensor<1x32x23x30x!qElemType>) -> tensor<1x64x46x59xf16> {
+    %input_dq = IE.Dequantize(%input) {dstElemType = f16} : tensor<1x32x23x30x!qElemType> -> tensor<1x32x23x30xf16>
+
+    %filter = const.Declare tensor<2x16x32x2x1x!qElemType> = dense<1.000000e+00> : tensor<2x16x32x2x1xf16>, [#const.CastElemType<ui8>, #const.CastElemType<!qElemType>]
+    %filter_dq = IE.Dequantize(%filter) {dstElemType = f16} : tensor<2x16x32x2x1x!qElemType> -> tensor<2x16x32x2x1xf16>
+
+    %filter_convert = IE.Convert(%filter_dq) {dstElemType = f32} : tensor<2x16x32x2x1xf16> -> tensor<2x16x32x2x1xf32>
+
+    %output = IE.GroupConvolutionBackpropData(%input_dq, %filter_convert) {
+            dilations = [1, 1], spatial_output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]
+        } : tensor<1x32x23x30xf16>, tensor<2x16x32x2x1xf32> -> tensor<1x64x46x59xf16>
+
+    %output_low = const.Declare tensor<1xf16> = dense<1.0> : tensor<1xf16>
+    %output_high = const.Declare tensor<1xf16> = dense<254.0> : tensor<1xf16>
+    %output_fq = IE.FakeQuantize(%output, %output_low, %output_high, %output_low, %output_high) {
+            auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256
+        } : tensor<1x64x46x59xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16> -> tensor<1x64x46x59xf16>
+
+    return %output_fq : tensor<1x64x46x59xf16>
+
+    // CHECK-DAG:   [[FILTER:%.+]] = const.Declare tensor<2x32x16x2x1x!qElemType> = dense<1.000000e+00> : tensor<2x16x32x2x1xf16>, [#const.CastElemType<ui8>, #const.CastElemType<!qElemType>, #const.Reverse<2 : i64>, #const.Transpose<#map>]
+    // CHECK-DAG:   [[OUTPUT_LOW:%.+]] = const.Declare tensor<1xf16> = dense<1.000000e+00> : tensor<1xf16>
+    // CHECK-DAG:   [[OUTPUT_HIGH:%.+]] = const.Declare tensor<1xf16> = dense<2.540000e+02> : tensor<1xf16>
+
+    // CHECK:       [[INPUT_DQ:%.+]] = IE.Dequantize([[INPUT]]) {
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:  } : tensor<1x32x23x30x!qElemType> -> tensor<1x32x23x30xf16>
+
+    // CHECK:       [[FILTER_DQ:%.+]] = IE.Dequantize([[FILTER]]) {
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:  } : tensor<2x32x16x2x1x!qElemType> -> tensor<2x32x16x2x1xf16>
+
+    // CHECK:       [[FILTER_CONVERT:%.+]] = IE.Convert([[FILTER_DQ]]) {dstElemType = f32} : tensor<2x32x16x2x1xf16> -> tensor<2x32x16x2x1xf32>
+
+    // CHECK-NOT:   IE.GroupConvolutionBackpropData
+    // CHECK:       [[OUTPUT:%.+]] = IE.GroupTransposedConvolution([[INPUT_DQ]], [[FILTER_CONVERT]]) {
+    // CHECK-SAME:      dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], spatial_output_padding = [0, 0], strides = [2, 2]
+    // CHECK-SAME:  } : tensor<1x32x23x30xf16>, tensor<2x32x16x2x1xf32> -> tensor<1x64x46x59xf16>
+
+    // CHECK:       [[OUTPUT_FQ:%.+]] = IE.FakeQuantize([[OUTPUT]], [[OUTPUT_LOW]], [[OUTPUT_HIGH]], [[OUTPUT_LOW]], [[OUTPUT_HIGH]]) {
+    // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64
+    // CHECK-SAME:  } : tensor<1x64x46x59xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16> -> tensor<1x64x46x59xf16>
+
+    // CHECK:       return [[OUTPUT_FQ]]
+}
+
+// -----
+!qElemType = !quant.uniform<u8:f16, 2.4627450980392158>
+!qElemType1 = !quant.uniform<u8:f16:2, {1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0,9.0,10.0,11.0,12.0,13.0,14.0,15.0,16.0,17.0,18.0,19.0,20.0,21.0,22.0,23.0,24.0,25.0,26.0,27.0,28.0,29.0,30.0,31.0,32.0}>
+// CHECK:  #map = affine_map<(d0, d1, d2, d3, d4) -> (d0, d2, d1, d3, d4)>
+
+// CHECK-LABEL: @ConvertQuantizedConvertedGroupConvBackpropDataToGroupTransposedConvPerAxis
+// CHECK-SAME:    ([[INPUT:%.+]]: tensor<1x32x23x30x!qElemType>)
+func.func @ConvertQuantizedConvertedGroupConvBackpropDataToGroupTransposedConvPerAxis(%input: tensor<1x32x23x30x!qElemType>) -> tensor<1x64x46x59xf16> {
+    %input_dq = IE.Dequantize(%input) {dstElemType = f16} : tensor<1x32x23x30x!qElemType> -> tensor<1x32x23x30xf16>
+
+    %filter = const.Declare tensor<2x16x32x2x1x!qElemType1> = dense<128> : tensor<2x16x32x2x1xui8>, [#const.CastElemType<!qElemType>]
+    %filter_dq = IE.Dequantize(%filter) {dstElemType = f16} : tensor<2x16x32x2x1x!qElemType1> -> tensor<2x16x32x2x1xf16>
+
+    %filter_convert = IE.Convert(%filter_dq) {dstElemType = f32} : tensor<2x16x32x2x1xf16> -> tensor<2x16x32x2x1xf32>
+
+    %output = IE.GroupConvolutionBackpropData(%input_dq, %filter_convert) {
+            dilations = [1, 1], spatial_output_padding = [0, 0], pads_begin = [0, 0], pads_end = [0, 0], strides = [2, 2]
+        } : tensor<1x32x23x30xf16>, tensor<2x16x32x2x1xf32> -> tensor<1x64x46x59xf16>
+
+    %output_low = const.Declare tensor<1xf16> = dense<1.0> : tensor<1xf16>
+    %output_high = const.Declare tensor<1xf16> = dense<254.0> : tensor<1xf16>
+    %output_fq = IE.FakeQuantize(%output, %output_low, %output_high, %output_low, %output_high) {
+            auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256
+        } : tensor<1x64x46x59xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16> -> tensor<1x64x46x59xf16>
+
+    return %output_fq : tensor<1x64x46x59xf16>
+
+    // CHECK-DAG:   [[FILTER:%.+]] = const.Declare tensor<2x32x16x2x1x!qElemType1> = dense<128> : tensor<2x16x32x2x1xui8>, [#const.CastElemType<!qElemType>, #const.CastElemType<ui8>, #const.Reverse<2 : i64>, #const.Transpose<#map>, #const.CastElemType<!qElemType1>]
+    // CHECK-DAG:   [[OUTPUT_LOW:%.+]] = const.Declare tensor<1xf16> = dense<1.000000e+00> : tensor<1xf16>
+    // CHECK-DAG:   [[OUTPUT_HIGH:%.+]] = const.Declare tensor<1xf16> = dense<2.540000e+02> : tensor<1xf16>
+
+    // CHECK:       [[INPUT_DQ:%.+]] = IE.Dequantize([[INPUT]]) {
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:  } : tensor<1x32x23x30x!qElemType> -> tensor<1x32x23x30xf16>
+
+    // CHECK:       [[FILTER_DQ:%.+]] = IE.Dequantize([[FILTER]]) {
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:  } : tensor<2x32x16x2x1x!qElemType1> -> tensor<2x32x16x2x1xf16>
+
+    // CHECK:       [[FILTER_CONVERT:%.+]] = IE.Convert([[FILTER_DQ]]) {dstElemType = f32} : tensor<2x32x16x2x1xf16> -> tensor<2x32x16x2x1xf32>
+
+    // CHECK-NOT:   IE.GroupConvolutionBackpropData
+    // CHECK:       [[OUTPUT:%.+]] = IE.GroupTransposedConvolution([[INPUT_DQ]], [[FILTER_CONVERT]]) {
     // CHECK-SAME:      dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], spatial_output_padding = [0, 0], strides = [2, 2]
     // CHECK-SAME:  } : tensor<1x32x23x30xf16>, tensor<2x32x16x2x1xf32> -> tensor<1x64x46x59xf16>
 
@@ -549,6 +947,162 @@ func.func @LegalizeQuantizedConvBackpropDataTo2x2SplitConv(%input: tensor<1x1x2x
 }
 
 // -----
+!qElemType = !quant.uniform<u8:f16, 2.4627450980392158>
+// CHECK:  #map = affine_map<(d0, d1, d2, d3) -> (d1, d0, d2, d3)>
+
+// CHECK-LABEL: @LegalizeDequantizedConvBackpropDataTo2x2SplitConvPerTensor
+// CHECK-SAME:    ([[INPUT:%.+]]: tensor<1x1x2x2x!qElemType>)
+func.func @LegalizeDequantizedConvBackpropDataTo2x2SplitConvPerTensor(%input: tensor<1x1x2x2x!qElemType>) -> tensor<1x1x4x4xf16> {
+    %input_dq = IE.Dequantize(%input) {dstElemType = f16} : tensor<1x1x2x2x!qElemType> -> tensor<1x1x2x2xf16>
+
+    %filter = const.Declare tensor<1x1x4x4x!qElemType> = dense<[[[[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16]]]]> : tensor<1x1x4x4xsi8>, [#const.CastElemType<ui8>, #const.CastElemType<!qElemType>]
+    %filter_dq = IE.Dequantize(%filter) {dstElemType = f16} : tensor<1x1x4x4x!qElemType> -> tensor<1x1x4x4xf16>
+
+    %output = IE.ConvolutionBackpropData(%input_dq, %filter_dq) {
+            dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, spatial_output_padding = [0, 0], pads_begin = [1, 1], pads_end = [1, 1], strides = [2, 2]
+        } : tensor<1x1x2x2xf16>, tensor<1x1x4x4xf16> -> tensor<1x1x4x4xf16>
+
+    %output_low = const.Declare tensor<1xf16> = dense<1.0> : tensor<1xf16>
+    %output_high = const.Declare tensor<1xf16> = dense<254.0> : tensor<1xf16>
+    %output_fq = IE.FakeQuantize(%output, %output_low, %output_high, %output_low, %output_high) {
+            auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256
+        } : tensor<1x1x4x4xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16> -> tensor<1x1x4x4xf16>
+
+    return %output_fq : tensor<1x1x4x4xf16>
+
+    // CHECK-DAG:   [[OUTPUT_LOW:%.+]] = const.Declare tensor<1xf16> = dense<1.000000e+00> : tensor<1xf16>
+    // CHECK-DAG:   [[OUTPUT_HIGH:%.+]] = const.Declare tensor<1xf16> = dense<2.540000e+02> : tensor<1xf16>
+
+    // CHECK: [[SPLIT_FILTER_1:%.+]] = const.Declare tensor<1x1x2x2x!qElemType>
+    // CHECK-SAME{LITERAL}: dense<[[[[11, 9], [3, 1]]]]>  : tensor<1x1x2x2xsi8>
+    // CHECK-SAME{LITERAL}: #const.CastElemType<!qElemType>, #const.Transpose<#map>
+    // CHECK: [[SPLIT_FILTER_2:%.+]] = const.Declare tensor<1x1x2x2x!qElemType>
+    // CHECK-SAME{LITERAL}: dense<[[[[12, 10], [4, 2]]]]> : tensor<1x1x2x2xsi8>
+    // CHECK-SAME{LITERAL}: #const.CastElemType<!qElemType>, #const.Transpose<#map>
+    // CHECK: [[SPLIT_FILTER_3:%.+]] = const.Declare tensor<1x1x2x2x!qElemType>
+    // CHECK-SAME{LITERAL}: dense<[[[[15, 13], [7, 5]]]]> : tensor<1x1x2x2xsi8>
+    // CHECK-SAME{LITERAL}: #const.CastElemType<!qElemType>, #const.Transpose<#map>
+    // CHECK: [[SPLIT_FILTER_4:%.+]] = const.Declare tensor<1x1x2x2x!qElemType>
+    // CHECK-SAME{LITERAL}: dense<[[[[16, 14], [8, 6]]]]> : tensor<1x1x2x2xsi8>
+    // CHECK-SAME{LITERAL}: #const.CastElemType<!qElemType>, #const.Transpose<#map>
+
+    // CHECK:       [[INPUT_DQ:%.+]] = IE.Dequantize([[INPUT]]) {
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:  } : tensor<1x1x2x2x!qElemType> -> tensor<1x1x2x2xf16>
+
+    // CHECK:       [[FILTER_DQ_1:%.+]] = IE.Dequantize([[SPLIT_FILTER_4]]) {
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:  } : tensor<1x1x2x2x!qElemType> -> tensor<1x1x2x2xf16>
+
+    // CHECK:       [[FILTER_DQ_2:%.+]] = IE.Dequantize([[SPLIT_FILTER_3]]) {
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:  } : tensor<1x1x2x2x!qElemType> -> tensor<1x1x2x2xf16>
+
+    // CHECK:       [[FILTER_DQ_3:%.+]] = IE.Dequantize([[SPLIT_FILTER_2]]) {
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:  } : tensor<1x1x2x2x!qElemType> -> tensor<1x1x2x2xf16>
+
+    // CHECK:       [[FILTER_DQ_4:%.+]] = IE.Dequantize([[SPLIT_FILTER_1]]) {
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:  } : tensor<1x1x2x2x!qElemType> -> tensor<1x1x2x2xf16>
+
+    // CHECK: [[CONV0:%.+]] = IE.Convolution([[INPUT_DQ]], [[FILTER_DQ_1]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [0, 0], strides = [1, 1]} : tensor<1x1x2x2xf16>, tensor<1x1x2x2xf16> -> tensor<1x1x2x2xf16>
+    // CHECK: [[CONV1:%.+]] = IE.Convolution([[INPUT_DQ]], [[FILTER_DQ_2]]) {dilations = [1, 1], pads_begin = [1, 0], pads_end = [0, 1], strides = [1, 1]} : tensor<1x1x2x2xf16>, tensor<1x1x2x2xf16> -> tensor<1x1x2x2xf16>
+    // CHECK: [[CONV2:%.+]] = IE.Convolution([[INPUT_DQ]], [[FILTER_DQ_3]]) {dilations = [1, 1], pads_begin = [0, 1], pads_end = [1, 0], strides = [1, 1]} : tensor<1x1x2x2xf16>, tensor<1x1x2x2xf16> -> tensor<1x1x2x2xf16>
+    // CHECK: [[CONV3:%.+]] = IE.Convolution([[INPUT_DQ]], [[FILTER_DQ_4]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [1, 1], strides = [1, 1]} : tensor<1x1x2x2xf16>, tensor<1x1x2x2xf16> -> tensor<1x1x2x2xf16>
+
+    // CHECK: [[CONCAT:%.+]] = IE.Concat([[CONV0]], [[CONV1]], [[CONV2]], [[CONV3]])
+    // CHECK{LITERAL}:  {static_offsets = [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0], [0, 3, 0, 0]]}
+    // CHECK:               tensor<1x1x2x2xf16>, tensor<1x1x2x2xf16>, tensor<1x1x2x2xf16>, tensor<1x1x2x2xf16> -> tensor<1x4x2x2xf16>
+    // CHECK: [[D2S:%.+]] = IE.DepthToSpace([[CONCAT]]) {block_size = 2 : i64, mode = #IE.depth_to_space_mode<BLOCKS_FIRST>} : tensor<1x4x2x2xf16> -> tensor<1x1x4x4xf16>
+
+    // CHECK:       [[OUTPUT_FQ:%.+]] = IE.FakeQuantize([[D2S]], [[OUTPUT_LOW]], [[OUTPUT_HIGH]], [[OUTPUT_LOW]], [[OUTPUT_HIGH]]) {
+    // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64
+    // CHECK-SAME:  } : tensor<1x1x4x4xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16> -> tensor<1x1x4x4xf16>
+
+    // CHECK:       return [[OUTPUT_FQ]]
+}
+
+// -----
+!qElemType = !quant.uniform<u8:f16, 2.4627450980392158>
+!qElemType1 = !quant.uniform<u8:f16:1, {1.0,2.0}>
+// CHECK:  #map = affine_map<(d0, d1, d2, d3) -> (d1, d0, d2, d3)>
+
+// CHECK-LABEL: @LegalizeDequantizedConvBackpropDataTo2x2SplitConvPerAxis
+// CHECK-SAME:    ([[INPUT:%.+]]: tensor<1x1x2x2x!qElemType>)
+func.func @LegalizeDequantizedConvBackpropDataTo2x2SplitConvPerAxis(%input: tensor<1x1x2x2x!qElemType>) -> tensor<1x2x4x4xf16> {
+    %input_dq = IE.Dequantize(%input) {dstElemType = f16} : tensor<1x1x2x2x!qElemType> -> tensor<1x1x2x2xf16>
+
+    %filter = const.Declare tensor<1x2x4x4x!qElemType1> = dense<[[[[1, 2, 3, 4],[5, 6, 7, 8],[9, 10, 11, 12],[13, 14, 15, 16]],
+        [[17, 18, 19, 20],[21, 22, 23, 24],[25, 26, 27, 28],[29, 30, 31, 32]]]]> : tensor<1x2x4x4xsi8>, [#const.CastElemType<ui8>, #const.CastElemType<!qElemType1>]
+    %filter_dq = IE.Dequantize(%filter) {dstElemType = f16} : tensor<1x2x4x4x!qElemType1> -> tensor<1x2x4x4xf16>
+
+    %output = IE.ConvolutionBackpropData(%input_dq, %filter_dq) {
+            dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>, spatial_output_padding = [0, 0], pads_begin = [1, 1], pads_end = [1, 1], strides = [2, 2]
+        } : tensor<1x1x2x2xf16>, tensor<1x2x4x4xf16> -> tensor<1x2x4x4xf16>
+
+    %output_low = const.Declare tensor<1xf16> = dense<1.0> : tensor<1xf16>
+    %output_high = const.Declare tensor<1xf16> = dense<254.0> : tensor<1xf16>
+    %output_fq = IE.FakeQuantize(%output, %output_low, %output_high, %output_low, %output_high) {
+            auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256
+        } : tensor<1x2x4x4xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16> -> tensor<1x2x4x4xf16>
+
+    return %output_fq : tensor<1x2x4x4xf16>
+
+    // CHECK-DAG:   [[OUTPUT_LOW:%.+]] = const.Declare tensor<1xf16> = dense<1.000000e+00> : tensor<1xf16>
+    // CHECK-DAG:   [[OUTPUT_HIGH:%.+]] = const.Declare tensor<1xf16> = dense<2.540000e+02> : tensor<1xf16>
+
+    // CHECK: [[SPLIT_FILTER_1:%.+]] = const.Declare tensor<2x1x2x2x!qElemType1>
+    // CHECK-SAME{LITERAL}: dense<[[[[11, 9], [3, 1]], [[27, 25], [19, 17]]]]>  : tensor<1x2x2x2xsi8>
+    // CHECK-SAME{LITERAL}: [#const.CastElemType<!qElemType2>, #const.CastElemType<ui8>, #const.Transpose<#map>, #const.CastElemType<!qElemType1>]
+    // CHECK: [[SPLIT_FILTER_2:%.+]] = const.Declare tensor<2x1x2x2x!qElemType1>
+    // CHECK-SAME{LITERAL}: dense<[[[[12, 10], [4, 2]], [[28, 26], [20, 18]]]]> : tensor<1x2x2x2xsi8>
+    // CHECK-SAME{LITERAL}: [#const.CastElemType<!qElemType2>, #const.CastElemType<ui8>, #const.Transpose<#map>, #const.CastElemType<!qElemType1>]
+    // CHECK: [[SPLIT_FILTER_3:%.+]] = const.Declare tensor<2x1x2x2x!qElemType1>
+    // CHECK-SAME{LITERAL}: dense<[[[[15, 13], [7, 5]], [[31, 29], [23, 21]]]]> : tensor<1x2x2x2xsi8>
+    // CHECK-SAME{LITERAL}: [#const.CastElemType<!qElemType2>, #const.CastElemType<ui8>, #const.Transpose<#map>, #const.CastElemType<!qElemType1>]
+    // CHECK: [[SPLIT_FILTER_4:%.+]] = const.Declare tensor<2x1x2x2x!qElemType1>
+    // CHECK-SAME{LITERAL}: dense<[[[[16, 14], [8, 6]], [[32, 30], [24, 22]]]]> : tensor<1x2x2x2xsi8>
+    // CHECK-SAME{LITERAL}: [#const.CastElemType<!qElemType2>, #const.CastElemType<ui8>, #const.Transpose<#map>, #const.CastElemType<!qElemType1>]
+
+    // CHECK:       [[INPUT_DQ:%.+]] = IE.Dequantize([[INPUT]]) {
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:  } : tensor<1x1x2x2x!qElemType> -> tensor<1x1x2x2xf16>
+
+    // CHECK:       [[FILTER_DQ_1:%.+]] = IE.Dequantize([[SPLIT_FILTER_4]]) {
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:  } : tensor<2x1x2x2x!qElemType1> -> tensor<2x1x2x2xf16>
+
+    // CHECK:       [[FILTER_DQ_2:%.+]] = IE.Dequantize([[SPLIT_FILTER_3]]) {
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:  } : tensor<2x1x2x2x!qElemType1> -> tensor<2x1x2x2xf16>
+
+    // CHECK:       [[FILTER_DQ_3:%.+]] = IE.Dequantize([[SPLIT_FILTER_2]]) {
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:  } : tensor<2x1x2x2x!qElemType1> -> tensor<2x1x2x2xf16>
+
+    // CHECK:       [[FILTER_DQ_4:%.+]] = IE.Dequantize([[SPLIT_FILTER_1]]) {
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:  } : tensor<2x1x2x2x!qElemType1> -> tensor<2x1x2x2xf16>
+
+    // CHECK: [[CONV0:%.+]] = IE.Convolution([[INPUT_DQ]], [[FILTER_DQ_1]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [0, 0], strides = [1, 1]} : tensor<1x1x2x2xf16>, tensor<2x1x2x2xf16> -> tensor<1x2x2x2xf16>
+    // CHECK: [[CONV1:%.+]] = IE.Convolution([[INPUT_DQ]], [[FILTER_DQ_2]]) {dilations = [1, 1], pads_begin = [1, 0], pads_end = [0, 1], strides = [1, 1]} : tensor<1x1x2x2xf16>, tensor<2x1x2x2xf16> -> tensor<1x2x2x2xf16>
+    // CHECK: [[CONV2:%.+]] = IE.Convolution([[INPUT_DQ]], [[FILTER_DQ_3]]) {dilations = [1, 1], pads_begin = [0, 1], pads_end = [1, 0], strides = [1, 1]} : tensor<1x1x2x2xf16>, tensor<2x1x2x2xf16> -> tensor<1x2x2x2xf16>
+    // CHECK: [[CONV3:%.+]] = IE.Convolution([[INPUT_DQ]], [[FILTER_DQ_4]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [1, 1], strides = [1, 1]} : tensor<1x1x2x2xf16>, tensor<2x1x2x2xf16> -> tensor<1x2x2x2xf16>
+
+    // CHECK: [[CONCAT:%.+]] = IE.Concat([[CONV0]], [[CONV1]], [[CONV2]], [[CONV3]])
+    // CHECK{LITERAL}:  {static_offsets = [[0, 0, 0, 0], [0, 2, 0, 0], [0, 4, 0, 0], [0, 6, 0, 0]]}
+    // CHECK:               tensor<1x2x2x2xf16>, tensor<1x2x2x2xf16>, tensor<1x2x2x2xf16>, tensor<1x2x2x2xf16> -> tensor<1x8x2x2xf16>
+    // CHECK: [[D2S:%.+]] = IE.DepthToSpace([[CONCAT]]) {block_size = 2 : i64, mode = #IE.depth_to_space_mode<BLOCKS_FIRST>} : tensor<1x8x2x2xf16> -> tensor<1x2x4x4xf16>
+
+    // CHECK:       [[OUTPUT_FQ:%.+]] = IE.FakeQuantize([[D2S]], [[OUTPUT_LOW]], [[OUTPUT_HIGH]], [[OUTPUT_LOW]], [[OUTPUT_HIGH]]) {
+    // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64
+    // CHECK-SAME:  } : tensor<1x2x4x4xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16> -> tensor<1x2x4x4xf16>
+
+    // CHECK:       return [[OUTPUT_FQ]]
+}
+
+// -----
 
 // CHECK:  #map = affine_map<(d0, d1, d2, d3) -> (d1, d0, d2, d3)>
 
@@ -660,22 +1214,21 @@ func.func @LegalizeQuantizedConvBackpropDataTo2x2SplitConvWithFilterConvert(%inp
     // CHECK:       [[FILTER_FQ_1:%.+]] = IE.FakeQuantize([[SPLIT_FILTER_4]], [[FILTER_LOW]], [[FILTER_HIGH]], [[FILTER_LOW]], [[FILTER_HIGH]]) {
     // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64
     // CHECK-SAME:  } : tensor<1x1x2x2xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x1x2x2xf16>
+    // CHECK:       [[FILTER_CONVERT_1:%.+]] = IE.Convert([[FILTER_FQ_1]]) {dstElemType = f32} : tensor<1x1x2x2xf16> -> tensor<1x1x2x2xf32>
 
     // CHECK:       [[FILTER_FQ_2:%.+]] = IE.FakeQuantize([[SPLIT_FILTER_3]], [[FILTER_LOW]], [[FILTER_HIGH]], [[FILTER_LOW]], [[FILTER_HIGH]]) {
     // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64
     // CHECK-SAME:  } : tensor<1x1x2x2xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x1x2x2xf16>
+    // CHECK:       [[FILTER_CONVERT_2:%.+]] = IE.Convert([[FILTER_FQ_2]]) {dstElemType = f32} : tensor<1x1x2x2xf16> -> tensor<1x1x2x2xf32>
 
     // CHECK:       [[FILTER_FQ_3:%.+]] = IE.FakeQuantize([[SPLIT_FILTER_2]], [[FILTER_LOW]], [[FILTER_HIGH]], [[FILTER_LOW]], [[FILTER_HIGH]]) {
     // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64
     // CHECK-SAME:  } : tensor<1x1x2x2xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x1x2x2xf16>
+    // CHECK:       [[FILTER_CONVERT_3:%.+]] = IE.Convert([[FILTER_FQ_3]]) {dstElemType = f32} : tensor<1x1x2x2xf16> -> tensor<1x1x2x2xf32>
 
     // CHECK:       [[FILTER_FQ_4:%.+]] = IE.FakeQuantize([[SPLIT_FILTER_1]], [[FILTER_LOW]], [[FILTER_HIGH]], [[FILTER_LOW]], [[FILTER_HIGH]]) {
     // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64
     // CHECK-SAME:  } : tensor<1x1x2x2xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x1x2x2xf16>
-
-    // CHECK:       [[FILTER_CONVERT_1:%.+]] = IE.Convert([[FILTER_FQ_1]]) {dstElemType = f32} : tensor<1x1x2x2xf16> -> tensor<1x1x2x2xf32>
-    // CHECK:       [[FILTER_CONVERT_2:%.+]] = IE.Convert([[FILTER_FQ_2]]) {dstElemType = f32} : tensor<1x1x2x2xf16> -> tensor<1x1x2x2xf32>
-    // CHECK:       [[FILTER_CONVERT_3:%.+]] = IE.Convert([[FILTER_FQ_3]]) {dstElemType = f32} : tensor<1x1x2x2xf16> -> tensor<1x1x2x2xf32>
     // CHECK:       [[FILTER_CONVERT_4:%.+]] = IE.Convert([[FILTER_FQ_4]]) {dstElemType = f32} : tensor<1x1x2x2xf16> -> tensor<1x1x2x2xf32>
 
     // CHECK: [[CONV0:%.+]] = IE.Convolution([[INPUT_FQ]], [[FILTER_CONVERT_1]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [0, 0], strides = [1, 1]} : tensor<1x1x2x2xf16>, tensor<1x1x2x2xf32> -> tensor<1x1x2x2xf16>
@@ -691,6 +1244,176 @@ func.func @LegalizeQuantizedConvBackpropDataTo2x2SplitConvWithFilterConvert(%inp
     // CHECK:       [[OUTPUT_FQ:%.+]] = IE.FakeQuantize([[D2S]], [[OUTPUT_LOW]], [[OUTPUT_HIGH]], [[OUTPUT_LOW]], [[OUTPUT_HIGH]]) {
     // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64
     // CHECK-SAME:  } : tensor<1x1x4x4xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16> -> tensor<1x1x4x4xf16>
+
+    // CHECK:       return [[OUTPUT_FQ]]
+
+}
+
+// -----
+!qElemType = !quant.uniform<u8:f16, 2.4627450980392158>
+// CHECK:  #map = affine_map<(d0, d1, d2, d3) -> (d1, d0, d2, d3)>
+
+// CHECK-LABEL: @LegalizeDequantizedConvBackpropDataTo2x2SplitConvWithFilterConvertPerTensor
+// CHECK-SAME:    ([[INPUT:%.+]]: tensor<1x1x2x2x!qElemType>)
+func.func @LegalizeDequantizedConvBackpropDataTo2x2SplitConvWithFilterConvertPerTensor(%input: tensor<1x1x2x2x!qElemType>) -> tensor<1x1x4x4xf16> {
+    %input_dq = IE.Dequantize(%input) {dstElemType = f16} : tensor<1x1x2x2x!qElemType> -> tensor<1x1x2x2xf16>
+
+    %filter = const.Declare tensor<1x1x4x4x!qElemType> = dense<[[[[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16]]]]> : tensor<1x1x4x4xsi8>, [#const.CastElemType<ui8>, #const.CastElemType<!qElemType>]
+    %filter_dq = IE.Dequantize(%filter) {dstElemType = f16} : tensor<1x1x4x4x!qElemType> -> tensor<1x1x4x4xf16>
+
+    %filter_convert = IE.Convert(%filter_dq) {dstElemType = f32} : tensor<1x1x4x4xf16> -> tensor<1x1x4x4xf32>
+
+    %output = IE.ConvolutionBackpropData(%input_dq, %filter_convert) {
+            dilations = [1, 1], spatial_output_padding = [0, 0], pads_begin = [1, 1], pads_end = [1, 1], strides = [2, 2]
+        } : tensor<1x1x2x2xf16>, tensor<1x1x4x4xf32> -> tensor<1x1x4x4xf16>
+
+    %output_low = const.Declare tensor<1xf16> = dense<1.0> : tensor<1xf16>
+    %output_high = const.Declare tensor<1xf16> = dense<254.0> : tensor<1xf16>
+    %output_fq = IE.FakeQuantize(%output, %output_low, %output_high, %output_low, %output_high) {
+            auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256
+        } : tensor<1x1x4x4xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16> -> tensor<1x1x4x4xf16>
+
+    return %output_fq : tensor<1x1x4x4xf16>
+
+    // CHECK-DAG:   [[OUTPUT_LOW:%.+]] = const.Declare tensor<1xf16> = dense<1.000000e+00> : tensor<1xf16>
+    // CHECK-DAG:   [[OUTPUT_HIGH:%.+]] = const.Declare tensor<1xf16> = dense<2.540000e+02> : tensor<1xf16>
+
+    // CHECK: [[SPLIT_FILTER_1:%.+]] = const.Declare tensor<1x1x2x2x!qElemType>
+    // CHECK-SAME{LITERAL}: dense<[[[[11, 9], [3, 1]]]]>  : tensor<1x1x2x2xsi8>
+    // CHECK-SAME{LITERAL}: #const.CastElemType<!qElemType>, #const.Transpose<#map>
+    // CHECK: [[SPLIT_FILTER_2:%.+]] = const.Declare tensor<1x1x2x2x!qElemType>
+    // CHECK-SAME{LITERAL}: dense<[[[[12, 10], [4, 2]]]]> : tensor<1x1x2x2xsi8>
+    // CHECK-SAME{LITERAL}: #const.CastElemType<!qElemType>, #const.Transpose<#map>
+    // CHECK: [[SPLIT_FILTER_3:%.+]] = const.Declare tensor<1x1x2x2x!qElemType>
+    // CHECK-SAME{LITERAL}: dense<[[[[15, 13], [7, 5]]]]> : tensor<1x1x2x2xsi8>
+    // CHECK-SAME{LITERAL}: #const.CastElemType<!qElemType>, #const.Transpose<#map>
+    // CHECK: [[SPLIT_FILTER_4:%.+]] = const.Declare tensor<1x1x2x2x!qElemType>
+    // CHECK-SAME{LITERAL}: dense<[[[[16, 14], [8, 6]]]]> : tensor<1x1x2x2xsi8>
+    // CHECK-SAME{LITERAL}: #const.CastElemType<!qElemType>, #const.Transpose<#map>
+
+    // CHECK:       [[INPUT_DQ:%.+]] = IE.Dequantize([[INPUT]]) {
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:  } : tensor<1x1x2x2x!qElemType> -> tensor<1x1x2x2xf16>
+
+    // CHECK:       [[FILTER_DQ_1:%.+]] = IE.Dequantize([[SPLIT_FILTER_4]]) {
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:  } : tensor<1x1x2x2x!qElemType> -> tensor<1x1x2x2xf16>
+    // CHECK:       [[FILTER_CONVERT_1:%.+]] = IE.Convert([[FILTER_DQ_1]]) {dstElemType = f32} : tensor<1x1x2x2xf16> -> tensor<1x1x2x2xf32>
+
+    // CHECK:       [[FILTER_DQ_2:%.+]] = IE.Dequantize([[SPLIT_FILTER_3]]) {
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:  } : tensor<1x1x2x2x!qElemType> -> tensor<1x1x2x2xf16>
+    // CHECK:       [[FILTER_CONVERT_2:%.+]] = IE.Convert([[FILTER_DQ_2]]) {dstElemType = f32} : tensor<1x1x2x2xf16> -> tensor<1x1x2x2xf32>
+
+    // CHECK:       [[FILTER_DQ_3:%.+]] = IE.Dequantize([[SPLIT_FILTER_2]]) {
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:  } : tensor<1x1x2x2x!qElemType> -> tensor<1x1x2x2xf16>
+    // CHECK:       [[FILTER_CONVERT_3:%.+]] = IE.Convert([[FILTER_DQ_3]]) {dstElemType = f32} : tensor<1x1x2x2xf16> -> tensor<1x1x2x2xf32>
+
+    // CHECK:       [[FILTER_DQ_4:%.+]] = IE.Dequantize([[SPLIT_FILTER_1]]) {
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:  } : tensor<1x1x2x2x!qElemType> -> tensor<1x1x2x2xf16>
+    // CHECK:       [[FILTER_CONVERT_4:%.+]] = IE.Convert([[FILTER_DQ_4]]) {dstElemType = f32} : tensor<1x1x2x2xf16> -> tensor<1x1x2x2xf32>
+
+    // CHECK: [[CONV0:%.+]] = IE.Convolution([[INPUT_DQ]], [[FILTER_CONVERT_1]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [0, 0], strides = [1, 1]} : tensor<1x1x2x2xf16>, tensor<1x1x2x2xf32> -> tensor<1x1x2x2xf16>
+    // CHECK: [[CONV1:%.+]] = IE.Convolution([[INPUT_DQ]], [[FILTER_CONVERT_2]]) {dilations = [1, 1], pads_begin = [1, 0], pads_end = [0, 1], strides = [1, 1]} : tensor<1x1x2x2xf16>, tensor<1x1x2x2xf32> -> tensor<1x1x2x2xf16>
+    // CHECK: [[CONV2:%.+]] = IE.Convolution([[INPUT_DQ]], [[FILTER_CONVERT_3]]) {dilations = [1, 1], pads_begin = [0, 1], pads_end = [1, 0], strides = [1, 1]} : tensor<1x1x2x2xf16>, tensor<1x1x2x2xf32> -> tensor<1x1x2x2xf16>
+    // CHECK: [[CONV3:%.+]] = IE.Convolution([[INPUT_DQ]], [[FILTER_CONVERT_4]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [1, 1], strides = [1, 1]} : tensor<1x1x2x2xf16>, tensor<1x1x2x2xf32> -> tensor<1x1x2x2xf16>
+
+    // CHECK: [[CONCAT:%.+]] = IE.Concat([[CONV0]], [[CONV1]], [[CONV2]], [[CONV3]])
+    // CHECK{LITERAL}:  {static_offsets = [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0], [0, 3, 0, 0]]}
+    // CHECK:               tensor<1x1x2x2xf16>, tensor<1x1x2x2xf16>, tensor<1x1x2x2xf16>, tensor<1x1x2x2xf16> -> tensor<1x4x2x2xf16>
+    // CHECK: [[D2S:%.+]] = IE.DepthToSpace([[CONCAT]]) {block_size = 2 : i64, mode = #IE.depth_to_space_mode<BLOCKS_FIRST>} : tensor<1x4x2x2xf16> -> tensor<1x1x4x4xf16>
+
+    // CHECK:       [[OUTPUT_FQ:%.+]] = IE.FakeQuantize([[D2S]], [[OUTPUT_LOW]], [[OUTPUT_HIGH]], [[OUTPUT_LOW]], [[OUTPUT_HIGH]]) {
+    // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64
+    // CHECK-SAME:  } : tensor<1x1x4x4xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16> -> tensor<1x1x4x4xf16>
+
+    // CHECK:       return [[OUTPUT_FQ]]
+
+}
+
+// -----
+!qElemType = !quant.uniform<u8:f16, 2.4627450980392158>
+!qElemType1 = !quant.uniform<u8:f16:1, {1.0,2.0}>
+// CHECK:  #map = affine_map<(d0, d1, d2, d3) -> (d1, d0, d2, d3)>
+
+// CHECK-LABEL: @LegalizeDequantizedConvBackpropDataTo2x2SplitConvWithFilterConvertPerAxis
+// CHECK-SAME:    ([[INPUT:%.+]]: tensor<1x1x2x2x!qElemType>)
+func.func @LegalizeDequantizedConvBackpropDataTo2x2SplitConvWithFilterConvertPerAxis(%input: tensor<1x1x2x2x!qElemType>) -> tensor<1x2x4x4xf16> {
+    %input_dq = IE.Dequantize(%input) {dstElemType = f16} : tensor<1x1x2x2x!qElemType> -> tensor<1x1x2x2xf16>
+
+    %filter = const.Declare tensor<1x2x4x4x!qElemType1> = dense<[[[[1, 2, 3, 4],[5, 6, 7, 8],[9, 10, 11, 12],[13, 14, 15, 16]],
+        [[17, 18, 19, 20],[21, 22, 23, 24],[25, 26, 27, 28],[29, 30, 31, 32]]]]> : tensor<1x2x4x4xsi8>, [#const.CastElemType<ui8>, #const.CastElemType<!qElemType1>]
+    %filter_dq = IE.Dequantize(%filter) {dstElemType = f16} : tensor<1x2x4x4x!qElemType1> -> tensor<1x2x4x4xf16>
+
+    %filter_convert = IE.Convert(%filter_dq) {dstElemType = f32} : tensor<1x2x4x4xf16> -> tensor<1x2x4x4xf32>
+
+    %output = IE.ConvolutionBackpropData(%input_dq, %filter_convert) {
+            dilations = [1, 1], spatial_output_padding = [0, 0], pads_begin = [1, 1], pads_end = [1, 1], strides = [2, 2]
+        } : tensor<1x1x2x2xf16>, tensor<1x2x4x4xf32> -> tensor<1x2x4x4xf16>
+
+    %output_low = const.Declare tensor<1xf16> = dense<1.0> : tensor<1xf16>
+    %output_high = const.Declare tensor<1xf16> = dense<254.0> : tensor<1xf16>
+    %output_fq = IE.FakeQuantize(%output, %output_low, %output_high, %output_low, %output_high) {
+            auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256
+        } : tensor<1x2x4x4xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16> -> tensor<1x2x4x4xf16>
+
+    return %output_fq : tensor<1x2x4x4xf16>
+
+    // CHECK-DAG:   [[OUTPUT_LOW:%.+]] = const.Declare tensor<1xf16> = dense<1.000000e+00> : tensor<1xf16>
+    // CHECK-DAG:   [[OUTPUT_HIGH:%.+]] = const.Declare tensor<1xf16> = dense<2.540000e+02> : tensor<1xf16>
+
+    // CHECK: [[SPLIT_FILTER_1:%.+]] = const.Declare tensor<2x1x2x2x!qElemType1>
+    // CHECK-SAME{LITERAL}: dense<[[[[11, 9], [3, 1]], [[27, 25], [19, 17]]]]>  : tensor<1x2x2x2xsi8>
+    // CHECK-SAME{LITERAL}: [#const.CastElemType<!qElemType2>, #const.CastElemType<ui8>, #const.Transpose<#map>, #const.CastElemType<!qElemType1>]
+    // CHECK: [[SPLIT_FILTER_2:%.+]] = const.Declare tensor<2x1x2x2x!qElemType1>
+    // CHECK-SAME{LITERAL}: dense<[[[[12, 10], [4, 2]], [[28, 26], [20, 18]]]]> : tensor<1x2x2x2xsi8>
+    // CHECK-SAME{LITERAL}: [#const.CastElemType<!qElemType2>, #const.CastElemType<ui8>, #const.Transpose<#map>, #const.CastElemType<!qElemType1>]
+    // CHECK: [[SPLIT_FILTER_3:%.+]] = const.Declare tensor<2x1x2x2x!qElemType1>
+    // CHECK-SAME{LITERAL}: dense<[[[[15, 13], [7, 5]], [[31, 29], [23, 21]]]]> : tensor<1x2x2x2xsi8>
+    // CHECK-SAME{LITERAL}: [#const.CastElemType<!qElemType2>, #const.CastElemType<ui8>, #const.Transpose<#map>, #const.CastElemType<!qElemType1>]
+    // CHECK: [[SPLIT_FILTER_4:%.+]] = const.Declare tensor<2x1x2x2x!qElemType1>
+    // CHECK-SAME{LITERAL}: dense<[[[[16, 14], [8, 6]], [[32, 30], [24, 22]]]]> : tensor<1x2x2x2xsi8>
+    // CHECK-SAME{LITERAL}: [#const.CastElemType<!qElemType2>, #const.CastElemType<ui8>, #const.Transpose<#map>, #const.CastElemType<!qElemType1>]
+
+    // CHECK:       [[INPUT_DQ:%.+]] = IE.Dequantize([[INPUT]]) {
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:  } : tensor<1x1x2x2x!qElemType> -> tensor<1x1x2x2xf16>
+
+    // CHECK:       [[FILTER_DQ_1:%.+]] = IE.Dequantize([[SPLIT_FILTER_4]]) {
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:  } : tensor<2x1x2x2x!qElemType1> -> tensor<2x1x2x2xf16>
+    // CHECK:       [[FILTER_CONVERT_1:%.+]] = IE.Convert([[FILTER_DQ_1]]) {dstElemType = f32} : tensor<2x1x2x2xf16> -> tensor<2x1x2x2xf32>
+
+    // CHECK:       [[FILTER_DQ_2:%.+]] = IE.Dequantize([[SPLIT_FILTER_3]]) {
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:  } : tensor<2x1x2x2x!qElemType1> -> tensor<2x1x2x2xf16>
+    // CHECK:       [[FILTER_CONVERT_2:%.+]] = IE.Convert([[FILTER_DQ_2]]) {dstElemType = f32} : tensor<2x1x2x2xf16> -> tensor<2x1x2x2xf32>
+
+    // CHECK:       [[FILTER_DQ_3:%.+]] = IE.Dequantize([[SPLIT_FILTER_2]]) {
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:  } : tensor<2x1x2x2x!qElemType1> -> tensor<2x1x2x2xf16>
+    // CHECK:       [[FILTER_CONVERT_3:%.+]] = IE.Convert([[FILTER_DQ_3]]) {dstElemType = f32} : tensor<2x1x2x2xf16> -> tensor<2x1x2x2xf32>
+
+    // CHECK:       [[FILTER_DQ_4:%.+]] = IE.Dequantize([[SPLIT_FILTER_1]]) {
+    // CHECK-SAME:      dstElemType = f16
+    // CHECK-SAME:  } : tensor<2x1x2x2x!qElemType1> -> tensor<2x1x2x2xf16>
+    // CHECK:       [[FILTER_CONVERT_4:%.+]] = IE.Convert([[FILTER_DQ_4]]) {dstElemType = f32} : tensor<2x1x2x2xf16> -> tensor<2x1x2x2xf32>
+
+    // CHECK: [[CONV0:%.+]] = IE.Convolution([[INPUT_DQ]], [[FILTER_CONVERT_1]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [0, 0], strides = [1, 1]} : tensor<1x1x2x2xf16>, tensor<2x1x2x2xf32> -> tensor<1x2x2x2xf16>
+    // CHECK: [[CONV1:%.+]] = IE.Convolution([[INPUT_DQ]], [[FILTER_CONVERT_2]]) {dilations = [1, 1], pads_begin = [1, 0], pads_end = [0, 1], strides = [1, 1]} : tensor<1x1x2x2xf16>, tensor<2x1x2x2xf32> -> tensor<1x2x2x2xf16>
+    // CHECK: [[CONV2:%.+]] = IE.Convolution([[INPUT_DQ]], [[FILTER_CONVERT_3]]) {dilations = [1, 1], pads_begin = [0, 1], pads_end = [1, 0], strides = [1, 1]} : tensor<1x1x2x2xf16>, tensor<2x1x2x2xf32> -> tensor<1x2x2x2xf16>
+    // CHECK: [[CONV3:%.+]] = IE.Convolution([[INPUT_DQ]], [[FILTER_CONVERT_4]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [1, 1], strides = [1, 1]} : tensor<1x1x2x2xf16>, tensor<2x1x2x2xf32> -> tensor<1x2x2x2xf16>
+
+    // CHECK: [[CONCAT:%.+]] = IE.Concat([[CONV0]], [[CONV1]], [[CONV2]], [[CONV3]])
+    // CHECK{LITERAL}:  {static_offsets = [[0, 0, 0, 0], [0, 2, 0, 0], [0, 4, 0, 0], [0, 6, 0, 0]]}
+    // CHECK:               tensor<1x2x2x2xf16>, tensor<1x2x2x2xf16>, tensor<1x2x2x2xf16>, tensor<1x2x2x2xf16> -> tensor<1x8x2x2xf16>
+    // CHECK: [[D2S:%.+]] = IE.DepthToSpace([[CONCAT]]) {block_size = 2 : i64, mode = #IE.depth_to_space_mode<BLOCKS_FIRST>} : tensor<1x8x2x2xf16> -> tensor<1x2x4x4xf16>
+
+    // CHECK:       [[OUTPUT_FQ:%.+]] = IE.FakeQuantize([[D2S]], [[OUTPUT_LOW]], [[OUTPUT_HIGH]], [[OUTPUT_LOW]], [[OUTPUT_HIGH]]) {
+    // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64
+    // CHECK-SAME:  } : tensor<1x2x4x4xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16> -> tensor<1x2x4x4xf16>
 
     // CHECK:       return [[OUTPUT_FQ]]
 

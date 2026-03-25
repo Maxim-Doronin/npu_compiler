@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -170,8 +170,19 @@ mlir::LogicalResult vpux::VPU::NCEAveragePoolOp::inferReturnTypes(
 
     const auto inType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
     auto inShapeInfo = ShapeInfo::fromNDType(inType);
-    if (mlir::failed(IE::unpadInputShape(inShapeInfo.shape, op.getInputPaddingAttr(), loc))) {
-        return mlir::failure();
+
+    std::optional<SmallVector<int64_t>> inputPadding = std::nullopt;
+    std::optional<SmallVector<int64_t>> outputPadding = std::nullopt;
+
+    auto inputRes = IE::verifyPaddingAttr(op.getInputPaddingAttr(), inShapeInfo, inputPadding);
+    auto outputRes = IE::verifyPaddingAttr(op.getOutputPaddingAttr(), inShapeInfo, outputPadding);
+    if (inputRes.failed()) {
+        return errorAt(loc, "Input padding '{0}' should have the same number of dimensions as the input shape '{1}'",
+                       inputPadding, inShapeInfo.shape);
+    }
+    if (outputRes.failed()) {
+        return errorAt(loc, "Output padding '{0}' should have the same number of dimensions as the input shape '{1}'",
+                       outputPadding, inShapeInfo.shape);
     }
 
     const auto windowShape = parseIntArrayAttr<int64_t>(op.getKernelSize());
@@ -185,16 +196,12 @@ mlir::LogicalResult vpux::VPU::NCEAveragePoolOp::inferReturnTypes(
     const auto dataPaddingBelow = SmallVector<int64_t>({padTop, padLeft});
     const auto dataPaddingAbove = SmallVector<int64_t>({padBottom, padRight});
 
-    auto outShape =
-            inferAvgPoolOutputShape(inShapeInfo, windowStrides, dataPaddingBelow, dataPaddingAbove, windowShape);
+    const auto outShapeInfo = inferAvgPoolOutputShape(inShapeInfo, windowStrides, dataPaddingBelow, dataPaddingAbove,
+                                                      windowShape, inputPadding, outputPadding);
 
-    if (mlir::failed(IE::padOutputShape(outShape.shape, op.getOutputPaddingAttr(), loc))) {
-        return mlir::failure();
-    }
-
-    auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
-    auto outputType = mlir::RankedTensorType::get(outShape.shape, inputType.getElementType(),
-                                                  createTensorAttrFromType(inputType));
+    const auto outDesc =
+            vpux::getTensorAttr(ctx, inType.getDimsOrder(), /*memSpace=*/nullptr, BoundsRef(outShapeInfo.bounds));
+    auto outputType = mlir::RankedTensorType::get(outShapeInfo.shape, inType.getElementType(), outDesc);
 
     inferredReturnTypes.push_back(outputType);
     return mlir::success();
@@ -205,7 +212,7 @@ mlir::LogicalResult vpux::VPU::NCEAveragePoolOp::inferReturnTypes(
 //
 
 vpux::InputTiling vpux::VPU::NCEAveragePoolOp::backInferTileInfo(const vpux::TileInfo& outputTile, vpux::Logger log) {
-    const auto origInputShape = getShape(getInput());
+    const auto origInputShape = getBoundedShape(getInput());
     const auto origPadding = toPadInfo(getPad());
 
     auto inputTiling = vpux::backInferPoolTile(outputTile, origInputShape, getKernelSize(), getStrides(), origPadding);
@@ -229,11 +236,11 @@ mlir::FailureOr<OutputTiling> vpux::VPU::NCEAveragePoolOp::getTilingStrategy(Til
 //
 
 bool vpux::VPU::NCEAveragePoolOp::checkStrategyCompatibility(VPU::MultiClusterStrategy strategy, size_t) {
-    const auto arch = config::getArch(getOperation());
     const auto outputType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
-
     const auto batchSize = outputType.getShape()[Dims4D::Act::N];
-    if (batchSize > 1 && batchSize <= VPU::getMaxArchDPUClusterNum(arch)) {
+    const auto enabledTileNum = config::getNumOfTiles(getOperation());
+
+    if (batchSize > 1 && batchSize <= enabledTileNum) {
         return strategy == VPU::MultiClusterStrategy::SplitOverBatch;
     }
 
@@ -261,7 +268,7 @@ bool VPU::NCEAveragePoolOp::isOperationSplitOverHeightCompatible(const vpux::Til
     auto offset = ShapeRef(oriOutputTile.offsets);
     auto axis = ShapeRef(oriOutputTile.axis);
     if (outputShape == ShapeRef()) {
-        outputShape = getShape(getOutput());
+        outputShape = getBoundedShape(getOutput());
     }
     vpux::TileInfo outputTile{outputShape, offset, axis, oriOutputTile.isCompletedTile};
     if (!VPU::isOperationSplitOverHeightCompatible(getOperation(), outputTile)) {
@@ -269,10 +276,10 @@ bool VPU::NCEAveragePoolOp::isOperationSplitOverHeightCompatible(const vpux::Til
     }
 
     auto nceOp = mlir::cast<NCEAveragePoolOp>(getOperation());
-    Shape inputShape = getShape(nceOp.getInput()).toValues();
+    Shape inputShape = getBoundedShape(nceOp.getInput()).toValues();
     auto inputType = mlir::cast<vpux::NDTypeInterface>(nceOp.getInput().getType());
     // If has custom output shape, infer the input shape
-    if (outputShape != getShape(nceOp->getResult(0))) {
+    if (outputShape != getBoundedShape(nceOp->getResult(0))) {
         VPUX_THROW_UNLESS(offset != ShapeRef() && axis != ShapeRef(),
                           "Offsets and axis must have value when create TileInfo. Loc: {0}", nceOp->getLoc());
         outputTile.isCompletedTile = true;
@@ -380,4 +387,30 @@ mlir::LogicalResult vpux::VPU::NCEAveragePoolOp::verifyKernel(IE::AvgPoolOp orig
         return mlir::failure();
     }
     return NCEInvariant::verifyKernel(origOp, KY, KX, SY, SX, padTop, padBottom, padLeft, padRight, log);
+}
+
+mlir::LogicalResult vpux::VPU::NCEAveragePoolOp::reifyResultShapes(
+        mlir::OpBuilder& builder, mlir::ReifiedRankedShapedTypeDims& reifiedReturnShapes) {
+    // Parse attributes
+    const auto strides = parseIntArrayAttr<int64_t>(getStrides());
+
+    const auto padTop = getPad().getTop().getValue().getSExtValue();
+    const auto padBottom = getPad().getBottom().getValue().getSExtValue();
+    const auto padLeft = getPad().getLeft().getValue().getSExtValue();
+    const auto padRight = getPad().getRight().getValue().getSExtValue();
+
+    const auto dataPaddingAbove = SmallVector<int64_t>({padTop, padLeft});
+    const auto dataPaddingBelow = SmallVector<int64_t>({padBottom, padRight});
+
+    const auto kernelSize = parseIntArrayAttr<int64_t>(getKernelSizeAttr());
+
+    // Compute output shape using utility
+    auto outShape = reifyConvPoolTensors(builder, getInput(), getOutput(), nullptr, kernelSize, strides,
+                                         dataPaddingAbove, dataPaddingBelow, getLoc());
+    if (mlir::failed(outShape)) {
+        return mlir::failure();
+    }
+
+    reifiedReturnShapes.emplace_back(std::move(outShape.value()));
+    return mlir::success();
 }

@@ -1,17 +1,16 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
-#include "vpux/compiler/utils/passes.hpp"
+#include <cstdint>
+#include <memory>
 
-#include "vpux/utils/logger/logger.hpp"
-
-#include <mlir/Pass/PassManager.h>
-#include <mlir/Transforms/Passes.h>
+namespace vpux::config {
+enum class ArchKind : uint64_t;
+}
 
 namespace vpux {
 

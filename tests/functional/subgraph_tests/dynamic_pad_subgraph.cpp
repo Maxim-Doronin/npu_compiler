@@ -1,3 +1,4 @@
+//
 // Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -63,6 +64,12 @@ TEST_F(DynamicPadSubgraphTest, NPU5010_HW_TestKindSubgraph) {
     abs_threshold = 0.0f;
     setDefaultHardwareMode();
     run(Platform::NPU5010);
+}
+
+TEST_F(DynamicPadSubgraphTest, NPU5020_HW_TestKindSubgraph) {
+    abs_threshold = 0.0f;
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
 }
 
 }  // namespace ov::test::subgraph

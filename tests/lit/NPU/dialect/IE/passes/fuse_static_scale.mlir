@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -316,6 +316,33 @@ func.func @DoNotFuseMultiply_PresentPpe(%arg0: tensor<512x96x1x1xf16>, %arg1: te
 
 // -----
 
+// CHECK-LABEL: @DoNotFuseMultiplyWithClamp
+// CHECK-SAME: ([[ARG0:%.+]]: tensor<512x96x1x1xf16>, [[ARG1:%.+]]: tensor<512x96x1x1xf16>)
+// CHECK-SAME:  -> tensor<512x512x1x1xf16>
+func.func @DoNotFuseMultiplyWithClamp(%arg0: tensor<512x96x1x1xf16>, %arg1: tensor<512x96x1x1xf16>)
+        -> tensor<512x512x1x1xf16> {
+    %scale = const.Declare tensor<1x1x1x1xf16> = dense<2.0> : tensor<1x1x1x1xf16>, [#const.Add<1.0 : f16>]
+
+    %0 = IE.Convolution(%arg0, %arg1) {
+        clamp = {min = 0.000000e+00 : f64, max = 1.000000e+00 : f64},
+        dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]
+    } : tensor<512x96x1x1xf16>, tensor<512x96x1x1xf16> -> tensor<512x512x1x1xf16>
+
+    %1 = IE.Multiply(%0, %scale) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+        : tensor<512x512x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<512x512x1x1xf16>
+
+    return %1 : tensor<512x512x1x1xf16>
+
+    // CHECK: [[CONST:%.+]] = const.Declare tensor<1x1x1x1xf16>
+    // CHECK: [[CONV:%.+]] = IE.Convolution([[ARG0]], [[ARG1]])
+    // CHECK-SAME:  clamp = {max = 1.000000e+00 : f64, min = 0.000000e+00 : f64}
+    // CHECK: [[MULT:%.+]] = IE.Multiply([[CONV]], [[CONST]])
+
+    // CHECK: return [[MULT]]
+}
+
+// -----
+
 // CHECK-LABEL: @FuseMultiply_TwoScales
 // CHECK-SAME: ([[ARG0:%.+]]: tensor<512x96x1x1xf16>, [[ARG1:%.+]]: tensor<512x96x1x1xf16>)
 // CHECK-SAME:  -> tensor<512x512x1x1xf16>
@@ -426,7 +453,38 @@ func.func @NotFuseMultiplyToAvgPoolWithPostOp(%arg0: tensor<1x64x28x28xf16>)
 // CHECK-LABEL: @NotFuseMultiplyToAvgPoolWithClamp
 // CHECK-SAME: ([[ARG0:%.+]]: tensor<1x64x28x28xf16>)
 // CHECK-SAME:  -> tensor<1x64x14x14xf16>
-func.func @NotFuseMultiplyToAvgPoolWithClamp(%arg0: tensor<1x64x28x28xf16>)
+func.func @NotFuseMultiplyToAvgPoolWithClamp_0_to_1(%arg0: tensor<1x64x28x28xf16>)
+        -> tensor<1x64x14x14xf16> {
+    %scale = const.Declare tensor<1x1x1x1xf16> = dense<0.135327876> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
+
+    %0 = IE.AvgPool(%arg0) {
+            clamp = {min = 0.000000e+00 : f64, max = 1.000000e+00 : f64},
+            kernel_size = [2, 2],
+            pads_begin = [0, 0],
+            pads_end = [0, 0],
+            rounding_type = #IE.rounding_type<FLOOR>,
+            strides = [2, 2]
+    } : tensor<1x64x28x28xf16> -> tensor<1x64x14x14xf16>
+
+    %1 = IE.Multiply(%0, %scale) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+        : tensor<1x64x14x14xf16>, tensor<1x1x1x1xf16> -> tensor<1x64x14x14xf16>
+
+    return %1 : tensor<1x64x14x14xf16>
+
+    // CHECK: [[CONST:%.+]] = const.Declare tensor<1x1x1x1xf16>
+    // CHECK: [[AVGPOOL:%.+]] = IE.AvgPool([[ARG0]])
+    // CHECK-SAME:  clamp = {max = 1.000000e+00 : f64, min = 0.000000e+00 : f64}
+    // CHECK: [[MULT:%.+]] = IE.Multiply([[AVGPOOL]], [[CONST]])
+
+    // CHECK: return [[MULT]]
+}
+
+// -----
+
+// CHECK-LABEL: @NotFuseMultiplyToAvgPoolWithClamp
+// CHECK-SAME: ([[ARG0:%.+]]: tensor<1x64x28x28xf16>)
+// CHECK-SAME:  -> tensor<1x64x14x14xf16>
+func.func @NotFuseMultiplyToAvgPoolWithClamp_0_to_6(%arg0: tensor<1x64x28x28xf16>)
         -> tensor<1x64x14x14xf16> {
     %scale = const.Declare tensor<1x1x1x1xf16> = dense<0.135327876> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
 
@@ -726,6 +784,33 @@ func.func @DoNotFusePreviousMultiply_PresentPpe(%arg0: tensor<512x96x1x1xf16>, %
     // CHECK: [[MULT:%.+]] = IE.Multiply([[ARG0]], [[CONST]])
     // CHECK: [[CONV:%.+]] = IE.Convolution([[MULT]], [[ARG1]])
     // CHECK-SAME:  post_op = #IE.LeakyRelu
+
+    // CHECK: return [[CONV]]
+}
+
+// -----
+
+// CHECK-LABEL: @DoNotFusePreviousMultiplyWithClamp
+// CHECK-SAME: ([[ARG0:%.+]]: tensor<512x96x1x1xf16>, [[ARG1:%.+]]: tensor<512x96x1x1xf16>)
+// CHECK-SAME:  -> tensor<512x512x1x1xf16>
+func.func @DoNotFusePreviousMultiplyWithClamp(%arg0: tensor<512x96x1x1xf16>, %arg1: tensor<512x96x1x1xf16>)
+        -> tensor<512x512x1x1xf16> {
+    %scale = const.Declare tensor<1x1x1x1xf16> = dense<2.0> : tensor<1x1x1x1xf16>, [#const.Add<1.0 : f16>]
+
+    %0 = IE.Multiply(%arg0, %scale) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+        : tensor<512x96x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<512x96x1x1xf16>
+
+    %1 = IE.Convolution(%0, %arg1) {
+        clamp = {min = 0.000000e+00 : f64, max = 1.000000e+00 : f64},
+        dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]
+    } : tensor<512x96x1x1xf16>, tensor<512x96x1x1xf16> -> tensor<512x512x1x1xf16>
+
+    return %1 : tensor<512x512x1x1xf16>
+
+    // CHECK: [[CONST:%.+]] = const.Declare tensor<1x1x1x1xf16>
+    // CHECK: [[MULT:%.+]] = IE.Multiply([[ARG0]], [[CONST]])
+    // CHECK: [[CONV:%.+]] = IE.Convolution([[MULT]], [[ARG1]])
+    // CHECK-SAME:  clamp = {max = 1.000000e+00 : f64, min = 0.000000e+00 : f64}
 
     // CHECK: return [[CONV]]
 }

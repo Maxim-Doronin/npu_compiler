@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -78,6 +78,8 @@ func.func @MergeDueToLowerCost(%arg0: tensor<1x1x1x4096xf16>, %arg1: tensor<5504
 !qElemType = !quant.uniform<u8:f16, 0.013744638480392157:128>
 !qElemType1 = !quant.uniform<u8:f16:0, {0.0038832720588235295:128,0.0031929764093137254:128,0.0036142386642156864:128,0.0036563648897058824:128,0.0035060508578431374:128,0.0039905024509803919:128,0.0036659390318627451:128,0.0031968060661764705:128,0.0035213694852941177:128,0.0032619102328431374:128,0.0038411458333333331:128,0.0035251991421568628:128,0.003833486519607843:128,0.003372012867647059:128,0.0035816865808823528:128,0.0037023207720588234:128,0.0038200827205882352:128,0.0036123238357843139:128,0.003345205269607843:128,0.0031163832720588237:128,0.0036506204044117647:128,0.0034888174019607845:128,0.0038736979166666668:128,0.0033758425245098041:128,0.003058938419117647:128,0.0037176393995098037:128,0.0034562653186274508:128,0.0033260569852941175:128,0.003349034926470588:128,0.0041475183823529412:128,0.0041207107843137256:128,0.003490732230392157:128}>
 
+// CHECK-LABEL: @NotBuildSubgraphOutOfSubgraph
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<1x16x256x256x!qElemType, {order = #NHWC}>
 func.func @NotBuildSubgraphOutOfSubgraph(%arg0: tensor<1x16x256x256x!qElemType, {order = #NHWC}>) -> (tensor<1x32x256x256x!qElemType, {order = #NHWC}>, tensor<1x32x256x256x!qElemType, {order = #NHWC}>) {
     %cst_0 = const.Declare tensor<32x16x3x3x!qElemType1, {order = #NHWC}> = dense<1.0> : tensor<32x16x3x3xf16>, [#const.CastElemType<ui8>, #const.CastElemType<!qElemType1>, #const.Reorder<#NHWC>]
     %cst_2 = const.Declare tensor<32x32x3x3x!qElemType1, {order = #NHWC}> = dense<1.0> : tensor<32x32x3x3xf16>, [#const.CastElemType<ui8>, #const.CastElemType<!qElemType1>, #const.Reorder<#NHWC>]
@@ -118,18 +120,21 @@ func.func @NotBuildSubgraphOutOfSubgraph(%arg0: tensor<1x16x256x256x!qElemType, 
     return %1, %3 : tensor<1x32x256x256x!qElemType, {order = #NHWC}>, tensor<1x32x256x256x!qElemType, {order = #NHWC}>
 
 
-    //CHECK: [[VERTICAL_FUSION0:%.+]] = VPU.VerticalFusion (%arg0 as %arg1: tensor<1x16x256x256x!qElemType, {order = #NHWC}>, %cst as %arg2: tensor<32x16x3x3x!qElemType1, {order = #NHWC}>) attributes {tilingStrategy = [1, 1, 1, 1]} -> tensor<1x32x256x256x!qElemType, {order = #NHWC}> {
-    //CHECK: [[CONV:%.+]] = VPU.NCE.Convolution(%arg1, %arg2)
+    // CHECK-DAG:   [[CST:%.+]] = const.Declare tensor<32x16x3x3x!qElemType1, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x16x3x3xf16>
+    // CHECK-DAG:   [[CST_0:%.+]] = const.Declare tensor<32x32x3x3x!qElemType1, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x32x3x3xf16>
+
+    //CHECK: [[VERTICAL_FUSION0:%.+]] = VPU.VerticalFusion ([[ARG_0]] as [[ARG_1:%[^:]+]]: tensor<1x16x256x256x!qElemType, {order = #NHWC}>, [[CST]] as [[ARG_2:%[^:]+]]: tensor<32x16x3x3x!qElemType1, {order = #NHWC}>) attributes {tilingStrategy = [1, 1, 1, 1]} -> tensor<1x32x256x256x!qElemType, {order = #NHWC}> {
+    //CHECK: [[CONV:%.+]] = VPU.NCE.Convolution([[ARG_1]], [[ARG_2]])
     //CHECK: VPU.Yield [[CONV]]
 
-    //CHECK: [[VERTICAL_FUSION1:%.+]] = VPU.VerticalFusion ([[VERTICAL_FUSION0]] as %arg1: tensor<1x16x256x256x!qElemType, {order = #NHWC}>, %cst as %arg2: tensor<32x16x3x3x!qElemType1, {order = #NHWC}>) attributes {tilingStrategy = [1, 1, 1, 1]} -> tensor<1x32x256x256x!qElemType, {order = #NHWC}> {
-    //CHECK: [[CONV:%.+]] = VPU.NCE.Convolution(%arg1, %arg2)
+    //CHECK: [[VERTICAL_FUSION1:%.+]] = VPU.VerticalFusion ([[VERTICAL_FUSION0]] as [[ARG_1:%[^:]+]]: tensor<1x16x256x256x!qElemType, {order = #NHWC}>, [[CST]] as [[ARG_2:%[^:]+]]: tensor<32x16x3x3x!qElemType1, {order = #NHWC}>) attributes {tilingStrategy = [1, 1, 1, 1]} -> tensor<1x32x256x256x!qElemType, {order = #NHWC}> {
+    //CHECK: [[CONV:%.+]] = VPU.NCE.Convolution([[ARG_1]], [[ARG_2]])
     //CHECK: VPU.Yield [[CONV]]
 
-    //CHECK: [[VERTICAL_FUSION2:%.+]] = VPU.VerticalFusion ([[VERTICAL_FUSION0]] as %arg1: tensor<1x32x256x256x!qElemType, {order = #NHWC}>, %cst_0 as %arg2: tensor<32x32x3x3x!qElemType1, {order = #NHWC}>)
+    //CHECK: [[VERTICAL_FUSION2:%.+]] = VPU.VerticalFusion ([[VERTICAL_FUSION0]] as [[ARG_1:%[^:]+]]: tensor<1x32x256x256x!qElemType, {order = #NHWC}>, [[CST_0]] as [[ARG_2:%[^:]+]]: tensor<32x32x3x3x!qElemType1, {order = #NHWC}>)
     //CHECK-SAME: attributes {scenario = #VPU.vf_scenario<FULL_PREFETCHING>
-    //CHECK: [[CONV:%.+]] = VPU.NCE.Convolution(%arg1, %arg2)
-    //CHECK: [[ELTWISE:%.+]] = VPU.NCE.Eltwise(%arg1, [[CONV]])
+    //CHECK: [[CONV:%.+]] = VPU.NCE.Convolution([[ARG_1]], [[ARG_2]])
+    //CHECK: [[ELTWISE:%.+]] = VPU.NCE.Eltwise([[ARG_1]], [[CONV]])
     //CHECK: VPU.Yield [[ELTWISE]]
 
     //CHECK: return [[VERTICAL_FUSION1]], [[VERTICAL_FUSION2]] : tensor<1x32x256x256x!qElemType, {order = #NHWC}>, tensor<1x32x256x256x!qElemType, {order = #NHWC}>

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -1015,7 +1015,7 @@ func.func @LSTMSequence(
     %cst_1 = const.Declare tensor<2x512x512xf16> = dense<0.000000e+00> : tensor<2x512x512xf16>
     %outputHiddenValues, %outputHiddenState, %outputCellState = IE.LSTMSequence(%arg0, %arg1, %arg2,
         %cst_1, %cst_0, %cst)
-        {direction = #IE.rnn_seq_direction<BIDIRECTIONAL>, operandSegmentSizes = array<i32: 1, 1, 1, 1, 1, 1>}
+        {direction = #IE.rnn_seq_direction<BIDIRECTIONAL>, operandSegmentSizes = array<i32: 1, 1, 1, 0, 1, 1, 1>}
         : tensor<1x?x512xf16, {bounds = #const.OpaqueI64Elements<[1, 35, 512]> : tensor<3xsi64>, order = #CHW}>,
           tensor<1x2x128xf16>, tensor<1x2x128xf16>, tensor<2x512x512xf16>, tensor<2x512x128xf16>, tensor<2x512xf16>
         -> tensor<1x2x?x128xf16, {bounds = #const.OpaqueI64Elements<[1, 2, 35, 128]> : tensor<4xsi64>, order = #NCHW}>,

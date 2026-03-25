@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -17,7 +17,7 @@ func.func @PatchWeightTableWeightsOnlyAutopad() -> memref<16x1x1x4xsi32, [@CMX_N
     %in = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x4x16x16xf16, #NHWC, [@CMX_NN, 0]>
     %out = VPURT.DeclareBuffer <CMX_NN> [0] <428608> -> memref<1x3x16x16xf16, #NHWC, [@CMX_NN, 0]>
     %4 = VPUIP.NNDMA inputs(%weight_table_const : memref<16x1x1x4xsi32>) outputs(%weight_table : memref<16x1x1x4xsi32, [@CMX_NN, 0]>) -> memref<16x1x1x4xsi32, [@CMX_NN, 0]>
-    %5 = VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>} input(%in : memref<1x4x16x16xf16, #NHWC, [@CMX_NN, 0]>) weights(%weights : memref<3x4x1x1xf16, #NHWC, [@CMX_NN, 0]>) weight_table(%weight_table : memref<16x1x1x4xsi32, [@CMX_NN, 0]>) parent_input(%in : memref<1x4x16x16xf16, #NHWC, [@CMX_NN, 0]>) parent_output(%out : memref<1x3x16x16xf16, #NHWC, [@CMX_NN, 0]>) outputs(%out : memref<1x3x16x16xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x3x16x16xf16, #NHWC, [@CMX_NN, 0]> variants : {
+    %5 = VPUIP.NCEClusterTask <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}> input(%in : memref<1x4x16x16xf16, #NHWC, [@CMX_NN, 0]>) weights(%weights : memref<3x4x1x1xf16, #NHWC, [@CMX_NN, 0]>) weight_table(%weight_table : memref<16x1x1x4xsi32, [@CMX_NN, 0]>) parent_input(%in : memref<1x4x16x16xf16, #NHWC, [@CMX_NN, 0]>) parent_output(%out : memref<1x3x16x16xf16, #NHWC, [@CMX_NN, 0]>) outputs(%out : memref<1x3x16x16xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x3x16x16xf16, #NHWC, [@CMX_NN, 0]> variants : {
       DPUTask {outEnd = [1, 1, 1], mpe_mode = #VPU.mpe_mode<VECTOR_FP16>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, outStart = [0, 0, 0]}
     } PPE :  {
     }

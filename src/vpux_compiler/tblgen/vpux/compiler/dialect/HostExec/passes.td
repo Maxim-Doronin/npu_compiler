@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -296,4 +296,94 @@ def OutlineDimOperations : PassBase<"outline-dim-operations", "vpux::ModulePass"
     ];
 }
 
+//
+// GenerateExecutionContextFuncs
+//
+
+def GenerateExecutionContextFuncs : PassBase<"generate-execution-context-funcs", "vpux::ModulePass"> {
+    let summary = "Generates functions to handle an execution context for L0 wrapper";
+
+    let description = [{
+        This pass generates LLVM functions to create, reset, destroy an execution context and update mutable commandlists
+    }];
+
+    let constructor = "vpux::HostExec::createGenerateExecutionContextFuncsPass()";
+
+    let dependentDialects = [
+        "vpux::HostExec::HostExecDialect",
+        "mlir::LLVM::LLVMDialect",
+        "mlir::func::FuncDialect"
+    ];
+}
+
+//
+// WrapFuncCall
+//
+
+def WrapFuncCall : PassBase<"wrap-func-call", "vpux::ModulePass"> {
+    let summary = "Goes through an entire module and replaces all callOps of a wrapped function with callOps of a wrapper function";
+
+    let description = [{
+        Each original function call operation is replaced with a corresponding call to a new function.
+        A function whose call operations are replaced is referred to as the wrapped function.
+        A function whose call operations are inserted in its place is referred to as the function wrapper.
+        The function wrapper and the wrapped function must have identical argument lists and the same declaration.
+        This pass can be used to provide a wrapper for an external function in order to inject troubleshooting information at the call site.
+        It can also be used to facilitate decoupling a function from its calls during the execution of a complex pipeline,
+        where the function definition and its uses belong to different modules in the IR hierarchy and therefore cannot be processed simultaneously.
+
+        BEFORE: We had a diverged pipeline, which processed @topModule and @nestedModule in different ways:
+        ```MLIR
+            module @topModule {
+              func.func private @mock_foo(%arg: tensor<1x4x3x?xf32, {bounds = []}>) -> (tensor<1x4x3x?xf32, {bounds = []}>) attributes {wrapFunctionAttr = ["wrapper=real_foo", "deleteWrapped=true"]}
+
+              func.func @main(%arg: tensor<1x4x3x?xf32, {bounds = []}>) -> (tensor<1x4x3x?xf32, {bounds = []}>) {
+                %ret = call @mock_foo(%arg) : (tensor<1x4x3x?xf32, {bounds = []}>) -> tensor<1x4x3x?xf32, {bounds = []}>
+                return %ret : tensor<1x4x3x?xf32, {bounds = []}>
+              }
+
+              module @nestedModule {
+                func.func @real_foo(%arg: memref<1x4x3x?xf32>) -> (memref<1x4x3x?xf32>) {
+                    # actual processing
+                }
+              }
+            }
+        ```
+
+        THEN: transformations were applied to @topModule lowering `tensor` to `memref`:
+        ```MLIR
+            module @topModule {
+              func.func private @mock_foo(%arg: memref<1x4x3x?xf32>) -> (memref<1x4x3x?xf32>) attributes {wrapFunctionAttr = ["wrapper=real_foo", "deleteWrapped=true"]}
+
+              func.func @main(%arg: memref<1x4x3x?xf32>) -> (memref<1x4x3x?xf32>) {
+                %ret = call @mock_foo(%arg) : (memref<1x4x3x?xf32>) -> memref<1x4x3x?xf32>
+                return %ret : memref<1x4x3x?xf32>
+              }
+
+              module @nestedModule {
+                func.func @real_foo(%arg: memref<1x4x3x?xf32>) -> (memref<1x4x3x?xf32>) {
+                    # actual processing
+                }
+              }
+            }
+        ```
+
+        NOW modules are unpacked into the unified @topModule and WrapFuncCall is executed:
+        ```MLIR
+            module @topModule {
+              func.func @main(%arg: memref<1x4x3x?xf32>) -> (memref<1x4x3x?xf32>) {
+                %ret = call @real_foo(%arg) : (memref<1x4x3x?xf32>) -> memref<1x4x3x?xf32>
+                return %ret : memref<1x4x3x?xf32>
+              }
+
+              func.func @real_foo(%arg: memref<1x4x3x?xf32>) -> (memref<1x4x3x?xf32>) {
+                    # actual processing
+                }
+            }
+        ```
+
+    }];
+
+    let constructor = "vpux::HostExec::createWrapFuncCallPass()";
+}
 #endif

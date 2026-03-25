@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -53,7 +53,7 @@ private:
                          VPUIP::NCEClusterTaskOp nceTask, const int64_t numClusters,
                          mlir::OpBuilder& builder) const override;
 
-    mlir::UnitAttr isSegmentedNCETask(VPUIP::DistributedBufferType inputType) const override;
+    bool isSegmentedNCETask(VPUIP::DistributedBufferType inputType) const override;
 };
 
 }  // namespace arch37xx

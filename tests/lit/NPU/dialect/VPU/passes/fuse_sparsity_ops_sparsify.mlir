@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,8 @@
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: @FuseOutputSingleOp
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x16x16xf16, {order = #NHWC}>, [[ARG_1:%[^:]+]]: tensor<16x1x1x4xsi32>, [[ARG_2:%[^:]+]]: tensor<16x16x1x1xf16, {order = #NHWC}>)
 func.func @FuseOutputSingleOp(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>, %wt: tensor<16x1x1x4xsi32>, %weights: tensor<16x16x1x1xf16, {order = #NHWC}>) -> tensor<1x16x16x16xf16, {order = #NHWC}> {
     %0 = VPU.NCE.Convolution(%arg0, %weights, %wt) {
             ppe = #VPU.PPEStub<>,
@@ -20,7 +22,7 @@ func.func @FuseOutputSingleOp(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>, %w
 
     return %2 : tensor<1x16x16x16xf16, {order = #NHWC}>
 
-    // CHECK:       [[VAL0:%.+]] = VPU.NCE.Convolution(%arg0, %arg2, %arg1)
+    // CHECK:       [[VAL0:%.+]] = VPU.NCE.Convolution([[ARG_0]], [[ARG_2]], [[ARG_1]])
     // CHECK-SAME:      !VPU.SparseTensor<data=tensor<1x16x16x16xf16, {order = #NHWC}>>
     // CHECK:       [[VAL1:%.+]] = VPU.Desparsify([[VAL0]])
     // CHECK:       return [[VAL1]]
@@ -32,6 +34,8 @@ func.func @FuseOutputSingleOp(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>, %w
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: @NoFuseOutputSingleOp
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x16x16xf16, {order = #NHWC}>)
 func.func @NoFuseOutputSingleOp(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>) -> tensor<1x16x16x16xf16, {order = #NHWC}> {
     %0 = VPU.MaxPool(%arg0) {
         kernel_size = [3, 3],
@@ -45,7 +49,7 @@ func.func @NoFuseOutputSingleOp(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>) 
 
     return %2 : tensor<1x16x16x16xf16, {order = #NHWC}>
 
-    // CHECK:       [[VAL0:%.+]] = VPU.MaxPool(%arg0)
+    // CHECK:       [[VAL0:%.+]] = VPU.MaxPool([[ARG_0]])
     // CHECK-NOT:       !VPU.SparseTensor
     // CHECK-SAME:      tensor<1x16x16x16xf16, {order = #NHWC}>
 

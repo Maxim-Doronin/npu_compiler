@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -25,6 +25,9 @@ module @DmaSpillSingleClusterNoCompressionCandSmallBuf {
   } outputsInfo : {
     DataInfo "prob" : tensor<1x1x1x1xf16>
   }
+  
+  // CHECK-LABEL: func.func @main
+  // CHECK-SAME: [[ARG_0:%[^:]+]]: memref<1x1x1x1xf16, @DDR>
   func.func @main(%arg0: !dataTypeDdr) -> !dataTypeDdr {
 
     %buf_in = VPURT.DeclareBuffer <CMX_NN> [0] <64> -> !dataTypeCmx
@@ -60,7 +63,7 @@ module @DmaSpillSingleClusterNoCompressionCandSmallBuf {
 
   // CHECK:       VPURT.Task
   // CHECK-NEXT:       VPUIP.NNDMA
-  // CHECK-SAME:           inputs(%arg0 : memref<1x1x1x1xf16, @DDR>)
+  // CHECK-SAME:           inputs([[ARG_0]] : memref<1x1x1x1xf16, @DDR>)
   // CHECK-SAME:           outputs([[BUF_IN]] : memref<1x1x1x1xf16, [@CMX_NN, 0]>)
 
   // CHECK:       VPURT.Task
@@ -103,6 +106,8 @@ module @DmaSpillSingleCluster {
   } outputsInfo : {
     DataInfo "prob" : tensor<1x64x56x56xf16>
   }
+  // CHECK-LABEL: func.func @main
+  // CHECK-SAME: [[ARG_0:%[^:]+]]: memref<1x64x56x56xf16, @DDR>
   func.func @main(%arg0: !dataTypeDdr) -> !dataTypeDdr {
 
     %buf_in = VPURT.DeclareBuffer <CMX_NN> [0] <64> -> !dataTypeCmx
@@ -156,7 +161,7 @@ module @DmaSpillSingleCluster {
 
   // CHECK:       VPURT.Task
   // CHECK-NEXT:       VPUIP.NNDMA
-  // CHECK-SAME:           inputs(%arg0 : memref<1x64x56x56xf16, @DDR>)
+  // CHECK-SAME:           inputs([[ARG_0]] : memref<1x64x56x56xf16, @DDR>)
   // CHECK-SAME:           outputs([[BUF_IN]] : memref<1x64x56x56xf16, [@CMX_NN, 0]>)
 
   // CHECK:       [[ACT_COMP_SIZE1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<32xui8, [@CMX_NN, 0]>
@@ -217,6 +222,8 @@ module @DmaSpillSingleClusterWithNoUniqueIdsAfterInlining {
   } outputsInfo : {
     DataInfo "prob" : tensor<1x64x56x56xf16>
   }
+  // CHECK-LABEL: func.func @main
+  // CHECK-SAME: [[ARG_0:%[^:]+]]: memref<1x64x56x56xf16, @DDR>
   func.func @main(%arg0: !dataTypeDdr) -> !dataTypeDdr {
 
     %buf_in = VPURT.DeclareBuffer <CMX_NN> [0] <64> -> !dataTypeCmx
@@ -271,7 +278,7 @@ module @DmaSpillSingleClusterWithNoUniqueIdsAfterInlining {
 
   // CHECK:       VPURT.Task
   // CHECK-NEXT:       VPUIP.NNDMA
-  // CHECK-SAME:           inputs(%arg0 : memref<1x64x56x56xf16, @DDR>)
+  // CHECK-SAME:           inputs([[ARG_0]] : memref<1x64x56x56xf16, @DDR>)
   // CHECK-SAME:           outputs([[BUF_IN]] : memref<1x64x56x56xf16, [@CMX_NN, 0]>)
 
   // CHECK:       [[ACT_COMP_SIZE1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<32xui8, [@CMX_NN, 0]>
@@ -332,6 +339,8 @@ module @DmaSpillSingleClusterWithParallelDecompressAndCompressTasks {
   } outputsInfo : {
     DataInfo "prob" : tensor<1x64x56x56xf16>
   }
+  // CHECK-LABEL: func.func @main
+  // CHECK-SAME: [[ARG_0:%[^:]+]]: memref<1x64x56x56xf16, @DDR>
   func.func @main(%arg0: !dataTypeDdr) -> !dataTypeDdr {
 
     %bar0 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
@@ -391,7 +400,7 @@ module @DmaSpillSingleClusterWithParallelDecompressAndCompressTasks {
 
   // CHECK:       VPURT.Task
   // CHECK-NEXT:       VPUIP.NNDMA
-  // CHECK-SAME:           inputs(%arg0 : memref<1x64x56x56xf16, @DDR>)
+  // CHECK-SAME:           inputs([[ARG_0]] : memref<1x64x56x56xf16, @DDR>)
   // CHECK-SAME:           outputs([[BUF_IN]] : memref<1x64x56x56xf16, [@CMX_NN, 0]>)
 
   // CHECK:       [[ACT_COMP_SIZE1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<32xui8, [@CMX_NN, 0]>

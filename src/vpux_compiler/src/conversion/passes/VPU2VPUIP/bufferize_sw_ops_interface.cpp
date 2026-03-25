@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -522,7 +522,7 @@ void vpux::registerSoftwareLayerBufferizableOpInterfaces(mlir::DialectRegistry& 
         VPU::ReduceLogicalOrOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::ReduceLogicalOrOp>>(*ctx);
         VPU::ReduceL2Op::attachInterface<SoftwareLayerOpBufferizeModel<VPU::ReduceL2Op>>(*ctx);
         VPU::ReduceProdOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::ReduceProdOp>>(*ctx);
-        VPU::ReduceMeanSquareOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::ReduceMeanSquareOp>>(*ctx);
+        VPU::ReduceSquareOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::ReduceSquareOp>>(*ctx);
         VPU::NegativeOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::NegativeOp>>(*ctx);
         VPU::NonMaxSuppressionOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::NonMaxSuppressionOp>>(*ctx);
         VPU::ROIAlignOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::ROIAlignOp>>(*ctx);
@@ -558,6 +558,7 @@ void vpux::registerSoftwareLayerBufferizableOpInterfaces(mlir::DialectRegistry& 
         VPU::CTCGreedyDecoderOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::CTCGreedyDecoderOp>>(*ctx);
         VPU::GeluOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::GeluOp>>(*ctx);
         VPU::SoftPlusOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::SoftPlusOp>>(*ctx);
+        VPU::SoftSignOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::SoftSignOp>>(*ctx);
         VPU::ConvolutionOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::ConvolutionOp>>(*ctx);
         VPU::GroupConvolutionOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::GroupConvolutionOp>>(*ctx);
         VPU::DFTOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::DFTOp>>(*ctx);

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,6 +12,7 @@
 #include "vpux/compiler/dialect/core/IR/strided_dmas_utils.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 #include "vpux/utils/core/error.hpp"
 #include "vpux_headers/metadata_primitives.hpp"
 
@@ -384,9 +385,7 @@ void printMetadata(elf::NetworkMetadata* metadata, const Logger& log) {
 std::unique_ptr<elf::NetworkMetadata> ELFNPU37XX::constructMetadata(mlir::ModuleOp module, Logger log) {
     log.setName("constructMetadata");
 
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp netFunc;
-    net::NetworkInfoOp::getFromModule(module, netInfo, netFunc);
+    auto [netInfo, netFunc] = net::getFromModule(module);
 
     auto inputsInfo = netInfo.getInputsDataInfo();
     auto outputsInfo = netInfo.getOutputsDataInfo();

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2026 Intel Corporation.
+// Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/VPU/utils/scf/scf_analyzer.hpp"
 #include "vpux/compiler/dialect/VPU/utils/scf/scf_utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 #include "vpux/compiler/utils/abstract_tree.hpp"
 #include "vpux/compiler/utils/logging.hpp"
 
@@ -248,9 +249,7 @@ std::vector<ScfBlockInfo> findChildren(const ScfOpHierarchy::Node& node, const L
 
 void SCFLoopAnalysisAndDebug::safeRunOnModule() {
     auto moduleOp = getOperation();
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp mainFuncOp;
-    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, mainFuncOp);
+    auto mainFuncOp = net::getMainFunc(moduleOp);
 
     // construct the tree
     std::vector<ScfOpHierarchy::Node> rootNodes;

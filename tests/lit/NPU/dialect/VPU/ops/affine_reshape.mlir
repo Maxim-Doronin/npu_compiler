@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -11,12 +11,13 @@
 #map = affine_map<(d0, d1, d2) -> (d0, d2, d1)>
 
 // CHECK-LABEL: @Eliminate
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<4x4xf32>
 func.func @Eliminate(%arg0 : tensor<4x4xf32>) -> tensor<4x4xf32> {
     %0 = VPU.AffineReshape(%arg0) { dim_mapping = [[0], [1]], shape_value = [4, 4] } : tensor<4x4xf32> -> tensor<4x4xf32>
     return %0 : tensor<4x4xf32>
 
     // CHECK-NOT: VPU.AffineReshape
-    // CHECK:     return %arg0
+    // CHECK:     return [[ARG_0]]
 }
 
 // -----

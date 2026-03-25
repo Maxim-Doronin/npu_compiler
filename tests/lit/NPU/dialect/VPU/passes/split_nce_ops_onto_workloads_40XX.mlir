@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -59,12 +59,12 @@ func.func @NCEPermuteDifferentOverlap(%arg0: !Input_DDR) -> !Output_CMX {
 
     // CHECK:       VPU.DPU.Workload
     // CHECK-SAME:      outOffsets [0, 0, 0, 0] outSizes [1, 4, 112, 224]
-    // CHECK-SAME:      <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>
+    // CHECK-SAME:      pad [0, 0, 0, 0]
     // CHECK-SAME:      cluster_id = 0
 
     // CHECK:       VPU.DPU.Workload
     // CHECK-SAME:      outOffsets [0, 0, 112, 0] outSizes [1, 4, 112, 224]
-    // CHECK-SAME:      <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>
+    // CHECK-SAME:      pad [0, 0, 0, 0]
     // CHECK-SAME:      cluster_id = 1
 
 }
@@ -134,22 +134,22 @@ func.func @NCEPermuteSOC(%arg0: !Input_DDR) -> !Output_CMX {
 
     // CHECK:       VPU.DPU.Workload
     // CHECK-SAME:      outOffsets [0, 0, 0, 0] outSizes [1, 32, 32, 64]
-    // CHECK-SAME:      <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>
+    // CHECK-SAME:      pad [0, 0, 0, 0]
     // CHECK-SAME:      cluster_id = 0
 
     // CHECK:       VPU.DPU.Workload
     // CHECK-SAME:      outOffsets [0, 32, 0, 0] outSizes [1, 32, 32, 64]
-    // CHECK-SAME:      <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>
+    // CHECK-SAME:      pad [0, 0, 0, 0]
     // CHECK-SAME:      cluster_id = 1
 
     // CHECK:       VPU.DPU.Workload
     // CHECK-SAME:      outOffsets [0, 64, 0, 0] outSizes [1, 32, 32, 64]
-    // CHECK-SAME:      <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>
+    // CHECK-SAME:      pad [0, 0, 0, 0]
     // CHECK-SAME:      cluster_id = 2
 
     // CHECK:       VPU.DPU.Workload
     // CHECK-SAME:      outOffsets [0, 96, 0, 0] outSizes [1, 32, 32, 64]
-    // CHECK-SAME:      <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>
+    // CHECK-SAME:      pad [0, 0, 0, 0]
     // CHECK-SAME:      cluster_id = 3
 }
 
@@ -212,22 +212,22 @@ func.func @SOKDistributedSEGOutput(%input_cmx: !InputDistributed) -> !OutputDist
 
     // CHECK:          DPU.Workload
     // CHECK-SAME:         outOffsets [0, 0, 0, 0] outSizes [1, 32, 16, 16]
-    // CHECK-SAME:         <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>
+    // CHECK-SAME:         pad [1, 1, 1, 1]
     // CHECK-SAME:         <CUBOID_16x16> attributes {cluster_id = 0 : i64}
 
     // CHECK:          DPU.Workload
     // CHECK-SAME:         outOffsets [0, 0, 0, 0] outSizes [1, 16, 16, 16]
-    // CHECK-SAME:         <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>
+    // CHECK-SAME:         pad [1, 1, 1, 1]
     // CHECK-SAME:         <CUBOID_16x16> attributes {cluster_id = 1 : i64}
 
     // CHECK:          DPU.Workload
     // CHECK-SAME:         outOffsets [0, 0, 0, 0] outSizes [1, 16, 16, 16]
-    // CHECK-SAME:         <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>
+    // CHECK-SAME:         pad [1, 1, 1, 1]
     // CHECK-SAME:         <CUBOID_16x16> attributes {cluster_id = 2 : i64}
 
     // CHECK:          DPU.Workload
     // CHECK-SAME:         outOffsets [0, 0, 0, 0] outSizes [1, 16, 16, 16]
-    // CHECK-SAME:         <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>
+    // CHECK-SAME:         pad [1, 1, 1, 1]
     // CHECK-SAME:         <CUBOID_16x16> attributes {cluster_id = 3 : i64}
 }
 
@@ -289,21 +289,21 @@ func.func @SOKDistributedDUPSEGOutput(%input_cmx: !InputDistributed) -> !OutputD
 
     // CHECK:          DPU.Workload
     // CHECK-SAME:         outOffsets [0, 0, 0, 0] outSizes [1, 32, 16, 16]
-    // CHECK-SAME:         <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>
+    // CHECK-SAME:         pad [1, 1, 1, 1]
     // CHECK-SAME:         <CUBOID_16x16> attributes {cluster_id = 0 : i64}
 
     // CHECK:          DPU.Workload
     // CHECK-SAME:         outOffsets [0, 32, 0, 0] outSizes [1, 16, 16, 16]
-    // CHECK-SAME:         <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>
+    // CHECK-SAME:         pad [1, 1, 1, 1]
     // CHECK-SAME:         <CUBOID_16x16> attributes {cluster_id = 1 : i64}
 
     // CHECK:          DPU.Workload
     // CHECK-SAME:         outOffsets [0, 48, 0, 0] outSizes [1, 16, 16, 16]
-    // CHECK-SAME:         <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>
+    // CHECK-SAME:         pad [1, 1, 1, 1]
     // CHECK-SAME:         <CUBOID_16x16> attributes {cluster_id = 2 : i64}
 
     // CHECK:          DPU.Workload
     // CHECK-SAME:         outOffsets [0, 64, 0, 0] outSizes [1, 16, 16, 16]
-    // CHECK-SAME:         <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>
+    // CHECK-SAME:         pad [1, 1, 1, 1]
     // CHECK-SAME:         <CUBOID_16x16> attributes {cluster_id = 3 : i64}
 }

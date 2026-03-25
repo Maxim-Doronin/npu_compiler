@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -327,6 +327,24 @@ def IE_SoftPlusOp :
             ]
         > {
     let summary = "InferenceEngine SoftPlus layer";
+
+    let arguments = (ins
+        RankedTensorOf<[F16, F32, F64]>:$input
+    );
+
+    let results = (outs
+        RankedTensorOf<[F16, F32, F64]>:$output
+    );
+}
+
+def IE_SoftSignOp :
+        IE_LayerOp<
+            "SoftSign",
+            [
+                IE_EltwiseOp
+            ]
+        > {
+    let summary = "InferenceEngine SoftSign layer";
 
     let arguments = (ins
         RankedTensorOf<[F16, F32, F64]>:$input

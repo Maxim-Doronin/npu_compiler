@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -58,16 +58,14 @@ size_t calculateNceCycles(VPUIP::NCEClusterTaskOp nceOp, const std::shared_ptr<V
 vpux::Byte getSwKernelRunTotalAllocSize(VPUIP::SwKernelRun swKernelRun, ArrayRef<mlir::Value> inputs,
                                         ArrayRef<mlir::Value> outputBuffs, SmallVector<mlir::Value>& inputsForKernelRun,
                                         SmallVector<mlir::Value>& outputsForKernelRun);
-std::unique_ptr<VPUNN::SHAVEWorkload> getVPUNNSWKernelOp(VPUIP::SwKernelOp swKernelOp, bool isShave2ApiUsed);
-std::unique_ptr<VPUNN::SHAVEWorkload> getVPUNNSWKernelOp(VPU::SWOpInterface operation, bool isShave2ApiUsed);
+std::unique_ptr<VPUNN::SHAVEWorkload> getVPUNNSWKernelOp(VPUIP::SwKernelOp swKernelOp);
+std::unique_ptr<VPUNN::SHAVEWorkload> getVPUNNSWKernelOp(VPU::SWOpInterface operation);
 std::unique_ptr<VPUNN::SHAVEWorkload> getVPUNNSWKernelOp(VPU::SWOpInterface operation,
-                                                         vpux::NDTypeInterface outputNDType,
-                                                         ArrayRef<vpux::NDTypeInterface> inputTiles,
-                                                         bool isShave2ApiUsed);
+                                                         ArrayRef<vpux::NDTypeInterface> outputTypes,
+                                                         ArrayRef<vpux::NDTypeInterface> inputTiles);
 std::unique_ptr<VPUNN::SHAVEWorkload> getVPUNNSWKernelOp(VPU::SWOpInterface operation,
-                                                         std::vector<VPUNN::VPUTensor> outputTensors,
-                                                         std::vector<VPUNN::VPUTensor> inputTensors,
-                                                         bool isShave2ApiUsed);
+                                                         const std::vector<VPUNN::VPUTensor>& outputTensors,
+                                                         const std::vector<VPUNN::VPUTensor>& inputTensors);
 size_t getDPUTaskOpCost(VPUIP::DPUTaskOp dpuTaskOp, const std::shared_ptr<VPUNN::VPUCostModel>& costModel,
                         config::ArchKind arch, vpux::Logger log);
 

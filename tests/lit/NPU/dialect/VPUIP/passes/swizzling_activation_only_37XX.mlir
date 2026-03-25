@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -31,13 +31,12 @@ func.func @SetSwizzlingForDpuToDpuBufferOnly(%in : memref<1x16x56x56xf16, #NHWC,
             outputs(%buf0 : memref<1x16x56x56xf16, #NHWC, @CMX_NN>)
              -> memref<1x16x56x56xf16, #NHWC, @CMX_NN>
 
-    %1 = VPUIP.NCEClusterTask
-        {
+    %1 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1],
             kernel_strides = [1, 1],
             task_type = #VPUIP.nce_task_type<CONV>
-        }
+        }>
         input(%0 : memref<1x16x56x56xf16, #NHWC, @CMX_NN>)
         weights(%6 : memref<16x16x1x1xf16, #NHWC, @CMX_NN>)
         weight_table(%5 : memref<16x1x1x4xsi32, #NHWC, @CMX_NN>)
@@ -57,13 +56,12 @@ func.func @SetSwizzlingForDpuToDpuBufferOnly(%in : memref<1x16x56x56xf16, #NHWC,
         {
         }
 
-    %2 = VPUIP.NCEClusterTask
-        {
+    %2 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1],
             kernel_strides = [1, 1],
             task_type = #VPUIP.nce_task_type<CONV>
-        }
+        }>
         input(%1 : memref<1x16x56x56xf16, #NHWC, @CMX_NN>)
         weights(%6 : memref<16x16x1x1xf16, #NHWC, @CMX_NN>)
         weight_table(%5 : memref<16x1x1x4xsi32, #NHWC, @CMX_NN>)
@@ -92,7 +90,7 @@ func.func @SetSwizzlingForDpuToDpuBufferOnly(%in : memref<1x16x56x56xf16, #NHWC,
 
     // Verify that swizzling for DPU to DPU buffer only
 
-    // CHECK:   VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}
+    // CHECK:   VPUIP.NCEClusterTask <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
     // CHECK:   input({{[^:]+}} : memref<1x16x56x56xf16, #NHWC, @CMX_NN>)
     // CHECK:   weights({{[^:]+}} : memref<16x16x1x1xf16, #NHWC, @CMX_NN>)
     // CHECK:   weight_table({{[^:]+}} : memref<16x1x1x4xsi32, #NHWC, @CMX_NN>)

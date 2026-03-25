@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -176,8 +176,7 @@ mlir::LogicalResult LegalizeNDMemPermute::matchAndRewrite(IE::MemPermuteOp origO
 
     // Build input reshape operation
     auto reducedShapeAttr = getIntArrayAttr(ctx, mergedShape);
-    auto inputReshape = rewriter.create<IE::ReshapeOp>(origOp.getLoc(), inputCast.getOutput(), /*shape=*/nullptr,
-                                                       /*special_zero=*/nullptr, reducedShapeAttr);
+    auto inputReshape = rewriter.create<IE::ReshapeOp>(origOp.getLoc(), inputCast.getOutput(), reducedShapeAttr);
 
     // Build reduced permutation operation
     mlir::Value permuteInput = inputReshape.getOutput();
@@ -206,8 +205,7 @@ mlir::LogicalResult LegalizeNDMemPermute::matchAndRewrite(IE::MemPermuteOp origO
     // Reshape to original output shape
     auto outputShape = outputType.getMemShape();
     auto outputShapeAttr = getIntArrayAttr(ctx, outputShape);
-    auto outputReshape = rewriter.create<IE::ReshapeOp>(origOp.getLoc(), permuteOutput, /*shape=*/nullptr,
-                                                        /*special_zero=*/nullptr, outputShapeAttr);
+    auto outputReshape = rewriter.create<IE::ReshapeOp>(origOp.getLoc(), permuteOutput, outputShapeAttr);
 
     // Set destination order
     auto dstOrder = origOp.getDstOrder();

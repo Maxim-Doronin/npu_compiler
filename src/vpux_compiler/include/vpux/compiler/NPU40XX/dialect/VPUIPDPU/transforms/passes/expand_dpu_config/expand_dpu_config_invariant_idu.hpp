@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,6 +12,7 @@
 #include <mlir/IR/Builders.h>
 #include <mlir/IR/Types.h>
 
+#include <cstdint>
 #include <optional>
 
 namespace vpux {

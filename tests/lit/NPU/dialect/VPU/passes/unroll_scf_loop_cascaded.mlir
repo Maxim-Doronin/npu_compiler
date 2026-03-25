@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -46,6 +46,10 @@ module @DynamicPermute2DCascaded   {
 
 // CHECK: #[[$NCHW:.+]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 // CHECK: #[[$NHWC:.+]] = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+// CHECK-DAG: #[[$MAP_H_470:.+]] = affine_map<(d0)[s0] -> (s0 - 470, d0)>
+// CHECK-DAG: #[[$MAP_W_512:.+]] = affine_map<(d0)[s0] -> (s0 - 512, d0)>
+// CHECK-DAG: #[[$MAP_H_235:.+]] = affine_map<(d0)[s0] -> (s0 - 235, d0)>
+// CHECK-DAG: #[[$MAP_H_94:.+]] = affine_map<(d0)[s0] -> (s0 - 94, d0)>
 
 // CHECK-LABEL:   func.func @merged_vpu_func_2(
 // CHECK-COUNT-2:   VPU.NCE.Permute
@@ -94,12 +98,8 @@ module @DynamicPermute2DCascaded   {
 // CHECK:                [[VAL_23:%.+]] = scf.for [[VAL_24:%.+]] = [[CST_0]] to [[SAFE_UPPERBOUND_F_10]] step [[STEP_FACTOR_10]] iter_args([[VAL_25:%.+]] = [[OUT_TENSOR]]) -> (tensor<1x16x?x?xf16, {bounds = #{{.+}}<[1, 16, 1024, 1024]> : tensor<4xsi64>, order = #[[$NHWC]]}>) {
 // CHECK:                  [[VAL_26:%.+]] = scf.for [[VAL_27:%.+]] = [[CST_0]] to [[DIM_W]] step [[CST_512]] iter_args([[VAL_28:%.+]] = [[VAL_25]]) -> (tensor<1x16x?x?xf16, {bounds = #{{.+}}<[1, 16, 1024, 1024]> : tensor<4xsi64>, order = #[[$NHWC]]}>) {
 
-// CHECK:                    [[END_OF_H_ITER:%.+]] = arith.addi [[VAL_24]], [[STEP_FACTOR_10]] : index
-// CHECK:                    [[BACKTRACK_H_IS_NEEDED:%.+]] = arith.cmpi sgt, [[END_OF_H_ITER]], [[SAFE_UPPERBOUND_F_10]] : index
-// CHECK:                    [[BACKTRACKED_H_OFFSET:%.+]] = scf.if [[BACKTRACK_H_IS_NEEDED]] -> (index) {
-// CHECK:                    [[END_OF_W_ITER:%.+]] = arith.addi [[VAL_27]], [[CST_512]] : index
-// CHECK:                    [[BACKTRACK_W_IS_NEEDED:%.+]] = arith.cmpi sgt, [[END_OF_W_ITER]], [[DIM_W]] : index
-// CHECK:                    [[BACKTRACKED_W_OFFSET:%.+]] = scf.if [[BACKTRACK_W_IS_NEEDED]] -> (index) {
+// CHECK:                    [[BACKTRACKED_H_OFFSET:%.+]] = affine.min #[[$MAP_H_470]]([[VAL_24]]){{\[}}[[SAFE_UPPERBOUND_F_10]]]
+// CHECK:                    [[BACKTRACKED_W_OFFSET:%.+]] = affine.min #[[$MAP_W_512]]([[VAL_27]]){{\[}}[[DIM_W]]]
 
 // CHECK:                    [[VAL_29:%.+]] = tensor.extract_slice [[VAL_0]][0, 0, [[BACKTRACKED_H_OFFSET]], [[BACKTRACKED_W_OFFSET]]] [1, 16, 470, 512] [1, 1, 1, 1] : tensor<1x16x?x?xf16, {bounds = #{{.+}}<[1, 16, 1024, 1024]> : tensor<4xsi64>, order = #[[$NCHW]]}> to tensor<1x16x470x512xf16>
 // CHECK:                    [[VAL_30:%.+]] = func.call @merged_vpu_func_0([[VAL_29]]) : (tensor<1x16x470x512xf16>) -> tensor<1x16x470x512xf16, {order = #[[$NHWC]]}>
@@ -126,12 +126,8 @@ module @DynamicPermute2DCascaded   {
 // CHECK:                [[VAL_44:%.+]] = scf.for [[VAL_45:%.+]] = [[SAFE_UPPERBOUND_F_10]] to [[SAFE_UPPERBOUND_F_5]] step [[STEP_FACTOR_5]] iter_args([[VAL_46:%.+]] = [[VAL_23]]) -> (tensor<1x16x?x?xf16, {bounds = #{{.+}}<[1, 16, 1024, 1024]> : tensor<4xsi64>, order = #[[$NHWC]]}>) {
 // CHECK:                  [[VAL_47:%.+]] = scf.for [[VAL_48:%.+]] = [[CST_0]] to [[DIM_W]] step [[CST_512]] iter_args([[VAL_49:%.+]] = [[VAL_46]]) -> (tensor<1x16x?x?xf16, {bounds = #{{.+}}<[1, 16, 1024, 1024]> : tensor<4xsi64>, order = #[[$NHWC]]}>) {
 
-// CHECK:                    [[END_OF_H_ITER:%.+]] = arith.addi [[VAL_45]], [[STEP_FACTOR_5]] : index
-// CHECK:                    [[BACKTRACK_H_IS_NEEDED:%.+]] = arith.cmpi sgt, [[END_OF_H_ITER]], [[SAFE_UPPERBOUND_F_5]] : index
-// CHECK:                    [[BACKTRACKED_H_OFFSET:%.+]] = scf.if [[BACKTRACK_H_IS_NEEDED]] -> (index) {
-// CHECK:                    [[END_OF_W_ITER:%.+]] = arith.addi [[VAL_48]], [[CST_512]] : index
-// CHECK:                    [[BACKTRACK_W_IS_NEEDED:%.+]] = arith.cmpi sgt, [[END_OF_W_ITER]], [[DIM_W]] : index
-// CHECK:                    [[BACKTRACKED_W_OFFSET:%.+]] = scf.if [[BACKTRACK_W_IS_NEEDED]] -> (index) {
+// CHECK:                    [[BACKTRACKED_H_OFFSET:%.+]] = affine.min #[[$MAP_H_235]]([[VAL_45]]){{\[}}[[SAFE_UPPERBOUND_F_5]]]
+// CHECK:                    [[BACKTRACKED_W_OFFSET:%.+]] = affine.min #[[$MAP_W_512]]([[VAL_48]]){{\[}}[[DIM_W]]]
 
 // CHECK:                    [[VAL_50:%.+]] = tensor.extract_slice [[VAL_0]][0, 0, [[BACKTRACKED_H_OFFSET]], [[BACKTRACKED_W_OFFSET]]] [1, 16, 235, 512] [1, 1, 1, 1] : tensor<1x16x?x?xf16, {bounds = #{{.+}}<[1, 16, 1024, 1024]> : tensor<4xsi64>, order = #[[$NCHW]]}> to tensor<1x16x235x512xf16>
 // CHECK:                    [[VAL_51:%.+]] = func.call @merged_vpu_func_1([[VAL_50]]) : (tensor<1x16x235x512xf16>) -> tensor<1x16x235x512xf16, {order = #[[$NHWC]]}>
@@ -140,7 +136,7 @@ module @DynamicPermute2DCascaded   {
 // CHECK:                    scf.yield [[VAL_53]] : tensor<1x16x?x?xf16, {bounds = #{{.+}}<[1, 16, 1024, 1024]> : tensor<4xsi64>, order = #[[$NHWC]]}>
 // CHECK:                  }
 // CHECK:                  scf.yield [[VAL_47]] : tensor<1x16x?x?xf16, {bounds = #{{.+}}<[1, 16, 1024, 1024]> : tensor<4xsi64>, order = #[[$NHWC]]}>
-// CHECK:                } {no_await_all = true}
+// CHECK:                } {no_await_all = true, no_reset_cmdlist = true}
 // CHECK:                [[VAL_54:%.+]] = arith.subi [[DIM_H]], [[SAFE_UPPERBOUND_F_5]] : index
 // CHECK:                [[VAL_55:%.+]] = arith.addi [[VAL_54]], [[CST_46]] : index
 // CHECK:                [[VAL_56:%.+]] = arith.divui [[VAL_55]], [[STEP]] : index
@@ -157,12 +153,8 @@ module @DynamicPermute2DCascaded   {
 // CHECK:                [[VAL_65:%.+]] = scf.for [[VAL_66:%.+]] = [[SAFE_UPPERBOUND_F_5]] to [[SAFE_UPPERBOUND_F_2]] step [[STEP_FACTOR_2]] iter_args([[VAL_67:%.+]] = [[VAL_44]]) -> (tensor<1x16x?x?xf16, {bounds = #{{.+}}<[1, 16, 1024, 1024]> : tensor<4xsi64>, order = #[[$NHWC]]}>) {
 // CHECK:                  [[VAL_68:%.+]] = scf.for [[VAL_69:%.+]] = [[CST_0]] to [[DIM_W]] step [[CST_512]] iter_args([[VAL_70:%.+]] = [[VAL_67]]) -> (tensor<1x16x?x?xf16, {bounds = #{{.+}}<[1, 16, 1024, 1024]> : tensor<4xsi64>, order = #[[$NHWC]]}>) {
 
-// CHECK:                    [[END_OF_H_ITER:%.+]] = arith.addi [[VAL_66]], [[STEP_FACTOR_2]] : index
-// CHECK:                    [[BACKTRACK_H_IS_NEEDED:%.+]] = arith.cmpi sgt, [[END_OF_H_ITER]], [[SAFE_UPPERBOUND_F_2]] : index
-// CHECK:                    [[BACKTRACKED_H_OFFSET:%.+]] = scf.if [[BACKTRACK_H_IS_NEEDED]] -> (index) {
-// CHECK:                    [[END_OF_W_ITER:%.+]] = arith.addi [[VAL_69]], [[CST_512]] : index
-// CHECK:                    [[BACKTRACK_W_IS_NEEDED:%.+]] = arith.cmpi sgt, [[END_OF_W_ITER]], [[DIM_W]] : index
-// CHECK:                    [[BACKTRACKED_W_OFFSET:%.+]] = scf.if [[BACKTRACK_W_IS_NEEDED]] -> (index) {
+// CHECK:                    [[BACKTRACKED_H_OFFSET:%.+]] = affine.min #[[$MAP_H_94]]([[VAL_66]]){{\[}}[[SAFE_UPPERBOUND_F_2]]]
+// CHECK:                    [[BACKTRACKED_W_OFFSET:%.+]] = affine.min #[[$MAP_W_512]]([[VAL_69]]){{\[}}[[DIM_W]]]
 
 // CHECK:                    [[VAL_71:%.+]] = tensor.extract_slice [[VAL_0]][0, 0, [[BACKTRACKED_H_OFFSET]], [[BACKTRACKED_W_OFFSET]]] [1, 16, 94, 512] [1, 1, 1, 1] : tensor<1x16x?x?xf16, {bounds = #{{.+}}<[1, 16, 1024, 1024]> : tensor<4xsi64>, order = #[[$NCHW]]}> to tensor<1x16x94x512xf16>
 // CHECK:                    [[VAL_72:%.+]] = func.call @merged_vpu_func_2([[VAL_71]]) : (tensor<1x16x94x512xf16>) -> tensor<1x16x94x512xf16, {order = #[[$NHWC]]}>
@@ -171,7 +163,7 @@ module @DynamicPermute2DCascaded   {
 // CHECK:                    scf.yield [[VAL_74]] : tensor<1x16x?x?xf16, {bounds = #{{.+}}<[1, 16, 1024, 1024]> : tensor<4xsi64>, order = #[[$NHWC]]}>
 // CHECK:                  }
 // CHECK:                  scf.yield [[VAL_68]] : tensor<1x16x?x?xf16, {bounds = #{{.+}}<[1, 16, 1024, 1024]> : tensor<4xsi64>, order = #[[$NHWC]]}>
-// CHECK:                } {no_await_all = true}
+// CHECK:                } {no_await_all = true, no_reset_cmdlist = true}
 // CHECK:                [[VAL_75:%.+]] = scf.for [[VAL_76:%.+]] = [[SAFE_UPPERBOUND_F_2]] to [[DIM_H]] step [[STEP]] iter_args([[VAL_77:%.+]] = [[VAL_65]]) -> (tensor<1x16x?x?xf16, {bounds = #{{.+}}<[1, 16, 1024, 1024]> : tensor<4xsi64>, order = #[[$NHWC]]}>) {
 // CHECK:                  [[VAL_78:%.+]] = scf.for [[VAL_79:%.+]] = [[CST_0]] to [[DIM_W]] step [[CST_512]] iter_args([[VAL_80:%.+]] = [[VAL_77]]) -> (tensor<1x16x?x?xf16, {bounds = #{{.+}}<[1, 16, 1024, 1024]> : tensor<4xsi64>, order = #[[$NHWC]]}>) {
 // CHECK:                    [[VAL_81:%.+]] = tensor.extract_slice [[VAL_0]][0, 0, [[VAL_76]], [[VAL_79]]] [1, 16, 47, 512] [1, 1, 1, 1] : tensor<1x16x?x?xf16, {bounds = #{{.+}}<[1, 16, 1024, 1024]> : tensor<4xsi64>, order = #[[$NCHW]]}> to tensor<1x16x47x512xf16>

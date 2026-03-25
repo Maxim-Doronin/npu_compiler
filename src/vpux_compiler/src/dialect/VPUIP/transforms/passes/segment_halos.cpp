@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -225,11 +225,11 @@ void updateNceOps(NCEClusterTaskOp nceOp, DenseMap<NCEClusterTaskOp, NceOpOutput
             mlir::ValueRange(newOutputItis), output, outSparsityMap, nceOp.getProfilingData(),
             nceOp.getDynamicSequenceLength(), nceOp.getMaxPerXy(), nceOp.getMinPerXy(), nceOp.getMinMaxPerTensor(),
             nceOp.getTaskType(), nceOp.getKernelSizeAttr(), nceOp.getKernelStridesAttr(), nceOp.getKernelPaddingAttr(),
-            nceOp.getIsContinuedAttr(), nceOp.getCmSpPatternAttr(),
-            /*is_segmented*/ nullptr, nceOp.getOutChannelOffsetAttr(), nceOp.getInputChannelsCompressionAttr(),
-            nceOp.getIsZeroOffsetWeightsTableAttr(), nceOp.getIsSuperdenseAttr(), nceOp.getIsInplaceAttr(),
-            nceOp.getInputSeSizeAttr(), nceOp.getOutputSeSizeAttr(), nceOp.getIsPermuteQuantizeAttr(),
-            nceOp.getIsSmallKernelOptimizedAttr(), nceOp.getMpeEngineAttr(), nceOp.getEltwiseTypeAttr(),
+            nceOp.getIsContinued(), nceOp.getCmSpPatternAttr(),
+            /*is_segmented*/ false, nceOp.getOutChannelOffsetAttr(), nceOp.getInputChannelsCompression(),
+            nceOp.getIsZeroOffsetWeightsTable(), nceOp.getIsSuperdense(), nceOp.getIsInplaceAttr(),
+            nceOp.getInputSeSizeAttr(), nceOp.getOutputSeSizeAttr(), nceOp.getIsPermuteQuantize(),
+            nceOp.getIsSmallKernelOptimized(), nceOp.getMpeEngineAttr(), nceOp.getEltwiseTypeAttr(),
             nceOp.getSparsityConfigAttr(), nceOp.getDynamicScaleConfigAttr(), nceOp.getLocalRegionAttr());
     if (auto profMetadata = nceOp.getProfilingMetadataAttr()) {
         updatedNceOp.setProfilingMetadataAttr(profMetadata);

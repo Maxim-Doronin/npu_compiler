@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,7 @@
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @ExpandMaxPoolChannels
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x3x30x30xf16, {order = #NHWC}>
 func.func @ExpandMaxPoolChannels(%arg0: tensor<1x3x30x30xf16, {order = #NHWC}>) -> tensor<1x3x15x13xf16, {order = #NHWC}> {
     %0 = IE.MaxPool(%arg0) {
         kernel_size = [5, 5], pads_begin = [2, 0], pads_end = [2, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [2, 2]
@@ -17,7 +18,7 @@ func.func @ExpandMaxPoolChannels(%arg0: tensor<1x3x30x30xf16, {order = #NHWC}>) 
     return %0 : tensor<1x3x15x13xf16, {order = #NHWC}>
 }
 
-// CHECK:       [[PAD:%.+]] = IE.Expand(%arg0) {pads_begin = [0, 0, 0, 0], pads_end = [0, 13, 0, 0]}
+// CHECK:       [[PAD:%.+]] = IE.Expand([[ARG_0]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 13, 0, 0]}
 
 // CHECK:       [[POOL:%.+]] = IE.MaxPool([[PAD]])
 // CHECK-SAME:      kernel_size = [5, 5]
@@ -36,6 +37,7 @@ func.func @ExpandMaxPoolChannels(%arg0: tensor<1x3x30x30xf16, {order = #NHWC}>) 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @ExpandMaxPoolChannelsWithSliceProducer
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x4x30x30xf16, {order = #NHWC}>
 func.func @ExpandMaxPoolChannelsWithSliceProducer(%arg0: tensor<1x4x30x30xf16, {order = #NHWC}>) -> tensor<1x3x15x13xf16, {order = #NHWC}> {
     %0 = IE.Slice %arg0 [0, 1, 0, 0] [1, 3, 30, 30] : tensor<1x4x30x30xf16, {order = #NHWC}> to tensor<1x3x30x30xf16, {order = #NHWC}>
 
@@ -46,7 +48,7 @@ func.func @ExpandMaxPoolChannelsWithSliceProducer(%arg0: tensor<1x4x30x30xf16, {
     return %1 : tensor<1x3x15x13xf16, {order = #NHWC}>
 }
 
-// CHECK:       [[SLICE:%.+]] = IE.Slice %arg0 [0, 1, 0, 0] [1, 3, 30, 30]
+// CHECK:       [[SLICE:%.+]] = IE.Slice [[ARG_0]] [0, 1, 0, 0] [1, 3, 30, 30]
 // CHECK:       [[EXPAND:%.+]] = IE.Expand([[SLICE]]) {pads_begin = [0, 1, 0, 0], pads_end = [0, 12, 0, 0]}
 // CHECK:       [[POOL:%.+]] = IE.MaxPool([[EXPAND]])
 // CHECK-SAME:      {kernel_size = [5, 5]
@@ -69,6 +71,7 @@ func.func @ExpandMaxPoolChannelsWithSliceProducer(%arg0: tensor<1x4x30x30xf16, {
 !qElemType2 = !quant.uniform<u8<0:254>:f16:1, {8.7179349163385824E-4:127,5.2096149114173233E-4:127,0.0013264333169291339:127,1.000000e+00:127,1.000000e+00:127,1.000000e+00:127,1.000000e+00:127,1.000000e+00:127,1.000000e+00:127,1.000000e+00:127,1.000000e+00:127,1.000000e+00:127,1.000000e+00:127,1.000000e+00:127,1.000000e+00:127,1.000000e+00:127}>
 
 // CHECK-LABEL: @NotExpandQuantMaxPoolChannels
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x3x30x30x!qElemType, {order = #NHWC}>
 func.func @NotExpandQuantMaxPoolChannels(%input: tensor<1x3x30x30x!qElemType, {order = #NHWC}>) -> tensor<1x3x15x13x!qElemType1, {order = #NHWC}> {
     %1 = IE.MaxPool(%input) {
         kernel_size = [5, 5], pads_begin = [2, 0], pads_end = [2, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [2, 2]
@@ -78,7 +81,7 @@ func.func @NotExpandQuantMaxPoolChannels(%input: tensor<1x3x30x30x!qElemType, {o
 
 // CHECK-NOT: IE.Expand
 // CHECK-NOT: IE.Slice
-// CHECK:     IE.MaxPool(%arg0) {kernel_size = [5, 5], pads_begin = [2, 0], pads_end = [2, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [2, 2]} : tensor<1x3x30x30x!qElemType, {order = #NHWC}> -> tensor<1x3x15x13x!qElemType1, {order = #NHWC}>
+// CHECK:     IE.MaxPool([[ARG_0]]) {kernel_size = [5, 5], pads_begin = [2, 0], pads_end = [2, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [2, 2]} : tensor<1x3x30x30x!qElemType, {order = #NHWC}> -> tensor<1x3x15x13x!qElemType1, {order = #NHWC}>
 
 // -----
 
@@ -88,6 +91,7 @@ func.func @NotExpandQuantMaxPoolChannels(%input: tensor<1x3x30x30x!qElemType, {o
 !qElemType1 = !quant.uniform<u8<0:254>:f16:1, {8.7179349163385824E-4:127,5.2096149114173233E-4:127,0.0013264333169291339:127,1.000000e+00:127,1.000000e+00:127,1.000000e+00:127,1.000000e+00:127,1.000000e+00:127,1.000000e+00:127,1.000000e+00:127,1.000000e+00:127,1.000000e+00:127,1.000000e+00:127,1.000000e+00:127,1.000000e+00:127,1.000000e+00:127}>
 
 // CHECK-LABEL: @ExpandQuantMaxPoolChannels
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x3x30x30x!qElemType, {order = #NHWC}>
 func.func @ExpandQuantMaxPoolChannels(%input: tensor<1x3x30x30x!qElemType, {order = #NHWC}>) -> tensor<1x3x15x13x!qElemType, {order = #NHWC}> {
     %1 = IE.MaxPool(%input) {
         kernel_size = [5, 5], pads_begin = [2, 0], pads_end = [2, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [2, 2]
@@ -95,7 +99,7 @@ func.func @ExpandQuantMaxPoolChannels(%input: tensor<1x3x30x30x!qElemType, {orde
     return %1 : tensor<1x3x15x13x!qElemType, {order = #NHWC}>
 }
 
-// CHECK:       [[EXPAND_OUT:%.+]] = IE.Expand(%arg0) {pads_begin = [0, 0, 0, 0], pads_end = [0, 13, 0, 0]}
+// CHECK:       [[EXPAND_OUT:%.+]] = IE.Expand([[ARG_0]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 13, 0, 0]}
 // CHECK-SAME:  : tensor<1x3x30x30x!qElemType, {order = #NHWC}> -> tensor<1x16x30x30x!qElemType1, {order = #NHWC}>
 
 // CHECK:       [[MAXPOOL_OUT:%.+]] = IE.MaxPool([[EXPAND_OUT]])
@@ -116,6 +120,8 @@ func.func @ExpandQuantMaxPoolChannels(%input: tensor<1x3x30x30x!qElemType, {orde
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @ExpandEltwiseAddChannels
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x3x30x25xf16, {order = #NHWC}>
+// CHECK-SAME:      [[ARG_1:%[^:]+]]: tensor<1x3x30x25xf16, {order = #NHWC}>
 func.func @ExpandEltwiseAddChannels(%arg0: tensor<1x3x30x25xf16, {order = #NHWC}>, %arg1: tensor<1x3x30x25xf16, {order = #NHWC}>)
         -> tensor<1x3x30x25xf16, {order = #NHWC}> {
     %0 = IE.Add(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} :
@@ -123,8 +129,8 @@ func.func @ExpandEltwiseAddChannels(%arg0: tensor<1x3x30x25xf16, {order = #NHWC}
     return %0 : tensor<1x3x30x25xf16, {order = #NHWC}>
 }
 
-// CHECK:       [[EXPAND_LEFT_INPUT:%.+]] = IE.Expand(%arg0) {pads_begin = [0, 0, 0, 0], pads_end = [0, 13, 0, 0]}
-// CHECK:       [[EXPAND_RIGHT_INPUT:%.+]] = IE.Expand(%arg1) {pads_begin = [0, 0, 0, 0], pads_end = [0, 13, 0, 0]}
+// CHECK:       [[EXPAND_LEFT_INPUT:%.+]] = IE.Expand([[ARG_0]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 13, 0, 0]}
+// CHECK:       [[EXPAND_RIGHT_INPUT:%.+]] = IE.Expand([[ARG_1]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 13, 0, 0]}
 // CHECK:       [[ELTWISE_ADD:%.+]] = IE.Add([[EXPAND_LEFT_INPUT]], [[EXPAND_RIGHT_INPUT]])
 // CHECK:       [[OUT:%.+]] = IE.Slice [[ELTWISE_ADD]] [0, 0, 0, 0] [1, 3, 30, 25]
 // CHECK:       return [[OUT]]
@@ -134,6 +140,8 @@ func.func @ExpandEltwiseAddChannels(%arg0: tensor<1x3x30x25xf16, {order = #NHWC}
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @ExpandEltwiseAddChannelsWithSliceProducer
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x4x30x25xf16, {order = #NHWC}>
+// CHECK-SAME:      [[ARG_1:%[^:]+]]: tensor<1x4x30x25xf16, {order = #NHWC}>
 func.func @ExpandEltwiseAddChannelsWithSliceProducer(%arg0: tensor<1x4x30x25xf16, {order = #NHWC}>, %arg1: tensor<1x4x30x25xf16, {order = #NHWC}>)
         -> tensor<1x3x30x25xf16, {order = #NHWC}> {
     %0 = IE.Slice %arg0 [0, 1, 0, 0] [1, 3, 30, 25] : tensor<1x4x30x25xf16, {order = #NHWC}> to tensor<1x3x30x25xf16, {order = #NHWC}>
@@ -144,8 +152,8 @@ func.func @ExpandEltwiseAddChannelsWithSliceProducer(%arg0: tensor<1x4x30x25xf16
     return %2 : tensor<1x3x30x25xf16, {order = #NHWC}>
 }
 
-// CHECK:       [[SLICE_LEFT:%.+]] = IE.Slice %arg0 [0, 1, 0, 0] [1, 3, 30, 25]
-// CHECK:       [[SLICE_RIGHT:%.+]] = IE.Slice %arg1 [0, 1, 0, 0] [1, 3, 30, 25]
+// CHECK:       [[SLICE_LEFT:%.+]] = IE.Slice [[ARG_0]] [0, 1, 0, 0] [1, 3, 30, 25]
+// CHECK:       [[SLICE_RIGHT:%.+]] = IE.Slice [[ARG_1]] [0, 1, 0, 0] [1, 3, 30, 25]
 // CHECK:       [[EXPAND_LEFT:%.+]] = IE.Expand([[SLICE_LEFT]]) {pads_begin = [0, 1, 0, 0], pads_end = [0, 12, 0, 0]}
 // CHECK:       [[EXPAND_RIGHT:%.+]] = IE.Expand([[SLICE_RIGHT]]) {pads_begin = [0, 1, 0, 0], pads_end = [0, 12, 0, 0]}
 // CHECK:       [[ELTWISE_ADD:%.+]] = IE.Add([[EXPAND_LEFT]], [[EXPAND_RIGHT]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
@@ -157,6 +165,8 @@ func.func @ExpandEltwiseAddChannelsWithSliceProducer(%arg0: tensor<1x4x30x25xf16
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @ExpandEltwiseAddChannelsWithLeftOffsetSlice
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x9x30x25xf16, {order = #NHWC}>
+// CHECK-SAME:      [[ARG_1:%[^:]+]]: tensor<1x10x30x25xf16, {order = #NHWC}>
 func.func @ExpandEltwiseAddChannelsWithLeftOffsetSlice(%arg0: tensor<1x9x30x25xf16, {order = #NHWC}>, %arg1: tensor<1x10x30x25xf16, {order = #NHWC}>)
         -> tensor<1x3x30x25xf16, {order = #NHWC}> {
     %0 = IE.Slice %arg0 [0, 3, 0, 0] [1, 3, 30, 25] : tensor<1x9x30x25xf16, {order = #NHWC}> to tensor<1x3x30x25xf16, {order = #NHWC}>
@@ -167,8 +177,8 @@ func.func @ExpandEltwiseAddChannelsWithLeftOffsetSlice(%arg0: tensor<1x9x30x25xf
     return %2 : tensor<1x3x30x25xf16, {order = #NHWC}>
 }
 
-// CHECK:       [[SLICE_LEFT:%.+]] = IE.Slice %arg0 [0, 3, 0, 0] [1, 3, 30, 25] : tensor<1x9x30x25xf16, {order = #NHWC}> to tensor<1x3x30x25xf16, {order = #NHWC}>
-// CHECK:       [[SLICE_RIGHT:%.+]] = IE.Slice %arg1 [0, 0, 0, 0] [1, 3, 30, 25] : tensor<1x10x30x25xf16, {order = #NHWC}> to tensor<1x3x30x25xf16, {order = #NHWC}>
+// CHECK:       [[SLICE_LEFT:%.+]] = IE.Slice [[ARG_0]] [0, 3, 0, 0] [1, 3, 30, 25] : tensor<1x9x30x25xf16, {order = #NHWC}> to tensor<1x3x30x25xf16, {order = #NHWC}>
+// CHECK:       [[SLICE_RIGHT:%.+]] = IE.Slice [[ARG_1]] [0, 0, 0, 0] [1, 3, 30, 25] : tensor<1x10x30x25xf16, {order = #NHWC}> to tensor<1x3x30x25xf16, {order = #NHWC}>
 // CHECK:       [[EXPAND_LEFT:%.+]] = IE.Expand([[SLICE_LEFT]]) {pads_begin = [0, 3, 0, 0], pads_end = [0, 10, 0, 0]} : tensor<1x3x30x25xf16, {order = #NHWC}> -> tensor<1x16x30x25xf16, {order = #NHWC}>
 // CHECK:       [[EXPAND_RIGHT:%.+]] = IE.Expand([[SLICE_RIGHT]]) {pads_begin = [0, 3, 0, 0], pads_end = [0, 10, 0, 0]} : tensor<1x3x30x25xf16, {order = #NHWC}> -> tensor<1x16x30x25xf16, {order = #NHWC}>
 // CHECK:       [[ELTWISE_ADD:%.+]] = IE.Add([[EXPAND_LEFT]], [[EXPAND_RIGHT]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x16x30x25xf16, {order = #NHWC}>, tensor<1x16x30x25xf16, {order = #NHWC}> -> tensor<1x16x30x25xf16, {order = #NHWC}>
@@ -180,6 +190,8 @@ func.func @ExpandEltwiseAddChannelsWithLeftOffsetSlice(%arg0: tensor<1x9x30x25xf
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @ExpandEltwiseAddChannelsWithRightOffsetSlice
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x9x30x25xf16, {order = #NHWC}>
+// CHECK-SAME:      [[ARG_1:%[^:]+]]: tensor<1x10x30x25xf16, {order = #NHWC}>
 func.func @ExpandEltwiseAddChannelsWithRightOffsetSlice(%arg0: tensor<1x9x30x25xf16, {order = #NHWC}>, %arg1: tensor<1x10x30x25xf16, {order = #NHWC}>)
         -> tensor<1x3x30x25xf16, {order = #NHWC}> {
     %0 = IE.Slice %arg0 [0, 0, 0, 0] [1, 3, 30, 25] : tensor<1x9x30x25xf16, {order = #NHWC}> to tensor<1x3x30x25xf16, {order = #NHWC}>
@@ -190,8 +202,8 @@ func.func @ExpandEltwiseAddChannelsWithRightOffsetSlice(%arg0: tensor<1x9x30x25x
     return %2 : tensor<1x3x30x25xf16, {order = #NHWC}>
 }
 
-// CHECK:       [[SLICE_LEFT:%.+]] = IE.Slice %arg0 [0, 0, 0, 0] [1, 3, 30, 25] : tensor<1x9x30x25xf16, {order = #NHWC}> to tensor<1x3x30x25xf16, {order = #NHWC}>
-// CHECK:       [[SLICE_RIGHT:%.+]] = IE.Slice %arg1 [0, 3, 0, 0] [1, 3, 30, 25] : tensor<1x10x30x25xf16, {order = #NHWC}> to tensor<1x3x30x25xf16, {order = #NHWC}>
+// CHECK:       [[SLICE_LEFT:%.+]] = IE.Slice [[ARG_0]] [0, 0, 0, 0] [1, 3, 30, 25] : tensor<1x9x30x25xf16, {order = #NHWC}> to tensor<1x3x30x25xf16, {order = #NHWC}>
+// CHECK:       [[SLICE_RIGHT:%.+]] = IE.Slice [[ARG_1]] [0, 3, 0, 0] [1, 3, 30, 25] : tensor<1x10x30x25xf16, {order = #NHWC}> to tensor<1x3x30x25xf16, {order = #NHWC}>
 // CHECK:       [[EXPAND_LEFT:%.+]] = IE.Expand([[SLICE_LEFT]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 13, 0, 0]} : tensor<1x3x30x25xf16, {order = #NHWC}> -> tensor<1x16x30x25xf16, {order = #NHWC}>
 // CHECK:       [[EXPAND_RIGHT:%.+]] = IE.Expand([[SLICE_RIGHT]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 13, 0, 0]} : tensor<1x3x30x25xf16, {order = #NHWC}> -> tensor<1x16x30x25xf16, {order = #NHWC}>
 // CHECK:       [[ELTWISE_ADD:%.+]] = IE.Add([[EXPAND_LEFT]], [[EXPAND_RIGHT]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x16x30x25xf16, {order = #NHWC}>, tensor<1x16x30x25xf16, {order = #NHWC}> -> tensor<1x16x30x25xf16, {order = #NHWC}>
@@ -203,6 +215,7 @@ func.func @ExpandEltwiseAddChannelsWithRightOffsetSlice(%arg0: tensor<1x9x30x25x
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @ExpandGroupConvolutionChannels
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x72x56x56xf16, {order = #NHWC}>
 func.func @ExpandGroupConvolutionChannels(%arg0: tensor<1x72x56x56xf16, {order = #NHWC}>) -> tensor<1x72x28x28xf16, {order = #NHWC}> {
     %0 = const.Declare tensor<72x1x3x3xf16, {order = #NHWC}> = dense<1.0> : tensor<72x1x3x3xf16>, [#const.Reorder<#NHWC>]
     %1 = const.Declare tensor<1x72x1x1xf16> = dense<1.0> : tensor<1x72x1x1xf16>
@@ -219,7 +232,7 @@ func.func @ExpandGroupConvolutionChannels(%arg0: tensor<1x72x56x56xf16, {order =
 // CHECK-DAG:       [[EXTENDED_FILTER:%.+]] = const.Declare tensor<80x1x3x3xf16, {order = #NHWC}> =
 // CHECK-SAME:      [#const.Reorder<#NHWC>, #const.PadWithZero<[0, 0, 0, 0], [8, 0, 0, 0]>]
 
-// CHECK:       [[EXTENDED_INPUT:%.+]] = IE.Expand(%arg0)
+// CHECK:       [[EXTENDED_INPUT:%.+]] = IE.Expand([[ARG_0]])
 
 // CHECK:       [[EXTENDED_CONV:%.+]] = IE.GroupConvolution([[EXTENDED_INPUT]], [[EXTENDED_FILTER]], [[EXTENDED_GROUP]])
 // CHECK:       [[REDUNDRANT_SUBTENSOR:%.+]] = IE.Slice [[EXTENDED_CONV]]
@@ -259,6 +272,7 @@ func.func @ExpandGroupConvolutionWithChannelsAndDilation(%arg0: tensor<1x72x56x5
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @ExpandGroupConvolutionChannelsWithSliceProducer
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x75x56x56xf16, {order = #NHWC}>
 func.func @ExpandGroupConvolutionChannelsWithSliceProducer(%arg0: tensor<1x75x56x56xf16, {order = #NHWC}>) -> tensor<1x72x28x28xf16, {order = #NHWC}> {
     %0 = const.Declare tensor<72x1x3x3xf16, {order = #NHWC}> = dense<1.0> : tensor<72x1x3x3xf16>, [#const.Reorder<#NHWC>]
     %1 = const.Declare tensor<1x72x1x1xf16> = dense<1.0> : tensor<1x72x1x1xf16>
@@ -276,7 +290,7 @@ func.func @ExpandGroupConvolutionChannelsWithSliceProducer(%arg0: tensor<1x75x56
 // CHECK-SAME:      [#const.PadWithZero<[0, 1, 0, 0], [0, 7, 0, 0]>]
 // CHECK-DAG:   [[EXTENDED_FILTER:%.+]] = const.Declare tensor<80x1x3x3xf16, {order = #NHWC}> =
 // CHECK-SAME:      [#const.Reorder<#NHWC>, #const.PadWithZero<[1, 0, 0, 0], [7, 0, 0, 0]>]
-// CHECK:       [[SLICE:%.+]] = IE.Slice %arg0 [0, 1, 0, 0] [1, 72, 56, 56]
+// CHECK:       [[SLICE:%.+]] = IE.Slice [[ARG_0]] [0, 1, 0, 0] [1, 72, 56, 56]
 // CHECK:       [[EXTENDED_INPUT:%.+]] = IE.Expand([[SLICE]]) {pads_begin = [0, 1, 0, 0], pads_end = [0, 7, 0, 0]}
 // CHECK:       [[EXTENDED_CONV:%.+]] = IE.GroupConvolution([[EXTENDED_INPUT]], [[EXTENDED_FILTER]], [[EXTENDED_GROUP]])
 // CHECK:       [[SLICE_OUT:%.+]] = IE.Slice [[EXTENDED_CONV]] [0, 1, 0, 0] [1, 72, 28, 28]
@@ -288,6 +302,8 @@ func.func @ExpandGroupConvolutionChannelsWithSliceProducer(%arg0: tensor<1x75x56
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @ExpandConvolutionChannels
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x77x56x56xf16, {order = #NHWC}>
+// CHECK-SAME:      [[ARG_1:%[^:]+]]: tensor<40x77x1x1xf16, {order = #NHWC}>
 func.func @ExpandConvolutionChannels(%arg0: tensor<1x77x56x56xf16, {order = #NHWC}>, %arg1: tensor<40x77x1x1xf16, {order = #NHWC}>) -> tensor<1x40x56x56xf16, {order = #NHWC}> {
 
     %0 = IE.Convolution(%arg0, %arg1)
@@ -299,8 +315,8 @@ func.func @ExpandConvolutionChannels(%arg0: tensor<1x77x56x56xf16, {order = #NHW
 }
 
 // CHECK:       [[CST:%.+]] = const.Declare tensor<40x3x1x1xf16, {order = #NHWC}> = dense<0.000000e+00> : tensor<40x3x1x1xf16, {order = #NHWC}>
-// CHECK:       [[EXTENDED_INPUT:%.+]] = IE.Expand(%arg0)
-// CHECK:       [[CONCAT:%.+]] = IE.Concat(%arg1, [[CST]])
+// CHECK:       [[EXTENDED_INPUT:%.+]] = IE.Expand([[ARG_0]])
+// CHECK:       [[CONCAT:%.+]] = IE.Concat([[ARG_1]], [[CST]])
 // CHECK{LITERAL}:   {static_offsets = [[0, 0, 0, 0], [0, 77, 0, 0]]} : tensor<40x77x1x1xf16, {order = #NHWC}>, tensor<40x3x1x1xf16, {order = #NHWC}> -> tensor<40x80x1x1xf16, {order = #NHWC}>
 // CHECK:       [[EXTENDED_FILTER:%.+]] = IE.Expand([[CONCAT]]) {pads_begin = [0, 0, 0, 0], pads_end = [8, 0, 0, 0]} : tensor<40x80x1x1xf16, {order = #NHWC}> -> tensor<48x80x1x1xf16, {order = #NHWC}>
 // CHECK:       [[EXTENDED_CONV:%.+]] = IE.Convolution([[EXTENDED_INPUT]], [[EXTENDED_FILTER]])
@@ -314,6 +330,8 @@ func.func @ExpandConvolutionChannels(%arg0: tensor<1x77x56x56xf16, {order = #NHW
 !qElemType = !quant.uniform<u8:f16, 0.96372549019607844:127>
 
 // CHECK-LABEL: @ExpandConvolutionChannelsWithQuant
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x77x56x56x!qElemType, {order = #NHWC}>
+// CHECK-SAME:      [[ARG_1:%[^:]+]]: tensor<40x77x1x1x!qElemType, {order = #NHWC}>
 func.func @ExpandConvolutionChannelsWithQuant(%arg0: tensor<1x77x56x56x!qElemType, {order = #NHWC}>, %arg1: tensor<40x77x1x1x!qElemType, {order = #NHWC}>) -> tensor<1x40x56x56x!qElemType, {order = #NHWC}> {
 
     %0 = IE.Convolution(%arg0, %arg1)
@@ -325,8 +343,8 @@ func.func @ExpandConvolutionChannelsWithQuant(%arg0: tensor<1x77x56x56x!qElemTyp
 }
 
 // CHECK-DAG:       [[CST:%.+]] = const.Declare tensor<40x3x1x1x!qElemType, {order = #NHWC}> = dense<127> : tensor<40x3x1x1xui8, {order = #NHWC}>
-// CHECK:       [[EXTENDED_INPUT:%.+]] = IE.Expand(%arg0)
-// CHECK:       [[EXTENDED_FILTER_IC:%.+]] = IE.Concat(%arg1, [[CST]])
+// CHECK:       [[EXTENDED_INPUT:%.+]] = IE.Expand([[ARG_0]])
+// CHECK:       [[EXTENDED_FILTER_IC:%.+]] = IE.Concat([[ARG_1]], [[CST]])
 // CHECK{LITERAL}:      {static_offsets = [[0, 0, 0, 0], [0, 77, 0, 0]]} : tensor<40x77x1x1x!qElemType, {order = #NHWC}>, tensor<40x3x1x1x!qElemType, {order = #NHWC}> -> tensor<40x80x1x1x!qElemType, {order = #NHWC}>
 // CHECK:       [[EXTENDED_FILTER_OC:%.+]] = IE.Expand([[EXTENDED_FILTER_IC]]) {pads_begin = [0, 0, 0, 0], pads_end = [8, 0, 0, 0]} : tensor<40x80x1x1x!qElemType, {order = #NHWC}> -> tensor<48x80x1x1x!qElemType, {order = #NHWC}>
 // CHECK:       [[EXTENDED_CONV:%.+]] = IE.Convolution([[EXTENDED_INPUT]], [[EXTENDED_FILTER_OC]])
@@ -339,6 +357,8 @@ func.func @ExpandConvolutionChannelsWithQuant(%arg0: tensor<1x77x56x56x!qElemTyp
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @ExpandConvolutionChannelsOnlyIC
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x77x56x56xf16, {order = #NHWC}>
+// CHECK-SAME:      [[ARG_1:%[^:]+]]: tensor<48x77x1x1xf16, {order = #NHWC}>
 func.func @ExpandConvolutionChannelsOnlyIC(%arg0: tensor<1x77x56x56xf16, {order = #NHWC}>, %arg1: tensor<48x77x1x1xf16, {order = #NHWC}>) -> tensor<1x48x56x56xf16, {order = #NHWC}> {
 
     %0 = IE.Convolution(%arg0, %arg1)
@@ -350,8 +370,8 @@ func.func @ExpandConvolutionChannelsOnlyIC(%arg0: tensor<1x77x56x56xf16, {order 
 }
 
 // CHECK:       [[CST:%.+]] = const.Declare tensor<48x3x1x1xf16, {order = #NHWC}> = dense<0.000000e+00> : tensor<48x3x1x1xf16, {order = #NHWC}>
-// CHECK:       [[EXTENDED_INPUT:%.+]] = IE.Expand(%arg0)
-// CHECK:       [[EXTENDED_FILTER:%.+]] = IE.Concat(%arg1, [[CST]])
+// CHECK:       [[EXTENDED_INPUT:%.+]] = IE.Expand([[ARG_0]])
+// CHECK:       [[EXTENDED_FILTER:%.+]] = IE.Concat([[ARG_1]], [[CST]])
 // CHECK{LITERAL}:      {static_offsets = [[0, 0, 0, 0], [0, 77, 0, 0]]} : tensor<48x77x1x1xf16, {order = #NHWC}>, tensor<48x3x1x1xf16, {order = #NHWC}> -> tensor<48x80x1x1xf16, {order = #NHWC}>
 // CHECK:       [[EXTENDED_CONV:%.+]] = IE.Convolution([[EXTENDED_INPUT]], [[EXTENDED_FILTER]])
 // CHECK:       return [[EXTENDED_CONV]]
@@ -363,6 +383,8 @@ func.func @ExpandConvolutionChannelsOnlyIC(%arg0: tensor<1x77x56x56xf16, {order 
 !qElemType = !quant.uniform<u8:f16, 0.96372549019607844:127>
 
 // CHECK-LABEL: @ExpandConvolutionChannelsOnlyICWithQuant
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x77x56x56x!qElemType, {order = #NHWC}>
+// CHECK-SAME:      [[ARG_1:%[^:]+]]: tensor<48x77x1x1x!qElemType, {order = #NHWC}>
 func.func @ExpandConvolutionChannelsOnlyICWithQuant(%arg0: tensor<1x77x56x56x!qElemType, {order = #NHWC}>, %arg1: tensor<48x77x1x1x!qElemType, {order = #NHWC}>) -> tensor<1x48x56x56x!qElemType, {order = #NHWC}> {
 
     %0 = IE.Convolution(%arg0, %arg1)
@@ -374,8 +396,8 @@ func.func @ExpandConvolutionChannelsOnlyICWithQuant(%arg0: tensor<1x77x56x56x!qE
 }
 
 // CHECK-DAG:       [[CST:%.+]] = const.Declare tensor<48x3x1x1x!qElemType, {order = #NHWC}> = dense<127> : tensor<48x3x1x1xui8, {order = #NHWC}>
-// CHECK:       [[EXTENDED_INPUT:%.+]] = IE.Expand(%arg0)
-// CHECK:       [[EXTENDED_FILTER:%.+]] = IE.Concat(%arg1, [[CST]])
+// CHECK:       [[EXTENDED_INPUT:%.+]] = IE.Expand([[ARG_0]])
+// CHECK:       [[EXTENDED_FILTER:%.+]] = IE.Concat([[ARG_1]], [[CST]])
 // CHECK{LITERAL}:      {static_offsets = [[0, 0, 0, 0], [0, 77, 0, 0]]} : tensor<48x77x1x1x!qElemType, {order = #NHWC}>, tensor<48x3x1x1x!qElemType, {order = #NHWC}> -> tensor<48x80x1x1x!qElemType, {order = #NHWC}>
 // CHECK:       [[EXTENDED_CONV:%.+]] = IE.Convolution([[EXTENDED_INPUT]], [[EXTENDED_FILTER]])
 // CHECK:       return [[EXTENDED_CONV]]
@@ -386,6 +408,7 @@ func.func @ExpandConvolutionChannelsOnlyICWithQuant(%arg0: tensor<1x77x56x56x!qE
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @ExpandConvolutionChannelsConst
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x77x56x56xf16, {order = #NHWC}>
 func.func @ExpandConvolutionChannelsConst(%arg0: tensor<1x77x56x56xf16, {order = #NHWC}>) -> tensor<1x40x56x56xf16, {order = #NHWC}> {
     %filter = const.Declare tensor<40x77x1x1xf16, {order = #NHWC}> = dense<1.0> : tensor<40x77x1x1xf16>, [#const.Reorder<#NHWC>]
     %0 = IE.Convolution(%arg0, %filter)
@@ -398,7 +421,7 @@ func.func @ExpandConvolutionChannelsConst(%arg0: tensor<1x77x56x56xf16, {order =
 
 // CHECK-DAG:       [[EXTENDED_FILTER:%.+]] = const.Declare tensor<48x80x1x1xf16, {order = #NHWC}>
 // CHECK-SAME:      [#const.Reorder<#NHWC>, #const.PadWithZero<[0, 0, 0, 0], [8, 3, 0, 0]>]
-// CHECK:       [[EXTENDED_INPUT:%.+]] = IE.Expand(%arg0)
+// CHECK:       [[EXTENDED_INPUT:%.+]] = IE.Expand([[ARG_0]])
 // CHECK:       [[EXTENDED_CONV:%.+]] = IE.Convolution([[EXTENDED_INPUT]], [[EXTENDED_FILTER]])
 // CHECK:       [[REDUNDRANT_SUBTENSOR:%.+]] = IE.Slice [[EXTENDED_CONV]]
 // CHECK:       return [[REDUNDRANT_SUBTENSOR]]
@@ -471,6 +494,7 @@ func.func @ExpandQuantGroupConvolutionChannelsConst(%input: tensor<1x3x30x30xf16
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @PreventConcat
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x77x56x56xf16, {order = #NHWC}>, [[ARG_1:%[^:]+]]: tensor<48x77x1x1xf16, {order = #NHWC}>
 func.func @PreventConcat(%arg0: tensor<1x77x56x56xf16, {order = #NHWC}>, %arg1: tensor<48x77x1x1xf16, {order = #NHWC}>)
     -> (tensor<1x48x56x56xf16, {order = #NHWC}>, tensor<1x48x56x56xf16, {order = #NHWC}>) {
     %0 = IE.Slice %arg1 [0, 0, 0, 0] [48, 38, 1, 1] : tensor<48x77x1x1xf16, {order = #NHWC}> to tensor<48x38x1x1xf16, {order = #NHWC}>
@@ -494,11 +518,11 @@ func.func @PreventConcat(%arg0: tensor<1x77x56x56xf16, {order = #NHWC}>, %arg1: 
 
 // CHECK: [[CST:%.+]] = const.Declare tensor<48x9x1x1xf16, {order = #NHWC}> = dense<0.000000e+00> : tensor<48x9x1x1xf16, {order = #NHWC}>
 // CHECK: [[CST_0:%.+]] = const.Declare tensor<48x10x1x1xf16, {order = #NHWC}> = dense<0.000000e+00> : tensor<48x10x1x1xf16, {order = #NHWC}>
-// CHECK: [[SLICE0:%.+]] = IE.Slice %arg1 [0, 0, 0, 0] [48, 38, 1, 1] : tensor<48x77x1x1xf16, {order = #NHWC}> to tensor<48x38x1x1xf16, {order = #NHWC}>
-// CHECK: [[SLICE1:%.+]] = IE.Slice %arg1 [0, 38, 0, 0] [48, 39, 1, 1] : tensor<48x77x1x1xf16, {order = #NHWC}> to tensor<48x39x1x1xf16, {order = #NHWC}>
+// CHECK: [[SLICE0:%.+]] = IE.Slice [[ARG_1]] [0, 0, 0, 0] [48, 38, 1, 1] : tensor<48x77x1x1xf16, {order = #NHWC}> to tensor<48x38x1x1xf16, {order = #NHWC}>
+// CHECK: [[SLICE1:%.+]] = IE.Slice [[ARG_1]] [0, 38, 0, 0] [48, 39, 1, 1] : tensor<48x77x1x1xf16, {order = #NHWC}> to tensor<48x39x1x1xf16, {order = #NHWC}>
 
-// CHECK: [[SLICE2:%.+]] = IE.Slice %arg0 [0, 0, 0, 0] [1, 38, 56, 56] : tensor<1x77x56x56xf16, {order = #NHWC}> to tensor<1x38x56x56xf16, {order = #NHWC}>
-// CHECK: [[SLICE3:%.+]] = IE.Slice %arg0 [0, 38, 0, 0] [1, 39, 56, 56] : tensor<1x77x56x56xf16, {order = #NHWC}> to tensor<1x39x56x56xf16, {order = #NHWC}>
+// CHECK: [[SLICE2:%.+]] = IE.Slice [[ARG_0]] [0, 0, 0, 0] [1, 38, 56, 56] : tensor<1x77x56x56xf16, {order = #NHWC}> to tensor<1x38x56x56xf16, {order = #NHWC}>
+// CHECK: [[SLICE3:%.+]] = IE.Slice [[ARG_0]] [0, 38, 0, 0] [1, 39, 56, 56] : tensor<1x77x56x56xf16, {order = #NHWC}> to tensor<1x39x56x56xf16, {order = #NHWC}>
 
 // CHECK: [[EXPAND0:%.+]] = IE.Expand([[SLICE2]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 10, 0, 0]} : tensor<1x38x56x56xf16, {order = #NHWC}> -> tensor<1x48x56x56xf16, {order = #NHWC}>
 // CHECK: [[CONCAT0:%.+]] = IE.Concat([[SLICE0]], [[CST_0]]) {static_offsets = {{\[\[}}0, 0, 0, 0], [0, 38, 0, 0]]} : tensor<48x38x1x1xf16, {order = #NHWC}>, tensor<48x10x1x1xf16, {order = #NHWC}> -> tensor<48x48x1x1xf16, {order = #NHWC}>
@@ -517,6 +541,7 @@ func.func @PreventConcat(%arg0: tensor<1x77x56x56xf16, {order = #NHWC}>, %arg1: 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @PreventConcat2DimsExpand
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x77x56x56xf16, {order = #NHWC}>, [[ARG_1:%[^:]+]]: tensor<46x77x1x1xf16, {order = #NHWC}>
 func.func @PreventConcat2DimsExpand(%arg0: tensor<1x77x56x56xf16, {order = #NHWC}>, %arg1: tensor<46x77x1x1xf16, {order = #NHWC}>)
     -> (tensor<1x46x56x56xf16, {order = #NHWC}>, tensor<1x46x56x56xf16, {order = #NHWC}>) {
     %0 = IE.Slice %arg1 [0, 0, 0, 0] [46, 38, 1, 1] : tensor<46x77x1x1xf16, {order = #NHWC}> to tensor<46x38x1x1xf16, {order = #NHWC}>
@@ -540,11 +565,11 @@ func.func @PreventConcat2DimsExpand(%arg0: tensor<1x77x56x56xf16, {order = #NHWC
 
 // CHECK: [[CST:%.+]] = const.Declare tensor<46x9x1x1xf16, {order = #NHWC}> = dense<0.000000e+00> : tensor<46x9x1x1xf16, {order = #NHWC}>
 // CHECK: [[CST_0:%.+]] = const.Declare tensor<46x10x1x1xf16, {order = #NHWC}> = dense<0.000000e+00> : tensor<46x10x1x1xf16, {order = #NHWC}>
-// CHECK: [[SLICE0:%.+]] = IE.Slice %arg1 [0, 0, 0, 0] [46, 38, 1, 1] : tensor<46x77x1x1xf16, {order = #NHWC}> to tensor<46x38x1x1xf16, {order = #NHWC}>
-// CHECK: [[SLICE1:%.+]] = IE.Slice %arg1 [0, 38, 0, 0] [46, 39, 1, 1] : tensor<46x77x1x1xf16, {order = #NHWC}> to tensor<46x39x1x1xf16, {order = #NHWC}>
+// CHECK: [[SLICE0:%.+]] = IE.Slice [[ARG_1]] [0, 0, 0, 0] [46, 38, 1, 1] : tensor<46x77x1x1xf16, {order = #NHWC}> to tensor<46x38x1x1xf16, {order = #NHWC}>
+// CHECK: [[SLICE1:%.+]] = IE.Slice [[ARG_1]] [0, 38, 0, 0] [46, 39, 1, 1] : tensor<46x77x1x1xf16, {order = #NHWC}> to tensor<46x39x1x1xf16, {order = #NHWC}>
 
-// CHECK: [[SLICE2:%.+]] = IE.Slice %arg0 [0, 0, 0, 0] [1, 38, 56, 56] : tensor<1x77x56x56xf16, {order = #NHWC}> to tensor<1x38x56x56xf16, {order = #NHWC}>
-// CHECK: [[SLICE3:%.+]] = IE.Slice %arg0 [0, 38, 0, 0] [1, 39, 56, 56] : tensor<1x77x56x56xf16, {order = #NHWC}> to tensor<1x39x56x56xf16, {order = #NHWC}>
+// CHECK: [[SLICE2:%.+]] = IE.Slice [[ARG_0]] [0, 0, 0, 0] [1, 38, 56, 56] : tensor<1x77x56x56xf16, {order = #NHWC}> to tensor<1x38x56x56xf16, {order = #NHWC}>
+// CHECK: [[SLICE3:%.+]] = IE.Slice [[ARG_0]] [0, 38, 0, 0] [1, 39, 56, 56] : tensor<1x77x56x56xf16, {order = #NHWC}> to tensor<1x39x56x56xf16, {order = #NHWC}>
 
 // CHECK: [[EXPAND0:%.+]] = IE.Expand([[SLICE2]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 10, 0, 0]} : tensor<1x38x56x56xf16, {order = #NHWC}> -> tensor<1x48x56x56xf16, {order = #NHWC}>
 // CHECK: [[CONCAT1:%.+]] = IE.Concat([[SLICE0]], [[CST_0]]) {static_offsets = {{\[\[}}0, 0, 0, 0], [0, 38, 0, 0]]} : tensor<46x38x1x1xf16, {order = #NHWC}>, tensor<46x10x1x1xf16, {order = #NHWC}> -> tensor<46x48x1x1xf16, {order = #NHWC}>
@@ -569,6 +594,7 @@ func.func @PreventConcat2DimsExpand(%arg0: tensor<1x77x56x56xf16, {order = #NHWC
 !qElemType = !quant.uniform<u8:f16, 0.96372549019607844:127>
 
 // CHECK-LABEL: @U8Type2DimsExpand
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x77x56x56x!qElemType, {order = #NHWC}>, [[ARG_1:%[^:]+]]: tensor<46x77x1x1x!qElemType, {order = #NHWC}>
 func.func @U8Type2DimsExpand(%arg0: tensor<1x77x56x56x!qElemType, {order = #NHWC}>, %arg1: tensor<46x77x1x1x!qElemType, {order = #NHWC}>)
     -> (tensor<1x46x56x56x!qElemType, {order = #NHWC}>, tensor<1x46x56x56x!qElemType, {order = #NHWC}>) {
     %0 = IE.Slice %arg1 [0, 0, 0, 0] [46, 38, 1, 1] : tensor<46x77x1x1x!qElemType, {order = #NHWC}> to tensor<46x38x1x1x!qElemType, {order = #NHWC}>
@@ -593,11 +619,11 @@ func.func @U8Type2DimsExpand(%arg0: tensor<1x77x56x56x!qElemType, {order = #NHWC
 // CHECK-DAG: [[CONST0:%.+]] = const.Declare tensor<46x9x1x1x!qElemType, {order = #NHWC}> = dense<127> : tensor<46x9x1x1xui8, {order = #NHWC}>
 // CHECK-DAG: [[CONST1:%.+]] = const.Declare tensor<46x10x1x1x!qElemType, {order = #NHWC}> = dense<127> : tensor<46x10x1x1xui8, {order = #NHWC}>
 
-// CHECK: [[SLICE0:%.+]] = IE.Slice %arg1 [0, 0, 0, 0] [46, 38, 1, 1] : tensor<46x77x1x1x!qElemType, {order = #NHWC}> to tensor<46x38x1x1x!qElemType, {order = #NHWC}>
-// CHECK: [[SLICE1:%.+]] = IE.Slice %arg1 [0, 38, 0, 0] [46, 39, 1, 1] : tensor<46x77x1x1x!qElemType, {order = #NHWC}> to tensor<46x39x1x1x!qElemType, {order = #NHWC}>
+// CHECK: [[SLICE0:%.+]] = IE.Slice [[ARG_1]] [0, 0, 0, 0] [46, 38, 1, 1] : tensor<46x77x1x1x!qElemType, {order = #NHWC}> to tensor<46x38x1x1x!qElemType, {order = #NHWC}>
+// CHECK: [[SLICE1:%.+]] = IE.Slice [[ARG_1]] [0, 38, 0, 0] [46, 39, 1, 1] : tensor<46x77x1x1x!qElemType, {order = #NHWC}> to tensor<46x39x1x1x!qElemType, {order = #NHWC}>
 
-// CHECK: [[SLICE2:%.+]] = IE.Slice %arg0 [0, 0, 0, 0] [1, 38, 56, 56] : tensor<1x77x56x56x!qElemType, {order = #NHWC}> to tensor<1x38x56x56x!qElemType, {order = #NHWC}>
-// CHECK: [[SLICE3:%.+]] = IE.Slice %arg0 [0, 38, 0, 0] [1, 39, 56, 56] : tensor<1x77x56x56x!qElemType, {order = #NHWC}> to tensor<1x39x56x56x!qElemType, {order = #NHWC}>
+// CHECK: [[SLICE2:%.+]] = IE.Slice [[ARG_0]] [0, 0, 0, 0] [1, 38, 56, 56] : tensor<1x77x56x56x!qElemType, {order = #NHWC}> to tensor<1x38x56x56x!qElemType, {order = #NHWC}>
+// CHECK: [[SLICE3:%.+]] = IE.Slice [[ARG_0]] [0, 38, 0, 0] [1, 39, 56, 56] : tensor<1x77x56x56x!qElemType, {order = #NHWC}> to tensor<1x39x56x56x!qElemType, {order = #NHWC}>
 
 // CHECK: [[EXPAND0:%.+]] = IE.Expand([[SLICE2]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 10, 0, 0]} : tensor<1x38x56x56x!qElemType, {order = #NHWC}> -> tensor<1x48x56x56x!qElemType, {order = #NHWC}>
 // CHECK: [[CONCAT0:%.+]] = IE.Concat([[SLICE0]], [[CONST1]]) {static_offsets = {{\[\[}}0, 0, 0, 0], [0, 38, 0, 0]]} : tensor<46x38x1x1x!qElemType, {order = #NHWC}>, tensor<46x10x1x1x!qElemType, {order = #NHWC}> -> tensor<46x48x1x1x!qElemType, {order = #NHWC}>
@@ -621,6 +647,7 @@ func.func @U8Type2DimsExpand(%arg0: tensor<1x77x56x56x!qElemType, {order = #NHWC
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @DoNotExpandInterpolateNearestChannels
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x3x30x30xf16>
 func.func @DoNotExpandInterpolateNearestChannels(%arg0: tensor<1x3x30x30xf16>) -> tensor<1x3x60x60xf16> {
     %0 = IE.Interpolate(%arg0)
          {attr = #IE.Interpolate<antialias = false, coord_mode = <ASYMMETRIC>, cube_coeff = -7.500000e-01 : f64, mode = <NEAREST>, nearest_mode = <FLOOR>,
@@ -633,7 +660,7 @@ func.func @DoNotExpandInterpolateNearestChannels(%arg0: tensor<1x3x30x30xf16>) -
 
 // CHECK-NOT:   IE.Expand
 
-// CHECK:       [[INTERP:%.+]] = IE.Interpolate(%arg0)
+// CHECK:       [[INTERP:%.+]] = IE.Interpolate([[ARG_0]])
 // CHECK-SAME:      attr = #IE.Interpolate<mode = <NEAREST>,
 // CHECK-SAME:                             shape_calc_mode = <SCALES>,
 // CHECK-SAME:                             coord_mode = <ASYMMETRIC>,
@@ -656,6 +683,7 @@ func.func @DoNotExpandInterpolateNearestChannels(%arg0: tensor<1x3x30x30xf16>) -
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @DoNotExpandInterpolateLinearChannels
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x3x30x30xf16>
 func.func @DoNotExpandInterpolateLinearChannels(%arg0: tensor<1x3x30x30xf16>) -> tensor<1x3x60x60xf16> {
     %0 = IE.Interpolate(%arg0)
          {attr = #IE.Interpolate<antialias = false, coord_mode = <ASYMMETRIC>, cube_coeff = -7.500000e-01 : f64, mode = <LINEAR>, nearest_mode = <FLOOR>,
@@ -668,7 +696,7 @@ func.func @DoNotExpandInterpolateLinearChannels(%arg0: tensor<1x3x30x30xf16>) ->
 
 // CHECK-NOT:   IE.Expand
 
-// CHECK:       [[INTERP:%.+]] = IE.Interpolate(%arg0)
+// CHECK:       [[INTERP:%.+]] = IE.Interpolate([[ARG_0]])
 // CHECK-SAME:      attr = #IE.Interpolate<mode = <LINEAR>,
 // CHECK-SAME:                             shape_calc_mode = <SCALES>,
 // CHECK-SAME:                             coord_mode = <ASYMMETRIC>,

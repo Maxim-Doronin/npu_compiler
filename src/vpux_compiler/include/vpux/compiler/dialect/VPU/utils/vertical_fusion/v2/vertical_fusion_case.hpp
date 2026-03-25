@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -88,6 +88,11 @@ public:
      Set Scheduling and tiling to VF
     */
     void approveScheduling();
+
+    /*
+     Get VF tiling storage smart pointer (ownership is retained by VFCase)
+    */
+    const TilingOperationStorage::UPtr& getTilingStorage() const;
 
 private:
     /*

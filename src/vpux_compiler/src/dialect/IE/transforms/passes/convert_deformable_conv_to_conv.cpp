@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
@@ -115,9 +116,9 @@ mlir::LogicalResult ConvertDeformableConvToConv::matchAndRewrite(IE::DeformableC
     // -> shapeCast to (N, H*KH,W*KW,2) -> add spatial indices -> divide by scale (norm to -1~1) = grid
 
     const SmallVector<int64_t> newShapeBeforePerm = {N, 2, KH, KW, H, W};
-    auto shapeCastBeforePerm = rewriter.create<IE::ReshapeOp>(
-            appendLoc(origOp.getLoc(), "reshape_before_offset_perm"), origOp.getOffset(), /*shape=*/nullptr,
-            /*special_zero=*/false, getIntArrayAttr(ctx, newShapeBeforePerm));
+    auto shapeCastBeforePerm =
+            rewriter.create<IE::ReshapeOp>(appendLoc(origOp.getLoc(), "reshape_before_offset_perm"), origOp.getOffset(),
+                                           getIntArrayAttr(ctx, newShapeBeforePerm));
 
     const SmallVector<int64_t> newPermVec{0, 2, 4, 3, 5, 1};
     auto newPerm = mlir::AffineMap::getPermutationMap(ArrayRef(newPermVec), ctx);
@@ -128,9 +129,9 @@ mlir::LogicalResult ConvertDeformableConvToConv::matchAndRewrite(IE::DeformableC
                                                           mlir::AffineMapAttr::get(newPerm));
 
     const SmallVector<int64_t> newShapeAfterPerm = {N, KH * H, KW * W, 2};
-    auto shapeCastAfterPerm = rewriter.create<IE::ReshapeOp>(
-            appendLoc(origOp.getLoc(), "reshape_after_offset_perm"), offsetPermOp.getOutput(), /*shape=*/nullptr,
-            /*special_zero=*/false, getIntArrayAttr(ctx, newShapeAfterPerm));
+    auto shapeCastAfterPerm =
+            rewriter.create<IE::ReshapeOp>(appendLoc(origOp.getLoc(), "reshape_after_offset_perm"),
+                                           offsetPermOp.getOutput(), getIntArrayAttr(ctx, newShapeAfterPerm));
 
     // Create indices constant with shape (N, KH*H, KW*W, 2)
     const auto indicesData = generateIndices(N, H, W, KH, KW);
@@ -171,9 +172,9 @@ mlir::LogicalResult ConvertDeformableConvToConv::matchAndRewrite(IE::DeformableC
     // for KHxKW DefConv, the mask shape (N,KH*KW,H,W) need shapecast+tranpose to match gridSample output (N,C,KH*H,
     // KW*W) (N,KH*KW,H,W) -> (N,1,KH,KW,H,W) -> (N,1,KH,H,KW,W) -> (N,1,KH*H,KW*W)
     const SmallVector<int64_t> newShapeBeforeMaskPerm = {N, 1, KH, KW, H, W};
-    auto shapeCastBeforeMaskPerm = rewriter.create<IE::ReshapeOp>(
-            appendLoc(origOp.getLoc(), "reshape_before_mask_perm"), origOp.getMask(), /*shape=*/nullptr,
-            /*special_zero=*/false, getIntArrayAttr(ctx, newShapeBeforeMaskPerm));
+    auto shapeCastBeforeMaskPerm =
+            rewriter.create<IE::ReshapeOp>(appendLoc(origOp.getLoc(), "reshape_before_mask_perm"), origOp.getMask(),
+                                           getIntArrayAttr(ctx, newShapeBeforeMaskPerm));
 
     const SmallVector<int64_t> newPermVecMaskMul{0, 1, 2, 4, 3, 5};
     auto newPermMaskMul = mlir::AffineMap::getPermutationMap(ArrayRef(newPermVecMaskMul), ctx);
@@ -182,9 +183,9 @@ mlir::LogicalResult ConvertDeformableConvToConv::matchAndRewrite(IE::DeformableC
                                                         mlir::AffineMapAttr::get(newPermMaskMul));
 
     const SmallVector<int64_t> newShapeAfterMaskPerm = {N, 1, KH * H, KW * W};
-    auto shapeCastAfterMaskPerm = rewriter.create<IE::ReshapeOp>(
-            appendLoc(origOp.getLoc(), "reshape_after_mask_perm"), maskPermOp.getOutput(), /*shape=*/nullptr,
-            /*special_zero=*/false, getIntArrayAttr(ctx, newShapeAfterMaskPerm));
+    auto shapeCastAfterMaskPerm =
+            rewriter.create<IE::ReshapeOp>(appendLoc(origOp.getLoc(), "reshape_after_mask_perm"),
+                                           maskPermOp.getOutput(), getIntArrayAttr(ctx, newShapeAfterMaskPerm));
 
     auto maskMultiplyOp = rewriter.create<IE::MultiplyOp>(
             appendLoc(origOp.getLoc(), "mask_mul"), shapeCastAfterMaskPerm.getResult(), gridSampleOp.getOutput(),

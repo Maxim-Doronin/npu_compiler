@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -187,6 +187,30 @@ void printContentAttr(mlir::AsmPrinter& printer, const ContentAttr& content);
 
 constexpr const char* IMPORTED_WEIGHT_PREFIX = "vpux_ow_";
 
+/** @brief A collection of options to control createExternalConstContent()
+           behaviour.
+*/
+struct ExternalConstContentCreationOptions {
+    //! Controls whether external data is copied into MLIR.
+    /*! This flag overrides the contract of the API and allows compiler to own
+        the external data (by making a data copy). It is only intended for debug
+        purposes (in particular, for vpux-translate), as it can (and will)
+        considerably increase the memory consumption.
+    */
+    bool deepCopyConstData = false;
+
+    //! Controls whether resource name must be unique.
+    /*! This flag overrides the default behaviour of the API, that is to create
+        unique entries for external data. For example, passing the same resource
+        name 'X' multiple times would result in 'X', 'X_1', ..., 'X_N'
+        dense_resource<> entries being produced. This flag changes this so that
+        if there's already a created blob for a given resource name, it is
+        reused. This is useful in OV model compression scenarios where multiple
+        OV constant nodes point to the exact same memory buffer.
+    */
+    bool allowDuplicatesForTheSameResourceName = false;
+};
+
 /** @brief Returns new dense_resource<> "base" content.
 
     This function is used to create the base content for the constant that is
@@ -202,7 +226,8 @@ constexpr const char* IMPORTED_WEIGHT_PREFIX = "vpux_ow_";
     performs additional optimizations not done by MLIR.
  */
 mlir::DenseResourceElementsAttr createExternalConstContent(mlir::ShapedType type, ArrayRef<char> rawData,
-                                                           StringRef resourcePrefix, bool deepCopyConstData = false);
+                                                           StringRef resourceName,
+                                                           ExternalConstContentCreationOptions options = {});
 
 namespace detail {
 mlir::DenseElementsAttr createConstContentWithConversion(mlir::ShapedType type, ArrayRef<float> values);

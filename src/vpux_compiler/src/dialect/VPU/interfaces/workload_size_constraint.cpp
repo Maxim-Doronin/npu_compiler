@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,10 @@ using namespace vpux;
 
 bool VPU::WorkloadSizeConstraint::doesDWOperationNeedWorkloadSplit(mlir::Operation* op) const {
     return self->doesDWOperationNeedWorkloadSplit(op);
+}
+
+bool VPU::WorkloadSizeConstraint::checkDWOperationWorkloadLimit(mlir::Operation* op, const OutputTiling& tiles) const {
+    return self->checkDWOperationWorkloadLimit(op, tiles);
 }
 
 SmallVector<int64_t> VPU::WorkloadSizeConstraint::getChannelsSupportedBySmallSpatialComputeDwOp(

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -15,6 +15,7 @@
 
 #include <mlir/Dialect/Affine/IR/AffineOps.h>
 #include <mlir/Dialect/Func/IR/FuncOps.h>
+#include <mlir/Dialect/Quant/IR/QuantTypes.h>
 #include <mlir/Dialect/SCF/IR/SCF.h>
 #include <mlir/Dialect/SCF/Transforms/Patterns.h>
 #include <mlir/Dialect/Tensor/IR/Tensor.h>
@@ -149,7 +150,12 @@ void FinalizeComputeFunctionBoundariesPass::safeRunOnModule() {
         auto permutation = DimsOrder::fromAffineMap(order);
         SmallVector<int64_t> newShape = permutation.toMemoryOrder(ndType.getShape()).raw();
 
-        return mlir::RankedTensorType::get(newShape, type.getElementType());
+        auto elementType = type.getElementType();
+        if (auto quantizedType = mlir::dyn_cast<mlir::quant::QuantizedType>(elementType)) {
+            elementType = quantizedType.getStorageType();
+        }
+
+        return mlir::RankedTensorType::get(newShape, elementType);
     });
     typeConverter.addConversion([](mlir::IndexType type) {
         return type;

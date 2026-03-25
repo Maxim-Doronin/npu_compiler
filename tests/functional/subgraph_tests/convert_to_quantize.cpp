@@ -159,6 +159,13 @@ TEST_P(ConvertToQuantizeTest_NPU5010, HW) {
     run(Platform::NPU5010);
 }
 
+class ConvertToQuantizeTest_NPU5020 : public ConvertToQuantizeTestCommon {};
+
+TEST_P(ConvertToQuantizeTest_NPU5020, HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
+}
+
 namespace {
 
 const std::vector<ov::Shape> inputShapes = {
@@ -200,6 +207,12 @@ INSTANTIATE_TEST_SUITE_P(smoke_ConvertToQuantize, ConvertToQuantizeTest_NPU5010,
                                             ::testing::ValuesIn(patternTypes),
                                             ::testing::ValuesIn(quantizationConfigs)),
                          ConvertToQuantizeTest_NPU5010::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(smoke_ConvertToQuantize, ConvertToQuantizeTest_NPU5020,
+                         ::testing::Combine(::testing::ValuesIn(inputShapes), ::testing::ValuesIn(inputPrecisions),
+                                            ::testing::ValuesIn(patternTypes),
+                                            ::testing::ValuesIn(quantizationConfigs)),
+                         ConvertToQuantizeTest_NPU5020::getTestCaseName);
 
 }  // namespace
 

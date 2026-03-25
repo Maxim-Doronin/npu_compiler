@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,7 @@
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @ExpandInterpolateNearestChannels
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x20x30x30xf16>
 func.func @ExpandInterpolateNearestChannels(%arg0: tensor<1x20x30x30xf16>) -> tensor<1x20x60x60xf16> {
     %0 = IE.Interpolate(%arg0)
          {attr = #IE.Interpolate<antialias = false, coord_mode = <ASYMMETRIC>, cube_coeff = -7.500000e-01 : f64, mode = <NEAREST>, nearest_mode = <FLOOR>,
@@ -19,7 +20,7 @@ func.func @ExpandInterpolateNearestChannels(%arg0: tensor<1x20x30x30xf16>) -> te
     return %0 : tensor<1x20x60x60xf16>
 }
 
-// CHECK:       [[PAD:%.+]] = IE.Expand(%arg0) {pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0]}
+// CHECK:       [[PAD:%.+]] = IE.Expand([[ARG_0]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0]}
 // CHECK-SAME:      -> tensor<1x32x30x30xf16>
 
 // CHECK:       [[INTERP:%.+]] = IE.Interpolate([[PAD]])
@@ -46,6 +47,7 @@ func.func @ExpandInterpolateNearestChannels(%arg0: tensor<1x20x30x30xf16>) -> te
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @ExpandInterpolateLinearChannels
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x20x30x30xf16>
 func.func @ExpandInterpolateLinearChannels(%arg0: tensor<1x20x30x30xf16>) -> tensor<1x20x60x60xf16> {
     %0 = IE.Interpolate(%arg0)
          {attr = #IE.Interpolate<antialias = false, coord_mode = <ASYMMETRIC>, cube_coeff = -7.500000e-01 : f64, mode = <LINEAR>, nearest_mode = <FLOOR>,
@@ -56,7 +58,7 @@ func.func @ExpandInterpolateLinearChannels(%arg0: tensor<1x20x30x30xf16>) -> ten
     return %0 : tensor<1x20x60x60xf16>
 }
 
-// CHECK:       [[PAD:%.+]] = IE.Expand(%arg0) {pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0]}
+// CHECK:       [[PAD:%.+]] = IE.Expand([[ARG_0]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0]}
 // CHECK-SAME:      -> tensor<1x32x30x30xf16>
 
 // CHECK:       [[INTERP:%.+]] = IE.Interpolate([[PAD]])
@@ -83,6 +85,7 @@ func.func @ExpandInterpolateLinearChannels(%arg0: tensor<1x20x30x30xf16>) -> ten
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @ExpandInterpolateChannelsWithShapeCalcModeSizesAttrInput
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x20x30x30xf16>
 func.func @ExpandInterpolateChannelsWithShapeCalcModeSizesAttrInput(%arg0: tensor<1x20x30x30xf16>) -> tensor<1x20x60x60xf16> {
     %0 = IE.Interpolate(%arg0)
          {attr = #IE.Interpolate<antialias = false, coord_mode = <ASYMMETRIC>, cube_coeff = -7.500000e-01 : f64, mode = <NEAREST>, nearest_mode = <FLOOR>,
@@ -93,7 +96,7 @@ func.func @ExpandInterpolateChannelsWithShapeCalcModeSizesAttrInput(%arg0: tenso
     return %0 : tensor<1x20x60x60xf16>
 }
 
-// CHECK:       [[PAD:%.+]] = IE.Expand(%arg0) {pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0]}
+// CHECK:       [[PAD:%.+]] = IE.Expand([[ARG_0]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0]}
 // CHECK-SAME:      -> tensor<1x32x30x30xf16>
 
 // CHECK:       [[INTERP:%.+]] = IE.Interpolate([[PAD]])
@@ -120,6 +123,7 @@ func.func @ExpandInterpolateChannelsWithShapeCalcModeSizesAttrInput(%arg0: tenso
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @ExpandInterpolateChannelsWithShapeCalcModeSizesTensorInput
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x20x30x30xf16>
 func.func @ExpandInterpolateChannelsWithShapeCalcModeSizesTensorInput(%arg0: tensor<1x20x30x30xf16>) -> tensor<1x20x60x60xf16> {
     %0 = const.Declare tensor<4xsi64> = dense<[1, 20, 60, 60]> : tensor<4xsi64>
     %1 = IE.Interpolate(%arg0, %0)
@@ -131,7 +135,7 @@ func.func @ExpandInterpolateChannelsWithShapeCalcModeSizesTensorInput(%arg0: ten
     return %1 : tensor<1x20x60x60xf16>
 }
 
-// CHECK:       [[PAD:%.+]] = IE.Expand(%arg0) {pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0]}
+// CHECK:       [[PAD:%.+]] = IE.Expand([[ARG_0]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0]}
 // CHECK-SAME:      -> tensor<1x32x30x30xf16>
 
 // CHECK:       [[INTERP:%.+]] = IE.Interpolate([[PAD]])
@@ -240,7 +244,7 @@ func.func @ExpandPadOp(%input: tensor<1x40x23x30xf16, {order = #NHWC}>) -> tenso
 
     return %0 : tensor<1x40x26x33xf16, {order = #NHWC}>
 
-    // CHECK:       [[EXPAND:%.+]] = IE.Expand(%arg0) {pads_begin = [0, 0, 0, 0], pads_end = [0, 8, 0, 0]}
+    // CHECK:       [[EXPAND:%.+]] = IE.Expand([[INPUT]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 8, 0, 0]}
     // CHECK-SAME:      : tensor<1x40x23x30xf16, {order = #NHWC}> -> tensor<1x48x23x30xf16, {order = #NHWC}>
     // CHECK:       [[PAD:%.+]] = IE.Pad([[EXPAND]]) {
     // CHECK-SAME:          mode = #IE.pad_mode<REFLECT>, pad_value_attr = 0.000000e+00 : f64, pads_begin_attr = [0, 0, 1, 2], pads_end_attr = [0, 0, 2, 1]

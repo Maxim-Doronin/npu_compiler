@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -45,10 +45,8 @@ void vpux::arch40xx::buildLowerVPUIP2ELFPipeline(mlir::OpPassManager& pm,
     pm.addPass(VPUMI40XX::createAddPlatformInfoPass(log));
 
     // Below VPURT WLM passes are placed in LowerVPUIP2ELF pipeline to leverage BarrierInfo
-    // working on VPURT dialect and order barriers in a way suitable for WLM
-    // Those can be moved to the end of VPURT once WLM rollback does not happen.
-    // Currently only ELF backend is retriggered during rollback and IR after VPURT
-    // needs to be left in a state suitable for nonWLM flow.
+    // working on VPURT dialect and order barriers in a way suitable for WLM. These passes can be moved to the end of
+    // VPURT
     if (backendCompilationOptions.workloadManagementEnable &&
         backendCompilationOptions.workloadManagementMode != WorkloadManagementMode::FWLM_V1_PAGES &&
         backendCompilationOptions.workloadManagementMode != WorkloadManagementMode::PWLM_V0_1_PAGES) {
@@ -93,7 +91,7 @@ void vpux::arch40xx::buildLowerVPUIP2ELFPipeline(mlir::OpPassManager& pm,
     pm.addPass(ELF::createSetCMXSymbolValuePass(
             log, npu40xx::nn_public::VPU_WORKSPACE_ADDR, npu40xx::nn_public::VPU_WORKSPACE_SIZE,
             npu40xx::VPU_METADATA_STORAGE_START, npu40xx::nn_public::VPU_METADATA_SIZE));
-    pm.addPass(ELF::createAddRelocationsForDynamicStridesDMAs(log));
+    pm.addPass(ELF::createAddRelocationsForDynamicStridesDMAsPass(log));
     pm.addPass(ELF::createAddELFRelocationsPass(log));
     pm.addPass(ELF::createRemoveEmptyELFSectionsPass(log));
 }

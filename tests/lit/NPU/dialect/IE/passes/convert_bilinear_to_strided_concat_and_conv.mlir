@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -127,7 +127,7 @@ func.func @ConvertBilinearWithFQToStridedConcatAndConv(%arg0: tensor<1x16x96x176
     // CHECK-SAME:      tensor<1x16x96x176xf16>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32> -> tensor<1x16x96x176xf16>
     // CHECK:       [[FQ7:%.+]] = IE.FakeQuantize({{[^:]+}}, {{[^:]+}}, {{[^:]+}}, {{[^:]+}}, {{[^:]+}}) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} :
     // CHECK-SAME:      tensor<16x1x2x2xf16>, tensor<f16>, tensor<f16>, tensor<f16>, tensor<f16> -> tensor<16x1x2x2xf16>
-    // CHECK:       [[GROUPCONV3:%.+]] = IE.GroupConvolution(%4, [[FQ7]]) {dilations = [1, 1], groups = 16 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} :
+    // CHECK:       [[GROUPCONV3:%.+]] = IE.GroupConvolution([[CONCAT1]], [[FQ7]]) {dilations = [1, 1], groups = 16 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} :
     // CHECK-SAME:      tensor<1x16x97x177xf16>, tensor<16x1x2x2xf16> -> tensor<1x16x96x176xf16>
     // CHECK:       [[FQ8:%.+]] = IE.FakeQuantize([[GROUPCONV3]], {{[^:]+}}, {{[^:]+}}, {{[^:]+}}, {{[^:]+}}) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} :
     // CHECK-SAME:      tensor<1x16x96x176xf16>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32> -> tensor<1x16x96x176xf16>
@@ -190,6 +190,7 @@ func.func @ConvertBilinearToStridedConcatAndConvEnableCMXConcat_V2(%arg0: tensor
 // -----
 
 // CHECK-LABEL: @ConvertBilinearAlignCornersToStridedConcatAndConv_HW
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x20x96x176xf16>)
 func.func @ConvertBilinearAlignCornersToStridedConcatAndConv_HW(%arg0: tensor<1x20x96x176xf16>) -> tensor<1x20x191x351xf16> {
     %0 = IE.Interpolate(%arg0) {attr = #IE.Interpolate<antialias = false, coord_mode = <ALIGN_CORNERS>, cube_coeff = -7.500000e-01 : f64, mode = <LINEAR_ONNX>, nearest_mode = <SIMPLE>,
         pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], shape_calc_mode = <SIZES>>, axes_attr = [2, 3],
@@ -200,11 +201,11 @@ func.func @ConvertBilinearAlignCornersToStridedConcatAndConv_HW(%arg0: tensor<1x
 
     // CHECK-NOT: IE.Interpolate
 
-    // CHECK-DAG: %cst = const.Declare tensor<20x1x2x2xf16> = dense<2.500000e-01> : tensor<20x1x2x2xf16>
-    // CHECK: %0 = IE.Concat(%arg0, %arg0) {per_axis = #IE.Concat<axis = 3 : i64, offset = 1 : i64, stride = 2 : i64>} : tensor<1x20x96x176xf16>, tensor<1x20x96x176xf16> -> tensor<1x20x96x352xf16>
-    // CHECK: %1 = IE.Concat(%0, %0) {per_axis = #IE.Concat<axis = 2 : i64, offset = 1 : i64, stride = 2 : i64>} : tensor<1x20x96x352xf16>, tensor<1x20x96x352xf16> -> tensor<1x20x192x352xf16>
-    // CHECK: %2 = IE.GroupConvolution(%1, %cst) {dilations = [1, 1], groups = 20 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x20x192x352xf16>, tensor<20x1x2x2xf16> -> tensor<1x20x191x351xf16>
-    // CHECK: return %2 : tensor<1x20x191x351xf16>
+    // CHECK-DAG: [[CST:%.+]] = const.Declare tensor<20x1x2x2xf16> = dense<2.500000e-01> : tensor<20x1x2x2xf16>
+    // CHECK: [[CONCAT_W:%.+]] = IE.Concat([[ARG_0]], [[ARG_0]]) {per_axis = #IE.Concat<axis = 3 : i64, offset = 1 : i64, stride = 2 : i64>} : tensor<1x20x96x176xf16>, tensor<1x20x96x176xf16> -> tensor<1x20x96x352xf16>
+    // CHECK: [[CONCAT_H:%.+]] = IE.Concat([[CONCAT_W]], [[CONCAT_W]]) {per_axis = #IE.Concat<axis = 2 : i64, offset = 1 : i64, stride = 2 : i64>} : tensor<1x20x96x352xf16>, tensor<1x20x96x352xf16> -> tensor<1x20x192x352xf16>
+    // CHECK: [[GROUP_CONV:%.+]] = IE.GroupConvolution([[CONCAT_H]], [[CST]]) {dilations = [1, 1], groups = 20 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x20x192x352xf16>, tensor<20x1x2x2xf16> -> tensor<1x20x191x351xf16>
+    // CHECK: return [[GROUP_CONV]] : tensor<1x20x191x351xf16>
 }
 
 // -----
@@ -315,6 +316,7 @@ func.func @ConvertBilinearWithFQToStridedConcatAndConv(%input: tensor<1x20x80x80
 // -----
 
 // CHECK-LABEL: @ConvertInterpolate
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x256x1x1xf16>)
 func.func @ConvertInterpolate(%arg0: tensor<1x256x1x1xf16>) -> tensor<1x256x32x32xf16> {
     %0 = IE.Interpolate(%arg0)
          {attr = #IE.Interpolate<antialias = false, coord_mode = <ASYMMETRIC>, cube_coeff = -7.500000e-01 : f64, mode = <LINEAR_ONNX>, nearest_mode = <SIMPLE>,
@@ -324,8 +326,8 @@ func.func @ConvertInterpolate(%arg0: tensor<1x256x1x1xf16>) -> tensor<1x256x32x3
 
     return %0 : tensor<1x256x32x32xf16>
 
-    // CHECK: %0 = IE.Interpolate(%arg0) {attr = #IE.Interpolate<mode = <NEAREST>, shape_calc_mode = <SIZES>, coord_mode = <ASYMMETRIC>, nearest_mode = <SIMPLE>, antialias = false, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], cube_coeff = -7.500000e-01 : f64>, axes_attr = [2, 3], operandSegmentSizes = array<i32: 1, 0, 0, 0>, scales_attr = [3.200000e+01, 3.200000e+01], sizes_attr = [32, 32]} : tensor<1x256x1x1xf16> -> tensor<1x256x32x32xf16>
-    // CHECK: return %0 : tensor<1x256x32x32xf16>
+    // CHECK: [[INTERP:%.+]] = IE.Interpolate([[ARG_0]]) {attr = #IE.Interpolate<mode = <NEAREST>, shape_calc_mode = <SIZES>, coord_mode = <ASYMMETRIC>, nearest_mode = <SIMPLE>, antialias = false, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], cube_coeff = -7.500000e-01 : f64>, axes_attr = [2, 3], operandSegmentSizes = array<i32: 1, 0, 0, 0>, scales_attr = [3.200000e+01, 3.200000e+01], sizes_attr = [32, 32]} : tensor<1x256x1x1xf16> -> tensor<1x256x32x32xf16>
+    // CHECK: return [[INTERP]] : tensor<1x256x32x32xf16>
 }
 
 
@@ -362,6 +364,7 @@ func.func @InterpolateWithAxesNotProvidedFromNgraph(%arg0: tensor<1x256x7x7xf16>
 // -----
 
 // CHECK-LABEL: @ConvertBilinearAlignCornersToStridedConcatAndConv_V1
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x32x3x3xf16>)
 func.func @ConvertBilinearAlignCornersToStridedConcatAndConv_V1(%arg0: tensor<1x32x3x3xf16>) -> tensor<1x32x7x7xf16> {
     %0 = IE.Interpolate(%arg0) {attr = #IE.Interpolate<antialias = false, coord_mode = <ALIGN_CORNERS>, cube_coeff = -7.500000e-01 : f64, mode = <LINEAR_ONNX>, nearest_mode = <SIMPLE>,
         pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], shape_calc_mode = <SIZES>>, axes_attr = [2, 3],
@@ -372,7 +375,7 @@ func.func @ConvertBilinearAlignCornersToStridedConcatAndConv_V1(%arg0: tensor<1x
 
     // CHECK-NOT: IE.Interpolate
     // CHECK-DAG: [[CST:%.+]] = const.Declare tensor<32x1x3x3xf16> = dense<1.110840e-01> : tensor<32x1x3x3xf16>
-    // CHECK: [[VAL0:%.+]] = IE.Concat(%arg0, %arg0, %arg0) {per_axis = #IE.Concat<axis = 3 : i64, offset = 1 : i64, stride = 3 : i64>} : tensor<1x32x3x3xf16>, tensor<1x32x3x3xf16>, tensor<1x32x3x3xf16> -> tensor<1x32x3x9xf16>
+    // CHECK: [[VAL0:%.+]] = IE.Concat([[ARG_0]], [[ARG_0]], [[ARG_0]]) {per_axis = #IE.Concat<axis = 3 : i64, offset = 1 : i64, stride = 3 : i64>} : tensor<1x32x3x3xf16>, tensor<1x32x3x3xf16>, tensor<1x32x3x3xf16> -> tensor<1x32x3x9xf16>
     // CHECK: [[VAL1:%.+]] = IE.Concat([[VAL0]], [[VAL0]], [[VAL0]]) {per_axis = #IE.Concat<axis = 2 : i64, offset = 1 : i64, stride = 3 : i64>} : tensor<1x32x3x9xf16>, tensor<1x32x3x9xf16>, tensor<1x32x3x9xf16> -> tensor<1x32x9x9xf16>
     // CHECK: [[VAL2:%.+]] = IE.GroupConvolution([[VAL1]], [[CST]]) {dilations = [1, 1], groups = 32 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x32x9x9xf16>, tensor<32x1x3x3xf16> -> tensor<1x32x7x7xf16>
     // CHECK: return [[VAL2]] : tensor<1x32x7x7xf16>
@@ -537,6 +540,7 @@ func.func @ConvertInterpolateWithChannelNeedAlign3XTimes(%arg0: tensor<1x1x80x80
 }
 
 // CHECK-LABEL: @NotConvertIfScalerIsNotInt
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x1x80x80xf16>)
 func.func @NotConvertIfScalerIsNotInt(%arg0: tensor<1x1x80x80xf16>) -> tensor<1x1x200x200xf16> {
     %0 = IE.Interpolate(%arg0)
          {attr = #IE.Interpolate<mode = <LINEAR_ONNX>, shape_calc_mode = <SIZES>, coord_mode = <PYTORCH_HALF_PIXEL>, nearest_mode = <FLOOR>,
@@ -546,12 +550,13 @@ func.func @NotConvertIfScalerIsNotInt(%arg0: tensor<1x1x80x80xf16>) -> tensor<1x
 
     return %0 : tensor<1x1x200x200xf16>
 
-    // CHECK:           [[INTERPOLATE:%.+]] = IE.Interpolate(%arg0) {attr = #IE.Interpolate<mode = <LINEAR_ONNX>, shape_calc_mode = <SIZES>, coord_mode = <PYTORCH_HALF_PIXEL>, nearest_mode = <FLOOR>, antialias = false, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], cube_coeff = -7.500000e-01 : f64>, axes_attr = [0, 1, 2, 3], operandSegmentSizes = array<i32: 1, 0, 0, 0>, scales_attr = [1.000000e+00, 1.000000e+00, 1.000000e+00, 1.000000e+00], sizes_attr = [1, 1, 200, 200]} : tensor<1x1x80x80xf16> -> tensor<1x1x200x200xf16>
+    // CHECK:           [[INTERPOLATE:%.+]] = IE.Interpolate([[ARG_0]]) {attr = #IE.Interpolate<mode = <LINEAR_ONNX>, shape_calc_mode = <SIZES>, coord_mode = <PYTORCH_HALF_PIXEL>, nearest_mode = <FLOOR>, antialias = false, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], cube_coeff = -7.500000e-01 : f64>, axes_attr = [0, 1, 2, 3], operandSegmentSizes = array<i32: 1, 0, 0, 0>, scales_attr = [1.000000e+00, 1.000000e+00, 1.000000e+00, 1.000000e+00], sizes_attr = [1, 1, 200, 200]} : tensor<1x1x80x80xf16> -> tensor<1x1x200x200xf16>
 
     // CHECK:           return [[INTERPOLATE]] : tensor<1x1x200x200xf16>
 }
 
 // CHECK-LABEL: @NotConvertIfScalerHNotEqualScalerW
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x1x80x80xf16>)
 func.func @NotConvertIfScalerHNotEqualScalerW(%arg0: tensor<1x1x80x80xf16>) -> tensor<1x1x160x240xf16> {
     %0 = IE.Interpolate(%arg0)
          {attr = #IE.Interpolate<mode = <LINEAR_ONNX>, shape_calc_mode = <SIZES>, coord_mode = <PYTORCH_HALF_PIXEL>, nearest_mode = <FLOOR>,
@@ -561,7 +566,7 @@ func.func @NotConvertIfScalerHNotEqualScalerW(%arg0: tensor<1x1x80x80xf16>) -> t
 
     return %0 : tensor<1x1x160x240xf16>
 
-    // CHECK:           [[INTERPOLATE:%.+]] = IE.Interpolate(%arg0) {attr = #IE.Interpolate<mode = <LINEAR_ONNX>, shape_calc_mode = <SIZES>, coord_mode = <PYTORCH_HALF_PIXEL>, nearest_mode = <FLOOR>, antialias = false, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], cube_coeff = -7.500000e-01 : f64>, axes_attr = [0, 1, 2, 3], operandSegmentSizes = array<i32: 1, 0, 0, 0>, scales_attr = [1.000000e+00, 1.000000e+00, 1.000000e+00, 1.000000e+00], sizes_attr = [1, 1, 160, 240]} : tensor<1x1x80x80xf16> -> tensor<1x1x160x240xf16>
+    // CHECK:           [[INTERPOLATE:%.+]] = IE.Interpolate([[ARG_0]]) {attr = #IE.Interpolate<mode = <LINEAR_ONNX>, shape_calc_mode = <SIZES>, coord_mode = <PYTORCH_HALF_PIXEL>, nearest_mode = <FLOOR>, antialias = false, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], cube_coeff = -7.500000e-01 : f64>, axes_attr = [0, 1, 2, 3], operandSegmentSizes = array<i32: 1, 0, 0, 0>, scales_attr = [1.000000e+00, 1.000000e+00, 1.000000e+00, 1.000000e+00], sizes_attr = [1, 1, 160, 240]} : tensor<1x1x80x80xf16> -> tensor<1x1x160x240xf16>
 
     // CHECK:           return [[INTERPOLATE]] : tensor<1x1x160x240xf16>
 }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -50,7 +50,7 @@ func.func @ConvertSprLUTToConstWithDistributedOp(%data: !InputDistributedType,
                                                  %weights: !WeightsDistributedType)
                                                  -> !OutputDistributedType {
     %conv_cmx_outbuf = VPURT.AllocDistributed -> !OutputDistributedType
-    %output = VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], minimumHardwareExecutionCost = 366 : i64, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<CONV>}
+    %output = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 366 : i64} <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<CONV>}>
         input(%data : !InputDistributedType)
         weights(%weights : !WeightsDistributedType)
         parent_input(%data : !InputDistributedType)
@@ -91,14 +91,13 @@ func.func @ConvertSprLUTToConstMemRef(%data: memref<1x16x16x16xf16, #NHWC, @CMX_
                                       -> memref<1x16x16x16xf16, #NHWC, @CMX_NN> {
     %conv_cmx_outbuf = memref.alloc() : memref<1x16x16x16xf16, #NHWC, @CMX_NN>
 
-    %nce_output = VPUIP.NCEClusterTask {
+    %nce_output = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 366 : i64} <{
                             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                             kernel_size = [1, 1],
                             kernel_strides = [1, 1],
-                            minimumHardwareExecutionCost = 366 : i64,
                             mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>,
                             task_type = #VPUIP.nce_task_type<CONV>
-                        }
+                        }>
                         input(%data: memref<1x16x16x16xf16, #NHWC, @CMX_NN>)
                         weights(%weights: memref<16x16x1x1xf16, #NHWC, @CMX_NN>)
                         parent_input(%data: memref<1x16x16x16xf16, #NHWC, @CMX_NN>)
@@ -173,14 +172,13 @@ func.func @ConvertSprLUTToConstDistrBuf(%data: !InputDistributedType,
                                         -> !OutputDistributedType {
     %conv_cmx_outbuf = VPURT.AllocDistributed -> !OutputDistributedType
 
-    %nce_output = VPUIP.NCEClusterTask {
+    %nce_output = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 366 : i64} <{
                             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                             kernel_size = [1, 1],
                             kernel_strides = [1, 1],
-                            minimumHardwareExecutionCost = 366 : i64,
                             mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>,
                             task_type = #VPUIP.nce_task_type<CONV>
-                        }
+                        }>
                         input(%data: !InputDistributedType)
                         weights(%weights: !WeightsDistributedType)
                         parent_input(%data: !InputDistributedType)

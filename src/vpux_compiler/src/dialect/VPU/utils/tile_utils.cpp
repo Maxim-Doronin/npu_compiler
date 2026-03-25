@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -11,6 +11,7 @@
 #include "vpux/compiler/dialect/VPU/IR/ops/dpu.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/recurrent.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/specialized.hpp"
+#include "vpux/compiler/dialect/VPU/transforms/factories/workload_size_constraint.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/multi_cluster_strategy_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
@@ -1602,6 +1603,12 @@ bool hasRestrictedTilingDim(VPU::DistributedCastOpInterface distributedCastOp) {
         });
     }
     return false;
+}
+
+bool isTilingWLRestrictedDepthwise(mlir::Operation* origOp, const OutputTiling& tiles) {
+    const auto arch = config::getArch(origOp);
+    auto workloadSizeConstraint = VPU::getWorkloadSizeConstraint(arch);
+    return workloadSizeConstraint.checkDWOperationWorkloadLimit(origOp, tiles);
 }
 
 bool isSupportedIsolatedTilingEltwise(mlir::Operation* origOp, const OutputTiling& tiles, Logger log) {

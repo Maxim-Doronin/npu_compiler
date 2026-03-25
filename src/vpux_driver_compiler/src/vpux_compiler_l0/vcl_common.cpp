@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -19,6 +19,7 @@
 #include "vcl_deserializer.hpp"
 #include "vpux/utils/IE/private_properties.hpp"
 
+#include <intel_npu/ops/flash_attention_tile.hpp>
 #include <openvino/core/rt_info/weightless_caching_attributes.hpp>
 #include <openvino/op/constant.hpp>
 #include <openvino/op/group_query_attention.hpp>
@@ -409,6 +410,7 @@ vcl_result_t BuildInfo::prepareConfig(const std::string& descOptions) {
             ov::intel_npu::Platform::NPU4000 != standardizedPlatform &&
             ov::intel_npu::Platform::NPU5000 != standardizedPlatform &&
             ov::intel_npu::Platform::NPU5010 != standardizedPlatform &&
+            ov::intel_npu::Platform::NPU5020 != standardizedPlatform &&
             "AUTO_DETECT" != config[ov::intel_npu::platform.name()]) {
             logger->outputError("Unknown value for platform: " + config[ov::intel_npu::platform.name()]);
             return VCL_RESULT_ERROR_INVALID_ARGUMENT;
@@ -433,6 +435,10 @@ vcl_result_t BuildInfo::prepareConfig(const std::string& descOptions) {
         case 0xB03E:  /// PantherLake Mobile (PTL-P)
             config[ov::intel_npu::platform.name()] = "5010";
             config[ov::device::id.name()] = "5010";
+            break;
+        case 0xFD3E:  /// Wildcatlake (WCL)
+            config[ov::intel_npu::platform.name()] = "5020";
+            config[ov::device::id.name()] = "5020";
             break;
         default:
             logger->outputError(formatv("Unrecognized device ID! 0x{0:X}", deviceDesc.deviceID));
@@ -598,7 +604,9 @@ vcl_result_t BuildInfo::prepareModel(const uint8_t* modelIR, uint64_t modelIRSiz
         const std::vector<ov::Extension::Ptr> extensionsVector{
                 std::make_shared<ov::OpExtension<ov::op::internal::RMS>>(),
                 std::make_shared<ov::OpExtension<ov::op::internal::RoPE>>(),
-                std::make_shared<ov::OpExtension<ov::op::internal::GroupQueryAttention>>()};
+                std::make_shared<ov::OpExtension<ov::op::internal::GroupQueryAttention>>(),
+                std::make_shared<ov::OpExtension<ov::intel_npu::op::FlashAttentionTile>>()};
+
         std::ostringstream error_message;
 
         if (!parsedConfig.has<intel_npu::MODEL_SERIALIZER_VERSION>()) {
@@ -634,10 +642,7 @@ vcl_result_t BuildInfo::prepareModel(const uint8_t* modelIR, uint64_t modelIRSiz
             throw std::invalid_argument(error_message.str());
         }
 
-#ifdef VPUX_DEVELOPER_BUILD
-        // E#103359: WS is only available in developer builds
         restoreWeightsOffsets(model, logger);
-#endif  // VPUX_DEVELOPER_BUILD
 
         if (enableProfiling) {
             stopWatch.stop();

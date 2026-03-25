@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -36,12 +36,6 @@ extern std::unique_ptr<IDialectPipelineStrategy> createDialectPipelineStrategy50
 template <class OptionsType>
 extern std::unique_ptr<IDialectPipelineStrategy> createDialectPipelineStrategy50XXReferenceSW(
         const VPU::InitCompilerOptions* initCompilerOptions, const OptionsType* options);
-
-/// @brief This method creates a pipeline strategy for Monolithic WS compilation.
-template <class OptionsType>
-std::unique_ptr<IDialectPipelineStrategy> createDialectPipelineStrategy50XXWS(
-        config::CompilationMode compilationMode, const VPU::InitCompilerOptions* initCompilerOptions,
-        const OptionsType* options);
 
 /// @brief This method creates a pipeline strategy for HostCompile compilation.
 template <class OptionsType>

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -43,9 +43,8 @@ func.func @InsertSpillingCopiesOnSecondInputWithCopyParent(
     %eltwiseIn2CMXBuff = VPURT.AllocDistributed -> !DistributedType1
     %eltwiseIn2CMX = VPUIP.Copy inputs(%in2 : !qTypeDDR) outputs(%eltwiseIn2CMXBuff : !DistributedType1) -> !DistributedType1
 
-    %eltwise = VPUIP.NCEClusterTask {
-      is_inplace = true,
-      minimumHardwareExecutionCost = 21125 : i64, task_type = #VPUIP.nce_task_type<ELTWISE>}
+    %eltwise = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 21125 : i64} <{
+      is_inplace = true, task_type = #VPUIP.nce_task_type<ELTWISE>}>
         input(%eltwiseIn1CMX : !DistributedType1)
         weights(%eltwiseIn2CMX : !DistributedType1)
         parent_input(%eltwiseIn1CMX : !DistributedType1)
@@ -71,10 +70,10 @@ func.func @InsertSpillingCopiesOnSecondInputWithCopyParent(
     %conv0InCMX = VPUIP.Copy inputs(%convInDDR : !qTypeConvDDR) outputs(%conv0InCMXBuff : !DistributedType2) -> !DistributedType2
 
     %convOutBuff0 = VPURT.AllocDistributed -> !DistributedType2
-    %conv0 = VPUIP.NCEClusterTask {
+    %conv0 = VPUIP.NCEClusterTask <{
           kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
           kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>
-      }
+      }>
       input(%conv0InCMX : !DistributedType2)
       weights(%weights0 : memref<32x32x1x1xf16, #NHWC, @CMX_NN>)
       parent_input(%conv0InCMX : !DistributedType2)
@@ -103,10 +102,10 @@ func.func @InsertSpillingCopiesOnSecondInputWithCopyParent(
 
 
     %convOutBuff1 = VPURT.AllocDistributed -> !DistributedType1
-    %conv1 = VPUIP.NCEClusterTask {
+    %conv1 = VPUIP.NCEClusterTask <{
           kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
           kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>
-      }
+      }>
       input(%eltwiseIn2CMX : !DistributedType1)
       weights(%weights0 : memref<32x32x1x1xf16, #NHWC, @CMX_NN>)
       parent_input(%eltwiseIn2CMX : !DistributedType1)
@@ -215,9 +214,8 @@ func.func @InsertSpillingCopiesOnFirstInputWithViewParent(
 
     %eltwiseInput1Subview = VPUIP.SubView %eltwiseIn1CMX [0, 0, 0, 0] [1, 32, 52, 512] : !DistributedType1 to !DistributedTypeSubview
 
-    %eltwise = VPUIP.NCEClusterTask {
-      is_inplace = true,
-      minimumHardwareExecutionCost = 21125 : i64, task_type = #VPUIP.nce_task_type<ELTWISE>}
+    %eltwise = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 21125 : i64} <{
+      is_inplace = true, task_type = #VPUIP.nce_task_type<ELTWISE>}>
         input(%eltwiseInput1Subview : !DistributedTypeSubview)
         weights(%eltwiseIn2CMX : !DistributedType2)
         parent_input(%eltwiseInput1Subview : !DistributedTypeSubview)
@@ -239,10 +237,10 @@ func.func @InsertSpillingCopiesOnFirstInputWithViewParent(
     }
 
     %convOutBuff0 = VPURT.AllocDistributed -> !DistributedType1
-    %conv0 = VPUIP.NCEClusterTask {
+    %conv0 = VPUIP.NCEClusterTask <{
         kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
         kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>
-    }
+    }>
     input(%eltwiseIn1CMX : !DistributedType1)
     weights(%weights0 : memref<32x32x1x1xf16, #NHWC, @CMX_NN>)
     parent_input(%eltwiseIn1CMX : !DistributedType1)
@@ -331,9 +329,8 @@ func.func @InsertSpillingCopiesOnFirstInputWithViewParentSingleCluster(
 
     %eltwiseInput1Subview = VPUIP.SubView %eltwiseIn1CMX [0, 0, 0, 0] [1, 32, 26, 256] : !qTypeCMX to !qTypeEltCMX
 
-    %eltwise = VPUIP.NCEClusterTask {
-        is_inplace = true,
-        minimumHardwareExecutionCost = 21125 : i64, task_type = #VPUIP.nce_task_type<ELTWISE>}
+    %eltwise = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 21125 : i64} <{
+        is_inplace = true, task_type = #VPUIP.nce_task_type<ELTWISE>}>
         input(%eltwiseInput1Subview : !qTypeEltCMX)
         weights(%eltwiseIn2CMX : !qTypeEltCMX)
         parent_input(%eltwiseInput1Subview : !qTypeEltCMX)
@@ -355,10 +352,10 @@ func.func @InsertSpillingCopiesOnFirstInputWithViewParentSingleCluster(
     }
 
     %convOutBuff0 = memref.alloc() : !qTypeCMX
-    %conv0 = VPUIP.NCEClusterTask {
+    %conv0 = VPUIP.NCEClusterTask <{
           kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
           kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>
-      }
+      }>
       input(%eltwiseIn1CMX : !qTypeCMX)
       weights(%weights0 : memref<32x32x1x1xf16, #NHWC, @CMX_NN>)
       parent_input(%eltwiseIn1CMX : !qTypeCMX)
@@ -449,9 +446,8 @@ func.func @DontInsertSpill(
     %eltwiseIn2CMXBuff = VPURT.AllocDistributed -> !DistributedType1
     %eltwiseIn2CMX = VPUIP.Copy inputs(%subview : !qTypeDDR) outputs(%eltwiseIn2CMXBuff : !DistributedType1) -> !DistributedType1
 
-    %eltwise = VPUIP.NCEClusterTask {
-      is_inplace = true,
-      minimumHardwareExecutionCost = 21125 : i64, task_type = #VPUIP.nce_task_type<ELTWISE>}
+    %eltwise = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 21125 : i64} <{
+      is_inplace = true, task_type = #VPUIP.nce_task_type<ELTWISE>}>
         input(%eltwiseIn1CMX : !DistributedType1)
         weights(%eltwiseIn2CMX : !DistributedType1)
         parent_input(%eltwiseIn1CMX : !DistributedType1)
@@ -473,10 +469,10 @@ func.func @DontInsertSpill(
     }
 
     %convOutBuff0 = VPURT.AllocDistributed -> !DistributedType1
-    %conv0 = VPUIP.NCEClusterTask {
+    %conv0 = VPUIP.NCEClusterTask <{
         kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
         kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>
-    }
+    }>
     input(%eltwiseIn2CMX : !DistributedType1)
     weights(%weights0 : memref<32x32x1x1xf16, #NHWC, @CMX_NN>)
     parent_input(%eltwiseIn2CMX : !DistributedType1)
@@ -580,7 +576,7 @@ func.func @OutputTypeMismatch(%conv0: !DistributedBuffer3, %conv1: !DistributedB
     // ConcatView as Input1
     %4 = VPUIP.ConcatView inputs(%conv0, %conv1 : !DistributedBuffer3, !DistributedBuffer3) outputs(%1 : !DistributedBuffer1) -> !DistributedBuffer1
     // Eltwise ADD0
-    %5 = VPUIP.NCEClusterTask {eltwise_type = #VPU.eltwise_type<ADD>, is_inplace = true, minimumHardwareExecutionCost = 2909 : i64, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}
+    %5 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 2909 : i64} <{eltwise_type = #VPU.eltwise_type<ADD>, is_inplace = true, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}>
         input(%0 : !DistributedBuffer2)
         weights(%4 : !DistributedBuffer1)
         parent_input(%0 : !DistributedBuffer2)
@@ -598,7 +594,7 @@ func.func @OutputTypeMismatch(%conv0: !DistributedBuffer3, %conv1: !DistributedB
     }
 
     // Eltwise ADD1
-    %6 = VPUIP.NCEClusterTask {eltwise_type = #VPU.eltwise_type<ADD>, is_inplace = true, minimumHardwareExecutionCost = 2909 : i64, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}
+    %6 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 2909 : i64} <{eltwise_type = #VPU.eltwise_type<ADD>, is_inplace = true, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}>
         input(%0 : !DistributedBuffer2)
         weights(%4 : !DistributedBuffer1)
         parent_input(%0 : !DistributedBuffer2)
@@ -649,7 +645,7 @@ func.func @OutputTypeMismatch(%conv0: !DistributedBuffer3, %conv1: !DistributedB
 
     // Eltwise Add0
 
-    // CHECK: [[ELTWISE_ADD0:%.+]] = VPUIP.NCEClusterTask {eltwise_type = #VPU.eltwise_type<ADD>, is_inplace = true, minimumHardwareExecutionCost = 2909 : i64, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}
+    // CHECK: [[ELTWISE_ADD0:%.+]] = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 2909 : i64} <{eltwise_type = #VPU.eltwise_type<ADD>, is_inplace = true, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}>
     // CHECK:    input([[ELTWISE_INPUT0_BUFFER]] : !VPUIP.DistributedBuffer<1x160x65x65x!qElemType2
     // CHECK:    weights([[ELTWISE_INPUT1_BUFFER_COPY0]] : !VPUIP.DistributedBuffer<1x160x65x65x!qElemType,
     // CHECK:    parent_input([[ELTWISE_INPUT0_BUFFER]] : !VPUIP.DistributedBuffer<1x160x65x65x!qElemType2
@@ -677,7 +673,7 @@ func.func @OutputTypeMismatch(%conv0: !DistributedBuffer3, %conv1: !DistributedB
 
     // Eltwise Add1
 
-    // CHECK: [[ELTWISE_ADD1:%.+]] = VPUIP.NCEClusterTask {eltwise_type = #VPU.eltwise_type<ADD>, is_inplace = true, minimumHardwareExecutionCost = 2909 : i64, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}
+    // CHECK: [[ELTWISE_ADD1:%.+]] = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 2909 : i64} <{eltwise_type = #VPU.eltwise_type<ADD>, is_inplace = true, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}>
     // CHECK:    input([[ELTWISE_INPUT0_BUFFER]] : !VPUIP.DistributedBuffer<1x160x65x65x!qElemType2
     // CHECK:    weights([[ELTWISE_INPUT1_BUFFER_COPY1]] : !VPUIP.DistributedBuffer<1x160x65x65x!qElemType
     // CHECK:    parent_input([[ELTWISE_INPUT0_BUFFER]] : !VPUIP.DistributedBuffer<1x160x65x65x!qElemType2
@@ -712,7 +708,7 @@ func.func @NotInsertCopyDueToSharedBufferIsOutput(
     %in1_shapecast = VPUIP.ShapeCast {shape = [1, 16, 128, 128]} inputs(%in1_permute : memref<1x1x512x512xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x16x128x128xf16, #NHWC, [@CMX_NN, 0]>
     %in2_shapecast = VPUIP.ShapeCast {shape = [1, 16, 128, 128]} inputs(%in2_permute : memref<1x1x512x512xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x16x128x128xf16, #NHWC, [@CMX_NN, 0]>
 
-    %nce_1 = VPUIP.NCEClusterTask {eltwise_type = #VPU.eltwise_type<ADD>, is_inplace = true, minimumHardwareExecutionCost = 20422 : i64, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>} input(%in1_shapecast : memref<1x16x128x128xf16, #NHWC, [@CMX_NN, 0]>) weights(%in2_shapecast : memref<1x16x128x128xf16, #NHWC, [@CMX_NN, 0]>) parent_input(%in1_shapecast : memref<1x16x128x128xf16, #NHWC, [@CMX_NN, 0]>) parent_output(%in1_shapecast : memref<1x16x128x128xf16, #NHWC, [@CMX_NN, 0]>) outputs(%in1_shapecast : memref<1x16x128x128xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x16x128x128xf16, #NHWC, [@CMX_NN, 0]> variants : {
+    %nce_1 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 20422 : i64} <{eltwise_type = #VPU.eltwise_type<ADD>, is_inplace = true, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}> input(%in1_shapecast : memref<1x16x128x128xf16, #NHWC, [@CMX_NN, 0]>) weights(%in2_shapecast : memref<1x16x128x128xf16, #NHWC, [@CMX_NN, 0]>) parent_input(%in1_shapecast : memref<1x16x128x128xf16, #NHWC, [@CMX_NN, 0]>) parent_output(%in1_shapecast : memref<1x16x128x128xf16, #NHWC, [@CMX_NN, 0]>) outputs(%in1_shapecast : memref<1x16x128x128xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x16x128x128xf16, #NHWC, [@CMX_NN, 0]> variants : {
       DPUTask {inEnd = [127, 127, 15], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, outEnd = [127, 127, 15], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
     } PPE : {
       PPETask {ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = -3.4028234663852886E+38 : f64, clamp_high = 3.4028234663852886E+38 : f64, scale = 1.000000e+00 : f64, prelu_alpha = [1.000000e+00], bias = 0.000000e+00 : f64, adder = 0.000000e+00 : f64>}
@@ -721,7 +717,7 @@ func.func @NotInsertCopyDueToSharedBufferIsOutput(
     %buffer_cst = memref.alloc() : memref<1x16x128x128xf16, #NHWC, [@CMX_NN, 0]>
     %copy_cst = VPUIP.Copy inputs(%cst : memref<1x16x128x128xf16, #NHWC>) outputs(%buffer_cst : memref<1x16x128x128xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x16x128x128xf16, #NHWC, [@CMX_NN, 0]>
 
-    %nce_2 = VPUIP.NCEClusterTask {eltwise_type = #VPU.eltwise_type<ADD>, is_inplace = true, minimumHardwareExecutionCost = 20422 : i64, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>} input(%nce_1 : memref<1x16x128x128xf16, #NHWC, [@CMX_NN, 0]>) weights(%copy_cst : memref<1x16x128x128xf16, #NHWC, [@CMX_NN, 0]>) parent_input(%nce_1 : memref<1x16x128x128xf16, #NHWC, [@CMX_NN, 0]>) parent_output(%in1_shapecast : memref<1x16x128x128xf16, #NHWC, [@CMX_NN, 0]>) outputs(%in1_shapecast : memref<1x16x128x128xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x16x128x128xf16, #NHWC, [@CMX_NN, 0]> variants : {
+    %nce_2 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 20422 : i64} <{eltwise_type = #VPU.eltwise_type<ADD>, is_inplace = true, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}> input(%nce_1 : memref<1x16x128x128xf16, #NHWC, [@CMX_NN, 0]>) weights(%copy_cst : memref<1x16x128x128xf16, #NHWC, [@CMX_NN, 0]>) parent_input(%nce_1 : memref<1x16x128x128xf16, #NHWC, [@CMX_NN, 0]>) parent_output(%in1_shapecast : memref<1x16x128x128xf16, #NHWC, [@CMX_NN, 0]>) outputs(%in1_shapecast : memref<1x16x128x128xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x16x128x128xf16, #NHWC, [@CMX_NN, 0]> variants : {
       DPUTask {inEnd = [127, 127, 15], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, outEnd = [127, 127, 15], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
     } PPE : {
       PPETask {ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = -3.4028234663852886E+38 : f64, clamp_high = 3.4028234663852886E+38 : f64, scale = 1.000000e+00 : f64, prelu_alpha = [1.000000e+00], bias = 0.000000e+00 : f64, adder = 0.000000e+00 : f64>}

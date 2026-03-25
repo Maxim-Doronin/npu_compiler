@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -247,7 +247,7 @@ module @BufferizeHost {
         }
         return %1 : tensor<1x720x1000x16xf16>
     }
-// CHECK: func.func private @main_func0(%arg0: memref<1x90x1000x16xf16>) -> memref<1x90x1000x16xf16>
+// CHECK: func.func private @main_func0([[ARG_0:%[^:]+]]: memref<1x90x1000x16xf16>) -> memref<1x90x1000x16xf16>
 
 // CHECK: func.func @main([[ARG0:%.+]]: memref<1x720x1000x16xf16>) -> memref<1x720x1000x16xf16>
 // CHECK:   [[C90:%.+]] = arith.constant 90 : index

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -71,7 +71,7 @@ public:
               _numberOfDescriptorsPerBarrier(0),
               _workloadManagementBarrierProgrammingMode(workloadManagementBarrierProgrammingMode),
               _workloadManagementMode(workloadManagementMode),
-              _disableAllInterrupts(workloadManagementBarrierProgrammingMode ==
+              _disableAllInterrupts(workloadManagementBarrierProgrammingMode >=
                                     WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED) {
         Base::initLogger(log, Base::getArgumentName());
     }
@@ -159,6 +159,15 @@ VPUMI40XX::NNDMAOp AddBarrierConfigurationOps::createBarrierProgrammingDmaOp(
     auto srcWidthAttr = vpux::getIntAttr(ctx, totalPidsToProgram * 16);
     auto dstWidthAttr = vpux::getIntAttr(ctx, 16);
     auto dstStrideAttr = vpux::getIntAttr(ctx, 32);
+
+    // 4K barriers use a FIFO depth of 1, meaning each physical barrier ID (PID)
+    // requires only a single 32-bit descriptor containing producer/consumer counts and
+    // interrupt flags. The DMA transfer size is set to match the number of PIDs being
+    // programmed, with each descriptor written directly to its corresponding barrier register.
+    if (_barrierFIFODepth == 1) {
+        lengthAttr = vpux::getIntAttr(ctx, totalPidsToProgram);
+        srcWidthAttr = vpux::getIntAttr(ctx, totalPidsToProgram);
+    }
 
     // Can be anything, the prev DMA will define the index at reindexing stage
     auto indexAttr = referenceDMAOp != nullptr
@@ -399,7 +408,7 @@ VPUMI40XX::NNDMAOp AddBarrierConfigurationOps::createDMAsToProgramAllBarriers(ml
     }
 
     // No need to go over all barriers in case of PWLM_V2_PAGES & INITIAL_BARRIER_DMAS_SCHEDULED
-    if (_workloadManagementBarrierProgrammingMode !=
+    if (_workloadManagementBarrierProgrammingMode <
         WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED) {
         return bootstrapDMA;
     }
@@ -478,7 +487,8 @@ void AddBarrierConfigurationOps::safeRunOnFunc() {
         VPUMI40XX::reindexList<VPUMI40XX::NNDMAOp>(mpi, bootStrapDMAOp, 0, 0);
     } break;
 
-    case WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED: {
+    case WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED:
+    case WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED_4K: {
         auto firstDMAOp =
                 createDMAsToProgramAllBarriers(builder, bufferInsertionPoint, cstInsertionPoint, dmaInsertionPoint);
         VPUMI40XX::reindexList<VPUMI40XX::NNDMAOp>(mpi, firstDMAOp, 0, 0);

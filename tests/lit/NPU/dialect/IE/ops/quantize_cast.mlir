@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -13,6 +13,7 @@
 !qElemType2 = !quant.uniform<u8:f16, 0.0064682904411764702:128>
 
 // CHECK-LABEL: @FuseQuantizeCasts
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<1x16x32x64x!qElemType>
 func.func @FuseQuantizeCasts(%arg0: tensor<1x16x32x64x!qElemType>) -> tensor<1x16x32x64x!qElemType2> {
     %FIRST_QUANT_CAST = IE.QuantizeCast(%arg0) {
         dstElemType = !qElemType1
@@ -24,7 +25,7 @@ func.func @FuseQuantizeCasts(%arg0: tensor<1x16x32x64x!qElemType>) -> tensor<1x1
 
     return %SECOND_QUANT_CAST : tensor<1x16x32x64x!qElemType2>
 
-    // CHECK:       [[QUANT_CAST:%.+]] = IE.QuantizeCast(%arg0) {
+    // CHECK:       [[QUANT_CAST:%.+]] = IE.QuantizeCast([[ARG_0]]) {
     // CHECK-SAME:      dstElemType = !qElemType1
     // CHECK-SAME:  } : tensor<1x16x32x64x!qElemType> -> tensor<1x16x32x64x!qElemType1>
 
@@ -41,6 +42,7 @@ func.func @FuseQuantizeCasts(%arg0: tensor<1x16x32x64x!qElemType>) -> tensor<1x1
 !qElemType2 = !quant.uniform<u8:f16, 0.0064682904411764702:128>
 
 // CHECK-LABEL: @FuseQuantCastsMultipleConsumers
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<1x16x32x64x!qElemType>
 func.func @FuseQuantCastsMultipleConsumers(%arg0: tensor<1x16x32x64x!qElemType>) -> tensor<1x16x32x64x!qElemType2> {
     %FIRST_QUANT_CAST = IE.QuantizeCast(%arg0) {
         dstElemType = !qElemType1
@@ -64,7 +66,7 @@ func.func @FuseQuantCastsMultipleConsumers(%arg0: tensor<1x16x32x64x!qElemType>)
 
     return %MUL : tensor<1x16x32x64x!qElemType2>
 
-    // CHECK:       [[FIRST_QUANT_CAST:%.+]] = IE.QuantizeCast(%arg0) {
+    // CHECK:       [[FIRST_QUANT_CAST:%.+]] = IE.QuantizeCast([[ARG_0]]) {
     // CHECK-SAME:      dstElemType = !qElemType2
     // CHECK-SAME:  } : tensor<1x16x32x64x!qElemType> -> tensor<1x16x32x64x!qElemType2>
 
@@ -78,7 +80,7 @@ func.func @FuseQuantCastsMultipleConsumers(%arg0: tensor<1x16x32x64x!qElemType>)
     // CHECK-SAME:  } : tensor<1x16x32x64x!qElemType2> -> tensor<1x16x32x64x!qElemType1>
 
     // Note that the second IE.QuantizeCast accepts arg0, not FIRST_QUANT_CAST
-    // CHECK:       [[SECOND_QUANT_CAST:%.+]] = IE.QuantizeCast(%arg0) {
+    // CHECK:       [[SECOND_QUANT_CAST:%.+]] = IE.QuantizeCast([[ARG_0]]) {
     // CHECK-SAME:      dstElemType = !qElemType1
     // CHECK-SAME:  } : tensor<1x16x32x64x!qElemType> -> tensor<1x16x32x64x!qElemType1>
 

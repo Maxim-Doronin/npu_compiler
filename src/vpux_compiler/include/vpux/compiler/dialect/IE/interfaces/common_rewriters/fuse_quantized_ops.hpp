@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -93,7 +93,7 @@ mlir::LogicalResult FuseWithConvBase<ConcreteOp>::matchAndRewrite(IE::QuantizeOp
     }
 
     auto layerWithPostOp = mlir::dyn_cast<IE::LayerWithPostOpInterface>(convBaseOp.getOperation());
-    if (layerWithPostOp != nullptr && layerWithPostOp.getPostOp() != nullptr) {
+    if (layerWithPostOp != nullptr && layerWithPostOp.hasPPE()) {
         if (!_checkPostOp(layerWithPostOp, isPerAxisQuant(quantizeOp.getOutput()), false)) {
             return mlir::failure();
         }
@@ -468,7 +468,7 @@ mlir::LogicalResult FuseWithEltwiseConverter<ConcreteOp>::matchAndRewrite(IE::Qu
     }
 
     auto layerWithPostOp = mlir::dyn_cast<IE::LayerWithPostOpInterface>(eltwiseOp.getOperation());
-    if (layerWithPostOp != nullptr && layerWithPostOp.getPostOp() != nullptr) {
+    if (layerWithPostOp != nullptr && layerWithPostOp.hasPPE()) {
         if (!_checkPostOp(layerWithPostOp, isOutputPerAxisQuant, /*isFloatInput=*/true)) {
             return mlir::failure();
         }

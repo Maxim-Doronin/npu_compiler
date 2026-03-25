@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,9 +12,11 @@
 #include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/checked_cast.hpp"
 #include "vpux/utils/core/error.hpp"
+#include "vpux/utils/core/range.hpp"
 
 #include <llvm/ADT/STLExtras.h>
 #include <mlir/Dialect/Affine/IR/AffineOps.h>
@@ -22,6 +24,7 @@
 #include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/Dialect/SCF/IR/SCF.h>
 #include <mlir/Dialect/Tensor/IR/Tensor.h>
+#include <mlir/IR/BuiltinTypes.h>
 #include <mlir/IR/IRMapping.h>
 #include <mlir/IR/Operation.h>
 #include <cstdint>
@@ -37,102 +40,7 @@ using namespace VPU;
 
 namespace {
 
-/**
- * @brief Inserts a tensor.cast operation to match the specified bounds.
- *
- * This function creates a tensor.cast operation that emulates extracting a slice
- * from the input tensor with dimensions matching the target bounds.
- * It is not possible to use the VPU.Slice operation when operands are dynamic and we want to slice their bounds.
- * The inserted tensor.cast operation serves as a temporary placeholder for the slice operation to ensure tensor
- * compatibility in operations like NCEEltwiseOp where both operands must have compatible bounds.
- *
- * @param builder MLIR OpBuilder for creating operations
- * @param input Input tensor value to emulate slice. Must be dynamic tensor with bounded type.
- * @param targetBounds Target bounds for the output tensor
- * @return mlir::Operation* The tensor.cast operation that performs the bounds adjustment
- */
-mlir::Operation* insertTensorCastToMatchBounds(mlir::OpBuilder& builder, mlir::Value input, BoundsRef targetBounds) {
-    auto inputType = mlir::cast<mlir::RankedTensorType>(input.getType());
-    auto boundedInputType = mlir::cast<Core::BoundedTensorType>(inputType);
-
-    auto inputRank = checked_cast<size_t>(inputType.getRank());
-    VPUX_THROW_UNLESS(inputRank == targetBounds.size(), "Input shape and target bounds must have same rank: {0} vs {1}",
-                      inputRank, targetBounds.size());
-
-    auto castOp = builder.create<mlir::tensor::CastOp>(appendLoc(input.getLoc(), "bounds_compatibility_cast"),
-                                                       boundedInputType.changeBounds(targetBounds), input);
-    return castOp.getOperation();
-}
-
-/**
- * @brief Aligns the bounds of the operands of an NCEEltwiseOp.
- *
- * This function ensures that the input tensors of the element-wise operation
- * have compatible bounds by inserting tensor.cast operations as needed.
- *
- * @param builder MLIR OpBuilder for creating operations
- * @param eltwiseOp The NCEEltwiseOp to align operands for
- */
-void alignEltwiseOperands(mlir::OpBuilder& builder, VPU::NCEEltwiseOp eltwiseOp) {
-    auto input1Type = eltwiseOp.getInput1().getType();
-    auto input2Type = eltwiseOp.getInput2().getType();
-
-    if (!mlir::isa<Core::BoundedTensorType>(input1Type) || !mlir::isa<Core::BoundedTensorType>(input2Type)) {
-        return;
-    }
-
-    auto bounds1 = getBounds(input1Type);
-    auto bounds2 = getBounds(input2Type);
-
-    if (bounds1 != bounds2) {
-        auto backupInsertPoint = builder.saveInsertionPoint();
-
-        auto isGreaterOrEqual = [](auto array1, auto array2) {
-            return llvm::all_of(llvm::zip(array1, array2), [](auto pair) {
-                return std::get<0>(pair) >= std::get<1>(pair);
-            });
-        };
-
-        auto setInsertionPoint = [&](mlir::Value input) {
-            auto inputDefOp = input.getDefiningOp();
-            if (inputDefOp != nullptr) {
-                builder.setInsertionPointAfter(inputDefOp);
-            } else {  // input is a block argument, set insertion point at the beginning of the block
-                auto blockArg = mlir::dyn_cast<mlir::BlockArgument>(input);
-                VPUX_THROW_WHEN(blockArg == nullptr,
-                                "alignEltwiseOperands: Expected EltwiseOp operand to be a {0} block argument or "
-                                "defining operation",
-                                input);
-                builder.setInsertionPointToStart(blockArg.getOwner());
-            }
-        };
-
-        auto operandIndexToCast = 0;
-        auto getInputAndTargetBoundsToCast = [&]() -> std::pair<mlir::Value, BoundsRef> {
-            if (isGreaterOrEqual(bounds1, bounds2)) {
-                // Set insertion point after input1's defining operation or at function start
-                setInsertionPoint(eltwiseOp.getInput1());
-                operandIndexToCast = 0;
-                return std::make_pair(eltwiseOp->getOperand(operandIndexToCast), bounds2);
-            } else if (isGreaterOrEqual(bounds2, bounds1)) {
-                // Set insertion point after input2's defining operation or at function start
-                setInsertionPoint(eltwiseOp.getInput2());
-                operandIndexToCast = 1;
-                return std::make_pair(eltwiseOp->getOperand(operandIndexToCast), bounds1);
-            } else {
-                VPUX_THROW("Incompatible bounds for eltwise operation inputs");
-            }
-        };
-
-        auto [valueToCast, targetBounds] = getInputAndTargetBoundsToCast();
-        auto castOp = insertTensorCastToMatchBounds(builder, valueToCast, targetBounds);
-
-        eltwiseOp->setOperand(operandIndexToCast, castOp->getResult(0));
-
-        // restore the eltwiseOp inputs
-        builder.restoreInsertionPoint(backupInsertPoint);
-    }
-}
+constexpr size_t MAX_TILES_PER_DYNAMIC_DIMENSION = 3;  // START, MIDDLE, END
 
 using DimToBlockSizesMap = llvm::DenseMap<int64_t, llvm::DenseMap<int64_t, int64_t>>;
 struct SliceOpData {
@@ -157,6 +65,14 @@ struct SliceOpData {
     }
 };
 
+struct IndexOperandConversionInfo {
+    llvm::DenseMap<int64_t, SmallVector<int64_t>> operandStaticValues;
+
+    bool shouldConvert() const {
+        return !operandStaticValues.empty();
+    }
+};
+
 //
 // AdjustBlockSizeForScfTilingPass
 //
@@ -172,19 +88,29 @@ private:
 
     struct AdjustedIndexInfo {
         mlir::OpFoldResult index;
-        mlir::Operation* indexDefiningOp;
+        mlir::Operation* indexDefiningOp = nullptr;
     };
 
-    mlir::LogicalResult adjustOutputBlockIdxAndSize(mlir::scf::ForOp forOp);
+    mlir::LogicalResult adjustOutputBlockIdxAndSize(mlir::scf::ForOp forOp,
+                                                    llvm::DenseMap<mlir::scf::ForOp, int64_t>& forOpToDim);
     mlir::LogicalResult calculateInputBlockPosAndShapeInformation(
             mlir::scf::ForOp forOp, llvm::DenseMap<mlir::Operation*, SliceOpData>& mapSliceOpToData);
-    void generateBlockAwareFuncOps(mlir::func::CallOp callOp,
-                                   llvm::DenseMap<mlir::Operation*, SliceOpData>& mapSliceOpToData);
+    mlir::LogicalResult generateBlockAwareFuncOps(mlir::func::CallOp callOp,
+                                                  llvm::DenseMap<mlir::Operation*, SliceOpData>& mapSliceOpToData,
+                                                  const llvm::DenseMap<mlir::scf::ForOp, int64_t>& forOpToDimInfo,
+                                                  const IndexOperandConversionInfo& conversionInfo);
     mlir::scf::IfOp getTensorBlockPosition(mlir::scf::ForOp forOp, mlir::OpBuilder builder, mlir::Value offsetVal,
                                            mlir::Operation* insertionPoint, mlir::Value currentBlkSize,
                                            mlir::Value upperBound);
-
     mlir::scf::ForOp getEnclosingForOp(mlir::Value offsetVal);
+    mlir::LogicalResult processIndexTypeArgsInCallOp(mlir::func::CallOp callOp,
+                                                     const IndexOperandConversionInfo& conversionInfo);
+    mlir::LogicalResult processIndexTypeArgsInCallOp(mlir::OpBuilder& builder, mlir::func::FuncOp funcOp,
+                                                     mlir::func::CallOp callOp,
+                                                     const IndexOperandConversionInfo& conversionInfo,
+                                                     const llvm::DenseMap<mlir::scf::ForOp, int64_t>& forOpToDimInfo,
+                                                     const llvm::DenseMap<int64_t, size_t>& dimToEncodingIndex,
+                                                     ArrayRef<int64_t> caseValues);
 
     std::pair<mlir::IntegerAttr, mlir::Value> createConstOpOutsideForOp(int64_t val) {
         if (_constOpCache.contains(val)) {
@@ -219,6 +145,7 @@ private:
     }
 
     mlir::Value encodeIndexBitwise(mlir::OpBuilder builder, mlir::Location loc, ArrayRef<mlir::Value> values);
+    static SmallVector<int64_t> decodeCaseValue(int64_t caseValue, size_t numDims);
 
     void buildMapOfBlockSizesForSliceOps(
             mlir::scf::ForOp forOp,
@@ -375,7 +302,8 @@ bool checkForStaticShape(const SmallVector<mlir::OpFoldResult, 4>& mixedSizes) {
  * but only 50 elements would remain. This method adjusts the index to 150 (extracting a slice
  * from offset 150 with size 100), resulting in a static-shaped tensor <1x1x32x100xfp16>.
  */
-mlir::LogicalResult AdjustBlockSizeForScfTilingPass::adjustOutputBlockIdxAndSize(mlir::scf::ForOp parentForOp) {
+mlir::LogicalResult AdjustBlockSizeForScfTilingPass::adjustOutputBlockIdxAndSize(
+        mlir::scf::ForOp parentForOp, llvm::DenseMap<mlir::scf::ForOp, int64_t>& forOpToDim) {
     OpChainAnalysis opChainAnalysis;
     for (auto insertSliceOp : make_early_inc_range(parentForOp.getOps<mlir::tensor::InsertSliceOp>())) {
         if (checkForStaticShape(insertSliceOp.getMixedSizes())) {
@@ -403,9 +331,21 @@ mlir::LogicalResult AdjustBlockSizeForScfTilingPass::adjustOutputBlockIdxAndSize
             auto blockSize = forOp.getStep();
             newSizes.push_back(blockSize);
 
+            // Insert into forOpToDim and check for conflicts
+            auto insertResult = forOpToDim.insert({forOp, static_cast<int64_t>(idx)});
+            if (!insertResult.second) {
+                // ForOp already exists, check if it's mapped to the same dimension
+                auto existingDim = insertResult.first->second;
+                if (existingDim != static_cast<int64_t>(idx)) {
+                    VPUX_THROW("Multiple dimensions found for the same scf.for loop. Dimension {0} vs {1}", existingDim,
+                               idx);
+                }
+            }
+
             // Add runtime check to ensure block size is not greater than dimension size
             mlir::tensor::DimOp dimOp;
-            if (mlir::failed(getTensorDimOpFromIndex(builder, insertSliceOp.getDest(), idx, dimOp))) {
+            if (mlir::failed(
+                        getTensorDimOpFromIndex(builder, insertSliceOp.getDest(), checked_cast<int64_t>(idx), dimOp))) {
                 return mlir::failure();
             }
             addCheckForBlockSize(builder, dimOp, blockSize, _mainFuncOp,
@@ -514,7 +454,7 @@ void getMapForPositionAndBlockSizes(
     for (auto caseValue : caseValues) {
         bool supportedCase = true;
         for (size_t j = 0; j < numDynDims; ++j) {
-            int shift = NUMBITS * (numDynDims - j - 1);
+            auto shift = checked_cast<int>(NUMBITS * (numDynDims - j - 1));
             int64_t mask = (1LL << NUMBITS) - 1;
             int64_t val = (caseValue >> shift) & mask;
 
@@ -773,9 +713,6 @@ mlir::func::CallOp createNewFuncOp(mlir::ModuleOp moduleOp, mlir::OpBuilder& bui
         vpux::inferReturnTypes(op, vpux::InferShapedTypeMode::SHAPE);
     });
 
-    // TODO: Fix bounds compatibility for eltwise operations
-    // TRACK: E#190938
-
     // Clone the call operation with new function
     auto newCallOp = builder.create<mlir::func::CallOp>(callOp.getLoc(), newFuncName, callOp.getResultTypes(),
                                                         callOp.getOperands());
@@ -788,12 +725,23 @@ mlir::Value AdjustBlockSizeForScfTilingPass::encodeIndexBitwise(mlir::OpBuilder 
     mlir::Value index = getCstIndexOp(0);
     size_t n = values.size();
     for (size_t i = 0; i < n; ++i) {
-        int shift = NUMBITS * (n - i - 1);
+        auto shift = checked_cast<int>(NUMBITS * (n - i - 1));
         auto shiftAmount = getCstIndexOp(shift);
         auto shifted = builder.create<mlir::arith::ShLIOp>(loc, values[i], shiftAmount);
         index = builder.create<mlir::arith::OrIOp>(loc, index, shifted);
     }
     return index;
+}
+
+SmallVector<int64_t> AdjustBlockSizeForScfTilingPass::decodeCaseValue(int64_t caseValue, size_t numDims) {
+    SmallVector<int64_t> positions;
+    positions.reserve(numDims);
+    const int64_t mask = (1LL << NUMBITS) - 1;
+    for (size_t i = 0; i < numDims; ++i) {
+        auto shift = checked_cast<int>(NUMBITS * (numDims - i - 1));
+        positions.push_back((caseValue >> shift) & mask);
+    }
+    return positions;
 }
 
 void propagateTypeInCallOp(mlir::OpBuilder builder, mlir::ModuleOp moduleOp, mlir::func::CallOp newCallOp) {
@@ -810,22 +758,214 @@ void propagateTypeInCallOp(mlir::OpBuilder builder, mlir::ModuleOp moduleOp, mli
     for (size_t funcOpArgIdx = 0; funcOpArgIdx < funcOp.getNumArguments(); ++funcOpArgIdx) {
         auto funcOpArg = funcOp.getArgument(funcOpArgIdx);
         auto argType = funcOpArg.getType();
-        auto argShapedType = mlir::cast<NDTypeInterface>(argType);
-        if (argShapedType.getShape().isDynamic()) {
-            funcOpArg.setType(newInputTypes[funcOpArgIdx]);
+        if (mlir::isa<mlir::IndexType>(argType)) {
+            continue;
+        }
+        if (auto argNdType = mlir::dyn_cast<NDTypeInterface>(argType)) {
+            if (argNdType.getShape().isDynamic()) {
+                funcOpArg.setType(newInputTypes[funcOpArgIdx]);
+            }
         }
     }
 
     funcOp.walk([&](mlir::InferTypeOpInterface op) {
-        if (auto eltwiseOp = mlir::dyn_cast<VPU::NCEEltwiseOp>(op.getOperation())) {
-            alignEltwiseOperands(builder, eltwiseOp);
+        if (llvm::any_of(op->getResultTypes(), [](mlir::Type type) {
+                return !mlir::isa<vpux::NDTypeInterface>(type);
+            })) {
+            return;
         }
         vpux::inferReturnTypes(op, vpux::InferShapedTypeMode::SHAPE);
     });
 }
 
-void AdjustBlockSizeForScfTilingPass::generateBlockAwareFuncOps(
-        mlir::func::CallOp callOp, llvm::DenseMap<mlir::Operation*, SliceOpData>& mapSliceOpToData) {
+llvm::DenseMap<int64_t, size_t> buildDimToEncodingIndexMap(
+        const llvm::DenseMap<mlir::scf::ForOp, int64_t>& forOpToDim) {
+    auto sortedDims = llvm::to_vector(llvm::make_second_range(forOpToDim));
+    llvm::sort(sortedDims);
+
+    llvm::DenseMap<int64_t, size_t> dimToEncodingIndex;
+    for (auto [encodingIdx, dim] : llvm::enumerate(sortedDims)) {
+        dimToEncodingIndex[dim] = encodingIdx;
+    }
+    return dimToEncodingIndex;
+}
+
+// Map tile position to static value index
+size_t getStaticValueIndexForTilePosition(int64_t tilePosition, size_t numStaticValues) {
+    if (tilePosition == static_cast<int64_t>(TilePosition::START)) {
+        return 0;
+    } else if (tilePosition == static_cast<int64_t>(TilePosition::MIDDLE)) {
+        return (numStaticValues > 1) ? 1 : 0;
+    } else if (tilePosition == static_cast<int64_t>(TilePosition::END)) {
+        return (numStaticValues > 1) ? numStaticValues - 1 : 0;
+    } else {  // TilePosition::FULLBLK or default
+        return 0;
+    }
+}
+
+void pruneCallOpOperands(mlir::OpBuilder& builder, mlir::func::CallOp callOp, ArrayRef<size_t> indicesToRemove) {
+    llvm::DenseSet<size_t> removedSet(indicesToRemove.begin(), indicesToRemove.end());
+    SmallVector<mlir::Value> newOperands;
+    newOperands.reserve(callOp.getNumOperands() - indicesToRemove.size());
+
+    for (auto [idx, operand] : llvm::enumerate(callOp.getOperands())) {
+        if (!removedSet.contains(idx)) {
+            newOperands.push_back(operand);
+        }
+    }
+
+    builder.setInsertionPoint(callOp);
+    auto newCallOp = builder.create<mlir::func::CallOp>(callOp.getLoc(), callOp.getCallee(), callOp.getResultTypes(),
+                                                        newOperands);
+    callOp.replaceAllUsesWith(newCallOp.getResults());
+    callOp.erase();
+}
+
+mlir::LogicalResult pruneFuncOpOperands(mlir::OpBuilder& builder, mlir::func::FuncOp funcOp) {
+    SmallVector<mlir::Type> newArgTypes;
+    SmallVector<unsigned> argsToErase;
+    for (auto [idx, arg] : llvm::enumerate(funcOp.getArguments())) {
+        if (arg.use_empty()) {
+            argsToErase.push_back(checked_cast<unsigned>(idx));
+            continue;
+        }
+
+        newArgTypes.push_back(arg.getType());
+    }
+
+    for (auto idx : llvm::reverse(argsToErase)) {
+        auto result = funcOp.eraseArgument(idx);
+        if (mlir::failed(result)) {
+            return mlir::failure();
+        }
+    }
+
+    auto newFuncType = builder.getFunctionType(newArgTypes, funcOp.getFunctionType().getResults());
+    funcOp.setFunctionType(newFuncType);
+    return mlir::success();
+}
+
+// Helper to inline static values into function and update call site
+mlir::LogicalResult updateFunctionAndCallOp(mlir::OpBuilder& builder, mlir::func::FuncOp funcOp,
+                                            mlir::func::CallOp callOp,
+                                            const llvm::DenseMap<size_t, int64_t>& operandToStaticValue) {
+    if (operandToStaticValue.empty()) {
+        return mlir::success();
+    }
+
+    SmallVector<size_t> sortedOperandIndices = llvm::to_vector(llvm::make_first_range(operandToStaticValue));
+    llvm::sort(sortedOperandIndices);
+
+    mlir::IRMapping mapper;
+    constexpr size_t maxExtractSliceOps = 8;
+    llvm::SmallSetVector<mlir::tensor::ExtractSliceOp, maxExtractSliceOps> extractSliceOpsToUpdate;
+    for (auto operandIdx : sortedOperandIndices) {
+        if (operandIdx >= funcOp.getNumArguments()) {
+            continue;
+        }
+
+        auto funcArg = funcOp.getArgument(operandIdx);
+        {
+            builder.setInsertionPointToStart(&funcOp.getBody().front());
+            auto staticAttr = builder.getIndexAttr(operandToStaticValue.at(operandIdx));
+            auto constOp = builder.create<mlir::arith::ConstantIndexOp>(funcOp.getLoc(), staticAttr.getInt());
+            mapper.map(funcArg, constOp.getResult());
+        }
+
+        for (auto& use : llvm::make_early_inc_range(funcArg.getUses())) {
+            if (auto extractSliceOp = mlir::dyn_cast<mlir::tensor::ExtractSliceOp>(use.getOwner())) {
+                extractSliceOpsToUpdate.insert(extractSliceOp);
+            }
+        }
+    }
+
+    for (auto extractSliceOp : llvm::make_early_inc_range(extractSliceOpsToUpdate)) {
+        builder.setInsertionPoint(extractSliceOp);
+        auto newOp = builder.clone(*extractSliceOp, mapper);
+        extractSliceOp.getResult().replaceAllUsesWith(newOp->getResult(0));
+        extractSliceOp->erase();
+    }
+
+    pruneCallOpOperands(builder, callOp, sortedOperandIndices);
+    return pruneFuncOpOperands(builder, funcOp);
+}
+
+bool isValidOperandIndex(size_t operandIdx, mlir::func::CallOp callOp, mlir::func::FuncOp funcOp) {
+    return operandIdx < callOp.getNumOperands() && operandIdx < funcOp.getNumArguments();
+}
+
+// Rebuild call operands to match function signature preserving operand order.
+// This is needed when the function has already had index args pruned and newly
+// generated call ops still carry the original operand list.
+static mlir::FailureOr<SmallVector<mlir::Value>> alignCallOperandsToFuncSignature(mlir::func::CallOp callOp,
+                                                                                  mlir::func::FuncOp funcOp) {
+    SmallVector<mlir::Value> alignedOperands;
+    alignedOperands.reserve(funcOp.getNumArguments());
+
+    auto funcArgIter = funcOp.getArguments().begin();
+    auto callOpOperandIter = callOp.getOperands().begin();
+
+    while (funcArgIter != funcOp.getArguments().end()) {
+        bool found = false;
+        for (auto operandIter = callOpOperandIter; operandIter != callOp.getOperands().end(); ++operandIter) {
+            if (funcArgIter->getType() != (*operandIter).getType()) {
+                continue;
+            }
+
+            alignedOperands.push_back(*operandIter);
+            callOpOperandIter = std::next(operandIter);
+            found = true;
+            break;
+        }
+
+        if (!found) {
+            return mlir::failure();
+        }
+        funcArgIter = std::next(funcArgIter);
+    }
+
+    return alignedOperands;
+}
+
+mlir::LogicalResult AdjustBlockSizeForScfTilingPass::processIndexTypeArgsInCallOp(
+        mlir::OpBuilder& builder, mlir::func::FuncOp funcOp, mlir::func::CallOp callOp,
+        const IndexOperandConversionInfo& conversionInfo,
+        const llvm::DenseMap<mlir::scf::ForOp, int64_t>& forOpToDimInfo,
+        const llvm::DenseMap<int64_t, size_t>& dimToEncodingIndex, ArrayRef<int64_t> caseValues) {
+    llvm::DenseMap<size_t, int64_t> operandToStaticValue;
+    for (auto operandIdx : llvm::make_first_range(conversionInfo.operandStaticValues)) {
+        if (!isValidOperandIndex(operandIdx, callOp, funcOp)) {
+            return mlir::failure();
+        }
+
+        auto enclosingForOp = getEnclosingForOp(callOp->getOperand(checked_cast<unsigned int>(operandIdx)));
+        if (!enclosingForOp || !forOpToDimInfo.contains(enclosingForOp)) {
+            return mlir::failure();
+        }
+
+        int64_t dimension = forOpToDimInfo.at(enclosingForOp);
+        if (!dimToEncodingIndex.contains(dimension)) {
+            return mlir::failure();
+        }
+
+        size_t encodingIndex = dimToEncodingIndex.at(dimension);
+        int64_t tilePosition = caseValues[encodingIndex];
+
+        const auto& staticValues = conversionInfo.operandStaticValues.at(operandIdx);
+        size_t staticValueIndex = getStaticValueIndexForTilePosition(tilePosition, staticValues.size());
+
+        if (staticValueIndex < staticValues.size()) {
+            operandToStaticValue[operandIdx] = staticValues[staticValueIndex];
+        }
+    }
+
+    return updateFunctionAndCallOp(builder, funcOp, callOp, operandToStaticValue);
+}
+
+mlir::LogicalResult AdjustBlockSizeForScfTilingPass::generateBlockAwareFuncOps(
+        mlir::func::CallOp callOp, llvm::DenseMap<mlir::Operation*, SliceOpData>& mapSliceOpToData,
+        const llvm::DenseMap<mlir::scf::ForOp, int64_t>& forOpToDimInfo,
+        const IndexOperandConversionInfo& conversionInfo) {
     auto getInputSliceOps = [&](mlir::func::CallOp callOp) {
         SmallVector<std::pair<int64_t, mlir::Operation*>> sliceOps;
         for (auto& operand : callOp->getOpOperands()) {
@@ -864,20 +1004,9 @@ void AdjustBlockSizeForScfTilingPass::generateBlockAwareFuncOps(
     auto mapOfCaseVals = firstInputSliceOpData.caseToShapeMap;
     SmallVector<int64_t> validCaseValues;
     for (auto& [caseVal, shape] : mapOfCaseVals) {
-        validCaseValues.push_back(caseVal);
+        validCaseValues.push_back(checked_cast<int64_t>(caseVal));
     }
     sort(validCaseValues);
-
-    auto decodeCase = [&](int64_t value) -> SmallVector<int64_t> {
-        SmallVector<int64_t> decodedValues;
-        for (size_t j = 0; j < values.size(); ++j) {
-            int shift = NUMBITS * (values.size() - j - 1);
-            int64_t mask = (1LL << NUMBITS) - 1;
-            int64_t val = (value >> shift) & mask;
-            decodedValues.push_back(val);
-        }
-        return decodedValues;
-    };
 
     auto getShapeAttrs = [this](const Shape& blockShape, SmallVector<mlir::OpFoldResult>& newShapeValues) {
         newShapeValues.reserve(blockShape.size());
@@ -904,7 +1033,8 @@ void AdjustBlockSizeForScfTilingPass::generateBlockAwareFuncOps(
     //      }
     auto constructBlock = [&](mlir::OpBuilder& builder, mlir::Block& block, int64_t caseIndex,
                               const SmallVector<vpux::Dim>& dynDims, SmallVector<int64_t>& dynDimCaseValues,
-                              mlir::func::CallOp callOp, bool defaultCase = false) -> mlir::func::CallOp {
+                              mlir::func::CallOp callOp,
+                              bool defaultCase = false) -> std::pair<mlir::func::CallOp, mlir::func::FuncOp> {
         auto extractSliceOps = getInputSliceOps(callOp);
         auto newCallOp = createNewFuncOp(_moduleOp, builder, dynDims, dynDimCaseValues, callOp);
         builder.create<mlir::scf::YieldOp>(newCallOp.getLoc(), newCallOp.getResults());
@@ -950,9 +1080,29 @@ void AdjustBlockSizeForScfTilingPass::generateBlockAwareFuncOps(
             newCallOp->setOperand(operandIdx, newCastOp.getResult());
         }
 
+        auto funcOp = _moduleOp.lookupSymbol<mlir::func::FuncOp>(newCallOp.getCallee());
+        VPUX_THROW_WHEN(funcOp == nullptr, "Failed to lookup function {0}", newCallOp.getCallee());
+
+        // If funcOp has been modified (fewer args than callOp operands), align
+        // operands to function signature instead of taking a raw prefix.
+        if (funcOp.getNumArguments() < newCallOp.getNumOperands()) {
+            auto alignedOperands = alignCallOperandsToFuncSignature(newCallOp, funcOp);
+            if (mlir::failed(alignedOperands)) {
+                return std::make_pair(mlir::func::CallOp(), mlir::func::FuncOp());
+            }
+
+            auto updatedCallOp = builder.create<mlir::func::CallOp>(
+                    newCallOp.getLoc(), funcOp.getName(), newCallOp.getResultTypes(), alignedOperands.value());
+            newCallOp.replaceAllUsesWith(updatedCallOp.getResults());
+            newCallOp.erase();
+            newCallOp = updatedCallOp;
+        }
         propagateTypeInCallOp(builder, _moduleOp, newCallOp);
-        return newCallOp;
+        return {newCallOp, funcOp};
     };
+
+    auto dimToEncodingIndex = buildDimToEncodingIndexMap(forOpToDimInfo);
+    llvm::DenseSet<llvm::StringRef> processedFunctions;
 
     auto switchOp = builder.create<mlir::scf::IndexSwitchOp>(callOp.getLoc(), callOp.getResultTypes(), encodedIdx,
                                                              validCaseValues, validCaseValues.size());
@@ -962,24 +1112,140 @@ void AdjustBlockSizeForScfTilingPass::generateBlockAwareFuncOps(
         auto& region = switchOp.getCaseRegions()[index];
         auto& block = region.empty() ? region.emplaceBlock() : region.front();
         mlir::OpBuilder caseBuilder = mlir::OpBuilder::atBlockBegin(&block);
-        auto caseValues = decodeCase(caseIndex);
-        constructBlock(caseBuilder, block, caseIndex, dynDims, caseValues, callOp);
+        auto caseValues = AdjustBlockSizeForScfTilingPass::decodeCaseValue(caseIndex, values.size());
+        auto [newCallOp, funcOp] = constructBlock(caseBuilder, block, caseIndex, dynDims, caseValues, callOp);
+        if (!conversionInfo.shouldConvert() || !funcOp || processedFunctions.contains(funcOp.getName())) {
+            continue;
+        }
+        processedFunctions.insert(funcOp.getName());
+        auto result = processIndexTypeArgsInCallOp(caseBuilder, funcOp, newCallOp, conversionInfo, forOpToDimInfo,
+                                                   dimToEncodingIndex, caseValues);
+        if (mlir::failed(result)) {
+            return mlir::failure();
+        }
     }
 
     auto& defRegion = switchOp.getDefaultRegion();
     auto& defBlock = defRegion.empty() ? defRegion.emplaceBlock() : defRegion.front();
     mlir::OpBuilder defBuilder = mlir::OpBuilder::atBlockBegin(&defBlock);
-    auto defCaseValues = decodeCase(validCaseValues.front());
+    auto defCaseValues = AdjustBlockSizeForScfTilingPass::decodeCaseValue(validCaseValues.front(), values.size());
     constructBlock(defBuilder, defBlock, validCaseValues.front(), dynDims, defCaseValues, callOp, true);
 
     callOp.replaceAllUsesWith(switchOp.getResults());
     cleanUnusedFuncAndCallOps(callOp, _moduleOp);
+
+    return mlir::success();
+}
+
+bool checkForSliceOpWithDynamicArgOffset(mlir::Value operand) {
+    return llvm::all_of(operand.getUses(), [&](const auto& use) {
+        auto* owner = use.getOwner();
+        auto extractSliceOp = mlir::dyn_cast<mlir::tensor::ExtractSliceOp>(owner);
+        if (extractSliceOp == nullptr) {
+            return false;
+        }
+
+        // Check if operand appears in offsets
+        bool inOffsets = llvm::any_of(extractSliceOp.getMixedOffsets(), [&](const auto& offset) {
+            if (auto val = mlir::dyn_cast_if_present<mlir::Value>(offset)) {
+                return val == operand;
+            }
+            return false;
+        });
+
+        // Check if operand appears in sizes
+        bool inSizes = llvm::any_of(extractSliceOp.getMixedSizes(), [&](const auto& size) {
+            if (auto val = mlir::dyn_cast_if_present<mlir::Value>(size)) {
+                return val == operand;
+            }
+            return false;
+        });
+
+        return inOffsets || inSizes;
+    });
+}
+
+// Helper to analyze if index-type operands should be converted to static shapes
+mlir::LogicalResult analyzeIndexOperandConversion(mlir::func::CallOp callOp, mlir::func::FuncOp calledFunc,
+                                                  OpChainAnalysis& opChainAnalysis,
+                                                  IndexOperandConversionInfo& idxOperandInfo, Logger& log) {
+    for (auto [operandIdx, operand] : llvm::enumerate(callOp->getOperands())) {
+        if (mlir::isa<mlir::RankedTensorType>(operand.getType())) {
+            continue;
+        }
+
+        if (calledFunc.getNumArguments() <= operandIdx) {
+            log.error("Operand index {0} out of bounds for function {1} with {2} arguments", operandIdx,
+                      calledFunc.getName(), calledFunc.getNumArguments());
+            return mlir::failure();
+        }
+
+        auto funcArg = calledFunc.getArgument(operandIdx);
+        if (funcArg.use_empty()) {
+            continue;
+        }
+
+        auto needStaticAnalysis = checkForSliceOpWithDynamicArgOffset(funcArg);
+        if (!needStaticAnalysis) {
+            return mlir::failure();
+        }
+
+        ValueRangeMap emptyValueMap;
+        auto staticValuesOpt =
+                opChainAnalysis.getOpFoldResultValue(operand, emptyValueMap, OpChainAnalysis::MODE::ALL_VALUES);
+        if (!staticValuesOpt.has_value() || staticValuesOpt->empty()) {
+            return mlir::failure();
+        }
+
+        auto staticValues = staticValuesOpt.value();
+        auto uniqueStaticValues =
+                llvm::SmallSetVector<int64_t, DEFAULT_ARG_SET_SIZE>(staticValues.begin(), staticValues.end());
+        if (uniqueStaticValues.size() > MAX_TILES_PER_DYNAMIC_DIMENSION) {
+            return mlir::failure();
+        }
+
+        idxOperandInfo.operandStaticValues[checked_cast<int64_t>(operandIdx)] = std::move(staticValues);
+    }
+
+    return mlir::success();
+}
+
+mlir::LogicalResult AdjustBlockSizeForScfTilingPass::processIndexTypeArgsInCallOp(
+        mlir::func::CallOp callOp, const IndexOperandConversionInfo& conversionInfo) {
+    llvm::DenseMap<size_t, int64_t> operandToStaticValue;
+    auto funcOp = _moduleOp.lookupSymbol<mlir::func::FuncOp>(callOp.getCallee());
+    if (!funcOp) {
+        return errorAt(callOp, "Failed to find function '{0}' for call operation", callOp.getCallee());
+    }
+
+    for (auto operandIdx : llvm::make_first_range(conversionInfo.operandStaticValues)) {
+        if (!isValidOperandIndex(operandIdx, callOp, funcOp)) {
+            return mlir::failure();
+        }
+
+        auto staticValues = conversionInfo.operandStaticValues.at(operandIdx);
+        if (staticValues.empty()) {
+            return mlir::failure();
+        }
+
+        bool allSame = std::all_of(staticValues.begin(), staticValues.end(), [first = staticValues[0]](int64_t val) {
+            return val == first;
+        });
+        if (!allSame) {
+            return errorAt(callOp,
+                           "Static values for operand index {0} are not uniform, cannot convert to static shape",
+                           operandIdx);
+        }
+        operandToStaticValue[operandIdx] = staticValues[0];
+    }
+
+    auto builder = mlir::OpBuilder(funcOp);
+    return updateFunctionAndCallOp(builder, funcOp, callOp, operandToStaticValue);
 }
 
 void AdjustBlockSizeForScfTilingPass::safeRunOnModule() {
     _moduleOp = getOperation();
-    net::NetworkInfoOp netInfoOp;
-    net::NetworkInfoOp::getFromModule(_moduleOp, netInfoOp, _mainFuncOp);
+    _mainFuncOp = net::getMainFunc(_moduleOp);
     mlir::OpBuilder builder(_moduleOp.getContext());
 
     auto checkForPaddedOps = [&](mlir::func::FuncOp funcOp) {
@@ -1015,7 +1281,8 @@ void AdjustBlockSizeForScfTilingPass::safeRunOnModule() {
     _firstForOp = *forOps.begin();
 
     _mainFuncOp.walk([&](mlir::scf::ForOp forOp) {
-        if (mlir::failed(adjustOutputBlockIdxAndSize(forOp))) {
+        llvm::DenseMap<mlir::scf::ForOp, int64_t> forOpToDim;
+        if (mlir::failed(adjustOutputBlockIdxAndSize(forOp, forOpToDim))) {
             signalPassFailure();
             return;
         }
@@ -1049,8 +1316,30 @@ void AdjustBlockSizeForScfTilingPass::safeRunOnModule() {
                 return;
             }
 
+            IndexOperandConversionInfo conversionInfo;
+            auto result = analyzeIndexOperandConversion(callOp, calledFunc, _opChainAnalysis, conversionInfo, _log);
+            if (mlir::failed(result)) {
+                _log.trace("Failed to analyze index operand conversion for call operation {0}", callOp);
+                signalPassFailure();
+                return;
+            }
+
             if (checkForPaddedOps(calledFunc)) {
-                generateBlockAwareFuncOps(callOp, sliceOpDataMap);
+                auto result = generateBlockAwareFuncOps(callOp, sliceOpDataMap, forOpToDim, conversionInfo);
+                if (mlir::failed(result)) {
+                    _log.trace("Failed to generate block-aware function operations for call operation {0}", callOp);
+                    signalPassFailure();
+                }
+                return;
+            }
+
+            if (!conversionInfo.shouldConvert()) {
+                return;
+            }
+
+            if (mlir::failed(processIndexTypeArgsInCallOp(callOp, conversionInfo))) {
+                signalPassFailure();
+                return;
             }
         }
         return;

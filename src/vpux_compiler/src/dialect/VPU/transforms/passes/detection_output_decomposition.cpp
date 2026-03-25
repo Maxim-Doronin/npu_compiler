@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -45,7 +45,7 @@ int64_t getNumPriors(VPU::DetectionOutputOp origOp) {
 
 mlir::Value createReshape(mlir::PatternRewriter& rewriter, mlir::Value tensor, ArrayRef<int64_t> newShape) {
     const auto newShapeAttr = getIntArrayAttr(rewriter.getContext(), newShape);
-    auto reshape = rewriter.create<VPU::ReshapeOp>(tensor.getLoc(), tensor, nullptr, false, newShapeAttr);
+    auto reshape = rewriter.create<VPU::ReshapeOp>(tensor.getLoc(), tensor, newShapeAttr);
     return reshape.getOutput();
 }
 

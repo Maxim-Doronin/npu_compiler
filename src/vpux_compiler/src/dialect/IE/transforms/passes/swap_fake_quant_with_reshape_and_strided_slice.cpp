@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/activation.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
@@ -156,10 +157,8 @@ mlir::LogicalResult FakeQuantReshapeSwapper::matchAndRewrite(IE::FakeQuantizeOp 
 
         const auto newInputShapeAttr = getIntArrayAttr(rewriter.getContext(), fqOperationinputShape);
 
-        auto inputLowReshaped =
-                rewriter.create<IE::ReshapeOp>(origOp->getLoc(), inputLow, nullptr, false, newInputShapeAttr);
-        auto inputHighReshaped =
-                rewriter.create<IE::ReshapeOp>(origOp->getLoc(), inputHigh, nullptr, false, newInputShapeAttr);
+        auto inputLowReshaped = rewriter.create<IE::ReshapeOp>(origOp->getLoc(), inputLow, newInputShapeAttr);
+        auto inputHighReshaped = rewriter.create<IE::ReshapeOp>(origOp->getLoc(), inputHigh, newInputShapeAttr);
         newFQ = rewriter.create<IE::FakeQuantizeOp>(origOp->getLoc(), lastReshapeOp->getResult(0), inputLowReshaped,
                                                     inputHighReshaped, origOp.getOutputLow(), origOp.getOutputHigh(),
                                                     origOp.getLevelsAttr(), origOp.getLowFpTypeAttr(),

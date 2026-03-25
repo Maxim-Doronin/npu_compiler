@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -16,6 +16,7 @@
 }>
 
 // CHECK-LABEL: @Fold
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<1x128x16x16xf16, {mem_space = @CMX_NN, order = #NHWC}>
 func.func @Fold(%arg0: tensor<1x128x16x16xf16, {mem_space = @CMX_NN, order = #NHWC}>) -> tensor<1x128x16x16xf16, {mem_space = @CMX_NN, order = #NHWC}> {
     %0 = builtin.unrealized_conversion_cast %arg0 : tensor<1x128x16x16xf16, {mem_space = @CMX_NN, order = #NHWC}> to !DistributedTensor
     %1 = VPU.DistributedCast(%0 : !DistributedTensor) -> !DistributedTensor
@@ -23,7 +24,7 @@ func.func @Fold(%arg0: tensor<1x128x16x16xf16, {mem_space = @CMX_NN, order = #NH
     return %2 : tensor<1x128x16x16xf16, {mem_space = @CMX_NN, order = #NHWC}>
 
     // CHECK-NOT:  VPU.DistributedCast
-    // CHECK:      return %arg0 : tensor<1x128x16x16xf16, {mem_space = @CMX_NN, order = #NHWC}>
+    // CHECK:      return [[ARG_0]] : tensor<1x128x16x16xf16, {mem_space = @CMX_NN, order = #NHWC}>
 }
 
 // -----

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -20,15 +20,15 @@ func.func @SuperdenseNCEConvolution(%arg0: tensor<1x16x15x15xf16, {mem_space = @
         rawFilterShape = [16, 16, 1, 1],
         strides = [1, 1]
     } : tensor<1x16x15x15xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<16x16x1x1xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<16x1x1x4xsi32, {mem_space = @CMX_NN, order = #NHWC}> -> tensor<1x16x15x15xf16, {mem_space = @CMX_NN, order = #NCHW}> {
-        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 15, 15] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 13 : i64> #VPU.mpe_mode<CUBOID_16x16>
+        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 15, 15] pad [0, 0, 0, 13] #VPU.mpe_mode<CUBOID_16x16>
     }
 
     return %0 : tensor<1x16x15x15xf16, {mem_space = @CMX_NN, order = #NCHW}>
 
-    // CHECK:       VPUIP.NCEClusterTask {
+    // CHECK:       VPUIP.NCEClusterTask <{
     // CHECK-SAME:      is_superdense,
     // CHECK-SAME:      task_type = #VPUIP.nce_task_type<CONV>
-    // CHECK-SAME:  }
+    // CHECK-SAME:  }>
 }
 
 // -----
@@ -46,15 +46,15 @@ func.func @SuperdenseNCEMaxPool(%arg0: tensor<1x16x15x15xf16, {mem_space = @CMX_
         ppe = #VPU.PPEStub<>,
         strides = [1, 1]
     } -> tensor<1x16x15x15xf16, {mem_space = @CMX_NN, order = #NCHW}> {
-        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 15, 15] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 13 : i64> #VPU.mpe_mode<CUBOID_16x16>
+        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 15, 15] pad [0, 0, 0, 13] #VPU.mpe_mode<CUBOID_16x16>
     }
 
     return %0 : tensor<1x16x15x15xf16, {mem_space = @CMX_NN, order = #NCHW}>
 
-    // CHECK:       VPUIP.NCEClusterTask {
+    // CHECK:       VPUIP.NCEClusterTask <{
     // CHECK-SAME:      is_superdense,
     // CHECK-SAME:      task_type = #VPUIP.nce_task_type<MAXPOOL>
-    // CHECK-SAME:  }
+    // CHECK-SAME:  }>
 }
 
 // -----
@@ -71,15 +71,15 @@ func.func @SuperdenseNCEAveragePool(%arg0: tensor<1x16x15x15xf16, {mem_space = @
         ppe = #VPU.PPEStub<>,
         strides = [1, 1]
     } -> tensor<1x16x15x15xf16, {mem_space = @CMX_NN, order = #NCHW}> {
-        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 15, 15] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 13 : i64> #VPU.mpe_mode<CUBOID_16x16>
+        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 15, 15] pad [0, 0, 0, 13] #VPU.mpe_mode<CUBOID_16x16>
     }
 
     return %0 : tensor<1x16x15x15xf16, {mem_space = @CMX_NN, order = #NCHW}>
 
-    // CHECK:       VPUIP.NCEClusterTask {
+    // CHECK:       VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 708 : i64} <{
     // CHECK-SAME:      is_superdense,
     // CHECK-SAME:      task_type = #VPUIP.nce_task_type<AVEPOOL>
-    // CHECK-SAME:  }
+    // CHECK-SAME:  }>
 }
 
 // -----
@@ -96,16 +96,16 @@ func.func @SuperdenseNCEEltwise(%arg0: tensor<1x16x15x15xf16, {mem_space = @CMX_
         op_type = #VPU.eltwise_type<ADD>,
         ppe = #VPU.PPEStub<>
     } -> tensor<1x16x15x15xf16, {mem_space = @CMX_NN, order = #NCHW}> {
-        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 15, 15] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 13 : i64> <CUBOID_16x16>
+        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 15, 15] pad [0, 0, 0, 13] #VPU.mpe_mode<CUBOID_16x16>
     }
 
     return %0 : tensor<1x16x15x15xf16, {mem_space = @CMX_NN, order = #NCHW}>
 
-    // CHECK:       VPUIP.NCEClusterTask {
+    // CHECK:       VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 585 : i64} <{
     // CHECK-SAME:      eltwise_type = #VPU.eltwise_type<ADD>
     // CHECK-SAME:      is_superdense,
     // CHECK-SAME:      task_type = #VPUIP.nce_task_type<ELTWISE>
-    // CHECK-SAME:  }
+    // CHECK-SAME:  }>
 }
 
 // -----
@@ -186,7 +186,7 @@ func.func @InterpolateNearest(
         ppe = #VPU.PPEStub<>
     } -> tensor<1x64x10x20xf16, {order = #NHWC, mem_space = @CMX_NN}>
     {
-        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 64, 10, 20] <left = 0 , right = 0, top = 0, bottom = 0> #VPU.mpe_mode<VECTOR_FP16>
+        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 64, 10, 20] pad [0, 0, 0, 0] #VPU.mpe_mode<VECTOR_FP16>
     }
 
     return %task : tensor<1x64x10x20xf16, {order = #NHWC, mem_space = @CMX_NN}>
@@ -270,7 +270,7 @@ func.func @InterpolateBilinear(
         scales_attr = [2, 2]
     } -> tensor<1x64x10x20xf16, {order = #NHWC, mem_space = @CMX_NN}>
     {
-        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 64, 10, 20] <left = 0 , right = 0, top = 0, bottom = 0> #VPU.mpe_mode<VECTOR_FP16>
+        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 64, 10, 20] pad [0, 0, 0, 0] #VPU.mpe_mode<VECTOR_FP16>
     }
 
     return %task : tensor<1x64x10x20xf16, {order = #NHWC, mem_space = @CMX_NN}>

@@ -1,25 +1,24 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
 #include "vpux/compiler/core/attributes/shape.hpp"
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/core/tiling.hpp"
 #include "vpux/utils/core/mem_size.hpp"
 
 namespace vpux::VPU {
+enum class MultiClusterStrategy : uint64_t;
 class SiblingOpsAnalysis;
-}
+}  // namespace vpux::VPU
 
 namespace vpux {
 namespace VPU {
 
 constexpr int64_t SINGLE_BATCH = 1;
 constexpr size_t RANK_REQUIRED_FOR_TILING = 4;
-
-int64_t getNumTiles(mlir::Operation* op);
 
 // Each cluster should compute at least one output line. Therefore in order for a layer to be SOH
 // compatible it must have an output height of at least the number of clusters

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,6 +7,7 @@
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
 // CHECK-LABEL: @SplitInterpolateAxes
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x2x2x2x2xf16>
 func.func @SplitInterpolateAxes(%arg0: tensor<1x2x2x2x2xf16>) -> tensor<1x2x4x4x4xf16> {
     %0 = IE.Reshape(%arg0) {shape_value = [1, 2, 4, 2]} : tensor<1x2x2x2x2xf16> -> tensor<1x2x4x2xf16>
     %1 = IE.Reshape(%arg0) {shape_value = [2, 2, 2, 2]} : tensor<1x2x2x2x2xf16> -> tensor<2x2x2x2xf16>
@@ -15,7 +16,7 @@ func.func @SplitInterpolateAxes(%arg0: tensor<1x2x2x2x2xf16>) -> tensor<1x2x4x4x
     return %3 : tensor<1x2x4x4x4xf16>
 
 
-    // CHECK: [[INPUT_RESHAPE:%.+]] = IE.AffineReshape(%arg0)
+    // CHECK: [[INPUT_RESHAPE:%.+]] = IE.AffineReshape([[ARG_0]])
     // CHECK-SAME{LITERAL}:           {dim_mapping = [[0], [0], [1], [2], [3]], shape_value = [2, 2, 2, 2]} : tensor<1x2x2x2x2xf16> -> tensor<2x2x2x2xf16>
     // CHECK: [[Interpolate:%.+]] = IE.Interpolate([[INPUT_RESHAPE]])
     // CHECK:   {attr = #IE.Interpolate<mode = <NEAREST>, shape_calc_mode = <SIZES>, coord_mode = <ASYMMETRIC>, nearest_mode = <SIMPLE>,

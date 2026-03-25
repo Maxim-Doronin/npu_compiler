@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,6 +7,7 @@
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
 // CHECK-LABEL: @ConvertAddToScaleShift
+// CHECK-SAME:     [[ARG_0:%[^:]+]]: tensor<1x3x300x300xf16>
 func.func @ConvertAddToScaleShift(%arg0: tensor<1x3x300x300xf16>) -> tensor<1x3x300x300xf16> {
     %bias = const.Declare tensor<1x3x1x1xf16> = dense<2.0> : tensor<1x3x1x1xf16>
     %0 = IE.Add(%arg0, %bias)
@@ -16,13 +17,14 @@ func.func @ConvertAddToScaleShift(%arg0: tensor<1x3x300x300xf16>) -> tensor<1x3x
     return %0 : tensor<1x3x300x300xf16>
 
     // CHECK-DAG:       [[BIAS:%.+]] = const.Declare tensor<1x3x1x1xf16> = dense<2.000000e+00> : tensor<1x3x1x1xf16>
-    // CHECK:       [[VAL0:%.+]] = IE.ScaleShift(%arg0, [[BIAS]]) {operandSegmentSizes = array<i32: 1, 0, 1>} : tensor<1x3x300x300xf16>, tensor<1x3x1x1xf16> -> tensor<1x3x300x300xf16>
+    // CHECK:       [[VAL0:%.+]] = IE.ScaleShift([[ARG_0]], [[BIAS]]) {operandSegmentSizes = array<i32: 1, 0, 1>} : tensor<1x3x300x300xf16>, tensor<1x3x1x1xf16> -> tensor<1x3x300x300xf16>
     // CHECK:       return [[VAL0]]
 }
 
 // -----
 
 // CHECK-LABEL: @ConvertAddToScaleShiftWithReshape
+// CHECK-SAME:     [[ARG_0:%[^:]+]]: tensor<1x16x64x64xf16>
 func.func @ConvertAddToScaleShiftWithReshape(%arg0: tensor<1x16x64x64xf16>) -> tensor<1x16x64x64xf16> {
     %bias = const.Declare tensor<1x1x1x16xf16> = dense<2.0> : tensor<1x1x1x16xf16>
     %reshape = IE.Reshape(%bias) { shape_value = [1, 16, 1, 1] } : tensor<1x1x1x16xf16> -> tensor<1x16x1x1xf16>
@@ -33,13 +35,14 @@ func.func @ConvertAddToScaleShiftWithReshape(%arg0: tensor<1x16x64x64xf16>) -> t
     return %0 : tensor<1x16x64x64xf16>
 
     // CHECK-DAG:       [[BIAS:%.+]] = const.Declare tensor<1x16x1x1xf16> = dense<2.000000e+00> : tensor<1x1x1x16xf16>, [#const.Reshape<[1, 16, 1, 1]>]
-    // CHECK:       [[VAL0:%.+]] = IE.ScaleShift(%arg0, [[BIAS]]) {operandSegmentSizes = array<i32: 1, 0, 1>} : tensor<1x16x64x64xf16>, tensor<1x16x1x1xf16> -> tensor<1x16x64x64xf16>
+    // CHECK:       [[VAL0:%.+]] = IE.ScaleShift([[ARG_0]], [[BIAS]]) {operandSegmentSizes = array<i32: 1, 0, 1>} : tensor<1x16x64x64xf16>, tensor<1x16x1x1xf16> -> tensor<1x16x64x64xf16>
     // CHECK:       return [[VAL0]]
 }
 
 // -----
 
 // CHECK-LABEL: @ConvertAddWithNegativeConstToScaleShift
+// CHECK-SAME:     [[ARG_0:%[^:]+]]: tensor<1x3x224x224xf16>
 func.func @ConvertAddWithNegativeConstToScaleShift(%arg0: tensor<1x3x224x224xf16>) -> tensor<1x3x224x224xf16> {
     %cst = const.Declare tensor<1x3x1x1xf16> = dense<2.0> : tensor<1x3x1x1xf16>
     %0 = IE.Negative(%cst) : tensor<1x3x1x1xf16> -> tensor<1x3x1x1xf16>
@@ -48,13 +51,14 @@ func.func @ConvertAddWithNegativeConstToScaleShift(%arg0: tensor<1x3x224x224xf16
     return %1 : tensor<1x3x224x224xf16>
 
     // CHECK:       [[CST:%.+]] = const.Declare tensor<1x3x1x1xf16> = dense<2.000000e+00> : tensor<1x3x1x1xf16>, [#const.Rescale<-1.000000e+00 : f64>]
-    // CHECK:       [[VAL0:%.+]] = IE.ScaleShift(%arg0, [[CST]]) {operandSegmentSizes = array<i32: 1, 0, 1>} : tensor<1x3x224x224xf16>, tensor<1x3x1x1xf16> -> tensor<1x3x224x224xf16>
+    // CHECK:       [[VAL0:%.+]] = IE.ScaleShift([[ARG_0]], [[CST]]) {operandSegmentSizes = array<i32: 1, 0, 1>} : tensor<1x3x224x224xf16>, tensor<1x3x1x1xf16> -> tensor<1x3x224x224xf16>
     // CHECK:       return [[VAL0]]
 }
 
 // -----
 
 // CHECK-LABEL: @ConvertAddToScaleShiftBroadcastChannels
+// CHECK-SAME:     [[ARG_0:%[^:]+]]: tensor<1x3x300x300xf16>
 func.func @ConvertAddToScaleShiftBroadcastChannels(%arg0: tensor<1x3x300x300xf16>) -> tensor<1x3x300x300xf16> {
     %bias = const.Declare tensor<1x1x1x1xf16> = dense<2.0> : tensor<1x1x1x1xf16>
     %0 = IE.Add(%arg0, %bias)
@@ -64,13 +68,14 @@ func.func @ConvertAddToScaleShiftBroadcastChannels(%arg0: tensor<1x3x300x300xf16
     return %0 : tensor<1x3x300x300xf16>
 
     // CHECK-DAG:       [[BIAS:%.+]] = const.Declare tensor<1x3x1x1xf16> = dense<2.000000e+00> : tensor<1x1x1x1xf16>, [#const.Broadcast<1 : i64, 3 : i64>]
-    // CHECK:       [[VAL0:%.+]] = IE.ScaleShift(%arg0, [[BIAS]]) {operandSegmentSizes = array<i32: 1, 0, 1>} : tensor<1x3x300x300xf16>, tensor<1x3x1x1xf16> -> tensor<1x3x300x300xf16>
+    // CHECK:       [[VAL0:%.+]] = IE.ScaleShift([[ARG_0]], [[BIAS]]) {operandSegmentSizes = array<i32: 1, 0, 1>} : tensor<1x3x300x300xf16>, tensor<1x3x1x1xf16> -> tensor<1x3x300x300xf16>
     // CHECK:       return [[VAL0]]
 }
 
 // -----
 
 // CHECK-LABEL: @ConvertAddWithConstFQToScaleShiftBroadcastChannels
+// CHECK-SAME:     [[ARG_0:%[^:]+]]: tensor<1x3x300x300xf16>
 func.func @ConvertAddWithConstFQToScaleShiftBroadcastChannels(%arg0: tensor<1x3x300x300xf16>) -> tensor<1x3x300x300xf16> {
     %bias = const.Declare tensor<1x1x1x1xf16> = dense<2.0> : tensor<1x1x1x1xf16>
     %input_low = const.Declare tensor<1x1x1x1xf16> = dense<0.0> : tensor<1x1x1x1xf16>
@@ -92,13 +97,14 @@ func.func @ConvertAddWithConstFQToScaleShiftBroadcastChannels(%arg0: tensor<1x3x
     // CHECK-DAG:       [[CONST_HIGH:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<2.550000e+02> : tensor<1x1x1x1xf16>
     // CHECK-DAG:       [[CONST_LOW:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<0.000000e+00> : tensor<1x1x1x1xf16>
     // CHECK:       [[VAL0:%.+]] = IE.FakeQuantize([[BIAS]], [[CONST_LOW]], [[CONST_HIGH]], [[CONST_LOW]], [[CONST_HIGH]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x3x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x3x1x1xf16>
-    // CHECK:       [[VAL1:%.+]] = IE.ScaleShift(%arg0, [[VAL0]]) {operandSegmentSizes = array<i32: 1, 1, 0>} : tensor<1x3x300x300xf16>, tensor<1x3x1x1xf16> -> tensor<1x3x300x300xf16>
+    // CHECK:       [[VAL1:%.+]] = IE.ScaleShift([[ARG_0]], [[VAL0]]) {operandSegmentSizes = array<i32: 1, 1, 0>} : tensor<1x3x300x300xf16>, tensor<1x3x1x1xf16> -> tensor<1x3x300x300xf16>
     // CHECK:       return [[VAL1]]
 }
 
 // -----
 
 // CHECK-LABEL: @ConvertAddToScaleShiftReversedInputs
+// CHECK-SAME:     [[ARG_0:%[^:]+]]: tensor<1x3x300x300xf16>
 func.func @ConvertAddToScaleShiftReversedInputs(%arg0: tensor<1x3x300x300xf16>) -> tensor<1x3x300x300xf16> {
     %bias = const.Declare tensor<1x3x1x1xf16> = dense<2.0> : tensor<1x3x1x1xf16>
     %0 = IE.Add(%bias, %arg0)
@@ -108,13 +114,15 @@ func.func @ConvertAddToScaleShiftReversedInputs(%arg0: tensor<1x3x300x300xf16>) 
     return %0 : tensor<1x3x300x300xf16>
 
     // CHECK-DAG:       [[BIAS:%.+]] = const.Declare tensor<1x3x1x1xf16> = dense<2.000000e+00> : tensor<1x3x1x1xf16>
-    // CHECK:       [[VAL0:%.+]] = IE.ScaleShift(%arg0, [[BIAS]]) {operandSegmentSizes = array<i32: 1, 0, 1>} : tensor<1x3x300x300xf16>, tensor<1x3x1x1xf16> -> tensor<1x3x300x300xf16>
+    // CHECK:       [[VAL0:%.+]] = IE.ScaleShift([[ARG_0]], [[BIAS]]) {operandSegmentSizes = array<i32: 1, 0, 1>} : tensor<1x3x300x300xf16>, tensor<1x3x1x1xf16> -> tensor<1x3x300x300xf16>
     // CHECK:       return [[VAL0]]
 }
 
 // -----
 
 // CHECK-LABEL: @cannotConvertAddToScaleShift
+// CHECK-SAME:     [[ARG_0:%[^:]+]]: tensor<1x3x1x1xf16>
+// CHECK-SAME:     [[ARG_1:%[^:]+]]: tensor<1x3x300x300xf16>
 func.func @cannotConvertAddToScaleShift(%arg0: tensor<1x3x1x1xf16>, %arg1: tensor<1x3x300x300xf16>) -> tensor<1x3x300x300xf16> {
     %0 = IE.Add(%arg0, %arg1)
         { auto_broadcast = #IE.auto_broadcast_type<NUMPY> } :
@@ -122,13 +130,14 @@ func.func @cannotConvertAddToScaleShift(%arg0: tensor<1x3x1x1xf16>, %arg1: tenso
 
     return %0 : tensor<1x3x300x300xf16>
 
-    // CHECK:       [[VAL0:%.+]] = IE.Add(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3x1x1xf16>, tensor<1x3x300x300xf16> -> tensor<1x3x300x300xf16>
+    // CHECK:       [[VAL0:%.+]] = IE.Add([[ARG_0]], [[ARG_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3x1x1xf16>, tensor<1x3x300x300xf16> -> tensor<1x3x300x300xf16>
     // CHECK:       return [[VAL0]]
 }
 
 // -----
 
 // CHECK-LABEL: @ConvertMultiplyToScaleShift
+// CHECK-SAME:     [[ARG_0:%[^:]+]]: tensor<1x3x300x300xf16>
 func.func @ConvertMultiplyToScaleShift(%arg0: tensor<1x3x300x300xf16>) -> tensor<1x3x300x300xf16> {
     %weights = const.Declare tensor<1x3x1x1xf16> = dense<3.0> : tensor<1x3x1x1xf16>
     %0 = IE.Multiply(%arg0, %weights)
@@ -138,13 +147,14 @@ func.func @ConvertMultiplyToScaleShift(%arg0: tensor<1x3x300x300xf16>) -> tensor
     return %0 : tensor<1x3x300x300xf16>
 
     // CHECK-DAG:       [[WEIGHTS:%.+]] = const.Declare tensor<1x3x1x1xf16> = dense<3.000000e+00> : tensor<1x3x1x1xf16>
-    // CHECK:       [[VAL0:%.+]] = IE.ScaleShift(%arg0, [[WEIGHTS]]) {operandSegmentSizes = array<i32: 1, 1, 0>} : tensor<1x3x300x300xf16>, tensor<1x3x1x1xf16> -> tensor<1x3x300x300xf16>
+    // CHECK:       [[VAL0:%.+]] = IE.ScaleShift([[ARG_0]], [[WEIGHTS]]) {operandSegmentSizes = array<i32: 1, 1, 0>} : tensor<1x3x300x300xf16>, tensor<1x3x1x1xf16> -> tensor<1x3x300x300xf16>
     // CHECK:       return [[VAL0]]
 }
 
 // -----
 
 // CHECK-LABEL: @ConvertMultiplyToScaleShiftBroadcastChannels
+// CHECK-SAME:     [[ARG_0:%[^:]+]]: tensor<1x3x300x300xf16>
 func.func @ConvertMultiplyToScaleShiftBroadcastChannels(%arg0: tensor<1x3x300x300xf16>) -> tensor<1x3x300x300xf16> {
     %weights = const.Declare tensor<1x1x1x1xf16> = dense<3.0> : tensor<1x1x1x1xf16>
     %0 = IE.Multiply(%arg0, %weights)
@@ -154,13 +164,15 @@ func.func @ConvertMultiplyToScaleShiftBroadcastChannels(%arg0: tensor<1x3x300x30
     return %0 : tensor<1x3x300x300xf16>
 
     // CHECK-DAG:       [[WEIGHTS:%.+]] = const.Declare tensor<1x3x1x1xf16> = dense<3.000000e+00> : tensor<1x1x1x1xf16>, [#const.Broadcast<1 : i64, 3 : i64>]
-    // CHECK:       [[VAL0:%.+]] = IE.ScaleShift(%arg0, [[WEIGHTS]]) {operandSegmentSizes = array<i32: 1, 1, 0>} : tensor<1x3x300x300xf16>, tensor<1x3x1x1xf16> -> tensor<1x3x300x300xf16>
+    // CHECK:       [[VAL0:%.+]] = IE.ScaleShift([[ARG_0]], [[WEIGHTS]]) {operandSegmentSizes = array<i32: 1, 1, 0>} : tensor<1x3x300x300xf16>, tensor<1x3x1x1xf16> -> tensor<1x3x300x300xf16>
     // CHECK:       return [[VAL0]]
 }
 
 // -----
 
 // CHECK-LABEL: @ConvertMultiplyToScaleShiftReversedInputs
+// CHECK-SAME:     [[ARG_0:%[^:]+]]: tensor<1x3x1x1xf16>
+// CHECK-SAME:     [[ARG_1:%[^:]+]]: tensor<1x3x300x300xf16>
 func.func @ConvertMultiplyToScaleShiftReversedInputs(%arg0: tensor<1x3x1x1xf16>, %arg1: tensor<1x3x300x300xf16>) -> tensor<1x3x300x300xf16> {
     %0 = IE.Multiply(%arg0, %arg1)
         { auto_broadcast = #IE.auto_broadcast_type<NUMPY> } :
@@ -168,13 +180,14 @@ func.func @ConvertMultiplyToScaleShiftReversedInputs(%arg0: tensor<1x3x1x1xf16>,
 
     return %0 : tensor<1x3x300x300xf16>
 
-    // CHECK:       [[VAL0:%.+]] = IE.ScaleShift(%arg1, %arg0) {operandSegmentSizes = array<i32: 1, 1, 0>} : tensor<1x3x300x300xf16>, tensor<1x3x1x1xf16> -> tensor<1x3x300x300xf16>
+    // CHECK:       [[VAL0:%.+]] = IE.ScaleShift([[ARG_1]], [[ARG_0]]) {operandSegmentSizes = array<i32: 1, 1, 0>} : tensor<1x3x300x300xf16>, tensor<1x3x1x1xf16> -> tensor<1x3x300x300xf16>
     // CHECK:       return [[VAL0]]
 }
 
 // -----
 
 // CHECK-LABEL: @ConvertMultiplyWithConstFQToScaleShiftBroadcastChannels
+// CHECK-SAME:     [[ARG_0:%[^:]+]]: tensor<1x3x300x300xf16>
 func.func @ConvertMultiplyWithConstFQToScaleShiftBroadcastChannels(%arg0: tensor<1x3x300x300xf16>) -> tensor<1x3x300x300xf16> {
     %weights = const.Declare tensor<1x1x1x1xf16> = dense<3.0> : tensor<1x1x1x1xf16>
     %input_low = const.Declare tensor<1x1x1x1xf16> = dense<0.0> : tensor<1x1x1x1xf16>
@@ -201,7 +214,7 @@ func.func @ConvertMultiplyWithConstFQToScaleShiftBroadcastChannels(%arg0: tensor
     // CHECK:       [[VAL0:%.+]] = IE.FakeQuantize([[WEIGHTS]], [[CONST_LOW]], [[CONST_HIGH]], [[CONST_LOW]], [[CONST_HIGH]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x3x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x3x1x1xf16>
     // CHECK:       [[VAL1:%.+]] = IE.Reshape([[VAL0]]) {shape_value = [1, 1, 1]} : tensor<1x3x1x1xf16> -> tensor<1x1x1xf16>
     // CHECK:       [[VAL2:%.+]] = IE.Reshape([[VAL1]]) {shape_value = [1, 1, 1, 1]} : tensor<1x1x1xf16> -> tensor<1x1x1x1xf16>
-    // CHECK:       [[VAL3:%.+]] = IE.ScaleShift(%arg0, [[VAL2]]) {operandSegmentSizes = array<i32: 1, 1, 0>} : tensor<1x3x300x300xf16>, tensor<1x1x1x1xf16> -> tensor<1x3x300x300xf16>
+    // CHECK:       [[VAL3:%.+]] = IE.ScaleShift([[ARG_0]], [[VAL2]]) {operandSegmentSizes = array<i32: 1, 1, 0>} : tensor<1x3x300x300xf16>, tensor<1x1x1x1xf16> -> tensor<1x3x300x300xf16>
     // CHECK:       return [[VAL3]]
 }
 
@@ -237,6 +250,7 @@ func.func @ConvertAddWithConstFQToScaleShiftSameShape(%arg0: tensor<1x16x1x1xf16
 // -----
 
 // CHECK-LABEL: @NoConvertAddToScaleShift
+// CHECK-SAME:     [[ARG_0:%[^:]+]]: tensor<1x3x300x300xsi32>
 func.func @NoConvertAddToScaleShift(%arg0: tensor<1x3x300x300xsi32>) -> tensor<1x3x300x300xsi32> {
     %bias = const.Declare tensor<1x3x1x1xsi32> = dense<2> : tensor<1x3x1x1xsi32>
     %0 = IE.Add(%arg0, %bias)
@@ -246,13 +260,14 @@ func.func @NoConvertAddToScaleShift(%arg0: tensor<1x3x300x300xsi32>) -> tensor<1
     return %0 : tensor<1x3x300x300xsi32>
 
     // CHECK-DAG:       [[BIAS:%.+]] = const.Declare tensor<1x3x1x1xsi32> = dense<2> : tensor<1x3x1x1xsi32>
-    // CHECK:       [[VAL0:%.+]] = IE.Add(%arg0, [[BIAS]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3x300x300xsi32>, tensor<1x3x1x1xsi32> -> tensor<1x3x300x300xsi32>
+    // CHECK:       [[VAL0:%.+]] = IE.Add([[ARG_0]], [[BIAS]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3x300x300xsi32>, tensor<1x3x1x1xsi32> -> tensor<1x3x300x300xsi32>
     // CHECK:       return [[VAL0]]
 }
 
 // -----
 
 // CHECK-LABEL: @NoConvertAddToScaleShiftF32
+// CHECK-SAME:     [[ARG_0:%[^:]+]]: tensor<1x3x300x300xf32>
 func.func @NoConvertAddToScaleShiftF32(%arg0: tensor<1x3x300x300xf32>) -> tensor<1x3x300x300xf32> {
     %bias = const.Declare tensor<1x3x1x1xf32> = dense<2.0> : tensor<1x3x1x1xf32>
     %0 = IE.Add(%arg0, %bias)
@@ -262,7 +277,7 @@ func.func @NoConvertAddToScaleShiftF32(%arg0: tensor<1x3x300x300xf32>) -> tensor
     return %0 : tensor<1x3x300x300xf32>
 
     // CHECK-DAG:       [[BIAS:%.+]] = const.Declare tensor<1x3x1x1xf32> = dense<2.000000e+00> : tensor<1x3x1x1xf32>
-    // CHECK:       [[VAL0:%.+]] = IE.Add(%arg0, [[BIAS]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3x300x300xf32>, tensor<1x3x1x1xf32> -> tensor<1x3x300x300xf32>
+    // CHECK:       [[VAL0:%.+]] = IE.Add([[ARG_0]], [[BIAS]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3x300x300xf32>, tensor<1x3x1x1xf32> -> tensor<1x3x300x300xf32>
     // CHECK:       return [[VAL0]]
 }
 
@@ -270,6 +285,7 @@ func.func @NoConvertAddToScaleShiftF32(%arg0: tensor<1x3x300x300xf32>) -> tensor
 // -----
 
 // CHECK-LABEL: @NoConvertMultiplyToScaleShift
+// CHECK-SAME:     [[ARG_0:%[^:]+]]: tensor<1x3x300x300xsi32>
 func.func @NoConvertMultiplyToScaleShift(%arg0: tensor<1x3x300x300xsi32>) -> tensor<1x3x300x300xsi32> {
     %weights = const.Declare tensor<1x3x1x1xsi32> = dense<3> : tensor<1x3x1x1xsi32>
     %0 = IE.Multiply(%arg0, %weights)
@@ -279,13 +295,14 @@ func.func @NoConvertMultiplyToScaleShift(%arg0: tensor<1x3x300x300xsi32>) -> ten
     return %0 : tensor<1x3x300x300xsi32>
 
     // CHECK-DAG:       [[WEIGHTS:%.+]] = const.Declare tensor<1x3x1x1xsi32> = dense<3> : tensor<1x3x1x1xsi32>
-    // CHECK:       [[VAL0:%.+]] = IE.Multiply(%arg0, [[WEIGHTS]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3x300x300xsi32>, tensor<1x3x1x1xsi32> -> tensor<1x3x300x300xsi32>
+    // CHECK:       [[VAL0:%.+]] = IE.Multiply([[ARG_0]], [[WEIGHTS]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3x300x300xsi32>, tensor<1x3x1x1xsi32> -> tensor<1x3x300x300xsi32>
     // CHECK:       return [[VAL0]]
 }
 
 // -----
 
 // CHECK-LABEL: @NoConvertMultiplyToScaleShiftF32
+// CHECK-SAME:     [[ARG_0:%[^:]+]]: tensor<1x3x300x300xf32>
 func.func @NoConvertMultiplyToScaleShiftF32(%arg0: tensor<1x3x300x300xf32>) -> tensor<1x3x300x300xf32> {
     %weights = const.Declare tensor<1x3x1x1xf32> = dense<3.0> : tensor<1x3x1x1xf32>
     %0 = IE.Multiply(%arg0, %weights)
@@ -295,13 +312,14 @@ func.func @NoConvertMultiplyToScaleShiftF32(%arg0: tensor<1x3x300x300xf32>) -> t
     return %0 : tensor<1x3x300x300xf32>
 
     // CHECK-DAG:       [[WEIGHTS:%.+]] = const.Declare tensor<1x3x1x1xf32> = dense<3.000000e+00> : tensor<1x3x1x1xf32>
-    // CHECK:       [[VAL0:%.+]] = IE.Multiply(%arg0, [[WEIGHTS]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3x300x300xf32>, tensor<1x3x1x1xf32> -> tensor<1x3x300x300xf32>
+    // CHECK:       [[VAL0:%.+]] = IE.Multiply([[ARG_0]], [[WEIGHTS]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3x300x300xf32>, tensor<1x3x1x1xf32> -> tensor<1x3x300x300xf32>
     // CHECK:       return [[VAL0]]
 }
 
 // -----
 
 // CHECK-LABEL: @NoConvertMultiplyToScaleShiftWithInconsistentActShape
+// CHECK-SAME:     [[ARG_0:%[^:]+]]: tensor<1x256x1x1xf16>
 func.func @NoConvertMultiplyToScaleShiftWithInconsistentActShape(%arg0: tensor<1x256x1x1xf16>) -> tensor<1x256x1x768xf16> {
     %weights = const.Declare tensor<1x1x1x768xf16> = dense<3.0> : tensor<1x1x1x768xf16>
     %0 = IE.Multiply(%arg0, %weights)
@@ -311,13 +329,14 @@ func.func @NoConvertMultiplyToScaleShiftWithInconsistentActShape(%arg0: tensor<1
     return %0 : tensor<1x256x1x768xf16>
 
     // CHECK-DAG:       [[WEIGHTS:%.+]] = const.Declare tensor<1x1x1x768xf16> = dense<3.000000e+00> : tensor<1x1x1x768xf16>
-    // CHECK:       [[VAL0:%.+]] = IE.Multiply(%arg0, [[WEIGHTS]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x256x1x1xf16>, tensor<1x1x1x768xf16> -> tensor<1x256x1x768xf16>
+    // CHECK:       [[VAL0:%.+]] = IE.Multiply([[ARG_0]], [[WEIGHTS]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x256x1x1xf16>, tensor<1x1x1x768xf16> -> tensor<1x256x1x768xf16>
     // CHECK:       return [[VAL0]]
 }
 
 // -----
 
 // CHECK-LABEL: @ConvertSubtractToScaleShift
+// CHECK-SAME:     [[ARG_0:%[^:]+]]: tensor<1x3x300x300xf16>
 func.func @ConvertSubtractToScaleShift(%arg0: tensor<1x3x300x300xf16>) -> tensor<1x3x300x300xf16> {
     %bias = const.Declare tensor<1x3x1x1xf16> = dense<2.0> : tensor<1x3x1x1xf16>
     %0 = IE.Subtract(%arg0, %bias)
@@ -327,13 +346,14 @@ func.func @ConvertSubtractToScaleShift(%arg0: tensor<1x3x300x300xf16>) -> tensor
     return %0 : tensor<1x3x300x300xf16>
 
     // CHECK-DAG:       [[VAL0:%.+]] = const.Declare tensor<1x3x1x1xf16> = dense<2.000000e+00> : tensor<1x3x1x1xf16>, [#const.Rescale<-1.000000e+00 : f64>]
-    // CHECK:       [[VAL1:%.+]] = IE.ScaleShift(%arg0, [[VAL0]]) {operandSegmentSizes = array<i32: 1, 0, 1>} : tensor<1x3x300x300xf16>, tensor<1x3x1x1xf16> -> tensor<1x3x300x300xf16>
+    // CHECK:       [[VAL1:%.+]] = IE.ScaleShift([[ARG_0]], [[VAL0]]) {operandSegmentSizes = array<i32: 1, 0, 1>} : tensor<1x3x300x300xf16>, tensor<1x3x1x1xf16> -> tensor<1x3x300x300xf16>
     // CHECK:       return [[VAL1]]
 }
 
 // -----
 
 // CHECK-LABEL: @NotConvertSubtractToScaleShiftLhsIsNotActivation
+// CHECK-SAME:     [[ARG_0:%[^:]+]]: tensor<1x3x300x300xf16>
 func.func @NotConvertSubtractToScaleShiftLhsIsNotActivation(%arg0: tensor<1x3x300x300xf16>) -> tensor<1x3x300x300xf16> {
     %0 = const.Declare tensor<1x3x1x1xf16> = dense<2.0> : tensor<1x3x1x1xf16>
     %1 = IE.Subtract(%0, %arg0)
@@ -343,7 +363,7 @@ func.func @NotConvertSubtractToScaleShiftLhsIsNotActivation(%arg0: tensor<1x3x30
     return %1 : tensor<1x3x300x300xf16>
 
     // CHECK-DAG:       [[VAL0:%.+]] = const.Declare tensor<1x3x1x1xf16> = dense<2.000000e+00> : tensor<1x3x1x1xf16>
-    // CHECK:       [[VAL1:%.+]] = IE.Subtract([[VAL0]], %arg0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3x1x1xf16>, tensor<1x3x300x300xf16> -> tensor<1x3x300x300xf16>
+    // CHECK:       [[VAL1:%.+]] = IE.Subtract([[VAL0]], [[ARG_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3x1x1xf16>, tensor<1x3x300x300xf16> -> tensor<1x3x300x300xf16>
     // CHECK:       return [[VAL1]]
 }
 
@@ -367,6 +387,7 @@ func.func @NotConvertMultiplyToScaleShift(%arg0: tensor<1x42840x1x4xf16>) -> ten
 // -----
 
 // CHECK-LABEL: @ConvertToScaleShiftFakeQuantizeMultipleUse
+// CHECK-SAME:     [[ARG_0:%[^:]+]]: tensor<1x2x128x128xf16>
 func.func @ConvertToScaleShiftFakeQuantizeMultipleUse(%arg0: tensor<1x2x128x128xf16>) -> tensor<1x2x128x128xf16> {
     %weights = const.Declare tensor<1x1x1x1xf16> = dense<3.0> : tensor<1x1x1x1xf16>
     %input_low = const.Declare tensor<1x1x1x1xf16> = dense<0.0> : tensor<1x1x1x1xf16>
@@ -395,7 +416,7 @@ func.func @ConvertToScaleShiftFakeQuantizeMultipleUse(%arg0: tensor<1x2x128x128x
     // CHECK-DAG:       [[WEIGHTS:%.+]] = const.Declare tensor<1x2x1x1xf16> = dense<3.000000e+00> : tensor<1x1x1x1xf16>, [#const.Broadcast<1 : i64, 2 : i64>]
     // CHECK-DAG:       [[CONST_HIGH:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<2.550000e+02> : tensor<1x1x1x1xf16>
     // CHECK-DAG:       [[CONST_LOW:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<0.000000e+00> : tensor<1x1x1x1xf16>
-    // CHECK:       [[VAL0:%.+]] = IE.FakeQuantize(%arg0, [[CONST_LOW]], [[CONST_HIGH]], [[CONST_LOW]], [[CONST_HIGH]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} :  tensor<1x2x128x128xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x2x128x128xf16>
+    // CHECK:       [[VAL0:%.+]] = IE.FakeQuantize([[ARG_0]], [[CONST_LOW]], [[CONST_HIGH]], [[CONST_LOW]], [[CONST_HIGH]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} :  tensor<1x2x128x128xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x2x128x128xf16>
     // CHECK:       [[VAL1:%.+]] = IE.FakeQuantize([[WEIGHTS]], [[CONST_LOW]], [[CONST_HIGH]], [[CONST_LOW]], [[CONST_HIGH]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x2x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x2x1x1xf16>
     // CHECK:       [[VAL2:%.+]] = IE.ScaleShift([[VAL0]], [[VAL1]]) {operandSegmentSizes = array<i32: 1, 1, 0>} : tensor<1x2x128x128xf16>, tensor<1x2x1x1xf16> -> tensor<1x2x128x128xf16>
     // CHECK:       [[VAL3:%.+]] = IE.FakeQuantize([[VAL2]], [[CONST_LOW]], [[CONST_HIGH]], [[CONST_LOW]], [[CONST_HIGH]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x2x128x128xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x2x128x128xf16>
@@ -669,6 +690,30 @@ func.func @NoConvertMultiplyToScaleShiftWithHExpanded(%arg0: tensor<1x1x64x1xf16
 
     // CHECK:       [[MULTIPLY:%.+]] = IE.Multiply([[INPUT_0]], [[INPUT_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x64x1xf16>, tensor<1x8x64x16xf16> -> tensor<1x8x64x16xf16>
     // CHECK:       return [[MULTIPLY]]
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+#NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
+
+// CHECK-LABEL: @ConvertMultiplyToScaleShiftWithWExpanded
+// CHECK-SAME:  ([[INPUT_0:%.+]]: tensor<1x16x197x768xf16>)
+func.func @ConvertMultiplyToScaleShiftWithWExpanded(%arg0: tensor<1x16x197x768xf16>) -> tensor<1x16x197x768xf16> {
+    %weights = const.Declare tensor<1x1x1x768xf16> = dense<[4.5, 2.0]> : tensor<2xf16>, [#const.Broadcast<0 : i64, 768 : i64>, #const.Reshape<[1, 1, 1, 768]>]
+
+    %0 = IE.Multiply(%arg0, %weights)
+        { auto_broadcast = #IE.auto_broadcast_type<NUMPY> } :
+        tensor<1x16x197x768xf16>, tensor<1x1x1x768xf16> -> tensor<1x16x197x768xf16>
+
+    return %0 : tensor<1x16x197x768xf16>
+
+    // CHECK-DAG:   [[WEIGHTS:%.+]] = const.Declare tensor<1x768x1x1xf16> = dense<[4.500000e+00, 2.000000e+00]> : tensor<2xf16>, [#const.Broadcast<0 : i64, 768 : i64>, #const.Reshape<[1, 1, 1, 768]>, #const.Transpose<#NWCH>]
+    // CHECK:       [[TRANSPOSE_0:%.+]] = IE.Transpose([[INPUT_0]]) {order_value = #NWCH} : tensor<1x16x197x768xf16> -> tensor<1x768x16x197xf16>
+    // CHECK:       [[SCALE_SHIFT:%.+]] = IE.ScaleShift([[TRANSPOSE_0]], [[WEIGHTS]]) {operandSegmentSizes = array<i32: 1, 1, 0>} : tensor<1x768x16x197xf16>, tensor<1x768x1x1xf16> -> tensor<1x768x16x197xf16>
+    // CHECK:       [[TRANSPOSE_1:%.+]] = IE.Transpose([[SCALE_SHIFT]]) {order_value = #NHWC} : tensor<1x768x16x197xf16> -> tensor<1x16x197x768xf16>
+
+    // CHECK:       return [[TRANSPOSE_1]] : tensor<1x16x197x768xf16>
 }
 
 // -----

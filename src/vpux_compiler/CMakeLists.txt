@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2024-2026 Intel Corporation.
+# Copyright (C) 2024-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -51,7 +51,10 @@ include(cmake/vpux_tblgen.cmake)
 set(MLIR_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
 add_subdirectory(tblgen)
 
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
+include_directories(
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/interface/include
+)
 include_directories(SYSTEM ${CMAKE_CURRENT_BINARY_DIR}/include)
 # GraphFile schema is used in tblgen and therefore in entire compiler
 include_directories(
@@ -82,6 +85,28 @@ add_custom_target(update_compiler_hash ALL
 add_library(compiler_commit_hash INTERFACE)
 target_include_directories(compiler_commit_hash INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/include/vpux/compiler)
 add_dependencies(compiler_commit_hash update_compiler_hash)
+
+#
+# Compiler interface library (OBJECT)
+# This lightweight library provides the public API for network metadata and compiler interface
+# It can be used by runtime components without depending on the full compiler implementation
+#
+
+add_library(npu_compiler_interface OBJECT
+    interface/src/network_metadata.cpp
+)
+
+target_include_directories(npu_compiler_interface
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/interface/include>
+        $<INSTALL_INTERFACE:include>
+)
+
+# Link only essential dependencies that are part of the public API
+target_link_libraries(npu_compiler_interface
+    PUBLIC
+        openvino::npu_al
+)
 
 # Construct source files after BITCOMPACTOR configuration
 add_subdirectory(src)
@@ -124,9 +149,11 @@ target_include_directories(${COMPILER_TARGET}
     SYSTEM PUBLIC
         $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/src/vpux_compiler/tblgen>
 )
+
 target_link_libraries(${COMPILER_TARGET}
     PUBLIC
         openvino::npu_al
+        npu_compiler_interface
     PRIVATE
         npu_profiling_utils
 )

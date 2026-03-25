@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -123,44 +123,27 @@ mlir::LogicalResult TransposedConvolutionConversion::matchAndRewrite(IE::Transpo
 class ConvertTransposedConv2DToConv2DPass final :
         public IE::impl::ConvertTransposedConv2DToConv2DBase<ConvertTransposedConv2DToConv2DPass> {
 public:
-    explicit ConvertTransposedConv2DToConv2DPass(const bool enableSEPTransposedConv, Logger log)
-            : _enableSEPTransposedConv(enableSEPTransposedConv) {
+    explicit ConvertTransposedConv2DToConv2DPass(Logger log) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
-    mlir::LogicalResult initialize(mlir::MLIRContext* ctx) final;
-
 private:
     void safeRunOnFunc() final;
-
-    bool _enableSEPTransposedConv;
 };
-
-mlir::LogicalResult ConvertTransposedConv2DToConv2DPass::initialize(mlir::MLIRContext* ctx) {
-    if (mlir::failed(Base::initialize(ctx))) {
-        return mlir::failure();
-    }
-
-    // When this parameter has a value, it probably comes from LIT test.
-    // Override the default
-    if (enableSEPTransposedConv.hasValue()) {
-        _enableSEPTransposedConv = enableSEPTransposedConv.getValue();
-    }
-
-    return mlir::success();
-}
 
 void ConvertTransposedConv2DToConv2DPass::safeRunOnFunc() {
     auto& ctx = getContext();
-
+    const auto func = getOperation();
+    const auto moduleOp = getModuleOp(func);
+    const auto enableSEPtrsOps = config::hasEnableSEPtrsOperations(moduleOp);
     const auto logCb = [&](const formatv_object_base& msg) {
         _log.trace("{0}", msg.str());
     };
 
     const auto isLegalTransposedConvOp = [&](IE::TransposedConvolutionOp transposedConv) {
         _log.trace("Got '{0}' at '{1}'", transposedConv->getName(), transposedConv->getLoc());
-        if (_enableSEPTransposedConv && VPU::isSupportedSEPTransposedConv(transposedConv, logCb, /*checkLayout=*/false,
-                                                                          /*checkChannelAlignment=*/false)) {
+        if (enableSEPtrsOps && VPU::isSupportedSEPTransposedConv(transposedConv, logCb, /*checkLayout=*/false,
+                                                                 /*checkChannelAlignment=*/false)) {
             _log.nest(1).trace("TransposedConv can be executed using SEP");
             return true;
         }
@@ -185,7 +168,6 @@ void ConvertTransposedConv2DToConv2DPass::safeRunOnFunc() {
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<TransposedConvolutionConversion>(&ctx, _log);
 
-    auto func = getOperation();
     if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
         signalPassFailure();
     }
@@ -197,7 +179,6 @@ void ConvertTransposedConv2DToConv2DPass::safeRunOnFunc() {
 // createConvertTransposedConv2DToConv2DPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::IE::createConvertTransposedConv2DToConv2DPass(const bool enableSEPTransposedConv,
-                                                                                Logger log) {
-    return std::make_unique<ConvertTransposedConv2DToConv2DPass>(enableSEPTransposedConv, log);
+std::unique_ptr<mlir::Pass> vpux::IE::createConvertTransposedConv2DToConv2DPass(Logger log) {
+    return std::make_unique<ConvertTransposedConv2DToConv2DPass>(log);
 }

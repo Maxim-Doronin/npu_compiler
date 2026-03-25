@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -163,8 +163,8 @@ void BarrierOptimizationPass::safeRunOnFunc() {
         _workloadManagementMode = workloadManagementModeOpt.getValue();
     }
 
-    // Constrain executor types being optimized depending on WLM mode so as to avoid deadlocks and rollback regressions
-    // in early WLM modes.
+    // Constrain executor types being optimized depending on WLM mode so as to avoid deadlocks and regressions
+    // in early pWLM modes.
     bool allowOptimizationOfAllQueueTypes =
             _workloadManagementMode.has_value() &&
             _workloadManagementMode.value() > WorkloadManagementMode::PWLM_V1_BARRIER_FIFO;
@@ -197,7 +197,7 @@ void BarrierOptimizationPass::safeRunOnFunc() {
     barrierInfo.removeExplicitDependencies();
     mergeBarriers(barrierInfo, origWaitBarriersMap);
     if (allowOptimizationOfAllQueueTypes) {
-        // For platforms that have enabled support for independent shave queues without risking rollback regressions,
+        // For platforms that have enabled support for independent shave queues without risking performance regressions,
         // initialize and optimize dependencies on all queues.
         barrierInfo.clearTaskQueueTypeMap();
         barrierInfo.buildTaskQueueTypeMap();

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,7 @@
 #include "vpux/compiler/core/feasible_scheduler_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops_interfaces.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 
@@ -190,7 +191,7 @@ void vpux::updateScheduledOpsResourcesForControlEdge(std::list<ScheduledOpOneRes
             continue;
         }
 
-        const auto inputs = getInputsSanitized(layerOp);
+        const auto inputs = VPUIP::getInputsSanitized(layerOp);
         populateTargetBuffers(inputs, inputOperands);
 
         const auto outputs = layerOp.getOutputs();
@@ -268,6 +269,16 @@ void vpux::updateScheduledOpsResourcesForControlEdge(std::list<ScheduledOpOneRes
 void FeasibleMemorySchedulerControlEdges::insertMemoryControlEdges(
         ArrayRef<FeasibleMemoryScheduler::ScheduledOpInfo> scheduledOps) {
     std::list<ScheduledOpOneResource> scheduledOpsResources;
+    // set of modified operations, e.g.
+    // DMA         : input  [0-100]   : cycles [180-220]
+    // DPU         : output [500-600] : cycles [200-250]
+    // SPILL-WRITE : input  [500-600] : cycles [250-280]
+    // SPILL-READ  : output [0-100]   : cycles [280-310]
+    // can be optimized to:
+    // DMA         : input  [0-100]   : cycles [180-220]
+    // DPU         : output [0-100]   : cycles [200-250]
+    // now DMA with DPU can not coexist
+    std::unordered_set<size_t> modifiedOps;
 
     _log.trace("Insert control edges for overlapping memory resources");
 
@@ -279,6 +290,11 @@ void FeasibleMemorySchedulerControlEdges::insertMemoryControlEdges(
 
         auto opIndex = scheduledOp.op_;
         auto execOp = _depsInfo.getExecuteOpAtIndex(opIndex);
+
+        // store operations modified by spilling optimizations
+        if (scheduledOp.modifiedMemoryRange_) {
+            modifiedOps.insert(opIndex);
+        }
 
         // Check all operands of operation and prepare entries in scheduledOpsResources that will be used
         // by control edge algorithm to generate new dependencies
@@ -295,7 +311,7 @@ void FeasibleMemorySchedulerControlEdges::insertMemoryControlEdges(
 
     // Apply dependencies from controlEdges set into depsInfo.
     // Later they should be transfered to token based dependencies between AsyncExecuteOps
-    updateControlEdgesInDepsInfo(_depsInfo, controlEdges, _log);
+    updateControlEdgesInDepsInfo(_depsInfo, controlEdges, _log, modifiedOps);
 
     _log = _log.unnest();
 }
@@ -306,7 +322,8 @@ void FeasibleMemorySchedulerControlEdges::updateDependenciesInIR() {
     _depsInfo.updateTokenDependencies();
 }
 
-void vpux::updateControlEdgesInDepsInfo(AsyncDepsInfo& depsInfo, ControlEdgeSet& controlEdges, Logger& log) {
+void vpux::updateControlEdgesInDepsInfo(AsyncDepsInfo& depsInfo, ControlEdgeSet& controlEdges, Logger& log,
+                                        const std::unordered_set<size_t>& modifiedOps) {
     // Store information about optimized pairs which can coexist based on scheduler decision
     // and assignment of overlapping cycles
     // Map represents all control edges for a given sink node
@@ -328,17 +345,20 @@ void vpux::updateControlEdgesInDepsInfo(AsyncDepsInfo& depsInfo, ControlEdgeSet&
         auto sourceOp = depsInfo.getExecuteOpAtIndex(itr->_source);
         auto sinkOp = depsInfo.getExecuteOpAtIndex(itr->_sink);
 
-        auto sourceOpCycleStart = getAsyncExecuteCycleBegin(sourceOp);
-        auto sourceOpCycleEnd = getAsyncExecuteCycleEnd(sourceOp);
-        auto sinkOpCycleStart = getAsyncExecuteCycleBegin(sinkOp);
-        auto sinkOpCycleEnd = getAsyncExecuteCycleEnd(sinkOp);
+        if (!modifiedOps.count(itr->_source) && !modifiedOps.count(itr->_sink)) {
+            // Coexisting pairs may be modified by spilling optimizations
+            auto sourceOpCycleStart = getAsyncExecuteCycleBegin(sourceOp);
+            auto sourceOpCycleEnd = getAsyncExecuteCycleEnd(sourceOp);
+            auto sinkOpCycleStart = getAsyncExecuteCycleBegin(sinkOp);
+            auto sinkOpCycleEnd = getAsyncExecuteCycleEnd(sinkOp);
 
-        // If there is cycle overlap then scheduler assumed operations can coexist and there
-        // is no need for memory control edge
-        if (sinkOpCycleStart < sourceOpCycleEnd && sinkOpCycleEnd > sourceOpCycleStart) {
-            optimizedEdgesBasedOnSinkOp[itr->_sink].push_back(itr->_source);
-            optimizedEdgesBasedOnSourceOp[itr->_source].push_back(itr->_sink);
-            continue;
+            // If there is cycle overlap then scheduler assumed operations can coexist and there
+            // is no need for memory control edge
+            if (sinkOpCycleStart < sourceOpCycleEnd && sinkOpCycleEnd > sourceOpCycleStart) {
+                optimizedEdgesBasedOnSinkOp[itr->_sink].push_back(itr->_source);
+                optimizedEdgesBasedOnSourceOp[itr->_source].push_back(itr->_sink);
+                continue;
+            }
         }
 
         log.trace("Dep: {0} -> {1}", itr->_source, itr->_sink);

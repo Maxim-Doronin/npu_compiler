@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -294,9 +294,9 @@ func.func @CopiesInCasesOfIndexSwitch(%arg0: memref<1x16x?x1280xf16>, %arg1: mem
   memref.copy %alloc, %arg1 : memref<1x16x?x1280xf16> to memref<1x16x?x1280xf16>
   return %arg1 : memref<1x16x?x1280xf16>
 
-  // CHECK: func.func [[FUNC0:@.+]](%arg0: memref<1x16x30x1280xf16>, %arg1: memref<1x16x28x1280xf16>)
-  // CHECK: func.func [[FUNC1:@.+]](%arg0: memref<1x16x29x1280xf16>, %arg1: memref<1x16x28x1280xf16>)
-  // CHECK: func.func [[FUNC2:@.+]](%arg0: memref<1x16x29x1280xf16>, %arg1: memref<1x16x28x1280xf16>)
+  // CHECK: func.func [[FUNC0:@.+]]([[ARG_0:%[^:]+]]: memref<1x16x30x1280xf16>, [[ARG_1:%[^:]+]]: memref<1x16x28x1280xf16>)
+  // CHECK: func.func [[FUNC1:@.+]]([[ARG_0:%[^:]+]]: memref<1x16x29x1280xf16>, [[ARG_1:%[^:]+]]: memref<1x16x28x1280xf16>)
+  // CHECK: func.func [[FUNC2:@.+]]([[ARG_0:%[^:]+]]: memref<1x16x29x1280xf16>, [[ARG_1:%[^:]+]]: memref<1x16x28x1280xf16>)
 
   // CHECK: func.func @CopiesInCasesOfIndexSwitch([[ARG0:%.+]]: memref<1x16x?x1280xf16>, [[ARG1:%.+]]: memref<1x16x?x1280xf16>, [[ARG2:%.+]]: index, [[ARG3:%.+]]: index)
   // CHECK: [[FALSE:%.+]] = arith.constant false
@@ -402,13 +402,13 @@ func.func @CopiesInCasesOfIndexSwitchWithNestedCall(%arg0: memref<1x16x?x1280xf1
   return %arg1 : memref<1x16x?x1280xf16>
 
   // CHECK: module [[MODULE0:@.+]] {
-  // CHECK: func.func [[FUNC0:@.+]](%arg0: memref<1x16x30x1280xf16>, %arg1: memref<1x16x28x1280xf16>)
+  // CHECK: func.func [[FUNC0:@.+]]([[ARG_0:%[^:]+]]: memref<1x16x30x1280xf16>, [[ARG_1:%[^:]+]]: memref<1x16x28x1280xf16>)
 
   // CHECK: module [[MODULE1:@.+]] {
-  // CHECK: func.func [[FUNC1:@.+]](%arg0: memref<1x16x29x1280xf16>, %arg1: memref<1x16x28x1280xf16>)
+  // CHECK: func.func [[FUNC1:@.+]]([[ARG_0:%[^:]+]]: memref<1x16x29x1280xf16>, [[ARG_1:%[^:]+]]: memref<1x16x28x1280xf16>)
 
   // CHECK: module [[MODULE2:@.+]] {
-  // CHECK: func.func [[FUNC2:@.+]](%arg0: memref<1x16x29x1280xf16>, %arg1: memref<1x16x28x1280xf16>)
+  // CHECK: func.func [[FUNC2:@.+]]([[ARG_0:%[^:]+]]: memref<1x16x29x1280xf16>, [[ARG_1:%[^:]+]]: memref<1x16x28x1280xf16>)
 
   // CHECK: func.func @CopiesInCasesOfIndexSwitchWithNestedCall([[ARG0:%.+]]: memref<1x16x?x1280xf16>, [[ARG1:%.+]]: memref<1x16x?x1280xf16>, [[ARG2:%.+]]: index, [[ARG3:%.+]]: index)
   // CHECK: [[FALSE:%.+]] = arith.constant false

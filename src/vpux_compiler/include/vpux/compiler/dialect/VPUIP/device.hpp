@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -142,33 +142,6 @@ enum PSROIPoolingMode {
     PSROIPoolingMode_BILINEAR_DEFORMABLE = 2,
     PSROIPoolingMode_MIN = PSROIPoolingMode_AVERAGE,
     PSROIPoolingMode_MAX = PSROIPoolingMode_BILINEAR_DEFORMABLE
-};
-
-enum M2IFormat {
-    M2IFormat_PL_YUV444_8 = 0,
-    M2IFormat_PL_YUV420_8 = 1,
-    M2IFormat_PL_RGB24 = 2,
-    M2IFormat_PL_RGB30 = 3,
-    M2IFormat_PL_GRAY8 = 4,
-    M2IFormat_PL_FP16_RGB = 5,
-    M2IFormat_PL_FP16_YUV = 6,
-    M2IFormat_PL_YUV422_8 = 7,
-    M2IFormat_SP_NV12_8 = 8,
-    M2IFormat_SP_NV12_10 = 9,
-    M2IFormat_SP_P010 = 10,
-    M2IFormat_IL_YUV422_8 = 24,
-    M2IFormat_IL_RGB8888 = 25,
-    M2IFormat_IL_RGB888 = 26,
-    M2IFormat_IL_RGB30 = 27,
-    M2IFormat_MIN = M2IFormat_PL_YUV444_8,
-    M2IFormat_MAX = M2IFormat_IL_RGB30
-};
-
-enum M2IInterp {
-    M2IInterp_NEAREST = 0,
-    M2IInterp_BILINEAR = 1,
-    M2IInterp_MIN = M2IInterp_NEAREST,
-    M2IInterp_MAX = M2IInterp_BILINEAR
 };
 
 enum DeformablePSROIPoolingMode {

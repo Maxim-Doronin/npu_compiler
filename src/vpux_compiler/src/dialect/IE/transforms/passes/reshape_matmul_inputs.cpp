@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -82,18 +82,14 @@ void InputsTo2D(IE::MatMulOp origOp) {
     }
     auto ctx = origOp.getContext();
     mlir::OpBuilder builder(origOp);
-
     auto reshapeLhs = builder.createOrFold<IE::ReshapeOp>(appendLoc(lhs.getLoc(), "reshape_lhs"), lhs,
-                                                          /*shape=*/nullptr, /*special_zero=*/false,
                                                           /*shape_value=*/getIntArrayAttr(ctx, newLhsShape));
     auto reshapeRhs = builder.createOrFold<IE::ReshapeOp>(appendLoc(rhs.getLoc(), "reshape_rhs"), rhs,
-                                                          /*shape=*/nullptr, /*special_zero=*/false,
                                                           /*shape_value=*/getIntArrayAttr(ctx, newRhsShape));
 
     auto newMatMul = cloneMatMulOp(builder, origOp, reshapeLhs, reshapeRhs);
     auto reshapeOut =
             builder.createOrFold<IE::ReshapeOp>(appendLoc(out.getLoc(), "reshape_out"), newMatMul->getResult(0),
-                                                /*shape=*/nullptr, /*special_zero=*/false,
                                                 /*shape_value=*/getIntArrayAttr(ctx, outShape));
 
     origOp.getOutput().replaceAllUsesWith(reshapeOut);
@@ -206,16 +202,14 @@ void CollapseBatch(IE::MatMulOp origOp) {
     auto ctx = origOp.getContext();
     mlir::OpBuilder builder(origOp);
     auto reshapeLhs = builder.createOrFold<IE::ReshapeOp>(appendLoc(lhs.getLoc(), "reshape_lhs"), lhs,
-                                                          /*shape=*/nullptr, /*special_zero=*/false,
                                                           /*shape_value=*/getIntArrayAttr(ctx, newLhsShape));
     auto reshapeRhs = builder.createOrFold<IE::ReshapeOp>(appendLoc(rhs.getLoc(), "reshape_rhs"), rhs,
-                                                          /*shape=*/nullptr, /*special_zero=*/false,
                                                           /*shape_value=*/getIntArrayAttr(ctx, newRhsShape));
     auto fullyConnected =
             builder.create<IE::FullyConnectedOp>(origOp.getLoc(), reshapeLhs, reshapeRhs, /*bias=*/nullptr);
-    auto reshapeOut = builder.createOrFold<IE::ReshapeOp>(
-            appendLoc(out.getLoc(), "reshape_out"), fullyConnected.getOutput(), /*shape=*/nullptr,
-            /*special_zero=*/false, /*shape_value=*/getIntArrayAttr(ctx, outShape));
+    auto reshapeOut =
+            builder.createOrFold<IE::ReshapeOp>(appendLoc(out.getLoc(), "reshape_out"), fullyConnected.getOutput(),
+                                                /*shape_value=*/getIntArrayAttr(ctx, outShape));
     origOp.getOutput().replaceAllUsesWith(reshapeOut);
     origOp.erase();
 }
@@ -255,15 +249,12 @@ void To4D(IE::MatMulOp origOp) {
     auto ctx = origOp.getContext();
     mlir::OpBuilder builder(origOp);
     auto reshapeLhs = builder.createOrFold<IE::ReshapeOp>(appendLoc(lhs.getLoc(), "reshape_lhs"), lhs,
-                                                          /*shape=*/nullptr, /*special_zero=*/false,
                                                           /*shape_value=*/getIntArrayAttr(ctx, newLhsShape));
     auto reshapeRhs = builder.createOrFold<IE::ReshapeOp>(appendLoc(rhs.getLoc(), "reshape_rhs"), rhs,
-                                                          /*shape=*/nullptr, /*special_zero=*/false,
                                                           /*shape_value=*/getIntArrayAttr(ctx, newRhsShape));
     auto newMatMul = cloneMatMulOp(builder, origOp, reshapeLhs, reshapeRhs);
     auto reshapeOut =
             builder.createOrFold<IE::ReshapeOp>(appendLoc(out.getLoc(), "reshape_out"), newMatMul->getResult(0),
-                                                /*shape=*/nullptr, /*special_zero=*/false,
                                                 /*shape_value=*/getIntArrayAttr(ctx, outShape));
 
     origOp.getOutput().replaceAllUsesWith(reshapeOut);
@@ -324,13 +315,11 @@ void SoftMaxTo4D(IE::SoftMaxOp origOp) {
     auto ctx = origOp.getContext();
     mlir::OpBuilder builder(origOp);
     auto reshapeInput = builder.createOrFold<IE::ReshapeOp>(appendLoc(input.getLoc(), "reshape_in"), input,
-                                                            /*shape=*/nullptr, /*special_zero=*/false,
                                                             /*shape_value=*/getIntArrayAttr(ctx, newInShape));
     auto newSoftMax = builder.create<IE::SoftMaxOp>(origOp->getLoc(), reshapeInput, getIntAttr(ctx, axisValue),
                                                     origOp.getPadSizeAttr());
     auto reshapeOut =
             builder.createOrFold<IE::ReshapeOp>(appendLoc(out.getLoc(), "reshape_out"), newSoftMax.getOutput(),
-                                                /*shape=*/nullptr, /*special_zero=*/false,
                                                 /*shape_value=*/getIntArrayAttr(ctx, outShape));
 
     origOp.getOutput().replaceAllUsesWith(reshapeOut);

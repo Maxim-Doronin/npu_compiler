@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -428,4 +428,45 @@ func.func @NoExpandInterpolateChannelsTooSmall(%input: tensor<1x2x48x48xf16, {or
     // CHECK-SAME:        -> tensor<1x2x384x384xf16, {order = #NHWC}>
 
     // CHECK:    return [[INTERP]]
+}
+
+// -----
+
+!qElemType = !quant.uniform<u8:f16, 0.0078431372549019607:128>
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+#NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
+
+// CHECK-LABEL: @ExpandChannelsWithAvgPoolOp
+func.func @ExpandChannelsWithAvgPoolOp(%arg0: tensor<1x1079x?x12xf16, {bounds = #const.OpaqueI64Elements<[1, 1079, 319, 12]> : tensor<4xsi64>, order = #NCHW}>) -> tensor<1x3x2158x?x!qElemType, {bounds = #const.OpaqueI64Elements<[1, 3, 2158, 638]> : tensor<4xsi64>, order = #NHWC}> {
+  %0 = IE.PermuteCast(%arg0) {
+    dst_order = #NHWC,
+    mem_perm = #NCHW
+  } : tensor<1x1079x?x12xf16, {bounds = #const.OpaqueI64Elements<[1, 1079, 319, 12]> : tensor<4xsi64>, order = #NCHW}> -> tensor<1x12x1079x?xf16, {bounds = #const.OpaqueI64Elements<[1, 12, 1079, 319]> : tensor<4xsi64>, order = #NHWC}>
+  %1 = IE.AvgPool(%0) {
+    exclude_pads,
+    kernel_size = [1, 1],
+    pads_begin = [0, 0],
+    pads_end = [0, 0],
+    rounding_type = #IE.rounding_type<FLOOR>,
+    strides = [1, 1]
+  } : tensor<1x12x1079x?xf16, {bounds = #const.OpaqueI64Elements<[1, 12, 1079, 319]> : tensor<4xsi64>, order = #NHWC}> -> tensor<1x12x1079x?x!qElemType, {bounds = #const.OpaqueI64Elements<[1, 12, 1079, 319]> : tensor<4xsi64>, order = #NHWC}>
+  %2 = IE.DepthToSpace(%1) {
+    block_size = 2 : i64,
+    mode = #IE.depth_to_space_mode<DEPTH_FIRST>
+  } : tensor<1x12x1079x?x!qElemType, {bounds = #const.OpaqueI64Elements<[1, 12, 1079, 319]> : tensor<4xsi64>, order = #NHWC}> -> tensor<1x3x2158x?x!qElemType, {bounds = #const.OpaqueI64Elements<[1, 3, 2158, 638]> : tensor<4xsi64>, order = #NHWC}>
+  return %2 : tensor<1x3x2158x?x!qElemType, {bounds = #const.OpaqueI64Elements<[1, 3, 2158, 638]> : tensor<4xsi64>, order = #NHWC}>
+  // CHECK:       [[PERM:%.+]] = IE.PermuteCast([[INPUT:%arg[0-9]]])
+  // CHECK-SAME:      -> tensor<1x12x1079x?xf16, {bounds = #const.OpaqueI64Elements<[1, 12, 1079, 319]> : tensor<4xsi64>, order = #NHWC}>
+  // CHECK:       [[EXPAND:%.+]] = IE.Expand([[PERM]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 4, 0, 0]}
+  // CHECK-SAME:      -> tensor<1x16x1079x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 1079, 319]> : tensor<4xsi64>, order = #NHWC}>
+  // CHECK:       [[AVGPOOL:%.+]] = IE.AvgPool([[EXPAND]])
+  // CHECK-SAME:      input_padding = [0, 4, 0, 0]
+  // CHECK-SAME:      output_padding = [0, 4, 0, 0]
+  // CHECK-SAME:      -> tensor<1x16x1079x?x!qElemType, {bounds = #const.OpaqueI64Elements<[1, 16, 1079, 319]> : tensor<4xsi64>, order = #NHWC}>
+  // CHECK:       [[SLICE:%.+]] = IE.Slice [[AVGPOOL]] [0, 0, 0, 0] [1, 12, 1079, -9223372036854775808]
+  // CHECK-SAME:      to tensor<1x12x1079x?x!qElemType, {bounds = #const.OpaqueI64Elements<[1, 12, 1079, 319]> : tensor<4xsi64>, order = #NHWC}>
+  // CHECK:       [[D2S:%.+]] = IE.DepthToSpace([[SLICE]])
+  // CHECK-SAME:      -> tensor<1x3x2158x?x!qElemType, {bounds = #const.OpaqueI64Elements<[1, 3, 2158, 638]> : tensor<4xsi64>, order = #NHWC}>
+  // CHECK:       return [[D2S]] : tensor<1x3x2158x?x!qElemType, {bounds = #const.OpaqueI64Elements<[1, 3, 2158, 638]> : tensor<4xsi64>, order = #NHWC}>
 }

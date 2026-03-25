@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,7 @@
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @ConvertDMACopySequence
+// CHECK-SAME: ([[ARG_0:%.+]]: memref<1x16x112x112xf32, #NHWC, @CMX>, [[ARG_1:%.+]]: memref<1x16x112x112xf16, #NHWC, @CMX>)
 func.func @ConvertDMACopySequence(
         %arg0: memref<1x16x112x112xf32, #NHWC, @CMX>,
         %arg1: memref<1x16x112x112xf16, #NHWC, @CMX>)
@@ -23,7 +24,7 @@ func.func @ConvertDMACopySequence(
 
     return %2 : memref<1x16x112x112xf16, #NHWC, @CMX>
 
-    //CHECK: [[CONVERTDMA:%.+]] = VPUIP.ConvertDMA inputs(%arg0 : memref<1x16x112x112xf32, #NHWC, @CMX>)
+    //CHECK: [[CONVERTDMA:%.+]] = VPUIP.ConvertDMA inputs([[ARG_0]] : memref<1x16x112x112xf32, #NHWC, @CMX>)
     //CHECK-NOT: VPUIP.Copy
 }
 
@@ -33,6 +34,7 @@ func.func @ConvertDMACopySequence(
 !SpilledOutput_DDR = memref<1x16x112x112xf16, #NHWC, @DDR>
 
 // CHECK-LABEL: @ConvertDMAClusterCopySequence
+// CHECK-SAME: ([[ARG_0:%.+]]: memref<1x16x112x112xf32, #NHWC, @CMX_NN>)
 func.func @ConvertDMAClusterCopySequence(%arg0: memref<1x16x112x112xf32, #NHWC, @CMX_NN>) -> !SpilledOutput_DDR {
 
     %0 = memref.alloc() : memref<1x16x112x112xf16, #NHWC, @CMX_NN>
@@ -47,7 +49,7 @@ func.func @ConvertDMAClusterCopySequence(%arg0: memref<1x16x112x112xf32, #NHWC, 
 
     // CHECK:   [[BUF_0:%.+]] = memref.alloc() : memref<1x16x112x112xf16, #NHWC, @DDR>
     // CHECK:    [[ConvertDMA:%.+]] = VPUIP.ConvertDMA
-    // CHECK-SAME:     inputs(%arg0 : memref<1x16x112x112xf32, #NHWC, @CMX_NN>)
+    // CHECK-SAME:     inputs([[ARG_0]] : memref<1x16x112x112xf32, #NHWC, @CMX_NN>)
     // CHECK-SAME:     outputs([[BUF_0]] : memref<1x16x112x112xf16, #NHWC, @DDR>) ->  memref<1x16x112x112xf16, #NHWC, @DDR>
     // CHECK-NOT:   VPUIP.ConvertDMA
 }
@@ -345,6 +347,7 @@ func.func @NotOptimizeConvertDmaWithReinterpretCast(%out: memref<32xi8, @DDR>) -
 !Input_CMX = memref<1x16x112x112xf32, #NHWC, @CMX_NN>
 
 // CHECK-LABEL: @ClusterConvertDMAClusterCopySequence
+// CHECK-SAME: ([[ARG_0:%.+]]: memref<1x16x112x112xf32, #NHWC, @CMX_NN>)
 func.func @ClusterConvertDMAClusterCopySequence(%arg0: !Input_CMX) -> !Output_CMX {
 
     %0 = memref.alloc() : !Output_CMX
@@ -361,7 +364,7 @@ func.func @ClusterConvertDMAClusterCopySequence(%arg0: !Input_CMX) -> !Output_CM
 
     // CHECK:   [[BUF_0:%.+]] = memref.alloc() : memref<1x16x112x112xf16, #NHWC, @DDR>
     // CHECK:   [[ConvertDMA:%.+]] = VPUIP.ConvertDMA
-    // CHECK-SAME:     inputs(%arg0 : memref<1x16x112x112xf32, #NHWC, @CMX_NN>)
+    // CHECK-SAME:     inputs([[ARG_0]] : memref<1x16x112x112xf32, #NHWC, @CMX_NN>)
     // CHECK-SAME:     outputs([[BUF_0]] : memref<1x16x112x112xf16, #NHWC, @DDR>) ->  memref<1x16x112x112xf16, #NHWC, @DDR>
     // CHECK-NOT:   VPUIP.ConvertDMA
 }

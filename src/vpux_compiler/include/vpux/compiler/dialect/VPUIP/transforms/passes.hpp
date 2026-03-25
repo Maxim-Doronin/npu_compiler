@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -189,12 +189,6 @@ std::unique_ptr<mlir::Pass> createUnrollExpandDMAPass(Logger log = Logger::globa
 std::unique_ptr<mlir::Pass> createUnrollPerAxisTileDMAPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createInvalidateUnrollDMAAnalysisPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createUnrollGatherDMAPass(Logger log = Logger::global());
-
-//
-// ShaveCodeGen Pipeline
-//
-
-void buildShaveCodeGenPipeline(mlir::OpPassManager& pm);
 
 //
 // Optimized Copying pipeline

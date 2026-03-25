@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -163,6 +163,7 @@ func.func @TiledGraph(%in : memref<10x10x1xf16>, %out_buf : memref<10x10x1xf16>)
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @WeightsTableOp
+// CHECK-SAME: ([[ARG_0:%.+]]: memref<1x1x16x64xf32>, [[ARG_1:%.+]]: memref<16x1x1x4xsi32>) -> memref<16x1x1x4xsi32>
 func.func @WeightsTableOp(%arg0: memref<1x1x16x64xf32>, %arg1: memref<16x1x1x4xsi32>) -> memref<16x1x1x4xsi32> {
     %cst0 = const.Declare memref<16x16x1x1xf16, #NHWC> =
         dense<1.000000e+00> : tensor<16x16x1x1xf16>, [#const.Reorder<#NHWC>]
@@ -223,7 +224,7 @@ func.func @WeightsTableOp(%arg0: memref<1x1x16x64xf32>, %arg1: memref<16x1x1x4xs
     // CHECK:       [[T5:%.+]], [[F5:%.+]] = async.execute -> !async.value<memref<16x1x1x4xsi32>> {
     // CHECK:           [[VAR5:%.+]] = VPUIP.Copy
     // CHECK-SAME:          inputs([[WEIGHT_TABLE_CST]] : memref<16x1x1x4xsi32>)
-    // CHECK-SAME:          outputs(%arg1 : memref<16x1x1x4xsi32>)
+    // CHECK-SAME:          outputs([[ARG_1]] : memref<16x1x1x4xsi32>)
     // CHECK:           async.yield [[VAR5]] : memref<16x1x1x4xsi32>
     // CHECK:       [[VAR5:%.+]] = async.await [[F5]] : !async.value<memref<16x1x1x4xsi32>>
 

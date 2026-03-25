@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,8 +9,7 @@
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
 
-// CHECK: func.func @InsertReorderBeforeConcat(%arg0: tensor<1x8x512x64xf16>, %arg1: tensor<1x2x1x512xf16>) -> tensor<1x64x9x512xf16>
-
+// CHECK: func.func @InsertReorderBeforeConcat([[ARG_0:%[^:]+]]: tensor<1x8x512x64xf16>, [[ARG_1:%[^:]+]]: tensor<1x2x1x512xf16>) -> tensor<1x64x9x512xf16>
 func.func @InsertReorderBeforeConcat(%arg0: tensor<1x8x512x64xf16>, %arg1: tensor<1x2x1x512xf16>) -> tensor<1x64x9x512xf16> {
     %cst = const.Declare tensor<64x2x1x1xf16> = dense<1.0>
         : tensor<64x2x1x1xf32>, [#const.CastElemType<f16>]
@@ -34,10 +33,10 @@ func.func @InsertReorderBeforeConcat(%arg0: tensor<1x8x512x64xf16>, %arg1: tenso
     // CHECK-DAG:   [[CONSTANT_1:%.+]] = const.Declare tensor<64x2x1x1xf16> = dense<1.000000e+00>
     // CHECK-SAME:  : tensor<64x2x1x1xf32>, [#const.CastElemType<f16>]
 
-    // CHECK:   [[TRANSPOSE:%.+]] = IE.Transpose(%arg0) {order_value = #NWCH}
+    // CHECK:   [[TRANSPOSE:%.+]] = IE.Transpose([[ARG_0]]) {order_value = #NWCH}
     // CHECK-SAME:  : tensor<1x8x512x64xf16> -> tensor<1x64x8x512xf16>
 
-    // CHECK:   [[CONV2D:%.+]] = IE.Convolution(%arg1, [[CONSTANT_1]]) {
+    // CHECK:   [[CONV2D:%.+]] = IE.Convolution([[ARG_1]], [[CONSTANT_1]]) {
     // CHECK-SAME:      dilations = [1, 1],
     // CHECK-SAME:      pads_begin = [0, 0],
     // CHECK-SAME:      pads_end = [0, 0],
@@ -63,8 +62,7 @@ func.func @InsertReorderBeforeConcat(%arg0: tensor<1x8x512x64xf16>, %arg1: tenso
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-// CHECK: func.func @InsertReorderBeforeReshapeConcat(%arg0: tensor<1x8x512x64xf16>, %arg1: tensor<1x2x1x512xf16>) -> tensor<1x64x9x512xf16>
-
+// CHECK: func.func @InsertReorderBeforeReshapeConcat([[ARG_0:%[^:]+]]: tensor<1x8x512x64xf16>, [[ARG_1:%[^:]+]]: tensor<1x2x1x512xf16>) -> tensor<1x64x9x512xf16>
 func.func @InsertReorderBeforeReshapeConcat(%arg0: tensor<1x8x512x64xf16>, %arg1: tensor<1x2x1x512xf16>) -> tensor<1x64x9x512xf16> {
     %cst = const.Declare tensor<64x2x1x1xf16> = dense<1.0>
         : tensor<64x2x1x1xf32>, [#const.CastElemType<f16>]
@@ -88,10 +86,10 @@ func.func @InsertReorderBeforeReshapeConcat(%arg0: tensor<1x8x512x64xf16>, %arg1
     // CHECK-DAG:   [[CONSTANT_1:%.+]] = const.Declare tensor<64x2x1x1xf16> = dense<1.000000e+00>
     // CHECK-SAME:  : tensor<64x2x1x1xf32>, [#const.CastElemType<f16>]
 
-    // CHECK:   [[RESHAPE:%.+]] = IE.AffineReshape(%arg0)
+    // CHECK:   [[RESHAPE:%.+]] = IE.AffineReshape([[ARG_0]])
     // CHECK-SAME:  : tensor<1x8x512x64xf16> -> tensor<1x64x8x512xf16>
 
-    // CHECK:   [[CONV2D:%.+]] = IE.Convolution(%arg1, [[CONSTANT_1]]) {
+    // CHECK:   [[CONV2D:%.+]] = IE.Convolution([[ARG_1]], [[CONSTANT_1]]) {
     // CHECK-SAME:      dilations = [1, 1],
     // CHECK-SAME:      pads_begin = [0, 0],
     // CHECK-SAME:      pads_end = [0, 0],

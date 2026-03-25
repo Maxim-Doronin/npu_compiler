@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -113,13 +113,13 @@ func.func @UnrollNceSoKSEPDilatedConv() -> !Output_DDR {
     %parent_out_sparsity_map = VPURT.DeclareBuffer <CMX_NN> <103138> -> !OutputDistributed
 
     VPURT.Task waits(%bar0: !VPURT.Barrier) updates(%bar1: !VPURT.Barrier) {
-        %1 = VPUIP.NCEClusterTask {
+        %1 = VPUIP.NCEClusterTask <{
                     is_small_kernel_optimized,
                     kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
                     kernel_size = [3, 3],
                     kernel_strides = [1, 1],
                     task_type = #VPUIP.nce_task_type<DWCONV>
-            }   input(%parent_input_cmx : !InputDistributed)
+            }>   input(%parent_input_cmx : !InputDistributed)
                 input_sparsity_map(%parent_input_sparsity_map : !InputSparseMapDistributed)
                 input_storage_element_table(%seTable_CMX: !InputSETableDistributed)
                 weights(%weights : !WeightsDistributed)

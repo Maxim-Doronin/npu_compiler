@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -563,7 +563,7 @@ module @StaticEltwiseNHWC attributes {config.arch = #config.arch_kind<NPU40XX>, 
   // CHECK-SAME:   <object = "\7FELF\02\01\00\00\00\{{.+}}">
   // CHECK:   func.func private @main1(memref<1x90x1000x16xf16>, memref<1x90x1000x16xf16>) -> memref<1x90x1000x16xf16>
   // CHECK:   }
-  // CHECK:   func.func @main(%arg0: memref<1x720x1000x16xf16>, %arg1: memref<1x720x1000x16xf16>) -> memref<1x720x1000x16xf16> {
+  // CHECK:   func.func @main([[ARG_0:%[^:]+]]: memref<1x720x1000x16xf16>, [[ARG_1:%[^:]+]]: memref<1x720x1000x16xf16>) -> memref<1x720x1000x16xf16> {
   // CHECK:   [[IN0:%.+]] = builtin.unrealized_conversion_cast %subview : memref<1x90x1000x16xf16, strided<[11520000, 16000, 16, 1], offset: ?>> to memref<1x90x1000x16xf16>
   // CHECK:   [[OUT0:%.+]] = builtin.unrealized_conversion_cast %subview_0 : memref<1x90x1000x16xf16, strided<[11520000, 16000, 16, 1], offset: ?>> to memref<1x90x1000x16xf16>
   // CHECK:   [[RESULT:%.+]] = Core.NestedCall @OneDMAWithoutAttributes::@main1([[IN0]], %4) : (memref<1x90x1000x16xf16>, memref<1x90x1000x16xf16>) -> memref<1x90x1000x16xf16>

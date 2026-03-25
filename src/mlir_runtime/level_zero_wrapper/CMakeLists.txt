@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2025-2026 Intel Corporation.
+# Copyright (C) 2025-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -20,4 +20,9 @@ target_include_directories(${TARGET_NAME} PRIVATE
     ${LLVM_INCLUDE_DIRS}
 )
 
-target_link_libraries(${TARGET_NAME} PRIVATE npu_elf openvino::npu_al openvino::ze_loader openvino::npu_zero_utils npu_compiler_dialect_vpumi37xx)
+target_link_libraries(${TARGET_NAME} PRIVATE npu_elf openvino::npu_al openvino::ze_loader openvino::npu_zero_utils npu_compiler_dialect_vpumi37xx npu_compiler_interface)
+
+install(TARGETS ${TARGET_NAME}
+        ARCHIVE DESTINATION ${OV_CPACK_ARCHIVEDIR} COMPONENT ${VPUX_INTERNAL_COMPONENT}
+        LIBRARY DESTINATION ${OV_CPACK_RUNTIMEDIR} COMPONENT ${VPUX_INTERNAL_COMPONENT}
+        RUNTIME DESTINATION ${OV_CPACK_RUNTIMEDIR} COMPONENT ${VPUX_INTERNAL_COMPONENT})

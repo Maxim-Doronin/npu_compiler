@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,6 +7,7 @@
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
 // CHECK-LABEL: @ConvertConstToAttr
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x1x32x32x2xf32>)
 func.func @ConvertConstToAttr(%arg0: tensor<1x1x32x32x2xf32>) -> tensor<1x1x32x32x2xf32> {
     %cst_inices = const.Declare tensor<1xsi32> = dense<0> : tensor<si32>, [#const.Reshape<[1]>]
     %cst_axis = const.Declare tensor<1xsi32> = dense<1> : tensor<si32>, [#const.Reshape<[1]>]
@@ -15,13 +16,14 @@ func.func @ConvertConstToAttr(%arg0: tensor<1x1x32x32x2xf32>) -> tensor<1x1x32x3
     return %0 : tensor<1x1x32x32x2xf32>
 
     //CHECK-DAG:        [[CST_INDICE:%.+]] = const.Declare tensor<1xsi32> = dense<0> : tensor<si32>, [#const.Reshape<[1]>]
-    //CHECK:            [[GATHER:%.+]] = IE.Gather(%arg0, %cst) {axis_value = 1 : i64, batch_dims = 0 : i64} : tensor<1x1x32x32x2xf32>, tensor<1xsi32> -> tensor<1x1x32x32x2xf32>
+    //CHECK:            [[GATHER:%.+]] = IE.Gather([[ARG_0]], [[CST_INDICE]]) {axis_value = 1 : i64, batch_dims = 0 : i64} : tensor<1x1x32x32x2xf32>, tensor<1xsi32> -> tensor<1x1x32x32x2xf32>
     //CHECK:            return [[GATHER:%.+]] : tensor<1x1x32x32x2xf32>
 }
 
 // -----
 
 // CHECK-LABEL: @ConvertConstToAttrMinusAxis
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x1x32x32x2xf32>)
 func.func @ConvertConstToAttrMinusAxis(%arg0: tensor<1x1x32x32x2xf32>) -> tensor<1x1x32x32x1xf32> {
     %cst_inices = const.Declare tensor<1xsi32> = dense<0> : tensor<si32>, [#const.Reshape<[1]>]
     %cst_axis = const.Declare tensor<1xsi32> = dense<-1> : tensor<si32>, [#const.Reshape<[1]>]
@@ -30,7 +32,7 @@ func.func @ConvertConstToAttrMinusAxis(%arg0: tensor<1x1x32x32x2xf32>) -> tensor
     return %0 : tensor<1x1x32x32x1xf32>
 
     //CHECK-DAG:        [[CST_INDICE:%.+]] = const.Declare tensor<1xsi32> = dense<0> : tensor<si32>, [#const.Reshape<[1]>]
-    //CHECK:            [[GATHER:%.+]] = IE.Gather(%arg0, %cst) {axis_value = 4 : i64, batch_dims = 0 : i64} : tensor<1x1x32x32x2xf32>, tensor<1xsi32> -> tensor<1x1x32x32x1xf32>
+    //CHECK:            [[GATHER:%.+]] = IE.Gather([[ARG_0]], [[CST_INDICE]]) {axis_value = 4 : i64, batch_dims = 0 : i64} : tensor<1x1x32x32x2xf32>, tensor<1xsi32> -> tensor<1x1x32x32x1xf32>
     //CHECK:            return [[GATHER:%.+]] : tensor<1x1x32x32x1xf32>
 }
 

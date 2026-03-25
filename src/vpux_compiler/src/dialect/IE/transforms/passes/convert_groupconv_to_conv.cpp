@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,6 +12,7 @@
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/convolution_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
+#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
@@ -245,8 +246,8 @@ mlir::LogicalResult ConvertGroupConvToConvPass::DepthwiseConvSinglePixelInputToM
     // Reshape to final shape
     const auto reshapedWeightsShapeAttr = getIntArrayAttr(rewriter.getContext(), ArrayRef<int64_t>(finalWeightsShape));
     auto reshapeLoc = appendLoc(origOp->getLoc(), "_reshape_weights");
-    auto reshapedWeights = rewriter.create<IE::ReshapeOp>(reshapeLoc, concatWeights.getOutput(), nullptr, false,
-                                                          reshapedWeightsShapeAttr);
+    auto reshapedWeights =
+            rewriter.create<IE::ReshapeOp>(reshapeLoc, concatWeights.getOutput(), reshapedWeightsShapeAttr);
 
     // Broadcast weights to [1, C, OH, OW] if needed
     mlir::Value weightsForMultiply = reshapedWeights.getOutput();
@@ -541,7 +542,7 @@ mlir::LogicalResult ConvertGroupConvToConvPass::GroupConvToSingleConvConverter::
             _log.trace("Create Reshape for threshold");
             auto newShape = Shape(thresholdShape.size(), 1);
             newShape[Dims4D::Filter::OC] = axisSize;
-            return rewriter.createOrFold<IE::ReshapeOp>(threshold.getLoc(), threshold, nullptr, false,
+            return rewriter.createOrFold<IE::ReshapeOp>(threshold.getLoc(), threshold,
                                                         getIntArrayAttr(origOp.getContext(), ShapeRef(newShape)));
         };
 
@@ -694,7 +695,8 @@ void ConvertGroupConvToConvPass::safeRunOnFunc() {
 
     //
     target.addDynamicallyLegalOp<IE::GroupConvolutionOp>([&](IE::GroupConvolutionOp op) {
-        return mlir::failed(IE::canConvertGroupConvToConv(op, /*isAttrCheckEnabled=*/false));
+        return mlir::failed(IE::canConvertGroupConvToConv(op, /*isAttrCheckEnabled=*/false,
+                                                          /*checkHandleLargePads=*/true));
     });
     target.addLegalOp<IE::ConvolutionOp>();
     target.addLegalOp<IE::ReshapeOp>();

@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/reserved_memory_info.hpp"
 #include "vpux/compiler/core/linear_scan_handler.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 
 #include "vpux/utils/core/error.hpp"
 
@@ -21,9 +22,7 @@ ReservedMemInfo::ReservedMemInfo(mlir::ModuleOp moduleOp, mlir::AnalysisManager&
         return;
     }
 
-    mlir::func::FuncOp netFunc;
-    net::NetworkInfoOp netInfo;
-    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
+    auto [netInfo, netFunc] = net::getFromModule(moduleOp);
 
     auto liveRangeInfo = am.getChildAnalysis<MemLiveRangeInfoMemType<VPU::MemoryKind::DDR>>(netFunc);
     auto scanResult = am.getChildAnalysis<AllocationInfo>(netFunc).getScanResult(VPU::MemoryKind::DDR);

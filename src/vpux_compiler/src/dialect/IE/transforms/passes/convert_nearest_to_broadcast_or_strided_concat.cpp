@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/IE/utils/interpolate_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/dpu.hpp"
+#include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -33,12 +34,9 @@ namespace {
 class ConvertNearestToBroadcastOrStridedConcatPass final :
         public IE::impl::ConvertNearestToStridedConcatBase<ConvertNearestToBroadcastOrStridedConcatPass> {
 public:
-    explicit ConvertNearestToBroadcastOrStridedConcatPass(const bool interpolateAsSEOp, Logger log)
-            : _interpolateAsSEOp(interpolateAsSEOp) {
+    explicit ConvertNearestToBroadcastOrStridedConcatPass(Logger log) {
         Base::initLogger(log, Base::getArgumentName());
     }
-
-    mlir::LogicalResult initialize(mlir::MLIRContext* ctx) final;
 
 public:
     class NearestToBroadcastConverter;
@@ -46,24 +44,7 @@ public:
 
 private:
     void safeRunOnFunc() final;
-
-private:
-    bool _interpolateAsSEOp;
 };
-
-mlir::LogicalResult ConvertNearestToBroadcastOrStridedConcatPass::initialize(mlir::MLIRContext* ctx) {
-    if (mlir::failed(Base::initialize(ctx))) {
-        return mlir::failure();
-    }
-
-    // When this parameter has a value, it probably comes from LIT test.
-    // Override the default
-    if (interpolateAsSEOp.hasValue()) {
-        _interpolateAsSEOp = interpolateAsSEOp.getValue();
-    }
-
-    return mlir::success();
-}
 
 // NearestToBroadcastConverter
 
@@ -219,6 +200,9 @@ mlir::LogicalResult ConvertNearestToBroadcastOrStridedConcatPass::NearestToStrid
 
 void ConvertNearestToBroadcastOrStridedConcatPass::safeRunOnFunc() {
     auto& ctx = getContext();
+    const auto func = getOperation();
+    const auto moduleOp = getModuleOp(func);
+    const auto isSEPtrsEnabled = config::hasEnableSEPtrsOperations(moduleOp);
 
     const auto isLegalConvertToStrideConcat = [&](IE::InterpolateOp op) {
         const auto attrs = op.getAttr();
@@ -242,7 +226,7 @@ void ConvertNearestToBroadcastOrStridedConcatPass::safeRunOnFunc() {
 
     mlir::ConversionTarget target(ctx);
     target.addDynamicallyLegalOp<IE::InterpolateOp>([&](IE::InterpolateOp op) {
-        if (_interpolateAsSEOp) {
+        if (isSEPtrsEnabled) {
             if (VPU::NCEInterpolateOp::isSupported(op, logCb, /*checkLayout=*/false, /*checkChannelAlignment=*/false,
                                                    /*checkBatch=*/false)) {
                 return true;
@@ -262,7 +246,6 @@ void ConvertNearestToBroadcastOrStridedConcatPass::safeRunOnFunc() {
     patterns.add<NearestToBroadcastConverter>(&ctx, benefitLevels[0], _log);
     patterns.add<NearestToStridedConcatConverter>(&ctx, benefitLevels[1], _log);
 
-    auto func = getOperation();
     if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
         signalPassFailure();
     }
@@ -274,7 +257,6 @@ void ConvertNearestToBroadcastOrStridedConcatPass::safeRunOnFunc() {
 // createConvertNearestToBroadCastOrStridedConcatPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::IE::createConvertNearestToBroadCastOrStridedConcatPass(const bool interpolateAsSEOp,
-                                                                                         Logger log) {
-    return std::make_unique<ConvertNearestToBroadcastOrStridedConcatPass>(interpolateAsSEOp, log);
+std::unique_ptr<mlir::Pass> vpux::IE::createConvertNearestToBroadCastOrStridedConcatPass(Logger log) {
+    return std::make_unique<ConvertNearestToBroadcastOrStridedConcatPass>(log);
 }

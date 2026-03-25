@@ -1,15 +1,18 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+//
+
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/data_movement.hpp"
-#include "vpux/compiler/dialect/VPU/IR/ops/m2i.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/dense_map.hpp"
 
+#include <mlir/Dialect/SCF/IR/SCF.h>
 #include <mlir/Transforms/DialectConversion.h>
 
 namespace vpux::VPU {
@@ -29,7 +32,12 @@ mlir::Value copyIntoMemSpace(mlir::OpBuilder& builder, mlir::Location loc, mlir:
 }
 
 mlir::LogicalResult insertCmxCopies(mlir::Operation* origOp, mlir::PatternRewriter& rewriter) {
-    const auto memSpaceCMX = IndexedSymbolAttr::get(rewriter.getContext(), stringifyEnum(MemoryKind::CMX_NN), 0);
+    // scf.forall indicates a multiclustered operation, therefore memory space should not indicate a particular cluster
+    // as each iteration of the loop will move the data to a different cluster
+    const auto isMulticlustered = origOp->getParentOfType<mlir::scf::ForallOp>() != nullptr;
+    const auto memSpaceCMX =
+            isMulticlustered ? IndexedSymbolAttr::get(rewriter.getContext(), stringifyEnum(MemoryKind::CMX_NN))
+                             : IndexedSymbolAttr::get(rewriter.getContext(), stringifyEnum(MemoryKind::CMX_NN), 0);
 
     DenseMap<mlir::Value, mlir::Value> copiedInputs;
     for (auto& inputOperand : origOp->getOpOperands()) {
@@ -100,28 +108,6 @@ mlir::LogicalResult CopiesForNCEOp::matchAndRewrite(VPU::NCEOpInterface origOp, 
 }
 
 //
-// CopiesForM2iOp
-//
-
-class CopiesForM2iOp final : public mlir::OpRewritePattern<VPU::M2ITaskOp> {
-public:
-    CopiesForM2iOp(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<VPU::M2ITaskOp>(ctx), _log(log) {
-        setDebugName("CopiesForM2iOp");
-    }
-
-public:
-    mlir::LogicalResult matchAndRewrite(VPU::M2ITaskOp origOp, mlir::PatternRewriter& rewriter) const final;
-
-private:
-    Logger _log;
-};
-
-mlir::LogicalResult CopiesForM2iOp::matchAndRewrite(VPU::M2ITaskOp origOp, mlir::PatternRewriter& rewriter) const {
-    _log.trace("[{0}] Got '{1}' at '{2}'", getDebugName(), origOp->getName(), origOp->getLoc());
-    return insertCmxCopies(origOp, rewriter);
-}
-
-//
 // AdjustMemorySpacePass
 //
 
@@ -138,9 +124,9 @@ private:
 void AdjustMemorySpacePass::safeRunOnFunc() {
     auto& ctx = getContext();
 
-    // NCE/M2I operations are only legal if all their outputs and inputs (incl. weights) reside in CMX
+    // NCE operations are only legal if all their outputs and inputs (incl. weights) reside in CMX
     const auto isLegalOp = [](mlir::Operation* op) {
-        if (mlir::isa<VPU::NCEOpInterface, VPU::M2ITaskOp>(op)) {
+        if (mlir::isa<VPU::NCEOpInterface>(op)) {
             const auto verifyLocationInCmx = [](mlir::Value operand) {
                 return mlir::cast<vpux::NDTypeInterface>(operand.getType()).getMemoryKind() == MemoryKind::CMX_NN;
             };
@@ -155,7 +141,6 @@ void AdjustMemorySpacePass::safeRunOnFunc() {
 
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<CopiesForNCEOp>(&ctx, _log);
-    patterns.add<CopiesForM2iOp>(&ctx, _log);
 
     auto func = getOperation();
     if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {

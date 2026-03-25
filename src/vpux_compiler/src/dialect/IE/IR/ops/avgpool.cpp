@@ -1,13 +1,13 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
-#include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/type_padding.hpp"
 #include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
+#include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/infer_output_shape.hpp"
 
 #include <mlir/Support/LogicalResult.h>
@@ -33,21 +33,27 @@ mlir::LogicalResult vpux::IE::AvgPoolOp::inferReturnTypeComponents(
 
     auto inputType = mlir::cast<vpux::NDTypeInterface>(avgPool.getInput().getType());
     auto inShapeInfo = ShapeInfo::fromNDType(inputType);
-    if (mlir::failed(IE::unpadInputShape(inShapeInfo.shape, avgPool.getInputPaddingAttr(), loc))) {
-        return mlir::failure();
+
+    std::optional<SmallVector<int64_t>> inputPadding = std::nullopt;
+    std::optional<SmallVector<int64_t>> outputPadding = std::nullopt;
+    auto inputRes = IE::verifyPaddingAttr(avgPool.getInputPaddingAttr(), inShapeInfo, inputPadding);
+    auto outputRes = IE::verifyPaddingAttr(avgPool.getOutputPaddingAttr(), inShapeInfo, outputPadding);
+    if (inputRes.failed()) {
+        return errorAt(loc, "Input padding '{0}' should have the same number of dimensions as the input shape '{1}'",
+                       inputPadding, inShapeInfo.shape);
+    }
+    if (outputRes.failed()) {
+        return errorAt(loc, "Output padding '{0}' should have the same number of dimensions as the input shape '{1}'",
+                       outputPadding, inShapeInfo.shape);
     }
 
-    auto outShape = inferAvgPoolOutputShape(inShapeInfo, windowStrides, dataPaddingBelow, dataPaddingAbove, windowShape,
-                                            roundingType);
-
-    if (mlir::failed(IE::padOutputShape(outShape.shape, avgPool.getOutputPaddingAttr(), loc))) {
-        return mlir::failure();
-    }
+    const auto outShapeInfo = inferAvgPoolOutputShape(inShapeInfo, windowStrides, dataPaddingBelow, dataPaddingAbove,
+                                                      windowShape, inputPadding, outputPadding, roundingType);
 
     const auto outDesc =
-            vpux::getTensorAttr(ctx, inputType.getDimsOrder(), /*memSpace=*/nullptr, BoundsRef(outShape.bounds));
+            vpux::getTensorAttr(ctx, inputType.getDimsOrder(), /*memSpace=*/nullptr, BoundsRef(outShapeInfo.bounds));
 
-    inferredReturnShapes.emplace_back(outShape.shape, inputType.getElementType(), outDesc);
+    inferredReturnShapes.emplace_back(outShapeInfo.shape, inputType.getElementType(), outDesc);
 
     return mlir::success();
 }

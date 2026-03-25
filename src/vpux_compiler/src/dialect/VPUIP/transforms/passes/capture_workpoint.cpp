@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 
 #include "vpux/utils/profiling/common.hpp"
 
@@ -66,9 +67,7 @@ void CaptureWorkpointPass::safeRunOnModule() {
     auto* ctx = module->getContext();
     const auto arch = config::getArch(module);
 
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp func;
-    net::NetworkInfoOp::getFromModule(module, netInfo, func);
+    auto [netInfo, func] = net::getFromModule(module);
     mlir::OpBuilder builder(&func.getBody().front().front());
 
     const auto profOutputId = static_cast<int64_t>(netInfo.getProfilingOutputsCount());

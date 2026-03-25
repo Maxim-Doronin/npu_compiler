@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,6 +7,7 @@
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
 // CHECK-LABEL: @SplitConvWithOnlyFakeQuantConsumers
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x3x62x62xf32>
 func.func @SplitConvWithOnlyFakeQuantConsumers(%input: tensor<1x3x62x62xf32>) -> (tensor<1x4x60x60xf32>, tensor<1x4x60x60xf32>, tensor<1x4x60x60xf32>) {
     %input_low = const.Declare tensor<f32> = dense<0.0> : tensor<f32>
     %input_high = const.Declare tensor<f32> = dense<255.0> : tensor<f32>
@@ -73,7 +74,7 @@ func.func @SplitConvWithOnlyFakeQuantConsumers(%input: tensor<1x3x62x62xf32>) ->
     // CHECK-DAG: [[MIN1:%.+]] = const.Declare tensor<f32> = dense<-3.000000e+00> : tensor<f32>
     // CHECK-DAG: [[MAX1:%.+]] = const.Declare tensor<f32> = dense<3.000000e+00> : tensor<f32>
 
-    // CHECK: [[VAL0:%.+]] = IE.FakeQuantize(%arg0, [[MIN_IN]], [[MAX_IN]], [[MIN_IN]], [[MAX_IN]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x3x62x62xf32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32> -> tensor<1x3x62x62xf32>
+    // CHECK: [[VAL0:%.+]] = IE.FakeQuantize([[ARG_0]], [[MIN_IN]], [[MAX_IN]], [[MIN_IN]], [[MAX_IN]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x3x62x62xf32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32> -> tensor<1x3x62x62xf32>
     // CHECK: [[VAL1:%.+]] = IE.FakeQuantize([[FILTERS]], [[MIN_WEIGHTS]], [[MAX_WEIGHTS]], [[MIN_WEIGHTS]], [[MAX_WEIGHTS]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 255 : i64} : tensor<4x3x3x3xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32> -> tensor<4x3x3x3xf32>
 
     // CHECK: [[VAL2:%.+]] = IE.Convolution([[VAL0]], [[VAL1]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x3x62x62xf32>, tensor<4x3x3x3xf32> -> tensor<1x4x60x60xf32>
@@ -94,6 +95,7 @@ func.func @SplitConvWithOnlyFakeQuantConsumers(%input: tensor<1x3x62x62xf32>) ->
 }
 
 // CHECK-LABEL: @SplitConvWithReLUAndFakeQuant
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x3x62x62xf32>
 func.func @SplitConvWithReLUAndFakeQuant(%input: tensor<1x3x62x62xf32>) -> (tensor<1x4x60x60xf32>, tensor<1x4x60x60xf32>) {
     %input_low = const.Declare tensor<f32> = dense<0.0> : tensor<f32>
     %input_high = const.Declare tensor<f32> = dense<255.0> : tensor<f32>
@@ -134,7 +136,7 @@ func.func @SplitConvWithReLUAndFakeQuant(%input: tensor<1x3x62x62xf32>) -> (tens
     // CHECK-DAG: [[FILTERS:%.+]] = const.Declare tensor<4x3x3x3xf32> = dense<128> : tensor<4x3x3x3xui8>, [#const.CastElemType<f32>]
     // CHECK-DAG: [[BIAS:%.+]] = const.Declare tensor<1x4x1x1xf32> = dense<1.000000e+00> : tensor<1x4x1x1xf32>
 
-    // CHECK: [[VAL0:%.+]] = IE.FakeQuantize(%arg0, [[MIN]], [[MAX]], [[MIN]], [[MAX]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x3x62x62xf32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32> -> tensor<1x3x62x62xf32>
+    // CHECK: [[VAL0:%.+]] = IE.FakeQuantize([[ARG_0]], [[MIN]], [[MAX]], [[MIN]], [[MAX]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x3x62x62xf32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32> -> tensor<1x3x62x62xf32>
     // CHECK: [[VAL1:%.+]] = IE.FakeQuantize([[FILTERS]], [[MIN]], [[MAX]], [[MIN]], [[MAX]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 255 : i64} : tensor<4x3x3x3xf32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32> -> tensor<4x3x3x3xf32>
 
     // CHECK: [[VAL2:%.+]] = IE.Convolution([[VAL0]], [[VAL1]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x3x62x62xf32>, tensor<4x3x3x3xf32> -> tensor<1x4x60x60xf32>
@@ -149,6 +151,7 @@ func.func @SplitConvWithReLUAndFakeQuant(%input: tensor<1x3x62x62xf32>) -> (tens
 }
 
 // CHECK-LABEL: @SplitConvWithFakeQuant
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x3x62x62xf32>
 func.func @SplitConvWithFakeQuant(%input: tensor<1x3x62x62xf32>) -> (tensor<1x4x60x60xf32>, tensor<1x4x60x60xf32>, tensor<1x4x60x60xf32>) {
     %input_low = const.Declare tensor<f32> = dense<0.0> : tensor<f32>
     %input_high = const.Declare tensor<f32> = dense<255.0> : tensor<f32>
@@ -212,7 +215,7 @@ func.func @SplitConvWithFakeQuant(%input: tensor<1x3x62x62xf32>) -> (tensor<1x4x
     // CHECK-DAG: [[MIN1:%.+]] = const.Declare tensor<f32> = dense<-3.000000e+00> : tensor<f32>
     // CHECK-DAG: [[MAX1:%.+]] = const.Declare tensor<f32> = dense<3.000000e+00> : tensor<f32>
 
-    // CHECK: [[VAL0:%.+]] = IE.FakeQuantize(%arg0, [[MIN_IN]], [[MAX_IN]], [[MIN_IN]], [[MAX_IN]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x3x62x62xf32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32> -> tensor<1x3x62x62xf32>
+    // CHECK: [[VAL0:%.+]] = IE.FakeQuantize([[ARG_0]], [[MIN_IN]], [[MAX_IN]], [[MIN_IN]], [[MAX_IN]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64} : tensor<1x3x62x62xf32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32> -> tensor<1x3x62x62xf32>
     // CHECK: [[VAL1:%.+]] = IE.FakeQuantize([[FILTERS]], [[MIN_WEIGHTS]], [[MAX_WEIGHTS]], [[MIN_WEIGHTS]], [[MAX_WEIGHTS]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 255 : i64} : tensor<4x3x3x3xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32> -> tensor<4x3x3x3xf32>
 
     // CHECK: [[VAL2:%.+]] = IE.Convolution([[VAL0]], [[VAL1]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x3x62x62xf32>, tensor<4x3x3x3xf32> -> tensor<1x4x60x60xf32>

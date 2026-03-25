@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -24,7 +24,7 @@ func.func @ConvLargeSparseOutput(%input_ddr: tensor<1x64x40x40xf16, {order = #NH
             rawFilterShape = [384, 64, 4, 4],
             strides = [1, 1]
         } : tensor<1x64x40x40xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<384x64x4x4xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<384x1x1x4xsi32, {mem_space = @CMX_NN, order = #NHWC}> -> !VPU.SparseTensor<data=tensor<1x384x37x37xf16, {mem_space = @CMX_NN, order = #NHWC}>, sparsity_map=tensor<1x384x37x37xi1, {mem_space = @CMX_NN, order = #NHWC}>> {
-                VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 384, 40, 80] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_4x16>
+                VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 384, 40, 80] pad [0, 0, 0, 0] #VPU.mpe_mode<CUBOID_4x16>
             }
 
     %output = VPU.Copy(%conv_out) : !VPU.SparseTensor<data=tensor<1x384x37x37xf16, {mem_space = @CMX_NN, order = #NHWC}>, sparsity_map=tensor<1x384x37x37xi1, {mem_space = @CMX_NN, order = #NHWC}>>
@@ -49,8 +49,8 @@ func.func @ConvLargeSparseOutput(%input_ddr: tensor<1x64x40x40xf16, {order = #NH
     // CHECK-SAME:      ppe = #VPU.PPEStub<>,
     // CHECK-SAME:      strides = [1, 1]}
     // CHECK-SAME:      -> !VPU.SparseTensor<data=tensor<1x384x37x37xf16, {mem_space = @CMX_NN, order = #NHWC}>, sparsity_map=tensor<1x384x37x37xi1, {mem_space = @CMX_NN, order = #NHWC}>> {
-    // CHECK:               VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 256, 40, 80] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_4x16>
-    // CHECK:               VPU.DPU.Workload outOffsets [0, 256, 0, 0] outSizes [1, 128, 40, 80] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_4x16>
+    // CHECK:               VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 256, 40, 80] pad [0, 0, 0, 0] <CUBOID_4x16>
+    // CHECK:               VPU.DPU.Workload outOffsets [0, 256, 0, 0] outSizes [1, 128, 40, 80] pad [0, 0, 0, 0] <CUBOID_4x16>
     // CHECK:           }
 
     // CHECK:       [[OUTPUT:%.+]] = VPU.Copy([[CONV_OUT]])
@@ -90,8 +90,8 @@ func.func @NCEPermuteClustered(%arg0: !Input_DDR) -> !Output_CMX {
             minimumHardwareExecutionCost = 4294967195 : i64,
             ppe = #VPU.PPEStub<>
         } -> !Output_CMX {
-            VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 3, 112, 224] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-            VPU.DPU.Workload outOffsets [0, 0, 112, 0] outSizes [1, 3, 112, 224] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+            VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 3, 112, 224] pad [0, 0, 0, 0] #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 0 : i64}
+            VPU.DPU.Workload outOffsets [0, 0, 112, 0] outSizes [1, 3, 112, 224] pad [0, 0, 0, 0] #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 1 : i64}
         }
 
     return %output : !Output_CMX
@@ -105,11 +105,11 @@ func.func @NCEPermuteClustered(%arg0: !Input_DDR) -> !Output_CMX {
 
     // CHECK:       VPU.DPU.Workload
     // CHECK-SAME:      outOffsets [0, 0, 0, 0] outSizes [1, 3, 112, 224]
-    // CHECK-SAME:      <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>
+    // CHECK-SAME:      pad [0, 0, 0, 0]
     // CHECK-SAME:      cluster_id = 0
 
     // CHECK:       VPU.DPU.Workload
     // CHECK-SAME:      outOffsets [0, 0, 0, 0] outSizes [1, 3, 112, 224]
-    // CHECK-SAME:      <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>
+    // CHECK-SAME:      pad [0, 0, 0, 0]
     // CHECK-SAME:      cluster_id = 1
 }

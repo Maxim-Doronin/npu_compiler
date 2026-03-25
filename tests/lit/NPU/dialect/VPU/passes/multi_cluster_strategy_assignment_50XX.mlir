@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -242,6 +242,7 @@ func.func @ConcatInputHasReturnConsumer(%arg0:  tensor<1x128x1x256xf16>, %arg1: 
 #map = affine_map<(d0, d1, d2, d3) -> (d1, d0, d2, d3)>
 
 // CHECK-LABEL: @MultiplyInconsistentShapeSplitOverHeight
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x4x256x1xf16, {order = #map}>, [[ARG_1:%[^:]+]]: tensor<1x1x256x2048xf16, {order = #map}>)
 func.func @MultiplyInconsistentShapeSplitOverHeight(%arg0: tensor<1x4x256x1xf16, {order = #map}>,
             %arg1: tensor<1x1x256x2048xf16, {order = #map}>) -> tensor<1x4x256x2048xf16, {order = #map}> {
 
@@ -251,7 +252,7 @@ func.func @MultiplyInconsistentShapeSplitOverHeight(%arg0: tensor<1x4x256x1xf16,
 
     return %0 : tensor<1x4x256x2048xf16, {order = #map}>
 
-    //CHECK:      [[MULTIPLY:%.+]] = VPU.Multiply(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>} : tensor<1x4x256x1xf16, {order = #map}>, tensor<1x1x256x2048xf16, {order = #map}> -> tensor<1x4x256x2048xf16, {order = #map}>
+    //CHECK:      [[MULTIPLY:%.+]] = VPU.Multiply([[ARG_0]], [[ARG_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>} : tensor<1x4x256x1xf16, {order = #map}>, tensor<1x1x256x2048xf16, {order = #map}> -> tensor<1x4x256x2048xf16, {order = #map}>
     //CHECK:      return [[MULTIPLY]] : tensor<1x4x256x2048xf16, {order = #map}>
 }
 

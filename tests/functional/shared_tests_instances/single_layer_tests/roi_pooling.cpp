@@ -161,6 +161,11 @@ TEST_P(ROIPoolingLayerTestCommon, NPU5010_SW) {
     setReferenceSoftwareMode();
     run(Platform::NPU5010);
 }
+TEST_P(ROIPoolingLayerTestCommon, NPU5020_SW) {
+    abs_threshold = 0.25;
+    setReferenceSoftwareMode();
+    run(Platform::NPU5020);
+}
 
 }  // namespace test
 }  // namespace ov

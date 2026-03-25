@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -353,8 +353,7 @@ public:
             if (auto constResult = tryFoldIntoConstant(origData, shape)) {
                 return constResult;
             }
-            auto reshapeOp = rewriter.create<VPU::ReshapeOp>(origOp->getLoc(), origData, /*shape=*/nullptr,
-                                                             /*specialZero=*/false,
+            auto reshapeOp = rewriter.create<VPU::ReshapeOp>(origOp->getLoc(), origData,
                                                              getIntArrayAttr(origOp->getContext(), shape));
             return reshapeOp.getOutput();
         };
@@ -369,8 +368,7 @@ public:
             }
             auto newDataShape = mlir::cast<NDTypeInterface>(newData.getType()).getShape();
             auto newSMShape = VPU::NCESparsity::inferWeightsSparsityMapShape(newDataShape);
-            auto reshapeOp = rewriter.create<VPU::ReshapeOp>(origOp->getLoc(), origSparsityMap, /*shape=*/nullptr,
-                                                             /*specialZero=*/false,
+            auto reshapeOp = rewriter.create<VPU::ReshapeOp>(origOp->getLoc(), origSparsityMap,
                                                              getIntArrayAttr(origOp->getContext(), newSMShape));
             return reshapeOp.getOutput();
         };

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -22,17 +22,6 @@ mlir::LogicalResult vpux::IE::RMSOp::inferReturnTypeComponents(
     }
 
     const auto inType = mlir::cast<mlir::ShapedType>(rms.getInput().getType());
-    const auto gammaType = mlir::cast<mlir::ShapedType>(rms.getGamma().getType());
-    const auto inputRank = inType.getRank();
-    const auto gammaRank = gammaType.getRank();
-
-    const auto inputWidth = inType.getDimSize(inputRank - 1);
-    const auto gammaWidth = gammaType.getDimSize(gammaRank - 1);
-
-    if (inputWidth != gammaWidth) {
-        return errorAt(loc, "Input width should be the same as gamma. Got input width = {0} and gamma width = {1}",
-                       inputWidth, gammaWidth);
-    }
 
     inferredReturnShapes.emplace_back(inType.getShape(), inType.getElementType());
     return mlir::success();

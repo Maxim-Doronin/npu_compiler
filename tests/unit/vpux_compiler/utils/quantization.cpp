@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,7 @@
 #include "vpux/compiler/utils/quantization.hpp"
 #include "common/utils.hpp"
 #include "vpux/compiler/core/attributes/shape.hpp"
+#include "vpux/compiler/utils/types.hpp"
 
 #include <gtest/gtest.h>
 #include <mlir/Dialect/Quant/IR/Quant.h>

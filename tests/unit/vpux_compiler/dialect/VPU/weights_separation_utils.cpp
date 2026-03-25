@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -323,6 +323,86 @@ TEST_F(MLIR_VPU_WeightsSeparationUtils_SplitInitAlgo, SlicedInit_ReorderAndPad) 
             /* ov1 outputs */ tensorSize2x2xf16 + vpux::Byte(2 * 3 * sizeof(vpux::type::float16)) +
             /* ov2 output */ tensorSize2x2xf16;
     auto allSlices = VPU::sliceAccordingToMemoryLimit(log, splits, justEnoughMemory - vpux::Byte(1));
+    ASSERT_EQ(allSlices.size(), 2);
+
+    for (auto& actual : allSlices) {
+        ASSERT_FALSE(actual.empty());
+
+        const auto resourceName = getResourceName(actual.front().getContentAttr().getBaseContent()).str();
+        auto expected = extractSpecificSplits(module.get(), [&](const VPU::TransformationsSplit& x) {
+            return getResourceName(x.getContentAttr().getBaseContent()).str() == resourceName;
+        });
+
+        ASSERT_EQ_SPLITS(actual, expected);
+    }
+}
+
+constexpr llvm::StringLiteral INPUT_IR_SAME_BLOB = R"(
+{-#
+    dialect_resources: {
+        builtin: {
+            vpux_ow_1: "0x10000000ABABABABCDCDCDCDEFEFEFEF",
+            vpux_ow_2: "0x10000000ABABABABCDCDCDEF"
+        }
+    }
+#-}
+
+module @main {
+    func.func @main(%arg0: tensor<2x2xf16>) -> tensor<2x2xf16> {
+        %ov1_0 = const.Declare tensor<2x3xf16> = dense_resource<vpux_ow_1> : tensor<2x3xf16>,
+            [#const.Add<1.0>]
+        %ov1_1 = const.Declare tensor<102x3xf16> = dense_resource<vpux_ow_1> : tensor<2x3xf16>,
+            [#const.PadWithZero<[0, 0], [100, 0]>]
+
+        // Note: shape of dense_resource<> differs (same blob, not same base content)
+        %ov1_2 = const.Declare tensor<6xf16> = dense_resource<vpux_ow_1> : tensor<6xf16>,
+            [#const.Add<2.0>]
+        // Note: element type of dense_resource<> differs (same blob, not same base content)
+        %ov1_3 = const.Declare tensor<2x3xf16> = dense_resource<vpux_ow_1> : tensor<2x3xi16>,
+            [#const.CastElemType<f16>, #const.Add<2.0>]
+        // Note: whole tensor type of dense_resource<> differs
+        %ov1_4 = const.Declare tensor<6xf32> = dense_resource<vpux_ow_1> : tensor<3xf32>,
+            [#const.PadWithZero<[0], [3]>]
+
+        %ov2 = const.Declare tensor<2x2xf16> = dense_resource<vpux_ow_2> : tensor<2x2xf16>,
+            [#const.Rescale<5.0>]
+
+        return %arg0 : tensor<2x2xf16>
+    }
+})";
+
+TEST_F(MLIR_VPU_WeightsSeparationUtils_SplitInitAlgo, SingleInit_SameBlobDifferedResources) {
+    auto module = mlir::parseSourceString<mlir::ModuleOp>(INPUT_IR_SAME_BLOB, &ctx);
+    ASSERT_TRUE(module.get() != nullptr);
+
+    auto expected = extractSplits(module.get());
+    ASSERT_FALSE(expected.empty());
+
+    // Note: this test is to see how slicing works for a very special case of
+    // the same AsmResourceBlob being used by multiple dense_resource<>
+    // attributes, thus the actual slicing threshold is less important here and
+    // we can use "big value" and "small value" respectively.
+    const auto wellEnoughMemory = vpux::Byte(1000);
+    auto allSlices = VPU::sliceAccordingToMemoryLimit(log, expected, wellEnoughMemory);
+    ASSERT_EQ(allSlices.size(), 1);
+
+    auto& actual = allSlices.front();
+    ASSERT_EQ_SPLITS(actual, expected);
+}
+
+TEST_F(MLIR_VPU_WeightsSeparationUtils_SplitInitAlgo, SlicedInit_SameBlobDifferedResources) {
+    auto module = mlir::parseSourceString<mlir::ModuleOp>(INPUT_IR_SAME_BLOB, &ctx);
+    ASSERT_TRUE(module.get() != nullptr);
+
+    auto splits = extractSplits(module.get());
+    ASSERT_FALSE(splits.empty());
+
+    // Note: this test is to see how slicing works for a very special case of
+    // the same AsmResourceBlob being used by multiple dense_resource<>
+    // attributes, thus the actual slicing threshold is less important here and
+    // we can use "big value" and "small value" respectively.
+    const auto notEnoughMemory = vpux::Byte(2);
+    auto allSlices = VPU::sliceAccordingToMemoryLimit(log, splits, notEnoughMemory);
     ASSERT_EQ(allSlices.size(), 2);
 
     for (auto& actual : allSlices) {

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,7 +8,7 @@
 
 
 // CHECK-LABEL: func @SwishFusion
-// CHECK-SAME:        [[INPUT:%arg0]]: tensor<1x24x640x640xf16>
+// CHECK-SAME:        [[INPUT:%arg[0-9]+]]: tensor<1x24x640x640xf16>
 func.func @SwishFusion(%arg0: tensor<1x24x640x640xf16>) -> tensor<1x24x640x640xf16> {
   %cst_1 = const.Declare tensor<1x1x1x1xf16> = dense<-10.0031395> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
   %cst_2 = const.Declare tensor<1x1x1x1xf16> = dense<10.0819044> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
@@ -34,7 +34,7 @@ func.func @SwishFusion(%arg0: tensor<1x24x640x640xf16>) -> tensor<1x24x640x640xf
 // -----
 
 // CHECK-LABEL: func @DequantizedSwishFusion
-// CHECK-SAME:        [[INPUT:%arg0]]: tensor<1x128x512x512xf16>
+// CHECK-SAME:        [[INPUT:%arg[0-9]+]]: tensor<1x128x512x512xf16>
 func.func @DequantizedSwishFusion(%arg0: tensor<1x128x512x512xf16>) -> tensor<1x128x512x512xf16> {
   %1 = IE.Sigmoid(%arg0) : tensor<1x128x512x512xf16> -> tensor<1x128x512x512xf16>
   %2 = IE.Multiply(%arg0, %1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x128x512x512xf16>, tensor<1x128x512x512xf16> -> tensor<1x128x512x512xf16>
@@ -50,7 +50,7 @@ func.func @DequantizedSwishFusion(%arg0: tensor<1x128x512x512xf16>) -> tensor<1x
 // -----
 
 // CHECK-LABEL: func @NoSwishFusion
-// CHECK-SAME:        [[INPUT0:%arg0]]: tensor<2x1x2x3x2x121xf16>, [[INPUT1:%arg1]]: tensor<2x2x2x3x2x121xf16>
+// CHECK-SAME:        [[INPUT0:%arg[0-9]+]]: tensor<2x1x2x3x2x121xf16>, [[INPUT1:%arg1]]: tensor<2x2x2x3x2x121xf16>
 func.func @NoSwishFusion(%arg0: tensor<2x1x2x3x2x121xf16>, %arg1: tensor<2x2x2x3x2x121xf16> ) -> tensor<1x2x12x121xf16> {
   %1 = IE.AffineReshape(%arg0) {dim_mapping = [[0, 1], [2], [2], [2], [2], [3]], shape_value = [1, 2, 12, 121]} : tensor<2x1x2x3x2x121xf16> -> tensor<1x2x12x121xf16>
   %2 = IE.Slice %arg1 [0, 1, 0, 0, 0, 0] [2, 1, 2, 3, 2, 121] : tensor<2x2x2x3x2x121xf16> to tensor<2x1x2x3x2x121xf16>

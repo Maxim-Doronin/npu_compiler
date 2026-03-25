@@ -106,54 +106,64 @@ TEST_P(DecomposeSTFTTest, NPU5010_HW) {
     run(Platform::NPU5010);
 }
 
-const std::vector<STFTParams> stftTestParams = {{
-                                                        {1024},           // signal: [1024] samples
-                                                        {512},            // window: [512]
-                                                        512,              // frame_size: 512
-                                                        256,              // frame_step: 256 (50% overlap)
-                                                        false,            // transpose_frames: false
-                                                        ov::element::f32  // data type
-                                                },
-                                                {
-                                                        {2048},           // signal: [2048] samples
-                                                        {512},            // window: [512]
-                                                        512,              // frame_size: 512
-                                                        128,              // frame_step: 128 (75% overlap)
-                                                        true,             // transpose_frames: true
-                                                        ov::element::f32  // data type
-                                                },
-                                                {
-                                                        {2, 1024},        // signal: [batch=2, length=1024]
-                                                        {512},            // window: [512]
-                                                        512,              // frame_size: 512
-                                                        256,              // frame_step: 256
-                                                        false,            // transpose_frames: false
-                                                        ov::element::f32  // data type
-                                                },
-                                                {
-                                                        {4, 2048},        // signal: [channels=4, length=2048]
-                                                        {512},            // window: [512]
-                                                        512,              // frame_size: 512
-                                                        256,              // frame_step: 256
-                                                        true,             // transpose_frames: true
-                                                        ov::element::f32  // data type
-                                                },
-                                                {
-                                                        {512},            // signal: [512] samples
-                                                        {128},            // window: [128]
-                                                        128,              // frame_size: 128
-                                                        64,               // frame_step: 64
-                                                        false,            // transpose_frames: false
-                                                        ov::element::f32  // data type
-                                                },
-                                                {
-                                                        {1536},           // signal: [1536] samples
-                                                        {256},            // window: [256]
-                                                        256,              // frame_size: 256
-                                                        128,              // frame_step: 128
-                                                        false,            // transpose_frames: false
-                                                        ov::element::f32  // data type
-                                                }};
+const std::vector<STFTParams> stftTestParams = {
+        {
+                {1024},           // signal: [1024] samples
+                {512},            // window: [512]
+                512,              // frame_size: 512
+                256,              // frame_step: 256 (50% overlap)
+                false,            // transpose_frames: false
+                ov::element::f32  // data type
+        },
+        {
+                {2048},           // signal: [2048] samples
+                {512},            // window: [512]
+                512,              // frame_size: 512
+                128,              // frame_step: 128 (75% overlap)
+                true,             // transpose_frames: true
+                ov::element::f32  // data type
+        },
+        {
+                {2, 1024},        // signal: [batch=2, length=1024]
+                {512},            // window: [512]
+                512,              // frame_size: 512
+                256,              // frame_step: 256
+                false,            // transpose_frames: false
+                ov::element::f32  // data type
+        },
+        {
+                {4, 2048},        // signal: [channels=4, length=2048]
+                {512},            // window: [512]
+                512,              // frame_size: 512
+                256,              // frame_step: 256
+                true,             // transpose_frames: true
+                ov::element::f32  // data type
+        },
+        {
+                {512},            // signal: [512] samples
+                {128},            // window: [128]
+                128,              // frame_size: 128
+                64,               // frame_step: 64
+                false,            // transpose_frames: false
+                ov::element::f32  // data type
+        },
+        {
+                {1536},           // signal: [1536] samples
+                {256},            // window: [256]
+                256,              // frame_size: 256
+                128,              // frame_step: 128
+                false,            // transpose_frames: false
+                ov::element::f32  // data type
+        },
+        {
+                {1, 60020},       // signal: [60020] samples
+                {20},             // window: [20]
+                20,               // frame_size: 20
+                5,                // frame_step: 5
+                true,             // transpose_frames: true
+                ov::element::f32  // data type
+        },
+};
 
 INSTANTIATE_TEST_SUITE_P(precommit_DecomposeSTFT, DecomposeSTFTTest, ::testing::ValuesIn(stftTestParams),
                          DecomposeSTFTTest::getTestCaseName);

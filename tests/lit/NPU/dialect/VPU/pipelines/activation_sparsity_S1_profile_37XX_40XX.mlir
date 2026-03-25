@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,8 @@
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: @SingleOp
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x16x16xf16, {order = #NHWC}>, [[ARG_1:%[^:]+]]: tensor<16x1x1x4xsi32>, [[ARG_2:%[^:]+]]: tensor<16x16x1x1xf16, {order = #NHWC}>)
 func.func @SingleOp(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>, %wt: tensor<16x1x1x4xsi32>, %weights: tensor<16x16x1x1xf16, {order = #NHWC}>) -> tensor<1x16x16x16xf16, {order = #NHWC}> {
     %0 = VPU.NCE.Convolution(%arg0, %weights, %wt) {
             pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
@@ -17,8 +19,8 @@ func.func @SingleOp(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>, %wt: tensor<
         } : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<16x16x1x1xf16, {order = #NHWC}>, tensor<16x1x1x4xsi32> -> tensor<1x16x16x16xf16, {order = #NHWC}>
     return %0 : tensor<1x16x16x16xf16, {order = #NHWC}>
 
-    // CHECK:       [[VAL0:%.+]] = VPU.Sparsify(%arg0)
-    // CHECK:       [[VAL1:%.+]] = VPU.NCE.Convolution([[VAL0]], %arg2, %arg1)
+    // CHECK:       [[VAL0:%.+]] = VPU.Sparsify([[ARG_0]])
+    // CHECK:       [[VAL1:%.+]] = VPU.NCE.Convolution([[VAL0]], [[ARG_2]], [[ARG_1]])
     // CHECK-NOT:       -> !VPU.SparseTensor
     // CHECK:       return [[VAL1]]
 }
@@ -27,6 +29,8 @@ func.func @SingleOp(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>, %wt: tensor<
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: @ChainedOps
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x16x16xf16, {order = #NHWC}>, [[ARG_1:%[^:]+]]: tensor<16x1x1x4xsi32>, [[ARG_2:%[^:]+]]: tensor<16x16x1x1xf16, {order = #NHWC}>)
 func.func @ChainedOps(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>, %wt: tensor<16x1x1x4xsi32>, %weights: tensor<16x16x1x1xf16, {order = #NHWC}>) -> tensor<1x16x16x16xf16, {order = #NHWC}> {
     %0 = VPU.NCE.Convolution(%arg0, %weights, %wt) {
             pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
@@ -50,10 +54,10 @@ func.func @ChainedOps(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>, %wt: tenso
     } : tensor<1x16x16x16xf16, {order = #NHWC}> -> tensor<1x16x16x16xf16, {order = #NHWC}>
     return %2 : tensor<1x16x16x16xf16, {order = #NHWC}>
 
-    // CHECK:       [[VAL0:%.+]] = VPU.Sparsify(%arg0)
-    // CHECK:       [[VAL1:%.+]] = VPU.NCE.Convolution([[VAL0]], %arg2, %arg1)
+    // CHECK:       [[VAL0:%.+]] = VPU.Sparsify([[ARG_0]])
+    // CHECK:       [[VAL1:%.+]] = VPU.NCE.Convolution([[VAL0]], [[ARG_2]], [[ARG_1]])
     // CHECK-SAME:      -> !VPU.SparseTensor
-    // CHECK:       [[VAL2:%.+]] = VPU.NCE.Convolution([[VAL1]], %arg2, %arg1)
+    // CHECK:       [[VAL2:%.+]] = VPU.NCE.Convolution([[VAL1]], [[ARG_2]], [[ARG_1]])
     // CHECK-NOT:       -> !VPU.SparseTensor
     // CHECK:       [[VAL3:%.+]] = VPU.MaxPool([[VAL2]])
     // CHECK:       return [[VAL3]]
@@ -63,6 +67,8 @@ func.func @ChainedOps(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>, %wt: tenso
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: @SparseNonSparseSparseChain
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x16x16xf16, {order = #NHWC}>, [[ARG_1:%[^:]+]]: tensor<16x1x1x4xsi32>, [[ARG_2:%[^:]+]]: tensor<16x16x1x1xf16, {order = #NHWC}>)
 func.func @SparseNonSparseSparseChain(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>, %wt: tensor<16x1x1x4xsi32>, %weights: tensor<16x16x1x1xf16, {order = #NHWC}>) -> tensor<1x16x16x16xf16, {order = #NHWC}> {
     %0 = VPU.NCE.Convolution(%arg0, %weights, %wt) {
             pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
@@ -84,8 +90,8 @@ func.func @SparseNonSparseSparseChain(%arg0: tensor<1x16x16x16xf16, {order = #NH
         } -> tensor<1x16x16x16xf16, {order = #NHWC}>
     return %2 : tensor<1x16x16x16xf16, {order = #NHWC}>
 
-    // CHECK:       [[VAL0:%.+]] = VPU.Sparsify(%arg0)
-    // CHECK:       [[VAL1:%.+]] = VPU.NCE.Convolution([[VAL0]], %arg2, %arg1)
+    // CHECK:       [[VAL0:%.+]] = VPU.Sparsify([[ARG_0]])
+    // CHECK:       [[VAL1:%.+]] = VPU.NCE.Convolution([[VAL0]], [[ARG_2]], [[ARG_1]])
     // CHECK-NOT:       -> !VPU.SparseTensor
     // CHECK:       [[VAL2:%.+]] = VPU.MaxPool([[VAL1]])
     // CHECK-NOT:       !VPU.SparseTensor
@@ -98,6 +104,8 @@ func.func @SparseNonSparseSparseChain(%arg0: tensor<1x16x16x16xf16, {order = #NH
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: @Resnet50Pattern
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x16x16xf16, {order = #NHWC}>, [[ARG_1:%[^:]+]]: tensor<16x1x1x4xsi32>, [[ARG_2:%[^:]+]]: tensor<16x16x1x1xf16, {order = #NHWC}>)
 func.func @Resnet50Pattern(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>, %wt: tensor<16x1x1x4xsi32>, %weights: tensor<16x16x1x1xf16, {order = #NHWC}>) -> tensor<1x16x16x16xf16, {order = #NHWC}> {
     %0 = VPU.NCE.Convolution(%arg0, %weights, %wt) {
             pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
@@ -128,13 +136,13 @@ func.func @Resnet50Pattern(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>, %wt: 
 
     return %4 : tensor<1x16x16x16xf16, {order = #NHWC}>
 
-    // CHECK:       [[VAL0:%.+]] = VPU.Sparsify(%arg0)
-    // CHECK:       [[VAL1:%.+]] = VPU.NCE.Convolution([[VAL0]], %arg2, %arg1)
+    // CHECK:       [[VAL0:%.+]] = VPU.Sparsify([[ARG_0]])
+    // CHECK:       [[VAL1:%.+]] = VPU.NCE.Convolution([[VAL0]], [[ARG_2]], [[ARG_1]])
     // CHECK-SAME:      -> !VPU.SparseTensor
     // CHECK:       [[VAL2:%.+]] = VPU.Desparsify([[VAL1]])
-    // CHECK:       [[VAL3:%.+]] = VPU.NCE.Convolution([[VAL1]], %arg2, %arg1)
+    // CHECK:       [[VAL3:%.+]] = VPU.NCE.Convolution([[VAL1]], [[ARG_2]], [[ARG_1]])
     // CHECK-SAME:      -> !VPU.SparseTensor
-    // CHECK:       [[VAL4:%.+]] = VPU.NCE.Convolution([[VAL3]], %arg2, %arg1)
+    // CHECK:       [[VAL4:%.+]] = VPU.NCE.Convolution([[VAL3]], [[ARG_2]], [[ARG_1]])
     // CHECK-NOT:       -> !VPU.SparseTensor
     // CHECK:       [[VAL5:%.+]] = VPU.NCE.Eltwise([[VAL2]], [[VAL4]])
     // CHECK-SAME:      op_type = #VPU.eltwise_type<ADD>
@@ -153,6 +161,8 @@ func.func @Resnet50Pattern(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>, %wt: 
 !PreConcatType = tensor<1x16x16x16xf16, {order = #NHWC}>
 !PostConcatType = tensor<1x32x16x16xf16, {order = #NHWC}>
 
+// CHECK-LABEL: @GooglenetLikePattern
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x16x16xf16, {order = #NHWC}>, [[ARG_1:%[^:]+]]: tensor<16x1x1x4xsi32>, [[ARG_2:%[^:]+]]: tensor<16x16x1x1xf16, {order = #NHWC}>, [[ARG_3:%[^:]+]]: tensor<32x32x1x1xf16, {order = #NHWC}>, [[ARG_4:%[^:]+]]: tensor<32x1x1x4xsi32>)
 func.func @GooglenetLikePattern(%arg0: !PreConcatType,
                         %wt: tensor<16x1x1x4xsi32>,
                         %weights: tensor<16x16x1x1xf16, {order = #NHWC}>,
@@ -207,12 +217,12 @@ func.func @GooglenetLikePattern(%arg0: !PreConcatType,
 
     return %5, %6, %7 : !PostConcatType, !PostConcatType, !PostConcatType
 
-    // CHECK:       [[VAL0:%.+]] = VPU.NCE.Eltwise(%arg0, %arg0)
+    // CHECK:       [[VAL0:%.+]] = VPU.NCE.Eltwise([[ARG_0]], [[ARG_0]])
     // CHECK-SAME:      op_type = #VPU.eltwise_type<AND>
     // CHECK-SAME:      !VPU.SparseTensor
-    // CHECK:       [[VAL1:%.+]] = VPU.NCE.Convolution([[VAL0]], %arg2, %arg1)
+    // CHECK:       [[VAL1:%.+]] = VPU.NCE.Convolution([[VAL0]], [[ARG_2]], [[ARG_1]])
     // CHECK-SAME:      -> !VPU.SparseTensor
-    // CHECK:       [[VAL2:%.+]] = VPU.NCE.Convolution([[VAL0]], %arg2, %arg1)
+    // CHECK:       [[VAL2:%.+]] = VPU.NCE.Convolution([[VAL0]], [[ARG_2]], [[ARG_1]])
     // CHECK-NOT:       -> !VPU.SparseTensor
     // CHECK:       [[VAL3:%.+]] = VPU.NCE.Eltwise([[VAL2]], [[VAL2]])
     // CHECK-SAME:      op_type = #VPU.eltwise_type<ADD>
@@ -222,7 +232,7 @@ func.func @GooglenetLikePattern(%arg0: !PreConcatType,
     // CHECK:       [[VAL6:%.+]] = VPU.NCE.Eltwise([[VAL5]], [[VAL5]])
     // CHECK-SAME:      op_type = #VPU.eltwise_type<AND>
     // CHECK-NOT:       !VPU.SparseTensor
-    // CHECK:       [[VAL7:%.+]] = VPU.NCE.Convolution([[VAL4]], %arg3, %arg4)
+    // CHECK:       [[VAL7:%.+]] = VPU.NCE.Convolution([[VAL4]], [[ARG_3]], [[ARG_4]])
     // CHECK-NOT:       -> !VPU.SparseTensor
     // CHECK:       [[VAL8:%.+]] = VPU.MaxPool([[VAL5]])
     // CHECK:       return [[VAL6]], [[VAL7]], [[VAL8]]

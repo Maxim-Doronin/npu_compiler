@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -44,9 +44,8 @@ struct DefaultHWOptions : public IE::DefaultHWOptionsDialectBase, virtual vpux::
                            "Ratio = (MatMul input size)/(Sum of Inputs of newly added ops by decomposition)"),
             llvm::cl::init(250.0)};
 
-    BoolOption enableConvertToReduceMeanSquare{*this, "convert-to-reduce-mean-square",
-                                               llvm::cl::desc("Enable fuse-reduce-mean-square pass"),
-                                               llvm::cl::init(false)};
+    BoolOption enableConvertToReduceSquare{*this, "convert-to-reduce-square",
+                                           llvm::cl::desc("Enable fuse-reduce-square pass"), llvm::cl::init(false)};
 
     BoolOption skipUnrollBatch{*this, "skip-unroll-batch", llvm::cl::desc("Skip unroll on batch dimension"),
                                llvm::cl::init(false)};

@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 //
 
+#include <openvino/core/type/element_type.hpp>
 #include "common/print_test_case_name.hpp"
 #include "pretty_test_arguments.hpp"
 #include "shared_test_classes/single_op/non_max_suppression.hpp"
@@ -16,7 +17,7 @@ namespace test {
 using DynamicNmsParams =
         std::tuple<std::tuple<ov::test::InputShape, ov::test::InputShape>,  // Shapes for 1st and 2nd inputs
                    InputTypes,                                              // Input precisions
-                   int,                                                     // Max output boxes per class
+                   int32_t,                                                 // Max output boxes per class
                    float,                                                   // IOU threshold
                    float,                                                   // Score threshold
                    float,                                                   // Soft NMS sigma
@@ -46,22 +47,17 @@ public:
             ASSERT_GT(outputShape[0], 0) << "Reference tensor has boxes, expected output tensor to be non-empty";
         }
 
-        size_t rows = std::min(outputShape[0], referenceShape[0]);
-        size_t cols = outputShape[1];
-
-        if (referenceTensor.get_element_type() == ov::element::i32) {
-            const auto* referenceData = referenceTensor.data<int32_t>();
-            const auto* outputData = outputTensor.data<int32_t>();
-            for (size_t i = 0; i < rows * cols; ++i) {
-                ASSERT_EQ(referenceData[i], outputData[i]) << "Mismatch at index " << i;
-            }
-        } else if (referenceTensor.get_element_type() == ov::element::f32) {
-            const auto* referenceData = referenceTensor.data<float>();
-            const auto* outputData = outputTensor.data<float>();
-            for (size_t i = 0; i < rows * cols; ++i) {
-                ASSERT_NEAR(referenceData[i], outputData[i], 1e-3) << "Mismatch at index " << i;
-            }
-        } else {
+        switch (referenceTensor.get_element_type()) {
+        case ov::element::i32:
+            compareTypedTensors<int32_t>(referenceTensor, outputTensor);
+            break;
+        case ov::element::i64:
+            compareTypedTensors<int64_t>(referenceTensor, outputTensor);
+            break;
+        case ov::element::f32:
+            compareTypedTensors<float>(referenceTensor, outputTensor);
+            break;
+        default:
             FAIL() << "Unsupported element type for NMS output comparison";
         }
     }
@@ -94,6 +90,21 @@ public:
 
         VpuOv2LayerTest::function = std::make_shared<ov::Model>(nms, params, "NMS");
     }
+
+    template <typename T>
+    static void compareTypedTensors(const ov::Tensor& referenceTensor, const ov::Tensor& outputTensor) {
+        size_t rows = std::min(outputTensor.get_shape()[0], referenceTensor.get_shape()[0]);
+        size_t cols = outputTensor.get_shape()[1];
+        const auto* referenceData = referenceTensor.data<T>();
+        const auto* outputData = outputTensor.data<T>();
+        for (size_t i = 0; i < rows * cols; ++i) {
+            if (std::is_floating_point<T>::value) {
+                ASSERT_NEAR(referenceData[i], outputData[i], 1e-3) << "Mismatch at index " << i;
+            } else {
+                ASSERT_EQ(referenceData[i], outputData[i]) << "Mismatch at index " << i;
+            }
+        }
+    }
 };
 
 TEST_P(DynamicNmsLayerTest, NPU3720_HW) {
@@ -109,6 +120,10 @@ TEST_P(DynamicNmsLayerTest, NPU4000_HW) {
 TEST_P(DynamicNmsLayerTest, NPU5010_HW) {
     setDefaultHardwareMode();
     VpuOv2LayerTest::run(Platform::NPU5010);
+}
+TEST_P(DynamicNmsLayerTest, NPU5020_HW) {
+    setDefaultHardwareMode();
+    VpuOv2LayerTest::run(Platform::NPU5020);
 }
 
 }  // namespace test
@@ -141,7 +156,7 @@ const std::vector<ov::op::v5::NonMaxSuppression::BoxEncodingType> encodType = {
         ov::op::v5::NonMaxSuppression::BoxEncodingType::CORNER,
 };
 const std::vector<bool> sortResDesc = {false};  //  true case - Tracking number [E#167730]
-const std::vector<ov::element::Type> outType = {ov::element::i32};
+const std::vector<ov::element::Type> outType = {ov::element::i64};
 
 const auto nmsDynamicShapes = testing::Combine(
         ::testing::ValuesIn(dynamicInputShapes),

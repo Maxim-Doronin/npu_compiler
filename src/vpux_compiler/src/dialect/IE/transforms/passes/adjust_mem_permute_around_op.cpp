@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -36,7 +36,7 @@ namespace {
 
 mlir::Operation* getSupportedInputPermuteLikeOp(mlir::Value input) {
     auto inputOp = input.getDefiningOp();
-    if (mlir::isa_and_nonnull<IE::MemPermuteOp, IE::PermuteQuantizeOp>(inputOp) && inputOp->hasOneUse()) {
+    if (mlir::isa_and_nonnull<IE::MemPermuteOp, IE::PermuteQuantizeOp>(inputOp)) {
         return inputOp;
     }
     return nullptr;
@@ -645,6 +645,13 @@ mlir::LogicalResult AdjustForNCEEltwise<ConcreteOp>::matchAndRewrite(ConcreteOp 
         return matchFailed(rewriter, origOp, "Already the best solution");
     }
 
+    auto firstInputOp = origOp->getOperand(0).getDefiningOp();
+    if (firstInputOp != nullptr && llvm::all_of(origOp->getOperands(), [&](mlir::Value operand) {
+            return operand.getDefiningOp() == firstInputOp;
+        })) {
+        return matchFailed(rewriter, origOp, "All inputs come from the same permute");
+    }
+
     rewriter.startOpModification(origOp);
     rewriter.setInsertionPoint(origOp);
 
@@ -695,9 +702,19 @@ mlir::LogicalResult AdjustForNCEEltwise<ConcreteOp>::matchAndRewrite(ConcreteOp 
     const auto dstOrder = expectedLayout.toAffineMap(ctx);
     int index = 0;  // Initialize a counter for unique identifiers
     for (auto& inputOperand : origOp->getOpOperands()) {
+        auto input = inputOperand.get();
+        auto bestInputMemPerm = bestMemPerm;
+        if (auto inputMemPermuteOp = mlir::dyn_cast_or_null<IE::MemPermuteOp>(input.getDefiningOp())) {
+            const auto inMemShape = getMemShape(input);
+            const auto newInMemPerm = bestMemPerm.compose(inputMemPermuteOp.getMemPerm());
+            if (isTrivialPermute(inMemShape, newInMemPerm)) {
+                input = inputMemPermuteOp.getInput();
+                bestInputMemPerm = newInMemPerm;
+            }
+        }
         auto inMemPermuteOp =
                 rewriter.create<IE::MemPermuteOp>(appendLoc(origOp->getLoc(), "input_permute" + std::to_string(index)),
-                                                  inputOperand.get(), newOrder.toAffineMap(ctx), bestMemPerm);
+                                                  input, newOrder.toAffineMap(ctx), bestInputMemPerm);
         // Create permute cast to satisfy type requirement of NCE Eltwise
         auto inputPermuteCastOp = rewriter.create<IE::PermuteCastOp>(
                 appendLoc(origOp->getLoc(), "input_permute_cast" + std::to_string(index)), inMemPermuteOp->getResult(0),

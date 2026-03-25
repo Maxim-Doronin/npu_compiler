@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -178,6 +178,21 @@ struct TilingOptions : mlir::PassPipelineOptions<TilingOptions> {
 };
 
 //
+// ScfComputeOpsOutliningOptions
+//
+
+struct ScfComputeOpsOutliningOptions : mlir::PassPipelineOptions<ScfComputeOpsOutliningOptions> {
+    StrOption loopUnrollFactor{*this, "loop-unroll-factor", llvm::cl::desc("Loop unroll factor"), llvm::cl::init("")};
+
+    BoolOption enableProfiling{*this, "profiling", llvm::cl::desc("Enable profiling"), llvm::cl::init(false)};
+
+    BoolOption enableCascadedUnrolling{*this, "cascaded-unrolling", llvm::cl::desc("Enable cascaded loop unrolling"),
+                                       llvm::cl::init(false)};
+
+    ScfComputeOpsOutliningOptions() = default;
+};
+
+//
 // InitCompiler options
 //
 
@@ -203,10 +218,6 @@ struct InitCompilerOptions : mlir::PassPipelineOptions<InitCompilerOptions> {
     // SetupBarrierVariantConstraints pass options
     BoolOption workloadManagementEnable{*this, "workload-management-enable",
                                         llvm::cl::desc("Enable partial workload management"), llvm::cl::init(true)};
-    BoolOption wlmRollback{
-            *this, "wlm-rollback",
-            llvm::cl::desc("When compilation with WLM fails, automatically switch to WLM-disabled pipeline"),
-            llvm::cl::init(false)};
 
     BoolOption enableSwKernelFifoPerShaveEngine{*this, "enable-sw-kernel-fifo-per-shave-engine",
                                                 llvm::cl::desc("Enable dedicated FIFO for each ActShave engine"),
@@ -232,12 +243,6 @@ struct InitCompilerOptions : mlir::PassPipelineOptions<InitCompilerOptions> {
     BoolOption enableFP16CompressedConvolution{*this, "enable-fp16-compressed-convolution",
                                                llvm::cl::desc("Enable FP16 Compressed convolution op"),
                                                llvm::cl::init(false)};
-
-    StrOption ppeVersion{
-            *this, "ppe-version",
-            ::llvm::cl::desc("Specifies the compiler's target PPE hardware version ['Auto', 'IntPPE', 'FpPPE']. When "
-                             "set to 'Auto', the latest PPE version available on the target architecture is picked."),
-            ::llvm::cl::init("Auto")};
 
     BoolOption enableSEPtrsOperations{*this, "enable-se-ptrs-operations",
                                       llvm::cl::desc("Enable storage element pointer operations"),
@@ -285,6 +290,7 @@ struct InitCompilerOptions : mlir::PassPipelineOptions<InitCompilerOptions> {
 
     // SetupEnableDCIM pass options
     BoolOption enableDCIM{*this, "enable-dcim", ::llvm::cl::desc("Enable DCIM"), ::llvm::cl::init(true)};
+    BoolOption powerOptimized{*this, "power-optimized", llvm::cl::desc("Enable PowerOptimized"), llvm::cl::init(false)};
 
     BoolOption enableAsymmetricPerTensorZP{
             *this, "enable-asymmetric-per-tensor-zp",
@@ -360,8 +366,6 @@ private:
 
 std::unique_ptr<mlir::Pass> createMoveConvertAroundViewLikeOpsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createComputeNCEInputWorkloadsPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createConvertM2IOpsPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createFuseM2IOpsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createApplyTilingMVN1SumPass(bool enablePrefetchTiling = true,
                                                          Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createDecomposeMVNPass(Logger log = Logger::global());
@@ -478,12 +482,8 @@ std::unique_ptr<mlir::Pass> createWrapOpsInSparsifyDesparsifyPairsPass(
 std::unique_ptr<mlir::Pass> createAddSparsityMapToSparseActivationsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createLowerSparsityOpsPass(std::optional<bool> fakeSparsify = std::nullopt,
                                                        Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createSplitSEOpsPass(const bool seOpsEnabled = false,
-                                                 const bool enableExperimentalSEPtrsOperations = false,
-                                                 Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createLowerOpsToSENCEPass(const bool seOpsEnabled = false,
-                                                      const bool enableExperimentalSEPtrsOperations = false,
-                                                      Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createSplitSEOpsPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createLowerOpsToSENCEPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createConvertNCEInterpolateToDWPass(Logger log = Logger::global());
 
 std::unique_ptr<mlir::Pass> createConvertOpToDMAForPerformantExecutionPass(Logger log = Logger::global());
@@ -668,12 +668,6 @@ struct DefaultHWOptionsDialectBase : public virtual vpux::DefaultHWOptionsBase {
             *this, "enable-shave-ddr-access-optimization",
             llvm::cl::desc("SHAVE DDR access optimization option (true, false or auto)"), llvm::cl::init("true")};
 };
-
-//
-// ShaveCodeGen pipeline
-//
-
-void buildShaveCodeGenPipeline(mlir::OpPassManager& pm);
 
 //
 // Host compilation pipeline passes

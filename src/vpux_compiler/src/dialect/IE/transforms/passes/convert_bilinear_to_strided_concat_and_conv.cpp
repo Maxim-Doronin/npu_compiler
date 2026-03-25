@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -14,6 +14,7 @@
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
+#include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
@@ -135,12 +136,9 @@ mlir::Value createMaxPool(mlir::Value input, mlir::Location loc, mlir::PatternRe
 class ConvertBilinearToStridedConcatAndConvPass final :
         public IE::impl::ConvertBilinearToStridedConcatAndConvBase<ConvertBilinearToStridedConcatAndConvPass> {
 public:
-    explicit ConvertBilinearToStridedConcatAndConvPass(const bool interpolateAsSEOp, Logger log)
-            : _interpolateAsSEOp(interpolateAsSEOp) {
+    explicit ConvertBilinearToStridedConcatAndConvPass(Logger log) {
         Base::initLogger(log, Base::getArgumentName());
     }
-
-    mlir::LogicalResult initialize(mlir::MLIRContext* ctx) final;
 
 public:
     class BilinearInterpolateOpConverter;
@@ -149,24 +147,7 @@ public:
 
 private:
     void safeRunOnFunc() final;
-
-private:
-    bool _interpolateAsSEOp;
 };
-
-mlir::LogicalResult ConvertBilinearToStridedConcatAndConvPass::initialize(mlir::MLIRContext* ctx) {
-    if (mlir::failed(Base::initialize(ctx))) {
-        return mlir::failure();
-    }
-
-    // When this parameter has a value, it probably comes from LIT test.
-    // Override the default
-    if (interpolateAsSEOp.hasValue()) {
-        _interpolateAsSEOp = interpolateAsSEOp.getValue();
-    }
-
-    return mlir::success();
-}
 
 // BilinearInterpolateOpConverter
 class ConvertBilinearToStridedConcatAndConvPass::BilinearInterpolateOpConverter final :
@@ -617,13 +598,17 @@ ConvertBilinearToStridedConcatAndConvPass::SmallChannelPytorchHalfPixelBilinearI
 void ConvertBilinearToStridedConcatAndConvPass::safeRunOnFunc() {
     auto& ctx = getContext();
 
+    const auto func = getOperation();
+    auto moduleOp = getModuleOp(func);
+    const auto enableSEPtrsOperations = config::hasEnableSEPtrsOperations(moduleOp);
+
     const auto logCb = [&](const formatv_object_base& msg) {
         _log.trace("{0}", msg.str());
     };
 
     mlir::ConversionTarget target(ctx);
     target.addDynamicallyLegalOp<IE::InterpolateOp>([&](IE::InterpolateOp op) {
-        if (_interpolateAsSEOp) {
+        if (enableSEPtrsOperations) {
             if (VPU::NCEInterpolateOp::isSupported(op, logCb, /*checkLayout=*/false, /*checkChannelAlignment=*/false,
                                                    /*checkBatch=*/false)) {
                 return true;
@@ -742,14 +727,13 @@ void ConvertBilinearToStridedConcatAndConvPass::safeRunOnFunc() {
     patterns.insert<BilinearInterpolateOpConverterV2>(&ctx, vpux::benefitMid, _log);
     patterns.insert<BilinearInterpolateOpConverter>(&ctx, vpux::benefitLow, _log);
 
-    auto func = getOperation();
     if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
         signalPassFailure();
     }
 
     mlir::ConversionTarget smallChannelTarget(ctx);
     smallChannelTarget.addDynamicallyLegalOp<IE::InterpolateOp>([&](IE::InterpolateOp op) {
-        if (_interpolateAsSEOp) {
+        if (enableSEPtrsOperations) {
             if (VPU::NCEInterpolateOp::isSupported(op, logCb, /*checkLayout=*/false, /*checkChannelAlignment=*/false,
                                                    /*checkBatch=*/false)) {
                 return true;
@@ -864,7 +848,6 @@ void ConvertBilinearToStridedConcatAndConvPass::safeRunOnFunc() {
 // createConvertBilinearToStridedConcatAndConvPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::IE::createConvertBilinearToStridedConcatAndConvPass(const bool interpolateAsSEOp,
-                                                                                      Logger log) {
-    return std::make_unique<ConvertBilinearToStridedConcatAndConvPass>(interpolateAsSEOp, log);
+std::unique_ptr<mlir::Pass> vpux::IE::createConvertBilinearToStridedConcatAndConvPass(Logger log) {
+    return std::make_unique<ConvertBilinearToStridedConcatAndConvPass>(log);
 }

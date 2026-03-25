@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -36,7 +36,7 @@ module {
 
     // CHECK:       VPUIPDPU.DPUInvariant
     // CHECK:       VPUIPDPU.IDUCfg {
-    // CHECK-NEXT:    VPUIPDPU.IDUInActivations in_activations(%arg0 : memref<1x64x16x16xf16, #NHWC, [@CMX_NN, 0]>) <{in_sparse}>
+    // CHECK-NEXT:    VPUIPDPU.IDUInActivations in_activations({{%[^:]+}}: memref<1x64x16x16xf16, #NHWC, [@CMX_NN, 0]>) <{in_sparse}>
     // CHECK-NEXT:    VPUIPDPU.IDUWeights wmode(f16) wt_plt_cfg(NO_PLT)
     // CHECK-NEXT:    VPUIPDPU.IDUInputLayerCfg sparsity_pattern(32)
     // CHECK-NEXT:    VPUIPDPU.IDUKernel kernel_x(2) kernel_y(2)
@@ -95,7 +95,7 @@ module {
 
     // CHECK:       VPUIPDPU.DPUInvariant
     // CHECK:       VPUIPDPU.IDUCfg {
-    // CHECK-NEXT:    VPUIPDPU.IDUInActivations in_activations(%arg0 : memref<1x64x16x16xf16, #NHWC, [@CMX_NN, 0]>) <{in_sparse}>
+    // CHECK-NEXT:    VPUIPDPU.IDUInActivations in_activations({{%[^:]+}}: memref<1x64x16x16xf16, #NHWC, [@CMX_NN, 0]>) <{in_sparse}>
     // CHECK-NEXT:    VPUIPDPU.IDUWeights wmode(f16) wt_plt_cfg(NO_PLT) <{wt_sparse}>
     // CHECK-NEXT:    VPUIPDPU.IDUInputLayerCfg sparsity_pattern(32)
     // CHECK-NEXT:    VPUIPDPU.IDUKernel kernel_x(1) kernel_y(1)
@@ -166,7 +166,7 @@ module {
 
     // CHECK:       VPUIPDPU.DPUInvariant
     // CHECK:       VPUIPDPU.IDUCfg {
-    // CHECK-NEXT:    VPUIPDPU.IDUInActivations in_activations(%arg0 : memref<1x64x16x16x!qElemType, #NHWC, [@CMX_NN, 0]>)
+    // CHECK-NEXT:    VPUIPDPU.IDUInActivations in_activations({{%[^:]+}}: memref<1x64x16x16x!qElemType, #NHWC, [@CMX_NN, 0]>)
     // CHECK-NEXT:    VPUIPDPU.IDUWeights wmode(f8E5M2) wt_plt_cfg(NO_PLT)
     // CHECK-NEXT:    VPUIPDPU.IDUInputLayerCfg sparsity_pattern(32)
     // CHECK-NEXT:    VPUIPDPU.IDUKernel kernel_x(2) kernel_y(2)
@@ -222,7 +222,7 @@ module {
 
     // CHECK:       VPUIPDPU.DPUInvariant
     // CHECK:       VPUIPDPU.IDUCfg {
-    // CHECK-NEXT:    VPUIPDPU.IDUInActivations in_activations(%arg0 : memref<1x64x16x16x!qElemType, #NHWC, [@CMX_NN, 0]>)
+    // CHECK-NEXT:    VPUIPDPU.IDUInActivations in_activations({{%[^:]+}}: memref<1x64x16x16x!qElemType, #NHWC, [@CMX_NN, 0]>)
     // CHECK-NEXT:    VPUIPDPU.IDUWeights wmode(f8E4M3FN) wt_plt_cfg(NO_PLT)
     // CHECK-NEXT:    VPUIPDPU.IDUInputLayerCfg sparsity_pattern(32)
     // CHECK-NEXT:    VPUIPDPU.IDUKernel kernel_x(2) kernel_y(2)
@@ -278,7 +278,7 @@ module {
 
     // CHECK:       VPUIPDPU.DPUInvariant
     // CHECK:       VPUIPDPU.IDUCfg {
-    // CHECK-NEXT:    VPUIPDPU.IDUInActivations in_activations(%arg0 : memref<1x64x16x16x!qElemType, #NHWC, [@CMX_NN, 0]>)
+    // CHECK-NEXT:    VPUIPDPU.IDUInActivations in_activations({{%[^:]+}}: memref<1x64x16x16x!qElemType, #NHWC, [@CMX_NN, 0]>)
     // CHECK-NEXT:    VPUIPDPU.IDUWeights wmode(f8E4M3FN) wt_plt_cfg(NO_PLT)
     // CHECK-NEXT:    VPUIPDPU.IDUInputLayerCfg sparsity_pattern(32)
     // CHECK-NEXT:    VPUIPDPU.IDUKernel kernel_x(2) kernel_y(2)
@@ -333,7 +333,7 @@ module {
 
     // CHECK:       VPUIPDPU.DPUInvariant
     // CHECK:       VPUIPDPU.IDUCfg {
-    // CHECK-NEXT:    VPUIPDPU.IDUInActivations in_activations(%arg0 : memref<1x3x16x16xf16, #NHWC, [@CMX_NN, 0]>)
+    // CHECK-NEXT:    VPUIPDPU.IDUInActivations in_activations({{%[^:]+}}: memref<1x3x16x16xf16, #NHWC, [@CMX_NN, 0]>)
     // CHECK-NEXT:    VPUIPDPU.IDUWeights wmode(f16) wt_plt_cfg(NO_PLT)
     // CHECK-NEXT:    VPUIPDPU.IDUInputLayerCfg sparsity_pattern(32)
     // CHECK-NEXT:    VPUIPDPU.IDUKernel kernel_x(1) kernel_y(1)
@@ -385,7 +385,7 @@ module {
 
     // CHECK:       VPUIPDPU.DPUInvariant
     // CHECK:       VPUIPDPU.IDUCfg {
-    // CHECK-NEXT:    VPUIPDPU.IDUInActivations in_activations(%arg0 : memref<1x256x16x16xf16, #NHWC, [@CMX_NN, 0]>)
+    // CHECK-NEXT:    VPUIPDPU.IDUInActivations in_activations({{%[^:]+}}: memref<1x256x16x16xf16, #NHWC, [@CMX_NN, 0]>)
     // CHECK-NEXT:    VPUIPDPU.IDUWeights wmode(f16) wt_plt_cfg(NO_PLT)
     // CHECK-NEXT:    VPUIPDPU.IDUInputLayerCfg sparsity_pattern(32)
     // CHECK-NEXT:    VPUIPDPU.IDUKernel kernel_x(1) kernel_y(1)
@@ -439,7 +439,7 @@ module {
 
     // CHECK:       VPUIPDPU.DPUInvariant
     // CHECK:       VPUIPDPU.IDUCfg {
-    // CHECK-NEXT:    VPUIPDPU.IDUInActivations in_activations(%arg0 : memref<1x256x16x16xbf16, #NHWC, [@CMX_NN, 0]>)
+    // CHECK-NEXT:    VPUIPDPU.IDUInActivations in_activations({{%[^:]+}}: memref<1x256x16x16xbf16, #NHWC, [@CMX_NN, 0]>)
     // CHECK-NEXT:    VPUIPDPU.IDUWeights wmode(bf16) wt_plt_cfg(NO_PLT)
     // CHECK-NEXT:    VPUIPDPU.IDUInputLayerCfg sparsity_pattern(32)
     // CHECK-NEXT:    VPUIPDPU.IDUKernel kernel_x(1) kernel_y(1)
@@ -492,7 +492,7 @@ module {
 
     // CHECK:       VPUIPDPU.DPUInvariant
     // CHECK:       VPUIPDPU.IDUCfg {
-    // CHECK-NEXT:    VPUIPDPU.IDUInActivations in_activations(%arg0 : memref<1x16x32x32xf16, #NHWC, [@CMX_NN, 0]>)
+    // CHECK-NEXT:    VPUIPDPU.IDUInActivations in_activations({{%[^:]+}}: memref<1x16x32x32xf16, #NHWC, [@CMX_NN, 0]>)
     // CHECK-NEXT:    VPUIPDPU.IDUWeights wmode(f16) wt_plt_cfg(NO_PLT) pool_wt_data(15360)
     // CHECK-NEXT:    VPUIPDPU.IDUKernel kernel_x(1) kernel_y(1)
     // CHECK-NEXT:    VPUIPDPU.IDUStride stride_x(1) stride_y(1)
@@ -543,7 +543,7 @@ module {
 
     // CHECK:       VPUIPDPU.DPUInvariant
     // CHECK:       VPUIPDPU.IDUCfg {
-    // CHECK-NEXT:    VPUIPDPU.IDUInActivations in_activations(%arg0 : memref<1x16x32x32xbf16, #NHWC, [@CMX_NN, 0]>)
+    // CHECK-NEXT:    VPUIPDPU.IDUInActivations in_activations({{%[^:]+}}: memref<1x16x32x32xbf16, #NHWC, [@CMX_NN, 0]>)
     // CHECK-NEXT:    VPUIPDPU.IDUWeights wmode(bf16) wt_plt_cfg(NO_PLT) pool_wt_data(16256)
     // CHECK-NEXT:    VPUIPDPU.IDUKernel kernel_x(1) kernel_y(1)
     // CHECK-NEXT:    VPUIPDPU.IDUStride stride_x(1) stride_y(1)
@@ -594,7 +594,7 @@ module {
 
     // CHECK:       VPUIPDPU.DPUInvariant
     // CHECK:       VPUIPDPU.IDUCfg {
-    // CHECK-NEXT:    VPUIPDPU.IDUInActivations in_activations(%arg0 : memref<1x16x32x32xf16, #NHWC, [@CMX_NN, 0]>)
+    // CHECK-NEXT:    VPUIPDPU.IDUInActivations in_activations({{%[^:]+}}: memref<1x16x32x32xf16, #NHWC, [@CMX_NN, 0]>)
     // CHECK-NEXT:    VPUIPDPU.IDUWeights wmode(f16) wt_plt_cfg(NO_PLT) pool_wt_data(15360)
     // CHECK-NEXT:    VPUIPDPU.IDUKernel kernel_x(1) kernel_y(1)
     // CHECK-NEXT:    VPUIPDPU.IDUStride stride_x(1) stride_y(1)

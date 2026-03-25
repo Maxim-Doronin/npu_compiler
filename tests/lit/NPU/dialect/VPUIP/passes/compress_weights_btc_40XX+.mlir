@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -196,6 +196,7 @@ func.func @CompressWeightsFP16(%arg0: memref<1x3x224x224xf16, @DDR>, %arg1: memr
 }
 
 // CHECK-LABEL: @CompressWeightsFP16
+// CHECK-SAME: [[ARG_0:%[^:]+]]: memref<1x3x224x224xf16, @DDR>, [[ARG_1:%[^:]+]]: memref<1x1000xf16, @DDR>, [[ARG_2:%[^:]+]]: memref<1244xui64>
 // CHECK:       [[CST_0:%.+]] = const.Declare memref<1280x1x1x1xf16, {compression = #VPUIP.Compression<CompiletimeCompressed>, order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 1024 : i64>}> = dense<"0x63000000000000000000000000000000000000000000000000006F007800000000000000000000000000000000000000000000000063
 // CHECK-SAME:         tensor<1280x1x1x1xf16>
 // CHECK:       [[DECLAREBUFFER_0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <819200> {swizzlingKey = 5 : i64} -> memref<3072x1x1x1xf16, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 1024 : i64>}, [@CMX_NN, 0]>
@@ -203,4 +204,4 @@ func.func @CompressWeightsFP16(%arg0: memref<1x3x224x224xf16, @DDR>, %arg1: memr
 // CHECK-SAME:         inputs([[CST_0]] : memref<1280x1x1x1xf16, {compression = #VPUIP.Compression<CompiletimeCompressed>, order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 1024 : i64>}>)
 // CHECK-SAME:         outputs([[DECLAREBUFFER_0]] : memref<3072x1x1x1xf16, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 1024 : i64>}, [@CMX_NN, 0]>)
 // CHECK-SAME:          -> memref<3072x1x1x1xf16, {order = #NCHW, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 1024 : i64>}, [@CMX_NN, 0]>
-// CHECK:       return %arg1, %arg2
+// CHECK:       return [[ARG_1]], [[ARG_2]]

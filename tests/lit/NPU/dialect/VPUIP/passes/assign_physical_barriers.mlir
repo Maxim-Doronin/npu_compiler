@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -128,12 +128,12 @@ func.func @MultipleExecutors(%arg0: memref<1x16x32x32xf16>, %arg1: memref<1x16x3
     // 1st tile
 
     VPURT.Task waits(%bar1: !VPURT.Barrier) updates(%bar2: !VPURT.Barrier) {
-        VPUIP.NCEClusterTask {
+        VPUIP.NCEClusterTask <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
                 task_type = #VPUIP.nce_task_type<CONV>
-            }
+            }>
             input(%buf10: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>)
             weights(%buf14: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>)
             parent_input(%buf10: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>)
@@ -172,12 +172,12 @@ func.func @MultipleExecutors(%arg0: memref<1x16x32x32xf16>, %arg1: memref<1x16x3
     // 2nd tile
 
     VPURT.Task waits(%bar3: !VPURT.Barrier) updates(%bar5: !VPURT.Barrier) {
-        VPUIP.NCEClusterTask {
+        VPUIP.NCEClusterTask <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
                 task_type = #VPUIP.nce_task_type<CONV>
-            }
+            }>
             input(%buf12: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>)
             weights(%buf14: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>)
             parent_input(%buf12: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>)
@@ -216,12 +216,12 @@ func.func @MultipleExecutors(%arg0: memref<1x16x32x32xf16>, %arg1: memref<1x16x3
     // 3rd tile
 
     VPURT.Task waits(%bar6: !VPURT.Barrier) updates(%bar7: !VPURT.Barrier) {
-        VPUIP.NCEClusterTask {
+        VPUIP.NCEClusterTask <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
                 task_type = #VPUIP.nce_task_type<CONV>
-            }
+            }>
             input(%buf10: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>)
             weights(%buf14: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>)
             parent_input(%buf10: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>)
@@ -260,12 +260,12 @@ func.func @MultipleExecutors(%arg0: memref<1x16x32x32xf16>, %arg1: memref<1x16x3
     // 4th tile
 
     VPURT.Task waits(%bar8: !VPURT.Barrier) updates(%bar9: !VPURT.Barrier) {
-        VPUIP.NCEClusterTask {
+        VPUIP.NCEClusterTask <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
                 task_type = #VPUIP.nce_task_type<CONV>
-            }
+            }>
             input(%buf12: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>)
             weights(%buf14: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>)
             parent_input(%buf12: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>)

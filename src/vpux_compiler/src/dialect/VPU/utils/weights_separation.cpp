@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -19,6 +19,7 @@
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/dialect/core/IR/ops.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/func_dialect.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
@@ -248,7 +249,7 @@ mlir::Value createAvgPoolForInterQuantizedConvert(mlir::OpBuilder& builder, mlir
         }
 
         const auto newShapeAttr = getIntArrayAttr(builder.getContext(), newShape);
-        return builder.createOrFold<IE::ReshapeOp>(reshapeLoc, input, nullptr, false, newShapeAttr);
+        return builder.createOrFold<IE::ReshapeOp>(reshapeLoc, input, newShapeAttr);
     };
 
     const auto prepareZpsForAvgPool =
@@ -486,7 +487,7 @@ mlir::Value createMatchingIeOperation(mlir::OpBuilder& builder, mlir::Location l
             })
             .Case<Const::ReshapeAttr>([&](Const::ReshapeAttr reshape) -> mlir::Value {
                 if (mlir::cast<NDTypeInterface>(input.getType()).getDimsOrder().isIdentity()) {
-                    return builder.create<IE::ReshapeOp>(loc, input, nullptr, false, reshape.getShape());
+                    return builder.create<IE::ReshapeOp>(loc, input, reshape.getShape());
                 }
 
                 return builder.create<IE::ShapeCastOp>(loc, input, reshape.getShape());
@@ -567,7 +568,7 @@ mlir::Value createMatchingVpuOperation(mlir::OpBuilder& builder, mlir::Location 
                 if (inputType.getDimsOrder().isIdentity()) {
                     // Type inference rules between the attribute and the operation doesn't match
                     // Example: 2x4 #CN -> 2x2x2 isn't possible
-                    return builder.create<VPU::ReshapeOp>(loc, input, nullptr, false, reshape.getShape());
+                    return builder.create<VPU::ReshapeOp>(loc, input, reshape.getShape());
                 }
 
                 return builder.create<VPU::ShapeCastOp>(loc, input, reshape.getShape());
@@ -586,7 +587,7 @@ mlir::Value createMatchingVpuOperation(mlir::OpBuilder& builder, mlir::Location 
                 const auto outShape = getIntArrayAttr(builder, outType.getShape());
 
                 if (transpose.getOrder().getValue().isIdentity()) {
-                    return builder.create<VPU::ReshapeOp>(loc, input, nullptr, false, outShape);
+                    return builder.create<VPU::ReshapeOp>(loc, input, outShape);
                 }
 
                 return builder.create<VPU::ShapeCastOp>(loc, input, outShape);
@@ -738,7 +739,7 @@ SmallVector<GroupedTransformationSplits<SplitPosition>> groupTransformationSplit
     for (auto first = std::next(prev); first != splits.end(); ++first) {
         const auto& split = *first;
         const auto currResource = split.getContentAttr().getBaseContent();
-        if (bool newConstant = (prevResource != currResource); newConstant) {
+        if (bool newConstant = (getResourceName(prevResource) != getResourceName(currResource)); newConstant) {
             groupedByName.emplace_back(prev, first, prevResource);
             prevResource = currResource;
             prev = first;
@@ -1151,9 +1152,7 @@ mlir::Value ConstOpConverter::convertToIrForm(mlir::Location loc, const VPU::Tra
 
 WeightsSeparationInfo::WeightsSeparationInfo(mlir::ModuleOp moduleOp) {
     auto log = Logger::global().nest("weights-separation-info", 0);
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp mainFuncOp;
-    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, mainFuncOp);
+    auto mainFuncOp = net::getMainFunc(moduleOp);
 
     auto tree = VPU::getOutliningRepresentation(mainFuncOp);
     auto constants = collectMoveWorthyConstants(log, tree);

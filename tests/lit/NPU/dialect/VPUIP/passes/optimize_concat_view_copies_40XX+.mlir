@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -27,7 +27,7 @@ func.func @DontOptimizeForInplaceUser(%arg0 : !DistributedBufferType, %arg1 : !D
 
     %copy2 = VPUIP.Copy inputs(%subview2 : memref<1x896x288x4xf16, {order = #NHWC, strides = [2064384, 1, 7168, 1792]}, @DDR>) outputs(%allocDistributed : !OverlappedBufferType) -> !OverlappedBufferType
 
-    %nceClusterTask = VPUIP.NCEClusterTask {eltwise_type = #VPU.eltwise_type<MULTIPLY>, is_inplace = true, minimumHardwareExecutionCost = 37893 : i64, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}
+    %nceClusterTask = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 37893 : i64} <{eltwise_type = #VPU.eltwise_type<MULTIPLY>, is_inplace = true, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}>
             input(%copy2 : !OverlappedBufferType)
             weights(%arg2 : !OverlappedBufferType)
             parent_input(%copy2 : !OverlappedBufferType)

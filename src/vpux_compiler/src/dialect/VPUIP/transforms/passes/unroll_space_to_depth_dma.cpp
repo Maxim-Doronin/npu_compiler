@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/dialect/VPUIP/transforms/factories/unroll_space_to_depth_dma_strategy_getter.hpp"
+#include "vpux/compiler/dialect/VPUIP/interfaces/strategies.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/unroll_dma_analysis.hpp"
+#include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/walk_utils.hpp"
 
@@ -36,6 +37,7 @@ private:
 };
 
 void UnrollSpaceToDepthDMAPass::safeRunOnFunc() {
+    auto& ctx = getContext();
     auto func = getOperation();
     markAnalysesPreserved<VPUIP::UnrollDMAAnalysis>();
     auto analysis = getAnalysis<VPUIP::UnrollDMAAnalysis>();
@@ -44,7 +46,10 @@ void UnrollSpaceToDepthDMAPass::safeRunOnFunc() {
     }
 
     llvm::SmallVector<mlir::RewritePatternSet> patternSets;
-    auto unrollStrategy = VPUIP::createUnrollSpaceToDepthDMAStrategy(func);
+
+    auto& strategyFactory = VPUIP::getVPUIPStrategyFactory(&ctx);
+    auto dmaPortCount = config::getNumOfDMAPorts(func);
+    auto unrollStrategy = strategyFactory->getUnrollSpaceToDepthDMAStrategy(&ctx, dmaPortCount);
     unrollStrategy->addPatterns(patternSets, _log);
 
     for (auto& patternSet : patternSets) {

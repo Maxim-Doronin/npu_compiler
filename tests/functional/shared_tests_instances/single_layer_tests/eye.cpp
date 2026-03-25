@@ -136,6 +136,10 @@ TEST_P(EyeLayerTestCommon, NPU5010_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
+TEST_P(EyeLayerTestCommon, NPU5020_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
+}
 
 TEST_P(EyeLayerTestWithConstantFoldingCommon, NPU3720_HW) {
     setDefaultHardwareMode();
@@ -150,6 +154,10 @@ TEST_P(EyeLayerTestWithConstantFoldingCommon, NPU4000_HW) {
 TEST_P(EyeLayerTestWithConstantFoldingCommon, NPU5010_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
+}
+TEST_P(EyeLayerTestWithConstantFoldingCommon, NPU5020_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
 }
 
 }  // namespace test

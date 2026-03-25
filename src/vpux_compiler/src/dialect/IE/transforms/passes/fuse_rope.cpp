@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -156,8 +156,8 @@ void FuseRoPEPass::safeRunOnFunc() {
         auto cosShape = mlir::cast<mlir::RankedTensorType>(input_cos.getType()).getShape();
         auto sinShape = mlir::cast<mlir::RankedTensorType>(input_sin.getType()).getShape();
         if (cosShape != sinShape) {
-            input_cos = builder.create<IE::ReshapeOp>(appendLoc(addOp->getLoc(), "cos_reshape"), input_cos, nullptr,
-                                                      false, getIntArrayAttr(builder, sinShape));
+            input_cos = builder.create<IE::ReshapeOp>(appendLoc(addOp->getLoc(), "cos_reshape"), input_cos,
+                                                      getIntArrayAttr(builder, sinShape));
             _log.trace("Reshaped input_cos to match input_sin shape");
         }
         auto ropeOp = builder.create<IE::RoPEOp>(appendLoc(addOp->getLoc(), "rope"), input, input_cos, input_sin,

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -44,7 +44,7 @@ module @mainModule attributes {config.arch = #config.arch_kind<NPU50XX>} {
         VPUASM.NNDMA @NNDMA_0_0_0 idx(!VPURegMapped.Index<0:0:0>) taskLocation(@program.DMA.cmx.0.0::@DeclareTaskBuffer_DMA_0_0_0)
           input(@buffer.Constant.0.constant::@Declare0) outputs([@buffer.CMX_NN.0::@DeclareBuffer2])
           waits([]) updates([0 : ui8]) start_after(0) clean_after(0)
-          dma_descriptor(#VPUIP.DMADescriptorAttr<numPlanes = 0 : i4, len = 0 : i4, srcWidth = 0 : i4, srcStride = 0 : i4, srcPlaneStride = 0 : i4, dstWidth = 0 : i4, dstStride = 0 : i4, dstPlaneStride = 0 : i4>)
+          dma_transaction(#VPUMI40XX.NNDMATransaction<inputType = memref<100x1x1x1xui8, [@DDR, 0]>, outputType = memref<1024x16x1x1xf16, [@CMX_NN, 0]>>)
           acceleration_mode(<DECOMPRESSION>)
         // CHECK-NOT:   VPUASM.NNDMA
         // CHECK:       NPUReg50XX.NNDMA
@@ -58,7 +58,7 @@ module @mainModule attributes {config.arch = #config.arch_kind<NPU50XX>} {
         VPUASM.NNDMA @NNDMA_0_1_0 idx(!VPURegMapped.Index<0:1:0>) taskLocation(@program.DMA.cmx.0.1::@DeclareTaskBuffer_DMA_0_1_0)
           input(@buffer.CMX_NN.0::@DeclareBuffer2) outputs([@io.NetworkOutput0::@DeclareBuffer1])
           waits([0 : ui8]) updates([]) start_after(0) clean_after(0)
-          dma_descriptor(#VPUIP.DMADescriptorAttr<numPlanes = 0 : i4, len = 0 : i4, srcWidth = 0 : i4, srcStride = 0 : i4, srcPlaneStride = 0 : i4, dstWidth = 0 : i4, dstStride = 0 : i4, dstPlaneStride = 0 : i4>)
+          dma_transaction(#VPUMI40XX.NNDMATransaction<inputType = memref<1024x16x1x1xf16, [@CMX_NN, 0]>, outputType = memref<1024x16x1x1xf16, @DDR>>)
           acceleration_mode(<DISABLE>)
         // CHECK-NOT:   VPUASM.NNDMA
         // CHECK:       NPUReg50XX.NNDMA

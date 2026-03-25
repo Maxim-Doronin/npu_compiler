@@ -1,9 +1,10 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
@@ -12,11 +13,16 @@
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
+#include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/types.hpp"
 #include "vpux/compiler/utils/walk_utils.hpp"
+#include "vpux/utils/core/error.hpp"
 
+#include <mlir/Dialect/Quant/IR/QuantTypes.h>
+#include <mlir/IR/Value.h>
 #include <mlir/Pass/PassManager.h>
+#include <mlir/Support/LLVM.h>
 #include <mlir/Transforms/DialectConversion.h>
 
 #include <openvino/core/coordinate_diff.hpp>
@@ -34,7 +40,7 @@ using namespace vpux;
 
 namespace {
 
-// Returns the filter permutation order for different ranks (non-group convolution)
+//  Returns the filter permutation order for different ranks (non-group convolution)
 DimsOrder getNewFilterDimsOrderForConv(const int64_t rank) {
     switch (rank) {
     case 3:
@@ -48,7 +54,7 @@ DimsOrder getNewFilterDimsOrderForConv(const int64_t rank) {
     }
 }
 
-// Returns the filter permutation order for different ranks (group convolution)
+//  Returns the filter permutation order for different ranks (group convolution)
 DimsOrder getNewFilterDimsOrderForGroupConv(const int64_t rank) {
     switch (rank) {
     case 4:
@@ -197,6 +203,244 @@ SmallVector<mlir::DenseElementsAttr> createSplitFilterAttrs(mlir::Type elemType,
     return splitFilterAttrs;
 }
 
+// Helper function for the logic of transposing the inputs used for FakeQuantize when the filter tensor is transposed
+mlir::Value transposeFqInput(mlir::PatternRewriter& rewriter, mlir::Value fqInput, mlir::Location baseLoc,
+                             StringRef locSuffix, mlir::MLIRContext* ctx, size_t dimIndex1, size_t dimIndex2,
+                             bool checkSplat = false) {
+    auto fqInputType = mlir::cast<vpux::NDTypeInterface>(fqInput.getType());
+
+    // Early return for scalar tensors (no transpose needed)
+    if (fqInputType.getNumElements() == 1) {
+        return fqInput;
+    }
+
+    if (checkSplat) {
+        if (auto constOp = fqInput.getDefiningOp<Const::DeclareOp>()) {
+            auto denseAttr = mlir::dyn_cast<mlir::DenseElementsAttr>(constOp.getContentAttr().getBaseContent());
+            if (denseAttr && denseAttr.isSplat()) {
+                return fqInput;
+            }
+        }
+    }
+
+    auto permutation = to_small_vector(fqInputType.getDimsOrder().toPermutation() | transformed([](Dim dim) {
+                                           return checked_cast<uint32_t>(dim.ind());
+                                       }));
+    std::swap(permutation[dimIndex1], permutation[dimIndex2]);
+    auto orderAttr = mlir::AffineMapAttr::get(mlir::AffineMap::getPermutationMap(permutation, ctx));
+    auto transposeOp = rewriter.create<IE::TransposeOp>(appendLoc(baseLoc, locSuffix), fqInput,
+                                                        /*order=*/nullptr, orderAttr);
+    return transposeOp.getOutput();
+}
+
+// This class encapsulates the logic for matching, validating, and transforming filter tensors used in convolution and
+// transposed convolution operations.
+// It handles complex filter subgraph that include DeclareOp, FakeQuantizeOp/DequantizeOp and ConvertOp
+class FilterPattern {
+public:
+    explicit FilterPattern(Logger log): _log(std::move(log)) {
+    }
+
+    // Matching function that verifies if the pattern is usable for the pass
+    mlir::LogicalResult match(mlir::Value inputFilterTensor) {
+        // Supported filter pattern:
+        //          Const::DeclareOp
+        //                |
+        // (IE::FakeQuantizeOp/IE::DequantizeOp)
+        //                |
+        //          (IE::ConvertOp)
+        //                |
+        //   IE::(Group)ConvolutionBackpropDataOp
+        _filterTensor = inputFilterTensor;
+        filterConvertOp = _filterTensor.getDefiningOp<IE::ConvertOp>();
+        if (filterConvertOp != nullptr) {
+            _filterTensor = filterConvertOp.getInput();
+        }
+
+        filterDqOrFqOp = _filterTensor.getDefiningOp();
+        if (mlir::isa_and_present<IE::FakeQuantizeOp, IE::DequantizeOp>(filterDqOrFqOp)) {
+            if (auto typedValue =
+                        mlir::dyn_cast<mlir::TypedValue<mlir::RankedTensorType>>(filterDqOrFqOp->getOperand(0))) {
+                _filterTensor = typedValue;
+            }
+        }
+
+        filterOp = _filterTensor.getDefiningOp();
+
+        return mlir::success();
+    }
+
+    // Creates a single transformed filter tensor with dimension swapping and optional reversal
+    mlir::Value getNewFilter(mlir::PatternRewriter& rewriter, int32_t inChannelDimIndex, int32_t outChannelDimIndex,
+                             std::optional<Dim> filterDimToReverse) {
+        auto updatedConstant = getUpdatedConstant(rewriter, inChannelDimIndex, outChannelDimIndex, filterDimToReverse);
+        return finalizeFilterSubgraph(rewriter, updatedConstant, inChannelDimIndex, outChannelDimIndex, std::nullopt);
+    }
+
+    // Creates multiple transformed filter tensors for split convolution operations
+    std::vector<mlir::Value> getMultipleNewFilters(
+            mlir::PatternRewriter& rewriter,
+            std::pair<vpux::NDTypeInterface, std::vector<vpux::Const::ContentAttr>&> splitInfo,
+            int32_t inChannelDimIndex, int32_t outChannelDimIndex) {
+        auto& [splitFilterType, wContentAttrs] = splitInfo;
+        auto numSplits = wContentAttrs.size();
+        std::vector<mlir::Value> newFilters;
+        newFilters.reserve(numSplits);
+
+        for (decltype(numSplits) i = 0; i < numSplits; ++i) {
+            // Same pattern as getNewFilter
+            auto updatedConstant = getUpdatedConstant(rewriter, inChannelDimIndex, outChannelDimIndex, std::nullopt,
+                                                      splitFilterType, wContentAttrs[i]);
+            auto newFilter =
+                    finalizeFilterSubgraph(rewriter, updatedConstant, inChannelDimIndex, outChannelDimIndex, i);
+            newFilters.push_back(newFilter);
+        }
+        return newFilters;
+    }
+
+    // Helper functions for the pattern
+    bool isFilterConst() const {
+        return mlir::isa_and_present<Const::DeclareOp>(filterOp);
+    }
+
+    mlir::Operation* getFilterOp() const {
+        return filterOp;
+    }
+
+    mlir::Value getFilterTensor() const {
+        return _filterTensor;
+    }
+
+private:
+    // Normalizes per-axis quantization to ensure consistent storage types
+    void normalizeQuantization(vpux::NDTypeInterface& type, vpux::Const::ContentAttr& attr) {
+        if (!mlir::isa_and_present<IE::DequantizeOp>(filterDqOrFqOp)) {
+            return;
+        }
+
+        auto constFilterOp = mlir::dyn_cast_if_present<Const::DeclareOp>(getFilterOp());
+        VPUX_THROW_WHEN(constFilterOp == nullptr, "Filter must be Const::DeclareOp");
+        auto elemType = mlir::cast<vpux::NDTypeInterface>(constFilterOp.getType()).getElementType();
+
+        if (auto quantPerAxis = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(elemType)) {
+            auto normalized = normalizeQuantStorageType(quantPerAxis);
+            type = type.changeElemType(normalized);
+            attr = attr.transform().castElemType(normalized).get();
+        }
+    };
+
+    // Creates a new constant filter with transformed dimensions and attributes
+    Const::DeclareOp getUpdatedConstant(mlir::PatternRewriter& rewriter, int32_t inChannelDimIndex,
+                                        int32_t outChannelDimIndex, std::optional<Dim> filterDimToReverse,
+                                        std::optional<vpux::NDTypeInterface> splitFilterType = std::nullopt,
+                                        std::optional<vpux::Const::ContentAttr> splitContentAttr = std::nullopt) {
+        auto constFilterOp = mlir::dyn_cast_if_present<Const::DeclareOp>(getFilterOp());
+        VPUX_THROW_WHEN(constFilterOp == nullptr, "Filter must be Const::DeclareOp");
+        bool isSplit = splitFilterType.has_value() && splitContentAttr.has_value();
+        auto contentAttr = isSplit ? *splitContentAttr : constFilterOp.transformContentAttr().get();
+        auto newFilterType = isSplit ? *splitFilterType : mlir::cast<vpux::NDTypeInterface>(constFilterOp.getType());
+        auto newDimsOrder = (inChannelDimIndex == IE::GROUP_TRANSPOSED_CONV_C_IN_DIM_INDEX)
+                                    ? getNewFilterDimsOrderForGroupConv(newFilterType.getRank())
+                                    : getNewFilterDimsOrderForConv(newFilterType.getRank());
+        auto filterShape = to_small_vector(newFilterType.getShape());
+
+        normalizeQuantization(newFilterType, contentAttr);
+
+        if (filterDimToReverse.has_value()) {
+            contentAttr = contentAttr.transform().reverse(filterDimToReverse.value()).transpose(newDimsOrder).get();
+        } else {
+            contentAttr = contentAttr.transform().transpose(newDimsOrder).get();
+        }
+
+        if (!isSplit) {
+            std::swap(filterShape[inChannelDimIndex], filterShape[outChannelDimIndex]);
+            newFilterType = newFilterType.changeShape(ShapeRef(filterShape));
+        }
+
+        updateQuantization(newFilterType, contentAttr, inChannelDimIndex, outChannelDimIndex);
+
+        auto loc = filterDqOrFqOp ? filterDqOrFqOp->getLoc() : constFilterOp.getLoc();
+        return rewriter.create<Const::DeclareOp>(loc, newFilterType, std::move(contentAttr));
+    }
+
+    // Updates per-axis quantization parameters after dimension transposition
+    void updateQuantization(vpux::NDTypeInterface& type, vpux::Const::ContentAttr& attr, int32_t inChannelDimIndex,
+                            int32_t outChannelDimIndex) {
+        if (!mlir::isa_and_present<IE::DequantizeOp>(filterDqOrFqOp)) {
+            return;
+        }
+
+        auto constFilterOp = mlir::dyn_cast_if_present<Const::DeclareOp>(getFilterOp());
+        VPUX_THROW_WHEN(constFilterOp == nullptr, "Filter must be Const::DeclareOp");
+        auto filterType = mlir::cast<vpux::NDTypeInterface>(constFilterOp.getType());
+        auto elemType = mlir::cast<vpux::NDTypeInterface>(filterType).getElementType();
+
+        if (auto quantPerAxis = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(elemType)) {
+            auto oldQuantDim = quantPerAxis.getQuantizedDimension();
+            auto newQuantDim = (oldQuantDim == inChannelDimIndex)    ? outChannelDimIndex
+                               : (oldQuantDim == outChannelDimIndex) ? inChannelDimIndex
+                                                                     : oldQuantDim;
+            auto newQuant = mlir::quant::UniformQuantizedPerAxisType::get(
+                    quantPerAxis.isSigned(), quantPerAxis.getStorageType(), quantPerAxis.getExpressedType(),
+                    quantPerAxis.getScales(), quantPerAxis.getZeroPoints(), newQuantDim,
+                    quantPerAxis.getStorageTypeMin(), quantPerAxis.getStorageTypeMax());
+            type = type.changeElemType(newQuant);
+            attr = attr.transform().castElemType(newQuant).get();
+        } else if (auto quant = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(elemType)) {
+            type = type.changeElemType(quant);
+        } else {
+            VPUX_THROW("Unsupported quantType");
+        }
+    }
+
+    // Recreates the complete filter subgraph with the transformed constant
+    mlir::Value finalizeFilterSubgraph(mlir::PatternRewriter& rewriter, Const::DeclareOp newConst,
+                                       int32_t inChannelDimIndex, int32_t outChannelDimIndex,
+                                       std::optional<size_t> splitIndex = std::nullopt) {
+        auto constFilterOp = mlir::dyn_cast_if_present<Const::DeclareOp>(filterOp);
+        VPUX_THROW_WHEN(constFilterOp == nullptr, "Filter must be Const::DeclareOp");
+        mlir::Value currentFilter = newConst.getOutput();
+        std::string suffix = splitIndex.has_value() ? ("_w" + std::to_string(*splitIndex + 1)) : "";
+
+        if (auto filterFqOp = mlir::dyn_cast_if_present<IE::FakeQuantizeOp>(filterDqOrFqOp)) {
+            auto transposeFq = [&](mlir::Value input, const std::string& name) {
+                return transposeFqInput(rewriter, input, constFilterOp.getLoc(), name, rewriter.getContext(),
+                                        outChannelDimIndex, inChannelDimIndex, false);
+            };
+
+            auto inputLow = transposeFq(filterFqOp.getInputLow(), "transpose_input_low");
+            auto inputHigh = transposeFq(filterFqOp.getInputHigh(), "transpose_input_high");
+            auto outputLow = transposeFq(filterFqOp.getOutputLow(), "transpose_output_low");
+            auto outputHigh = transposeFq(filterFqOp.getOutputHigh(), "transpose_output_high");
+
+            auto loc = takeOpLoc(filterFqOp, "fq_in" + suffix);
+            currentFilter = rewriter.createOrFold<IE::FakeQuantizeOp>(
+                    loc, currentFilter, inputLow, inputHigh, outputLow, outputHigh, filterFqOp.getLevelsAttr(),
+                    filterFqOp.getLowFpTypeAttr(), filterFqOp.getAutoBroadcastAttr());
+        }
+
+        if (auto filterDqOp = mlir::dyn_cast_if_present<IE::DequantizeOp>(filterDqOrFqOp)) {
+            auto loc = takeOpLoc(filterDqOp, "dq_in" + suffix);
+            currentFilter =
+                    rewriter.createOrFold<IE::DequantizeOp>(loc, currentFilter, filterDqOp.getDstElemTypeAttr());
+        }
+
+        if (filterConvertOp != nullptr) {
+            auto loc = takeOpLoc(filterConvertOp, "filter_cvt_in" + suffix);
+            currentFilter =
+                    rewriter.createOrFold<IE::ConvertOp>(loc, currentFilter, filterConvertOp.getDstElemTypeAttr());
+        }
+        return currentFilter;
+    }
+
+private:
+    Logger _log;
+    mlir::Value _filterTensor = nullptr;
+    mlir::Operation* filterOp = nullptr;
+    mlir::Operation* filterDqOrFqOp = nullptr;
+    IE::ConvertOp filterConvertOp = nullptr;
+};
+
 //
 // ConvBackpropDataToTransConvConversion
 //
@@ -221,29 +465,14 @@ mlir::LogicalResult ConvBackpropDataToTransConvConversion::matchAndRewrite(IE::C
     _log.trace("Found IE::ConvolutionBackpropDataOp Operation '{0}'", origOp->getLoc());
     const auto arch = config::getArch(origOp);
 
-    // Supported filter pattern:
-    //     Const::DeclareOp
-    //         |
-    //   (IE::FakeQuantizeOp)
-    //         |
-    //   (IE::ConvertOp)
-    //         |
-    // IE::ConvolutionBackpropDataOp
-
-    auto filterTensor = origOp.getFilter();
-    auto filterConvertOp = filterTensor.getDefiningOp<IE::ConvertOp>();
-    if (filterConvertOp != nullptr) {
-        filterTensor = filterConvertOp.getInput();
+    // Checking for the pattern's eligibility
+    FilterPattern pattern(_log);
+    if (mlir::failed(pattern.match(origOp.getFilter()))) {
+        return mlir::failure();
     }
 
-    auto filterFqOp = filterTensor.getDefiningOp<IE::FakeQuantizeOp>();
-    if (filterFqOp != nullptr) {
-        filterTensor = filterFqOp.getInput();
-    }
-
-    mlir::Value newFilter;
-    auto filterOp = filterTensor.getDefiningOp<Const::DeclareOp>();
-    if (filterOp == nullptr) {
+    if (!pattern.isFilterConst()) {
+        auto filterTensor = pattern.getFilterTensor();
         const auto filterTensorType = mlir::cast<vpux::NDTypeInterface>(filterTensor.getType());
         const auto filterRank = filterTensorType.getRank();
         auto permutation = to_small_vector(filterTensorType.getDimsOrder().toPermutation() | transformed([](Dim dim) {
@@ -275,11 +504,9 @@ mlir::LogicalResult ConvBackpropDataToTransConvConversion::matchAndRewrite(IE::C
         auto reverseOp = rewriter.create<IE::ReverseOp>(appendLoc(origOp->getLoc(), "reverse"), transposeOp.getOutput(),
                                                         nullptr, axesAttr, modeAttr);
 
-        newFilter = reverseOp.getOutput();
-
         // Replace Op with transposedConv
         rewriter.replaceOpWithNewOp<IE::TransposedConvolutionOp>(
-                origOp, origOp.getInput(), newFilter, origOp.getOutputShape(), /*bias*/ nullptr,
+                origOp, origOp.getInput(), reverseOp.getOutput(), origOp.getOutputShape(), /*bias*/ nullptr,
                 origOp.getStridesAttr(), origOp.getPadsBeginAttr(), origOp.getPadsEndAttr(), origOp.getDilationsAttr(),
                 origOp.getSpatialOutputPaddingAttr(), /*postOp=*/nullptr, /*clamp=*/nullptr,
                 /*outputPadding=*/nullptr,
@@ -288,13 +515,17 @@ mlir::LogicalResult ConvBackpropDataToTransConvConversion::matchAndRewrite(IE::C
         return mlir::success();
     }
 
-    // Reverse IC and OC dimensions in filter constant:
-    //   [IC, OC, X] -> [OC, IC, X]
-    //   [IC, OC, Y, X] -> [OC, IC, Y, X]
-    //   [IC, OC, Z, Y, X] -> [OC, IC, Z, Y, X]
+    // If the filter is constant
+    //  Reverse IC and OC dimensions in filter constant:
+    //    [IC, OC, X] -> [OC, IC, X]
+    //    [IC, OC, Y, X] -> [OC, IC, Y, X]
+    //    [IC, OC, Z, Y, X] -> [OC, IC, Z, Y, X]
+    auto filterOp = mlir::dyn_cast_if_present<Const::DeclareOp>(pattern.getFilterOp());
+    if (filterOp == nullptr) {
+        _log.trace("Expected filterOp to be a Const::DeclareOp");
+        return mlir::failure();
+    }
     auto filterType = mlir::cast<vpux::NDTypeInterface>(filterOp.getType());
-    auto newDimsOrder = getNewFilterDimsOrderForConv(filterType.getRank());
-    auto filterDimOC = Dim(1);
     auto filterShape = to_small_vector(filterType.getShape());
 
     auto orgStrides = parseIntArrayAttr<int64_t>(origOp.getStridesAttr());
@@ -302,57 +533,19 @@ mlir::LogicalResult ConvBackpropDataToTransConvConversion::matchAndRewrite(IE::C
     auto orgPadsEnd = parseIntArrayAttr<int64_t>(origOp.getPadsEndAttr());
     auto orgOutputPadding = parseIntArrayAttr<int64_t>(origOp.getSpatialOutputPaddingAttr());
 
-    vpux::Const::ContentAttr contentAttr;
-
     if (isConv2x2or3x3Feasible(filterType, filterShape, orgStrides, orgPadsBegin, orgPadsEnd, orgOutputPadding,
                                origOp.getOutputShape(), arch)) {
         return mlir::failure();
     }
 
-    contentAttr = filterOp.transformContentAttr().reverse(filterDimOC).transpose(newDimsOrder).get();
-    std::swap(filterShape[Dims4D::Filter::OC.ind()], filterShape[Dims4D::Filter::IC.ind()]);
+    // The new filter is created here using the old filter as input
+    auto newFilter = pattern.getNewFilter(rewriter, Dims4D::Filter::IC.ind(), Dims4D::Filter::OC.ind(), Dim(1));
 
-    auto newFilterType = filterType.changeShape(ShapeRef(filterShape));
-
-    auto newFilterConstant =
-            rewriter.create<Const::DeclareOp>(takeOpLoc(filterOp, "new_filter"), newFilterType, std::move(contentAttr));
-    newFilter = newFilterConstant.getOutput();
-
-    const auto transposeFqInput = [&](mlir::Value fqInput, StringRef locSuffix) -> mlir::Value {
-        auto fqInputType = mlir::cast<vpux::NDTypeInterface>(fqInput.getType());
-        if (fqInputType.getNumElements() == 1) {
-            return fqInput;
-        }
-
-        auto permutation = to_small_vector(fqInputType.getDimsOrder().toPermutation() | transformed([](Dim dim) {
-                                               return checked_cast<uint32_t>(dim.ind());
-                                           }));
-        std::swap(permutation[Dims4D::Filter::OC.ind()], permutation[Dims4D::Filter::IC.ind()]);
-        auto orderAttr = mlir::AffineMapAttr::get(mlir::AffineMap::getPermutationMap(permutation, getContext()));
-        auto transposeOp = rewriter.create<IE::TransposeOp>(takeOpLoc(filterOp, "transpose_{0}", locSuffix), fqInput,
-                                                            /*order=*/nullptr, orderAttr);
-        return transposeOp.getOutput();
-    };
-
-    if (filterFqOp != nullptr) {
-        // In case the filter is quantized per-axis, make sure the axes are also correct for the new filter
-        auto inputLow = transposeFqInput(filterFqOp.getInputLow(), "input_low");
-        auto inputHigh = transposeFqInput(filterFqOp.getInputHigh(), "input_high");
-        auto outputLow = transposeFqInput(filterFqOp.getOutputLow(), "output_low");
-        auto outputHigh = transposeFqInput(filterFqOp.getOutputHigh(), "output_high");
-        newFilter = rewriter.createOrFold<IE::FakeQuantizeOp>(
-                takeOpLoc(filterFqOp, "fq_in"), newFilter, inputLow, inputHigh, outputLow, outputHigh,
-                filterFqOp.getLevelsAttr(), filterFqOp.getLowFpTypeAttr(), filterFqOp.getAutoBroadcastAttr());
-    }
-
-    if (filterConvertOp != nullptr) {
-        newFilter = rewriter.createOrFold<IE::ConvertOp>(takeOpLoc(filterFqOp, "filter_cvt_in"), newFilter,
-                                                         filterConvertOp.getDstElemTypeAttr());
-    }
     rewriter.replaceOpWithNewOp<IE::TransposedConvolutionOp>(
             origOp, origOp.getInput(), newFilter, origOp.getOutputShape(), /*bias*/ nullptr, origOp.getStridesAttr(),
             origOp.getPadsBeginAttr(), origOp.getPadsEndAttr(), origOp.getDilationsAttr(),
-            origOp.getSpatialOutputPaddingAttr(), /*postOp=*/nullptr, /*clamp=*/nullptr, /*outputPadding=*/nullptr,
+            origOp.getSpatialOutputPaddingAttr(),
+            /*postOp=*/nullptr, /*clamp=*/nullptr, /*outputPadding=*/nullptr,
             /*inputPadding=*/nullptr);
 
     return mlir::success();
@@ -382,32 +575,21 @@ mlir::LogicalResult ConvBackpropDataToMultipleConvConversion::matchAndRewrite(IE
     _log.trace("Found IE::ConvolutionBackpropDataOp Operation '{0}'", origOp->getLoc());
     const auto arch = config::getArch(origOp);
 
-    // Supported filter pattern:
-    //     Const::DeclareOp
-    //         |
-    //   (IE::FakeQuantizeOp)
-    //         |
-    //   (IE::ConvertOp)
-    //         |
-    // IE::ConvolutionBackpropDataOp
-
-    auto filterTensor = origOp.getFilter();
-    auto filterConvertOp = filterTensor.getDefiningOp<IE::ConvertOp>();
-    if (filterConvertOp != nullptr) {
-        filterTensor = filterConvertOp.getInput();
-    }
-
-    auto filterFqOp = filterTensor.getDefiningOp<IE::FakeQuantizeOp>();
-    if (filterFqOp != nullptr) {
-        filterTensor = filterFqOp.getInput();
-    }
-
-    auto filterOp = filterTensor.getDefiningOp<Const::DeclareOp>();
-    if (filterOp == nullptr) {
-        // Filter is not a constant, cannot proceed
+    // Checking for the pattern's eligibility
+    FilterPattern pattern(_log);
+    if (mlir::failed(pattern.match(origOp.getFilter()))) {
         return mlir::failure();
     }
 
+    if (!pattern.isFilterConst()) {
+        return mlir::failure();
+    }
+
+    auto filterOp = mlir::dyn_cast_if_present<Const::DeclareOp>(pattern.getFilterOp());
+    if (filterOp == nullptr) {
+        _log.trace("Expected filterOp to be a Const::DeclareOp");
+        return mlir::failure();
+    }
     auto filterType = mlir::cast<vpux::NDTypeInterface>(filterOp.getType());
     auto filterShape = to_small_vector(filterType.getShape());
 
@@ -465,7 +647,6 @@ mlir::LogicalResult ConvBackpropDataToMultipleConvConversion::matchAndRewrite(IE
     const Byte elemSize = getElemTypeSize(filterContent.getStorageElemType());
     const Bit elemBitSize = getElemTypeSize(filterContent.getStorageElemType());
 
-    // allocate and fill 2x2 split buffer
     std::vector<std::vector<char>> weightsSplit(numSplits);
     const auto splitKernelType = filterType.changeShape(ShapeRef({IC, OC, splitKY, splitKX}));
     const auto weightsBuf = filterContent.getRawStorageBuf();
@@ -540,62 +721,13 @@ mlir::LogicalResult ConvBackpropDataToMultipleConvConversion::matchAndRewrite(IE
     auto splitFilterType = filterType.changeShape(ShapeRef(use3x3 ? SmallVector<int64_t>{OC, IC, shiftKY, shiftKX}
                                                                   : SmallVector<int64_t>{OC, IC, splitKY, splitKX}));
 
-    // Reverse IC and OC dimensions in filter constant:
-    //   [IC, OC, Y, X] -> [OC, IC, Y, X]
-    auto newDimsOrder = getNewFilterDimsOrderForConv(filterType.getRank());
-    for (auto& attr : wContentAttrs) {
-        attr = attr.transform().transpose(newDimsOrder).get();
-    }
+    // The new filter vector is created here using the old filter vector and atributes as inputs
+    auto weightsConstOps =
+            pattern.getMultipleNewFilters(rewriter, std::make_pair(splitFilterType, std::ref(wContentAttrs)),
+                                          Dims4D::Filter::IC.ind(), Dims4D::Filter::OC.ind());
 
-    // Declare constant ops
-    std::vector<mlir::Value> weightsConstOps;
-    for (int i = 0; i < numSplits; ++i) {
-        auto loc = takeOpLoc(filterOp, "newFilterDeclare_" + std::to_string(i + 1));
-        auto declOp = rewriter.create<Const::DeclareOp>(loc, splitFilterType, std::move(wContentAttrs[i]));
-        weightsConstOps.push_back(declOp.getOutput());
-    }
-
-    const auto transposeFqInput = [&](mlir::Value fqInput, StringRef locSuffix) -> mlir::Value {
-        auto fqInputType = mlir::cast<vpux::NDTypeInterface>(fqInput.getType());
-
-        auto constOp = fqInput.getDefiningOp<Const::DeclareOp>();
-        if (constOp != nullptr) {
-            auto denseAttr = mlir::dyn_cast<mlir::DenseElementsAttr>(constOp.getContentAttr().getBaseContent());
-            if (denseAttr && denseAttr.isSplat()) {
-                return fqInput;
-            }
-        }
-
-        auto permutation = to_small_vector(fqInputType.getDimsOrder().toPermutation() | transformed([](Dim dim) {
-                                               return checked_cast<uint32_t>(dim.ind());
-                                           }));
-        std::swap(permutation[Dims4D::Filter::OC.ind()], permutation[Dims4D::Filter::IC.ind()]);
-        auto orderAttr = mlir::AffineMapAttr::get(mlir::AffineMap::getPermutationMap(permutation, getContext()));
-        auto transposeOp = rewriter.create<IE::TransposeOp>(takeOpLoc(filterOp, "transpose_{0}", locSuffix), fqInput,
-                                                            /*order=*/nullptr, orderAttr);
-        return transposeOp.getOutput();
-    };
-
-    if (filterFqOp != nullptr) {
-        // In case the filter is quantized per-axis, make sure the axes are also correct for the new filter
-        auto inputLow = transposeFqInput(filterFqOp.getInputLow(), "input_low");
-        auto inputHigh = transposeFqInput(filterFqOp.getInputHigh(), "input_high");
-        auto outputLow = transposeFqInput(filterFqOp.getOutputLow(), "output_low");
-        auto outputHigh = transposeFqInput(filterFqOp.getOutputHigh(), "output_high");
-        for (int i = 0; i < numSplits; ++i) {
-            auto loc = takeOpLoc(filterFqOp, "fq_in_w" + std::to_string(i + 1));
-            weightsConstOps[i] = rewriter.createOrFold<IE::FakeQuantizeOp>(
-                    loc, weightsConstOps[i], inputLow, inputHigh, outputLow, outputHigh, filterFqOp.getLevelsAttr(),
-                    filterFqOp.getLowFpTypeAttr(), filterFqOp.getAutoBroadcastAttr());
-        }
-    }
-
-    if (filterConvertOp != nullptr) {
-        for (int i = 0; i < numSplits; ++i) {
-            auto loc = takeOpLoc(filterFqOp, "filter_cvt_in_w" + std::to_string(i + 1));
-            weightsConstOps[i] =
-                    rewriter.createOrFold<IE::ConvertOp>(loc, weightsConstOps[i], filterConvertOp.getDstElemTypeAttr());
-        }
+    if (weightsConstOps.empty()) {
+        return mlir::failure();
     }
 
     SmallVector<mlir::Value> convOutputs;
@@ -686,28 +818,14 @@ mlir::LogicalResult ConvBackpropDataToGroupTransConvConversion::matchAndRewrite(
         IE::GroupConvolutionBackpropDataOp origOp, mlir::PatternRewriter& rewriter) const {
     _log.trace("Found IE::GroupConvolutionBackpropDataOp Operation '{0}'", origOp->getLoc());
 
-    // Supported filter pattern:
-    //     Const::DeclareOp
-    //         |
-    //   (IE::FakeQuantizeOp)
-    //         |
-    //   (IE::ConvertOp)
-    //         |
-    // IE::GroupConvolutionBackpropDataOp
-
-    auto filterTensor = origOp.getFilter();
-    auto filterConvertOp = filterTensor.getDefiningOp<IE::ConvertOp>();
-    if (filterConvertOp != nullptr) {
-        filterTensor = filterConvertOp.getInput();
+    // Checking for the pattern's eligibility
+    FilterPattern pattern(_log);
+    if (mlir::failed(pattern.match(origOp.getFilter()))) {
+        return mlir::failure();
     }
 
-    auto filterFqOp = filterTensor.getDefiningOp<IE::FakeQuantizeOp>();
-    if (filterFqOp != nullptr) {
-        filterTensor = filterFqOp.getInput();
-    }
-
-    auto filterOp = filterTensor.getDefiningOp<Const::DeclareOp>();
-    if (filterOp == nullptr) {
+    if (!pattern.isFilterConst()) {
+        auto filterTensor = origOp.getFilter();
         auto filterTensorType = mlir::cast<NDTypeInterface>(filterTensor.getType());
         auto permutation = to_small_vector(filterTensorType.getDimsOrder().toPermutation() | transformed([](Dim dim) {
                                                return checked_cast<uint32_t>(dim.ind());
@@ -719,12 +837,11 @@ mlir::LogicalResult ConvBackpropDataToGroupTransConvConversion::matchAndRewrite(
                                                             /*order=*/nullptr, orderAttr);
 
         const auto rank = filterTensorType.getRank();
-        const auto axes = SmallVector<int64_t>{rank - 2, rank - 1};
+        const auto axes = SmallVector<int64_t>{rank - 2, rank - 1};  // height and width are flipped
         const auto axesAttr = getIntArrayAttr(getContext(), axes);
         IE::ReverseModeAttr modeAttr = IE::ReverseModeAttr::get(getContext(), IE::ReverseMode::INDEX);
         auto reverseOp = rewriter.create<IE::ReverseOp>(appendLoc(origOp->getLoc(), "reverse"), transposeOp.getOutput(),
                                                         nullptr, axesAttr, modeAttr);
-
         auto newFilter = reverseOp.getOutput();
 
         rewriter.replaceOpWithNewOp<IE::GroupTransposedConvolutionOp>(
@@ -740,52 +857,13 @@ mlir::LogicalResult ConvBackpropDataToGroupTransConvConversion::matchAndRewrite(
     //   [GROUPS, IC, OC, X] -> [GROUPS, OC, IC, X]
     //   [GROUPS, IC, OC, Y, X] -> [GROUPS, OC, IC, Y, X]
     //   [GROUPS, IC, OC, Z, Y, X] -> [GROUPS, OC, IC, Z, Y, X]
-    auto filterType = mlir::cast<vpux::NDTypeInterface>(filterOp.getType());
-    auto newDimsOrder = getNewFilterDimsOrderForGroupConv(filterType.getRank());
-    auto filterDimOC = Dim(2);
-    auto contentAttr = filterOp.transformContentAttr().reverse(filterDimOC).transpose(newDimsOrder).get();
+    // We get it's type, rank dim and attribute
+    auto filterDimOC = Dim(2);  // Dimension to reverse for group convolution
 
-    auto filterShape = to_small_vector(filterType.getShape());
-    std::swap(filterShape[IE::GROUP_TRANSPOSED_CONV_C_IN_DIM_INDEX],
-              filterShape[IE::GROUP_TRANSPOSED_CONV_C_OUT_DIM_INDEX]);
-    auto newFilterType = filterType.changeShape(ShapeRef(filterShape));
-
-    auto newFilterConstant =
-            rewriter.create<Const::DeclareOp>(takeOpLoc(filterOp, "new_filter"), newFilterType, std::move(contentAttr));
-    auto newFilter = newFilterConstant.getOutput();
-
-    const auto transposeFqInput = [&](mlir::Value fqInput, StringLiteral locSuffix) -> mlir::Value {
-        auto fqInputType = mlir::cast<vpux::NDTypeInterface>(fqInput.getType());
-        if (fqInputType.getNumElements() == 1) {
-            return fqInput;
-        }
-
-        auto permutation = to_small_vector(fqInputType.getDimsOrder().toPermutation() | transformed([](Dim dim) {
-                                               return checked_cast<uint32_t>(dim.ind());
-                                           }));
-        std::swap(permutation[IE::GROUP_TRANSPOSED_CONV_C_IN_DIM_INDEX],
-                  permutation[IE::GROUP_TRANSPOSED_CONV_C_OUT_DIM_INDEX]);
-        auto orderAttr = mlir::AffineMapAttr::get(mlir::AffineMap::getPermutationMap(permutation, getContext()));
-        auto transposeOp = rewriter.create<IE::TransposeOp>(takeOpLoc(filterOp, "transpose_{0}", locSuffix), fqInput,
-                                                            /*order=*/nullptr, orderAttr);
-        return transposeOp.getOutput();
-    };
-
-    if (filterFqOp != nullptr) {
-        // In case the filter is quantized per-axis, make sure the axes are also correct for the new filter
-        auto inputLow = transposeFqInput(filterFqOp.getInputLow(), "input_low");
-        auto inputHigh = transposeFqInput(filterFqOp.getInputHigh(), "input_high");
-        auto outputLow = transposeFqInput(filterFqOp.getOutputLow(), "output_low");
-        auto outputHigh = transposeFqInput(filterFqOp.getOutputHigh(), "output_high");
-        newFilter = rewriter.createOrFold<IE::FakeQuantizeOp>(
-                takeOpLoc(filterFqOp, "in_fq"), newFilter, inputLow, inputHigh, outputLow, outputHigh,
-                filterFqOp.getLevelsAttr(), filterFqOp.getLowFpTypeAttr(), filterFqOp.getAutoBroadcastAttr());
-    }
-
-    if (filterConvertOp != nullptr) {
-        newFilter = rewriter.createOrFold<IE::ConvertOp>(takeOpLoc(filterConvertOp, "filter_cvt_in"), newFilter,
-                                                         filterConvertOp.getDstElemTypeAttr());
-    }
+    // Here we create the new filter using the old filter and it's attributes as input
+    auto newFilter = pattern.getNewFilter(rewriter, IE::GROUP_TRANSPOSED_CONV_C_IN_DIM_INDEX,
+                                          IE::GROUP_TRANSPOSED_CONV_C_OUT_DIM_INDEX,
+                                          filterDimOC);  // With reverse dimension
 
     rewriter.replaceOpWithNewOp<IE::GroupTransposedConvolutionOp>(
             origOp, origOp.getInput(), newFilter, origOp.getOutputShape(), origOp.getStridesAttr(),

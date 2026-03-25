@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -46,7 +46,7 @@ mlir::LogicalResult ClampConverter::matchAndRewrite(VPU::ClampOp clampOp, mlir::
 
     // Update PPE attribute clamps
     auto ppeAttr = nceOp.getPPE();
-    const auto& adapter = VPU::PpeVersionConfig::getFactoryAs<vpux::VPU::IPpeAdapterClamp>();
+    const auto& adapter = VPU::getPpeConfig(nceOp.getContext()).getFactoryAs<vpux::VPU::IPpeAdapterClamp>();
     ppeAttr = adapter.intersectClamps(ppeAttr, clampMin, clampMax, outElemType);
 
     auto newOp = mlir::dyn_cast_or_null<VPU::NCEOpInterface>(rewriter.clone(*nceOp));

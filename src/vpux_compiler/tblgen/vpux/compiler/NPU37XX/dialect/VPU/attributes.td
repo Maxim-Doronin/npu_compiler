@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -29,7 +29,7 @@ def VPU_MPEEngine37XXAttr : VPU_Attr<"MPEEngine37XX", [
         DeclareAttrInterfaceMethods<VPU_MPEEngineAttrInterface>
     ] > {
     let description = [{
-        Storing parameters only for NPU37XX MPEEngine operations.
+        Storing parameters for NPU37XX, NPU40XX and NPU50XX MPEEngine operations.
     }];
     let parameters = (ins
         "vpux::VPU::MPEEngine37XXModeAttr":$mode

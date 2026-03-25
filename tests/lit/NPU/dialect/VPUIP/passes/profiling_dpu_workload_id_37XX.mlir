@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -30,12 +30,12 @@ module @DpuProfiling  {
   func.func @main(%arg0: !Input_CMX, %arg1: !Weights_CMX, %arg2: !WeightsTable_CMX, %arg3: !Output_DDR) -> !Output_DDR {
 
     %0 = memref.alloc() : !Output_CMX
-    %1 = VPUIP.NCEClusterTask {
+    %1 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [3, 3],
             kernel_strides = [1, 1],
             task_type = #VPUIP.nce_task_type<CONV>
-        }  input(%arg0 : !Input_CMX)
+        }>  input(%arg0 : !Input_CMX)
             weights(%arg1 : !Weights_CMX)
             weight_table(%arg2 : !WeightsTable_CMX)
             parent_input(%arg0 : !Input_CMX)
@@ -94,12 +94,12 @@ module @DpuProfilingWithMulticlustering  {
   func.func @main(%arg0: !Input_CMX, %arg1: !Weights_CMX, %arg2: !WeightsTable_CMX, %arg3: !Output_DDR) -> !Output_DDR {
 
     %0 = VPURT.AllocDistributed -> !OutputDistributed
-    %1 = VPUIP.NCEClusterTask {
+    %1 = VPUIP.NCEClusterTask <{
           kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
           kernel_size = [3, 3],
           kernel_strides = [1, 1],
           task_type = #VPUIP.nce_task_type<CONV>
-      } input(%arg0 : !Input_CMX)
+      }> input(%arg0 : !Input_CMX)
         weights(%arg1 : !Weights_CMX)
         weight_table(%arg2 : !WeightsTable_CMX)
         parent_input(%arg0 : !Input_CMX)
@@ -173,12 +173,12 @@ module @DpuProfilingMultipleOps {
     %1 = memref.alloc() : !Output0_CMX
     %2 = memref.alloc() : !Weights0_CMX
     %3 = memref.alloc() : !WeightsTable0_CMX
-    %4 = VPUIP.NCEClusterTask {
+    %4 = VPUIP.NCEClusterTask <{
           kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
           kernel_size = [3, 3],
           kernel_strides = [1, 1],
           task_type = #VPUIP.nce_task_type<CONV>
-        } input(%0 : !Input0_CMX)
+        }> input(%0 : !Input0_CMX)
           weights(%2 : !Weights0_CMX)
           weight_table(%3 : !WeightsTable0_CMX)
           parent_input(%0 : !Input0_CMX)
@@ -207,9 +207,9 @@ module @DpuProfilingMultipleOps {
     //CHECK-SAME:   workload_id = 3 : i64
 
     %15 = VPURT.AllocDistributed -> !OutputDistributed
-    %16 = VPUIP.NCEClusterTask {
+    %16 = VPUIP.NCEClusterTask <{
         task_type = #VPUIP.nce_task_type<ELTWISE>
-        }
+        }>
         input(%4 : !Output0_CMX)
         weights(%4 : !Output0_CMX)
         parent_input(%4 : !Output0_CMX)

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -27,9 +27,10 @@ struct DefaultHWOptions : public IE::DefaultHWOptionsDialectBase, virtual vpux::
                                       llvm::cl::init(true)};
     BoolOption enableConvertToSdpaExtended{*this, "convert-to-sdpa-extended",
                                            llvm::cl::desc("Enable conversion to SDPA extended"), llvm::cl::init(true)};
-    BoolOption enableConvertToReduceMeanSquare{*this, "convert-to-reduce-mean-square",
-                                               llvm::cl::desc("Enable fuse-reduce-mean-square pass"),
-                                               llvm::cl::init(true)};
+    BoolOption enableFuseSoftwareSDPA{*this, "fuse-software-sdpa", llvm::cl::desc("Enable fuse-sdpa pass"),
+                                      llvm::cl::init(false)};
+    BoolOption enableConvertToReduceSquare{*this, "convert-to-reduce-square",
+                                           llvm::cl::desc("Enable fuse-reduce-square pass"), llvm::cl::init(true)};
     BoolOption enableDecomposeGRUSequence{*this, "decompose-gru-sequence",
                                           llvm::cl::desc("Enable decompose-gru-sequence pass"), llvm::cl::init(true)};
 

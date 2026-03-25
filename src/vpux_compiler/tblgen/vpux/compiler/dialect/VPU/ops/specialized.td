@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -112,7 +112,8 @@ def VPU_DetectionOutputSortOp:
                 DeclareOpInterfaceMethods<VPU_SWOpInterface>,
                 DeclareOpInterfaceMethods<VPU_ClusteredOpInterface, ["isOperationSplitOverHeightCompatible",
                                                                      "isOperationSplitOverWidthCompatible",
-                                                                     "isOperationSplitOverKernelCompatible"]>
+                                                                     "isOperationSplitOverKernelCompatible"]>,
+                DeclareOpInterfaceMethods<VPU_AuxiliaryBufferOpInterface>
             ]
         > {
     let summary = "DetectionOutputSort VPU layer";
@@ -148,6 +149,7 @@ def VPU_DetectionOutputSortOp:
         bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers);
     }] # baseExtraClassDeclaration;
 
+    let hasVerifier = 1;
     let elemComparisonModes = [IE_TypeComparisonMode_ALLOW_DISTRIBUTED_OUTPUT];
 }
 

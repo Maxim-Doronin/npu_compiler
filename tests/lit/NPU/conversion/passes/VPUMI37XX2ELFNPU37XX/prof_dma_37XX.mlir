@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -17,6 +17,10 @@ module @dmaSwProfiling {
     } : tensor<4xui32>
   }
 
+  // CHECK-LABEL: func.func @main
+  // CHECK-SAME:    [[ARG_0:%[^:]+]]: memref<1x2x3x4xf16, @DDR>
+  // CHECK-SAME:    [[ARG_1:%[^:]+]]: memref<1x2x3x4xf16, @DDR>
+  // CHECK-SAME:    [[ARG_2:%[^:]+]]: memref<4xui32>
   func.func @main(%arg0: memref<1x2x3x4xf16, @DDR>, %arg1: memref<1x2x3x4xf16, @DDR>, %arg2: memref<4xui32>) -> (memref<1x2x3x4xf16, @DDR>, memref<4xui32>) {
 
     %profReg = VPURT.DeclareBuffer <Register> <637702144> -> memref<1xui64, @Register>
@@ -39,9 +43,9 @@ module @dmaSwProfiling {
     // CHECK:       [[DMA:%.+]] = VPUMI37XX.NNDMA
     // CHECK:       [[DMA_PROF_START:%.+]] = VPUMI37XX.NNDMA
 
-    // CHECK:       [[SYM_IN:%.+]] = ELFNPU37XX.Symbol %arg0 name("input") size(48) : memref<1x2x3x4xf16, @DDR>
-    // CHECK:       [[SYM_OUT:%.+]] = ELFNPU37XX.Symbol %arg1 name("output") size(48) : memref<1x2x3x4xf16, @DDR>
-    // CHECK:       [[SYM_PROF:%.+]] = ELFNPU37XX.Symbol %arg2 name("profilingOutput") size(16) : memref<4xui32>
+    // CHECK:       [[SYM_IN:%.+]] = ELFNPU37XX.Symbol [[ARG_0]] name("input") size(48) : memref<1x2x3x4xf16, @DDR>
+    // CHECK:       [[SYM_OUT:%.+]] = ELFNPU37XX.Symbol [[ARG_1]] name("output") size(48) : memref<1x2x3x4xf16, @DDR>
+    // CHECK:       [[SYM_PROF:%.+]] = ELFNPU37XX.Symbol [[ARG_2]] name("profilingOutput") size(16) : memref<4xui32>
     // CHECK:       [[SYMTAB_IN:%.+]] = ELFNPU37XX.CreateSymbolTableSection secName(".symtab.input") secFlags(VPU_SHF_USERINPUT) -> !ELFNPU37XX.Section {
     // CHECK-NEXT:         ELFNPU37XX.PutOpInSection [[SYM_IN]] : !ELFNPU37XX.Symbol
     // CHECK:       [[SYMTAB_OUT:%.+]] = ELFNPU37XX.CreateSymbolTableSection secName(".symtab.output") secFlags(VPU_SHF_USEROUTPUT) -> !ELFNPU37XX.Section {
@@ -52,6 +56,6 @@ module @dmaSwProfiling {
     // CHECK:       [[RELOCSEC_PROF:%.+]] = ELFNPU37XX.CreateRelocationSection secName(".rlt.DMA_ProfOutput0") sourceSymbolTableSection([[SYMTAB_PROF]])
     // CHECK-NEXT:         ELFNPU37XX.Reloc baseOp([[DMA_PROF_TO_OUT]] : !VPURegMapped.Index<0:0:3>) offset(24) <R_VPU_64> [[SYM_PROF]] 0
 
-    // CHECK:       return %arg1, %arg2 : memref<1x2x3x4xf16, @DDR>, memref<4xui32>
+    // CHECK:       return [[ARG_1]], [[ARG_2]] : memref<1x2x3x4xf16, @DDR>, memref<4xui32>
   }
 }

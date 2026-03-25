@@ -1,11 +1,14 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --run-adjust-for-vpu-rewriters="rewriter=per-axis-fq-concat" %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
+// CHECK-LABEL: PerAxisFqConcat
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x256x128x128xf16>
+// CHECK-SAME: [[ARG_1:%[^:]+]]: tensor<1x48x128x128xf16>
 func.func @PerAxisFqConcat(%arg0: tensor<1x256x128x128xf16>, %arg1: tensor<1x48x128x128xf16>) -> tensor<1x304x128x128xf16> {
     %CST_LEFT_FQ_LO = const.Declare tensor<1x256x1x1xf16> = dense<0.000000e+00> : tensor<1x256x1x1xf16>
     %CST_LEFT_FQ_HI = const.Declare tensor<1x256x1x1xf16> = dense<1.000000e+00> : tensor<1x256x1x1xf16>
@@ -54,12 +57,12 @@ func.func @PerAxisFqConcat(%arg0: tensor<1x256x128x128xf16>, %arg1: tensor<1x48x
     // CHECK-DAG:   [[CST_LEFT_FQ_HI:%.+]] = const.Declare tensor<1x256x1x1xf16> = dense<1.000000e+00> : tensor<1x256x1x1xf16>
     // CHECK-DAG:   [[CST_LEFT_FQ_LO:%.+]] = const.Declare tensor<1x256x1x1xf16> = dense<0.000000e+00> : tensor<1x256x1x1xf16>
 
-    // CHECK:   [[LEFT_FQ:%.+]] = IE.FakeQuantize(%arg0, [[CST_LEFT_FQ_LO]], [[CST_LEFT_FQ_HI]], [[CST_LEFT_FQ_LO]], [[CST_LEFT_FQ_HI]]) {
+    // CHECK:   [[LEFT_FQ:%.+]] = IE.FakeQuantize([[ARG_0]], [[CST_LEFT_FQ_LO]], [[CST_LEFT_FQ_HI]], [[CST_LEFT_FQ_LO]], [[CST_LEFT_FQ_HI]]) {
     // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>,
     // CHECK-SAME:      levels = 256 : i64
     // CHECK-SAME:  } : tensor<1x256x128x128xf16>, tensor<1x256x1x1xf16>, tensor<1x256x1x1xf16>, tensor<1x256x1x1xf16>, tensor<1x256x1x1xf16> -> tensor<1x256x128x128xf16>
 
-    // CHECK:   [[RIGHT_FQ:%.+]] = IE.FakeQuantize(%arg1, [[CST_RIGHT_FQ_LO]], [[CST_RIGHT_FQ_HI]], [[CST_RIGHT_FQ_LO]], [[CST_RIGHT_FQ_HI]]) {
+    // CHECK:   [[RIGHT_FQ:%.+]] = IE.FakeQuantize([[ARG_1]], [[CST_RIGHT_FQ_LO]], [[CST_RIGHT_FQ_HI]], [[CST_RIGHT_FQ_LO]], [[CST_RIGHT_FQ_HI]]) {
     // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>,
     // CHECK-SAME:      levels = 256 : i64
     // CHECK-SAME:  } : tensor<1x48x128x128xf16>, tensor<1x48x1x1xf16>, tensor<1x48x1x1xf16>, tensor<1x48x1x1xf16>, tensor<1x48x1x1xf16> -> tensor<1x48x128x128xf16>

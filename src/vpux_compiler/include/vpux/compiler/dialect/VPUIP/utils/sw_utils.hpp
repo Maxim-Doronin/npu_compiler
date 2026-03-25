@@ -1,12 +1,11 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
 #include "vpux/compiler/core/tiling.hpp"
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops_fwd.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops_fwd.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
@@ -20,10 +19,13 @@
 #include <mlir/IR/Attributes.h>
 #include <mlir/IR/BuiltinOps.h>
 
+#include <cstdint>
+
 namespace vpux::config {
 enum class ArchKind : uint64_t;
 }  // namespace vpux::config
 namespace vpux::VPU {
+enum class ActShaveTaskType : uint64_t;
 class LayerOpInterface;
 }  // namespace vpux::VPU
 namespace vpux::VPUIP {
@@ -93,7 +95,7 @@ const SmallVector<StringLiteral> SW_KERNELS_SUPPORTING_TILING = {"mvn1",
                                                                  "reduce_min",
                                                                  "reduce_prod",
                                                                  "reduce_sum",
-                                                                 "reduce_mean_square",
+                                                                 "reduce_square",
                                                                  "gru_sequence",
                                                                  "gru_sequence_last_part",
                                                                  "activation_floor",
@@ -135,11 +137,28 @@ const SmallVector<StringLiteral> SW_KERNELS_SUPPORTING_TILING = {"mvn1",
 const SmallVector<StringLiteral> SW_KERNELS_SUPPORTING_STRIDE = {
         "mvn1", "lstm_cell", "lstm_sequence", "lstm_dpu", "reorder", "sdpa_extended", "flash_sdpa"};
 
-const SmallVector<std::string_view> SW_KERNELS_SUPPORTING_SHAVE_BALANCING = {
-        "softmax",          "eltwise_mul",         "activation_sin",      "activation_cos",
-        "activation_swish", "activation_softplus", "activation_clamp",    "convert",
-        "eltwise_min",      "eltwise_max",         "round_fp16",          "activation_exp",
-        "eltwise_div",      "prelu_fp16",          "eltwise_logical_not", "activation_relu"};
+const SmallVector<std::string_view> SW_KERNELS_SUPPORTING_SHAVE_BALANCING = {"softmax",
+                                                                             "eltwise_mul",
+                                                                             "activation_sin",
+                                                                             "activation_cos",
+                                                                             "activation_swish",
+                                                                             "activation_softplus",
+                                                                             "activation_clamp",
+                                                                             "convert",
+                                                                             "eltwise_min",
+                                                                             "eltwise_max",
+                                                                             "round_fp16",
+                                                                             "activation_exp",
+                                                                             "eltwise_greater",
+                                                                             "eltwise_greater_equal",
+                                                                             "eltwise_less",
+                                                                             "eltwise_equal",
+                                                                             "eltwise_not_equal",
+                                                                             "eltwise_less_equal",
+                                                                             "eltwise_div",
+                                                                             "prelu_fp16",
+                                                                             "eltwise_logical_not",
+                                                                             "activation_relu"};
 
 const SmallVector<StringLiteral> SW_KERNELS_LAYOUT_AGNOSTIC = {
         "activation_swish", "activation_gelu",     "activation_hswish",   "activation_hardsigmoid",

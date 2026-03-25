@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -33,6 +33,8 @@ module @VPU.SW {
   func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
 }
 
+// CHECK-LABEL: @UnrollDistributedOpsWithProfilingData
+// CHECK-SAME: ([[ARG_0:%.+]]: memref<1x3x224x224xf16, @DDR>)
 func.func @UnrollDistributedOpsWithProfilingData(%arg0: !DummyT) -> !DummyT {
     %bar0 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 
@@ -133,5 +135,5 @@ func.func @UnrollDistributedOpsWithProfilingData(%arg0: !DummyT) -> !DummyT {
     // CHECK:                   VPUIP.SW.Kernel.run {attrs = [false, true, 9.9999999747524271E-7]}([[ARG8]], [[ARG9]]) : memref<1x1x262144x1xf16, [@CMX_NN, 4]>, memref<1x1x262144x1xf16, [@CMX_NN, 4]>
     // CHECK:               }
     // CHECK:       }
-    // CHECK:  return %arg0 : memref<1x3x224x224xf16, @DDR>
+    // CHECK:  return [[ARG_0]] : memref<1x3x224x224xf16, @DDR>
 }

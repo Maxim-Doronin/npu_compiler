@@ -1,7 +1,8 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
+
 #ifdef _WIN32
 #define NO_MINMAX
 #endif
@@ -9,6 +10,7 @@
 #include <cmath>
 
 #include <mlir/Conversion/AsyncToLLVM/AsyncToLLVM.h>
+#include <mlir/Conversion/LLVMCommon/ConversionTarget.h>
 #include <mlir/Conversion/LLVMCommon/MemRefBuilder.h>
 #include <mlir/Conversion/LLVMCommon/Pattern.h>
 #include <mlir/Conversion/LLVMCommon/TypeConverter.h>
@@ -18,6 +20,7 @@
 #include <mlir/Dialect/LLVMIR/LLVMDialect.h>
 #include <mlir/Dialect/MemRef/IR/MemRef.h>
 #include <mlir/Dialect/SCF/IR/SCF.h>
+#include <mlir/IR/Block.h>
 #include "vpux/compiler/dialect/HostExec/transforms/passes.hpp"
 #include "vpux/compiler/utils/passes.hpp"
 
@@ -31,7 +34,11 @@
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/dialect/core/IR/ops.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
+#include "vpux/compiler/utils/func_dialect.hpp"
+#include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/walk_utils.hpp"
 
 namespace vpux::HostExec {
 #define GEN_PASS_DECL_CONVERTTOLLVMUMDCALLS
@@ -63,7 +70,7 @@ struct CommandListIndexState {
     bool commandListGroupStarted = false;
     bool useSingleCmdList = false;
 
-    void initialize(mlir::func::FuncOp& funcOp, bool useSingleCmdList) {
+    void initialize(mlir::func::FuncOp funcOp, bool useSingleCmdList) {
         mlir::OpBuilder builder(funcOp);
         auto& entryBlock = funcOp.getBody().front();
         builder.setInsertionPointToStart(&entryBlock);
@@ -72,7 +79,7 @@ struct CommandListIndexState {
     }
 
     // Update pointers of commandlist**
-    void increaseCommandListIndex(mlir::OpBuilder& builder, mlir::func::FuncOp& funcOp) {
+    void increaseCommandListIndex(mlir::OpBuilder& builder, mlir::func::FuncOp funcOp) {
         auto loc = builder.getUnknownLoc();
         auto numArgs = funcOp.getNumArguments();
         auto cmdList = funcOp.getArgument(GET_ARG_INDEX_COMMAND_LIST(numArgs));
@@ -98,7 +105,7 @@ struct CommandListIndexState {
     }
 
     // Returns address of commandlist**
-    mlir::Value getCommandList(mlir::func::FuncOp& funcOp) {
+    mlir::Value getCommandList(mlir::func::FuncOp funcOp) {
         auto numArgs = funcOp.getNumArguments();
         auto cmdList = funcOp.getArgument(GET_ARG_INDEX_COMMAND_LIST(numArgs));
 
@@ -107,8 +114,14 @@ struct CommandListIndexState {
         return ((resetIndex > 1) && (useSingleCmdList == false)) ? lastResultPtr : cmdList;
     }
 
+    // Returns commandListIndex
+    mlir::Value getCommandListIndex(mlir::OpBuilder& builder) {
+        int64_t index = ((resetIndex > 1) && (useSingleCmdList == false)) ? resetIndex - 1 : 0;
+        return builder.create<mlir::LLVM::ConstantOp>(builder.getUnknownLoc(), builder.getIntegerType(64), index);
+    }
+
     // Update inference execution sync params (e.g., event or fence) for the last commandlist submission
-    void finalizeCommandListIndex(mlir::ModuleOp& module, mlir::MLIRContext* ctx, mlir::func::FuncOp& funcOp) {
+    void finalizeCommandListIndex(mlir::ModuleOp module, mlir::MLIRContext* ctx, mlir::func::FuncOp funcOp) {
         // fence or event needs to be set to the last command list for host side synchronization.
         if (lastSubmitCommandListCallOp != nullptr) {
             auto numArgs = funcOp.getNumArguments();
@@ -249,7 +262,7 @@ public:
     mlir::LLVM::AllocaOp inputDescs = nullptr;
     mlir::LLVM::AllocaOp outputDescs = nullptr;
 
-    ModelIOManager(mlir::ModuleOp& moduleOp, mlir::func::FuncOp& funcOp, Logger log): _log(std::move(log)) {
+    ModelIOManager(mlir::ModuleOp moduleOp, mlir::func::FuncOp funcOp, Logger log): _log(std::move(log)) {
         mlir::OpBuilder builder(funcOp);
         auto& entryBlock = funcOp.getBody().front();
         builder.setInsertionPointToStart(&entryBlock);
@@ -274,17 +287,18 @@ public:
     bool processTensors(mlir::OpBuilder& builder, mlir::Location loc,
                         const mlir::SmallVector<mlir::Value, 1>& inputBuffers,
                         const mlir::SmallVector<mlir::Value, 1>& outputBuffers,
-                        const mlir::LLVMTypeConverter& typeConverter) {
+                        const mlir::LLVMTypeConverter& typeConverter, mlir::func::FuncOp funcOp) {
+        auto& entryBlock = funcOp.getBody().front();
         // Process inputs
         for (size_t i = 0; i < inputBuffers.size(); ++i) {
-            if (!processBuffer(builder, loc, inputBuffers[i], i, inputDescs, typeConverter, "input")) {
+            if (!processBuffer(builder, loc, inputBuffers[i], i, inputDescs, typeConverter, "input", entryBlock)) {
                 return false;
             }
         }
 
         // Process outputs
         for (size_t i = 0; i < outputBuffers.size(); ++i) {
-            if (!processBuffer(builder, loc, outputBuffers[i], i, outputDescs, typeConverter, "output")) {
+            if (!processBuffer(builder, loc, outputBuffers[i], i, outputDescs, typeConverter, "output", entryBlock)) {
                 return false;
             }
         }
@@ -353,12 +367,43 @@ private:
         }
     }
 
+    // Recursively returns the function argument index if value is derived from a function argument, else -1
+    int getDerivedFuncArgIndex(mlir::Value value, mlir::Block& funcOpEntryBlock,
+                               llvm::SmallPtrSetImpl<mlir::Value>& visited) {
+        // Check if value is a block argument and belongs to the entry block
+        if (auto blockArg = mlir::dyn_cast<mlir::BlockArgument>(value)) {
+            if (blockArg.getOwner() == &funcOpEntryBlock) {
+                return blockArg.getArgNumber();
+            }
+            return -1;
+        }
+        if (!visited.insert(value).second) {
+            return -1;  // already visited, avoid cycles
+        }
+
+        if (auto defOp = value.getDefiningOp()) {
+            if (!mlir::isa<mlir::UnrealizedConversionCastOp>(defOp) && !mlir::isa<mlir::memref::SubViewOp>(defOp) &&
+                !mlir::isa<mlir::memref::ViewOp>(defOp)) {
+                // only view, subview and cast ops are allowed in the chain
+                // for mutable command list
+                return -1;
+            }
+
+            for (auto operand : defOp->getOperands()) {
+                int idx = getDerivedFuncArgIndex(operand, funcOpEntryBlock, visited);
+                if (idx != -1) {
+                    return idx;
+                }
+            }
+        }
+        return -1;
+    }
+
     // Process a single buffer and extract its stride information
     bool processBuffer(mlir::OpBuilder& builder, mlir::Location loc, mlir::Value buffer, size_t index,
                        mlir::LLVM::AllocaOp bufferDescArray, const mlir::LLVMTypeConverter& typeConverter,
-                       const char* bufferType) {
+                       const char* bufferType, mlir::Block& funcOpEntryBlock) {
         auto llvmValue = buffer;
-
         // Convert to LLVM type if needed
         if (!mlir::LLVM::isCompatibleType(llvmValue.getType())) {
             if (auto converted = typeConverter.materializeTargetConversion(
@@ -409,7 +454,9 @@ private:
 
         auto networkArgumentIndexGepPtr = createGetOp(MemRefDescMemberIndex::NETWORK_ARG_INDEX);
         // This will need to be updated to support UpdateMutableCommandList
-        auto networkArgumentIndex = builder.create<mlir::LLVM::ConstantOp>(loc, i64Type, -1);
+        llvm::SmallPtrSet<mlir::Value, 8> visited;
+        auto idx = getDerivedFuncArgIndex(buffer, funcOpEntryBlock, visited);
+        auto networkArgumentIndex = builder.create<mlir::LLVM::ConstantOp>(loc, i64Type, idx);
         builder.create<mlir::LLVM::StoreOp>(loc, networkArgumentIndex, networkArgumentIndexGepPtr);
 
         // Extract and store sizes information
@@ -428,12 +475,7 @@ private:
     }
 };
 
-// @brief Add arguments (e.g., commandlist, command queue) to an entry function for L0 function calls
-void addFuncParamsForUmdFuncCall(mlir::func::FuncOp& funcOp) {
-    // Update the function's return type to NoneType
-    auto funcType = funcOp.getFunctionType();
-    auto ctx = funcOp.getContext();
-
+void updateFuncTerminator(mlir::func::FuncOp funcOp) {
     for (auto& block : funcOp.getBody()) {
         // Find the current terminator
         if (auto returnOp = llvm::dyn_cast<mlir::func::ReturnOp>(block.getTerminator())) {
@@ -443,6 +485,16 @@ void addFuncParamsForUmdFuncCall(mlir::func::FuncOp& funcOp) {
             returnOp.erase();
         }
     }
+    // Update functype with no return types
+    auto newFuncType = mlir::FunctionType::get(funcOp.getContext(), funcOp.getArgumentTypes(), mlir::TypeRange{});
+    funcOp.setType(newFuncType);
+}
+
+// @brief Add arguments (e.g., commandlist, command queue) to an entry function for L0 function calls
+void addFuncParamsForUmdFuncCall(mlir::func::FuncOp funcOp) {
+    // Update the function's return type to NoneType
+    auto funcType = funcOp.getFunctionType();
+    auto ctx = funcOp.getContext();
 
     SmallVector<mlir::Type, 8> newInputTypes;
     for (auto input : funcType.getInputs()) {
@@ -458,6 +510,7 @@ void addFuncParamsForUmdFuncCall(mlir::func::FuncOp& funcOp) {
     mlir::Type commandQueueHandlePtrType = mlir::LLVM::LLVMPointerType::get(ctx);
     mlir::Type fenceHandlePtrType = mlir::LLVM::LLVMPointerType::get(ctx);
     mlir::Type eventHandlePtrType = mlir::LLVM::LLVMPointerType::get(ctx);
+    mlir::Type executionContextPtrType = mlir::LLVM::LLVMPointerType::get(ctx);
 
     newInputTypes.push_back(contextHandlePtrType);
     newInputTypes.push_back(deviceHandlePtrType);
@@ -467,9 +520,9 @@ void addFuncParamsForUmdFuncCall(mlir::func::FuncOp& funcOp) {
     newInputTypes.push_back(commandQueueHandlePtrType);
     newInputTypes.push_back(fenceHandlePtrType);
     newInputTypes.push_back(eventHandlePtrType);
+    newInputTypes.push_back(executionContextPtrType);
 
-    auto newFuncType =
-            mlir::FunctionType::get(funcOp.getContext(), newInputTypes, mlir::TypeRange{});  // No return types
+    auto newFuncType = mlir::FunctionType::get(funcOp.getContext(), newInputTypes, funcOp->getResultTypes());
     funcOp.setType(newFuncType);
     auto& entryBlock = funcOp.getBody().front();
     entryBlock.addArgument(contextHandlePtrType, funcOp->getLoc());
@@ -480,6 +533,7 @@ void addFuncParamsForUmdFuncCall(mlir::func::FuncOp& funcOp) {
     entryBlock.addArgument(commandQueueHandlePtrType, funcOp->getLoc());
     entryBlock.addArgument(fenceHandlePtrType, funcOp->getLoc());
     entryBlock.addArgument(eventHandlePtrType, funcOp->getLoc());
+    entryBlock.addArgument(executionContextPtrType, funcOp->getLoc());
 }
 
 //@brief increase index of command lists
@@ -501,7 +555,7 @@ void increaseCommandListIndex(mlir::Operation* op, mlir::PatternRewriter& rewrit
 }
 
 //@brief create function call op to submit command list
-void createSubmitCommandList(mlir::OpBuilder& builder, mlir::ModuleOp& moduleOp,
+void createSubmitCommandList(mlir::OpBuilder& builder, mlir::ModuleOp moduleOp, mlir::func::FuncOp funcOp,
                              CommandListIndexState& cmdListIndexState) {
     if (cmdListIndexState.commandListGroupStarted == false) {
         // ignore redudandant await/await_all op
@@ -511,9 +565,6 @@ void createSubmitCommandList(mlir::OpBuilder& builder, mlir::ModuleOp& moduleOp,
     cmdListIndexState.commandListGroupStarted = false;
 
     mlir::MLIRContext* ctx = builder.getContext();
-    vpux::net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp funcOp;
-    vpux::net::NetworkInfoOp::getFromModule(moduleOp, netInfo, funcOp);
 
     auto returnType = mlir::Type(mlir::LLVM::LLVMVoidType::get(ctx));
 
@@ -570,10 +621,8 @@ mlir::LogicalResult LvlZeroAllocLowering::matchAndRewrite(mlir::memref::AllocOp 
     getMemRefDescriptorSizes(loc, memrefType, adaptor.getDynamicSizes(), rewriter, shape, strides, sizeBytes);
     mlir::MLIRContext* ctx = rewriter.getContext();
     auto returnType = mlir::Type(mlir::LLVM::LLVMPointerType::get(ctx));
-    mlir::func::FuncOp funcOp;
     auto moduleOp = vpux::getModuleOp(origOp);
-    vpux::net::NetworkInfoOp netInfo;
-    vpux::net::NetworkInfoOp::getFromModule(moduleOp, netInfo, funcOp);
+    auto funcOp = origOp->getParentOfType<mlir::func::FuncOp>();
     auto numArgs = funcOp.getNumArguments();
     auto context = funcOp.getArgument(GET_ARG_INDEX_CONTEXT(numArgs));
     auto allocatedPtr =
@@ -635,14 +684,12 @@ mlir::LogicalResult LvlZeroMemoryCopyLowering ::matchAndRewrite(mlir::memref::Co
     mlir::Value sizeBytes;
     mlir::MemRefType targetMemrefType = mlir::cast<mlir::MemRefType>(origOp.getTarget().getType());
     getMemRefDescriptorSizes(origOp.getLoc(), targetMemrefType, {}, rewriter, shape, strides, sizeBytes);
-
     // Extract buffer pointers from memref descriptors
     auto src = getBufferStartAddress(rewriter, loc, sourcePtr);
     auto target = getBufferStartAddress(rewriter, loc, targetPtr);
 
     mlir::MLIRContext* ctx = rewriter.getContext();
     auto returnType = mlir::Type(mlir::LLVM::LLVMVoidType::get(ctx));
-    auto moduleOp = vpux::getModuleOp(origOp);
     auto funcOp = origOp->getParentOfType<mlir::func::FuncOp>();
 
     // As of today, copy op should be considered as a sub graph
@@ -650,10 +697,11 @@ mlir::LogicalResult LvlZeroMemoryCopyLowering ::matchAndRewrite(mlir::memref::Co
     increaseCommandListIndex(origOp, rewriter, commandListIndexState);
 
     auto cmdList = commandListIndexState.getCommandList(funcOp);
+    auto moduleOp = vpux::getModuleOp(origOp);
     createLLVMFuncCallOp(rewriter, moduleOp, "npu_level_zero_append_memory_copy", {src, target, sizeBytes, cmdList},
                          returnType);
 
-    createSubmitCommandList(rewriter, moduleOp, commandListIndexState);
+    createSubmitCommandList(rewriter, moduleOp, funcOp, commandListIndexState);
 
     rewriter.eraseOp(origOp);
 
@@ -684,6 +732,7 @@ private:
 template <typename AsyncOp>
 mlir::LogicalResult AsyncOpRewriter<AsyncOp>::matchAndRewrite(AsyncOp origOp, mlir::PatternRewriter& rewriter) const {
     auto moduleOp = vpux::getModuleOp(origOp);
+    auto parentFuncOp = origOp->template getParentOfType<mlir::func::FuncOp>();
 
     if (auto awaitOp = mlir::dyn_cast<mlir::async::AwaitOp>(*origOp)) {
         auto users = awaitOp->getUsers();
@@ -700,7 +749,7 @@ mlir::LogicalResult AsyncOpRewriter<AsyncOp>::matchAndRewrite(AsyncOp origOp, ml
             if (awaitOpInScfFor == false) {
                 // if await is called outside of scf.for
                 // command list needs to be submitted
-                createSubmitCommandList(rewriter, moduleOp, commandListIndexState);
+                createSubmitCommandList(rewriter, moduleOp, parentFuncOp, commandListIndexState);
             }
 
             rewriter.eraseOp(origOp);
@@ -793,11 +842,11 @@ mlir::LogicalResult AsyncOpRewriter<AsyncOp>::matchAndRewrite(AsyncOp origOp, ml
             return mlir::success();
         }
 
-        createSubmitCommandList(rewriter, moduleOp, commandListIndexState);
+        createSubmitCommandList(rewriter, moduleOp, parentFuncOp, commandListIndexState);
         rewriter.eraseOp(origOp);
         return mlir::success();
     } else if (mlir::isa<mlir::async::AwaitAllOp>(origOp)) {
-        createSubmitCommandList(rewriter, moduleOp, commandListIndexState);
+        createSubmitCommandList(rewriter, moduleOp, parentFuncOp, commandListIndexState);
         rewriter.eraseOp(origOp);
         return mlir::success();
     } else {
@@ -829,16 +878,14 @@ mlir::LogicalResult AsyncOpRewriter<mlir::async::ExecuteOp>::matchAndRewrite(mli
                                                                              mlir::PatternRewriter& rewriter) const {
     auto ctx = origOp.getContext();
     auto loc = origOp.getLoc();
-    mlir::func::FuncOp funcOp;
+    auto funcOp = origOp->getParentOfType<mlir::func::FuncOp>();
     auto moduleOp = vpux::getModuleOp(origOp);
-    vpux::net::NetworkInfoOp netInfo;
-    vpux::net::NetworkInfoOp::getFromModule(moduleOp, netInfo, funcOp);
 
     auto numArgs = funcOp.getNumArguments();
     auto umdContext = funcOp.getArgument(GET_ARG_INDEX_CONTEXT(numArgs));
     auto device = funcOp.getArgument(GET_ARG_INDEX_DEVICE(numArgs));
     auto ddiTable = funcOp.getArgument(GET_ARG_INDEX_DDI_TABLE(numArgs));
-    auto cmdQueue = funcOp.getArgument(GET_ARG_INDEX_COMMAND_QUEUE(numArgs));
+    auto executionContext = funcOp.getArgument(GET_ARG_INDEX_COMMAND_EXECUTION_CONTEXT(numArgs));
 
     // note: needs to calculate the size of the kernel function after serialization of the core.NestedModule
     if (origOp->template getParentOfType<mlir::scf::ForOp>() == nullptr) {
@@ -912,16 +959,18 @@ mlir::LogicalResult AsyncOpRewriter<mlir::async::ExecuteOp>::matchAndRewrite(mli
             auto stackSaveOp = rewriter.create<mlir::LLVM::StackSaveOp>(loc, voidPointerType);
 
             // Process tensors using ModelIOManager
-            if (!modelIOManager.processTensors(rewriter, loc, kernelInputs, kernelOutputs, _typeConverter)) {
+            if (!modelIOManager.processTensors(rewriter, loc, kernelInputs, kernelOutputs, _typeConverter, funcOp)) {
                 return mlir::failure();
             }
 
             auto returnType = mlir::Type(mlir::LLVM::LLVMVoidType::get(ctx));
             auto cmdList = commandListIndexState.getCommandList(funcOp);
+            auto commandListIndex = commandListIndexState.getCommandListIndex(rewriter);
             createLLVMFuncCallOp(
                     rewriter, moduleOp, "npu_level_zero_execute_graph",
                     {modelIOManager.getInputBufferDescs(), numInputs, modelIOManager.getOutputBufferDescs(), numOutputs,
-                     kernelName, kernelGlobal, kernelSize, umdContext, device, ddiTable, cmdList, cmdQueue},
+                     kernelName, kernelGlobal, kernelSize, umdContext, device, ddiTable, cmdList, commandListIndex,
+                     executionContext},
                     returnType);
 
             // Restore stack used for descriptors
@@ -953,6 +1002,127 @@ private:
     bool useSingleCommandList = false;
 };
 
+SmallVector<mlir::func::FuncOp> addFuncParamsForUmdForCallers(mlir::func::FuncOp callee) {
+    SmallVector<mlir::func::FuncOp> ret;
+    auto moduleOp = vpux::getModuleOp(callee);
+    for (auto caller : moduleOp.getOps<mlir::func::FuncOp>()) {
+        if (callee == caller) {
+            continue;
+        }
+
+        auto callOps = getCallSites(callee, caller);
+        if (callOps.empty()) {
+            continue;
+        }
+        // if callee requires UMD params, then its caller also needs them as they provided by NPU plugin as a part of
+        // the fat-binary execution contract
+        addFuncParamsForUmdFuncCall(caller);
+
+        // get those UMD params as they have to be passed as argumenst for all callee calls
+        SmallVector<mlir::Value> umdFuncArgs;
+        auto numArgs = caller.getNumArguments();
+        VPUX_THROW_WHEN(numArgs < vpux::HostExec::HOST_MAIN_FUNC_ARGS_COUNT,
+                        "Func: {0} must have at least arguments: {1}, got: {2}", caller.getName(),
+                        vpux::HostExec::HOST_MAIN_FUNC_ARGS_COUNT, numArgs);
+        for (size_t i = HostMainFuncArgs::HOST_MAIN_FUNC_ARGS_CONTEXT; i < HostMainFuncArgs::HOST_MAIN_FUNC_ARGS_COUNT;
+             i++) {
+            size_t funcArgIndex = numArgs - vpux::HostExec::HOST_MAIN_FUNC_ARGS_COUNT + i;
+            auto umdArg = caller.getArgument(funcArgIndex);
+            umdFuncArgs.push_back(umdArg);
+        }
+
+        // Add those UMD arguments to every call of callee
+        for (auto callOp : callOps) {
+            auto builder = mlir::OpBuilder(callOp);
+            SmallVector<mlir::Value> newCallArgs(callOp.getOperands());
+            newCallArgs.append(umdFuncArgs);
+            builder.create<mlir::func::CallOp>(appendLoc(callOp.getLoc(), "_extend_umd_args"), callee, newCallArgs);
+        }
+
+        for (auto callOp : callOps) {
+            callOp->erase();
+        }
+        ret.push_back(caller);
+    }
+    return ret;
+}
+
+std::tuple<SmallVector<mlir::func::FuncOp>, mlir::DenseSet<mlir::func::FuncOp>> addFuncUMDParamsForAllCallers(
+        ArrayRef<mlir::func::FuncOp> callees, Logger log) {
+    SmallVector<mlir::func::FuncOp> topLevelCallers;
+    mlir::DenseSet<mlir::func::FuncOp> allCallers;
+    for (auto callee : callees) {
+        log.debug("Check whether the target: {0} has caller contexts", callee.getName());
+        auto callerFuncs = addFuncParamsForUmdForCallers(callee);
+        log.debug("Added UMD func arguments to all found callers: {0} of the target: {1}", callerFuncs.size(),
+                  callee.getName());
+        allCallers.insert(callerFuncs.begin(), callerFuncs.end());
+        while (!callerFuncs.empty()) {
+            log.trace("More callers: {0} to process", callerFuncs.size());
+            auto callee = *callerFuncs.begin();
+            callerFuncs.erase(callerFuncs.begin());
+
+            auto nextTierCallers = addFuncParamsForUmdForCallers(callee);
+            std::copy(nextTierCallers.begin(), nextTierCallers.end(), std::back_inserter(callerFuncs));
+            allCallers.insert(nextTierCallers.begin(), nextTierCallers.end());
+            log.debug("Added UMD func arguments to parent functions: {0} of the caller: {1}, elapsed caller contexts: "
+                      "{2} to process",
+                      nextTierCallers.size(), callee.getName(), callerFuncs.size());
+
+            if (nextTierCallers.empty()) {
+                topLevelCallers.push_back(callee);
+            }
+        }
+    }
+    return {topLevelCallers, allCallers};
+}
+
+template <class CallOpFilter>
+void rewriteUMDCallOpInForLoop(mlir::scf::ForOp forOp, CallOpFilter&& filter, Logger log) {
+    SmallVector<mlir::func::CallOp> callOpToRewrite;
+    forOp->walk([&callOpToRewrite, &filter](mlir::func::CallOp callee) {
+        if (filter(callee)) {
+            callOpToRewrite.push_back(callee);
+        }
+    });
+
+    log.trace("Collected callOp: {0}, which require conditional arguments", callOpToRewrite.size());
+    for (mlir::func::CallOp callOp : callOpToRewrite) {
+        log.debug("Process callOp: {0} to insert conditional arguments", callOp);
+        auto builder = mlir::OpBuilder(callOp);
+
+        auto upperBound = forOp.getUpperBound();
+        auto stepSize = forOp.getStep();
+        auto loopIv = forOp.getInductionVar();
+
+        auto nextOffset = builder.create<mlir::arith::AddIOp>(takeOpLoc(forOp, "next_offset"), loopIv, stepSize);
+        auto exceedsBound = builder.create<mlir::arith::CmpIOp>(
+                takeOpLoc(forOp, "exceeds_bound"), mlir::arith::CmpIPredicate::sgt, nextOffset, upperBound);
+        auto ifExceedsBound = builder.create<mlir::scf::IfOp>(
+                takeOpLoc(forOp, "if_exceeds_bound"), llvm::ArrayRef<mlir::Type>{builder.getIndexType()}, exceedsBound,
+                /*withElseRegion=*/true);
+        {
+            mlir::OpBuilder thenBuilder = ifExceedsBound.getThenBodyBuilder();
+            thenBuilder.clone(*callOp);
+            thenBuilder.create<mlir::scf::YieldOp>(appendLoc(ifExceedsBound->getLoc(), "yield"),
+                                                   mlir::ValueRange{loopIv});
+        }
+        {
+            mlir::OpBuilder elseBuilder = ifExceedsBound.getElseBodyBuilder();
+            mlir::IRMapping notFinalCallOpArgMapping;
+            auto elementPtrType = mlir::LLVM::LLVMPointerType::get(elseBuilder.getContext());
+            mlir::Value nullPtr = elseBuilder.create<mlir::LLVM::ZeroOp>(elseBuilder.getUnknownLoc(), elementPtrType);
+            auto numOperands = callOp.getOperands().size();
+            notFinalCallOpArgMapping.map(callOp.getOperand(GET_ARG_INDEX_COMMAND_FENCE(numOperands)), nullPtr);
+            notFinalCallOpArgMapping.map(callOp.getOperand(GET_ARG_INDEX_COMMAND_EVENT(numOperands)), nullPtr);
+            elseBuilder.clone(*callOp, notFinalCallOpArgMapping);
+            elseBuilder.create<mlir::scf::YieldOp>(appendLoc(ifExceedsBound->getLoc(), "yield"),
+                                                   mlir::ValueRange{loopIv});
+        }
+        callOp.erase();
+    }
+}
+
 void ConvertToLLVMUMDCallsPass::safeRunOnModule() {
     auto module = getOperation();
     auto* ctx = &getContext();
@@ -963,9 +1133,51 @@ void ConvertToLLVMUMDCallsPass::safeRunOnModule() {
     options.useBarePtrCallConv = true;
     mlir::LLVMTypeConverter typeConverter(ctx, options);
 
-    auto mainFuncOp = module.lookupSymbol<mlir::func::FuncOp>("main");
-    assert(mainFuncOp != nullptr && "Failed to find the '@main' function");
-    addFuncParamsForUmdFuncCall(mainFuncOp);
+    // Update ReturnOp for all host compile functions, but add additional arguments
+    // for umd calls only for target functions
+    for (auto funcOp : module.getOps<mlir::func::FuncOp>()) {
+        if (config::isPureHostCompileFunc(funcOp)) {
+            updateFuncTerminator(funcOp);
+        }
+    }
+
+    SmallVector<mlir::func::FuncOp> targetFunctions;
+    for (auto funcOp : module.getOps<mlir::func::FuncOp>()) {
+        if (vpux::HostExec::isHostCompileInferenceExecFunc(funcOp)) {
+            addFuncParamsForUmdFuncCall(funcOp);
+            targetFunctions.push_back(funcOp);
+            _log.info("Add UMD func arguments to the target: {0}, total targets processed: {1}", funcOp.getName(),
+                      targetFunctions.size());
+        }
+    }
+    if (targetFunctions.empty()) {
+        _log.info("No any candidate functions detected, process the entryPoint only");
+        auto entryPointFuncOp = net::getMainFunc(module);
+        addFuncParamsForUmdFuncCall(entryPointFuncOp);
+        targetFunctions.push_back(entryPointFuncOp);
+    }
+
+    SmallVector<mlir::func::FuncOp> topLevelFuncCallers;
+    mlir::DenseSet<mlir::func::FuncOp> allFuncCallers;
+    std::tie(topLevelFuncCallers, allFuncCallers) = addFuncUMDParamsForAllCallers(targetFunctions, _log);
+    VPUX_THROW_WHEN(targetFunctions.size() != 1,
+                    "Pass: {0} supports only processing of a single function"
+                    " met the 'isHostCompileInferenceExecFunc' condition, got: {1}",
+                    getName(), targetFunctions.size());
+    mlir::func::FuncOp funcOpToConvert = targetFunctions[0];
+
+    // Convert "output_shape" body's memref operations to llvm ones
+    auto outputShapeFuncOp = module.lookupSymbol<mlir::func::FuncOp>("output_shape");
+    if (outputShapeFuncOp != nullptr) {
+        auto ctx = outputShapeFuncOp->getContext();
+        mlir::LLVMConversionTarget outputShapeTarget(*ctx);
+        mlir::RewritePatternSet outputShapePatterns(ctx);
+        mlir::populateFinalizeMemRefToLLVMConversionPatterns(typeConverter, outputShapePatterns);
+        if (failed(applyPartialConversion(outputShapeFuncOp, outputShapeTarget, std::move(outputShapePatterns)))) {
+            signalPassFailure();
+            return;
+        }
+    }
 
     mlir::populateConversionTargetFromOperation(module, target, typeConverter, patterns);
     target.addIllegalOp<mlir::memref::AllocOp>();
@@ -977,26 +1189,24 @@ void ConvertToLLVMUMDCallsPass::safeRunOnModule() {
     target.addIllegalOp<mlir::async::ExecuteOp>();
     target.addLegalOp<vpux::HostExec::BinaryOp>();
     target.addLegalOp<vpux::HostExec::BinaryDataOp>();
-
-    // In case the model has static input(-s), `output_shape` function contains
-    // `memref.get_global` operation that calls `memref.global` constant that
-    // should not be modified.
-    target.addLegalOp<mlir::memref::GlobalOp>();
     target.addLegalOp<mlir::func::FuncOp>();
-    // Skip `output_shape` func and all its body's operations
+    // Apply special conversions the target functions only.
     target.markOpRecursivelyLegal<mlir::func::FuncOp>([&](mlir::func::FuncOp funcOp) {
-        return funcOp.getSymName() == "output_shape";
+        bool isLegal = true;
+        for (auto f : targetFunctions) {
+            isLegal = isLegal && (funcOp.getSymName() != f.getSymName());
+        }
+        return isLegal;
     });
-
     target.addLegalOp<mlir::ModuleOp>();
     target.addLegalDialect<mlir::LLVM::LLVMDialect>();
     target.addLegalOp<mlir::UnrealizedConversionCastOp>();
     target.addLegalOp<mlir::cf::AssertOp>();
 
     CommandListIndexState commandListIndexState;
-    commandListIndexState.initialize(mainFuncOp, useSingleCommandList);
+    commandListIndexState.initialize(funcOpToConvert, useSingleCommandList);
 
-    ModelIOManager ioManager(module, mainFuncOp, _log);
+    ModelIOManager ioManager(module, funcOpToConvert, _log);
 
     patterns.add<LvlZeroMemoryCopyLowering>(typeConverter, commandListIndexState);
     patterns.add<LvlZeroAllocLowering>(typeConverter);
@@ -1021,7 +1231,9 @@ void ConvertToLLVMUMDCallsPass::safeRunOnModule() {
         signalPassFailure();
     }
 
-    commandListIndexState.finalizeCommandListIndex(module, ctx, mainFuncOp);
+    for (auto funcOp : targetFunctions) {
+        commandListIndexState.finalizeCommandListIndex(module, ctx, funcOp);
+    }
 
     // remove all BinaryOp as they were converted into global variables
     auto binaryOps = to_small_vector(module.getOps<HostExec::BinaryOp>());
@@ -1032,28 +1244,52 @@ void ConvertToLLVMUMDCallsPass::safeRunOnModule() {
     // remove redundant submit command list calls if useSingleCommandList is true
     if (useSingleCommandList) {
         bool found = false;
-        for (auto funcOp : module.getOps<mlir::func::FuncOp>()) {
-            if (funcOp.getName() == "main") {
-                auto callOps = to_small_vector(funcOp.getOps<mlir::LLVM::CallOp>());
-                for (int32_t i = callOps.size() - 1; i >= 0; --i) {
-                    auto& callOp = callOps[i];
-                    mlir::FlatSymbolRefAttr calleeAttr = callOp.getCalleeAttr();
-                    llvm::StringRef funcName = calleeAttr.getValue();
-                    if (funcName.str() == "npu_level_zero_submit_commandlist") {
-                        if (found == false) {
-                            // keep the last command list only
-                            found = true;
-                        } else {
-                            // remove submit command list calls
-                            callOps[i].getOperation()->erase();
-                        }
+        for (auto funcOp : targetFunctions) {
+            auto callOps = to_small_vector(funcOp.getOps<mlir::LLVM::CallOp>());
+            for (int32_t i = callOps.size() - 1; i >= 0; --i) {
+                auto& callOp = callOps[i];
+                mlir::FlatSymbolRefAttr calleeAttr = callOp.getCalleeAttr();
+                llvm::StringRef funcName = calleeAttr.getValue();
+                if (funcName.str() == "npu_level_zero_submit_commandlist") {
+                    if (found == false) {
+                        // keep the last command list only
+                        found = true;
+                    } else {
+                        // remove submit command list calls
+                        callOps[i].getOperation()->erase();
                     }
                 }
             }
         }
     }
+    _log.trace("Optimize UMD callers: {0} to make them pass fence/events at the final iteration of its scf-for",
+               topLevelFuncCallers.size());
+    std::function<bool(mlir::func::CallOp op)> isCallOpSuitableToOptimize = [&targetFunctions,
+                                                                             &allFuncCallers](mlir::func::CallOp op) {
+        mlir::func::FuncOp calledFunction = vpux::getCalledFunction(op);
+        if (auto it = std::find(targetFunctions.begin(), targetFunctions.end(), calledFunction);
+            it != targetFunctions.end()) {
+            VPUX_THROW_UNLESS(it->getNumArguments() > HostMainFuncArgs::HOST_MAIN_FUNC_ARGS_COUNT,
+                              "Target function: {0} is expected to have arguments count more than: {1}, has got: {2}",
+                              it->getName(), HostMainFuncArgs::HOST_MAIN_FUNC_ARGS_COUNT, it->getNumArguments());
+            return true;
+        }
+        if (auto it = allFuncCallers.find(calledFunction); it != allFuncCallers.end()) {
+            VPUX_THROW_UNLESS(
+                    it->getNumArguments() > HostMainFuncArgs::HOST_MAIN_FUNC_ARGS_COUNT,
+                    "Intermediate function: {0} is expected to have arguments count more than: {1}, has got: {2}",
+                    it->getName(), HostMainFuncArgs::HOST_MAIN_FUNC_ARGS_COUNT, it->getNumArguments());
+            return true;
+        }
+        return false;
+    };
+    for (auto f : topLevelFuncCallers) {
+        _log.debug("Optimize caller function: {0}", f.getName());
+        f->walk([this, isCallOpSuitableToOptimize](mlir::scf::ForOp forOp) {
+            rewriteUMDCallOpInForLoop(forOp, isCallOpSuitableToOptimize, _log);
+        });
+    }
 }
-
 }  // namespace
 
 //

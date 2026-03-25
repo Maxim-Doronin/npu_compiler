@@ -1,6 +1,8 @@
+//
 // Copyright (C) 2021-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
+
 #include "shared_test_classes/single_op/variadic_split.hpp"
 #include "vpu_ov2_layer_test.hpp"
 
@@ -55,6 +57,10 @@ TEST_P(VariadicSplitLayerTestCommon, NPU4000_SW) {
 TEST_P(VariadicSplitLayerTestCommon, NPU5010_SW) {
     setReferenceSoftwareMode();
     run(Platform::NPU5010);
+}
+TEST_P(VariadicSplitLayerTestCommon, NPU5020_SW) {
+    setReferenceSoftwareMode();
+    run(Platform::NPU5020);
 }
 
 }  // namespace test

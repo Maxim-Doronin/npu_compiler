@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
 #include <mlir/IR/Types.h>
+#include "vpux/compiler/dialect/VPU/utils/tile_utils.hpp"
 #include "vpux/utils/core/array_ref.hpp"
 #include "vpux/utils/core/small_vector.hpp"
 
@@ -26,6 +27,10 @@ struct WorkloadSizeConstraint {
 
     // Checks whether the operation needs further workload splitting
     bool doesDWOperationNeedWorkloadSplit(mlir::Operation* op) const;
+
+    // Checks if the output tiles results exceed the maximum amount of workloads per invariant
+    bool checkDWOperationWorkloadLimit(mlir::Operation* op, const OutputTiling& tiles) const;
+
     // Returns an array of supported workloads taking into account the already filtered
     // supported channels
     SmallVector<int64_t> getChannelsSupportedBySmallSpatialComputeDwOp(ArrayRef<int64_t> workloadsChannels) const;
@@ -34,6 +39,7 @@ private:
     struct Concept {
         virtual ~Concept() = default;
         virtual bool doesDWOperationNeedWorkloadSplit(mlir::Operation* op) const = 0;
+        virtual bool checkDWOperationWorkloadLimit(mlir::Operation* op, const OutputTiling& tiles) const = 0;
         virtual SmallVector<int64_t> getChannelsSupportedBySmallSpatialComputeDwOp(
                 ArrayRef<int64_t> workloadsChannels) const = 0;
     };
@@ -44,6 +50,9 @@ private:
         }
         bool doesDWOperationNeedWorkloadSplit(mlir::Operation* op) const override {
             return self.doesDWOperationNeedWorkloadSplit(op);
+        }
+        bool checkDWOperationWorkloadLimit(mlir::Operation* op, const OutputTiling& tiles) const override {
+            return self.checkDWOperationWorkloadLimit(op, tiles);
         }
         SmallVector<int64_t> getChannelsSupportedBySmallSpatialComputeDwOp(
                 ArrayRef<int64_t> workloadsChannels) const override {

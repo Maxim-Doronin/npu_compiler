@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -63,14 +63,12 @@ mlir::LogicalResult RemoveIdentityPool<ConcreteOp>::matchAndRewrite(ConcreteOp o
     return mlir::success();
 }
 
-bool isIdentityAvgPoolWithPostOp(IE::AvgPoolOp avgPoolOp) {
+bool isIdentityAvgPoolWithPPE(IE::AvgPoolOp avgPoolOp) {
     const auto postOp = avgPoolOp.getPostOpAttr();
-    if (postOp == nullptr) {
-        return false;
-    }
+    const auto clamp = avgPoolOp.getClampAttr();
 
     // TODO: E#159161 What about other post-ops?
-    if (!mlir::isa<IE::ReluAttr, IE::LeakyReluAttr, IE::ClampAttr>(postOp)) {
+    if (clamp == nullptr && !mlir::isa_and_nonnull<IE::ReluAttr, IE::LeakyReluAttr, IE::ClampAttr>(postOp)) {
         return false;
     }
 
@@ -115,13 +113,75 @@ private:
     Logger _log;
 };
 
+template <typename T, typename... Ts>
+mlir::LogicalResult rewritePostOp(const Logger& _log, IE::AvgPoolOp avgPoolOp, mlir::PatternRewriter& rewriter,
+                                  IE::LayerWithPostOpInterface producerOp, Ts&&... opArgs) {
+    auto postOp = rewriter.create<T>(opArgs...);
+    const auto isSupported = producerOp.isSupportedPostOp(postOp, [&](const auto& msg) {
+        _log.trace("{0}", msg.str());
+    });
+    rewriter.eraseOp(postOp);
+
+    if (isSupported) {
+        producerOp.setPostOpAttr(avgPoolOp.getPostOpAttr());
+        avgPoolOp.removePostOpAttr();
+        return mlir::success();
+    } else {
+        _log.nest().trace("avgPoolOp producer does not support the post_op in avgPoolOp!");
+        return mlir::failure();
+    }
+}
+
+mlir::LogicalResult rewritePostOps(const Logger& _log, IE::AvgPoolOp avgPoolOp, mlir::PatternRewriter& rewriter,
+                                   IE::LayerWithPostOpInterface producerOp) {
+    const auto postOpAttr = avgPoolOp.getPostOpAttr();
+    if (!mlir::isa_and_present<IE::ClampAttr, IE::LeakyReluAttr, IE::ReluAttr>(postOpAttr)) {
+        return mlir::success();  // Success by default, nothing happened
+    }
+
+    if (const auto clamp = mlir::dyn_cast<IE::ClampAttr>(postOpAttr)) {
+        return rewritePostOp<IE::ClampOp>(_log, avgPoolOp, rewriter, producerOp, avgPoolOp->getLoc(),
+                                          avgPoolOp.getInput(), clamp.getMin(), clamp.getMax());
+    } else if (const auto lrelu = mlir::dyn_cast<IE::LeakyReluAttr>(postOpAttr)) {
+        return rewritePostOp<IE::LeakyReluOp>(_log, avgPoolOp, rewriter, producerOp, avgPoolOp->getLoc(),
+                                              avgPoolOp.getInput(), lrelu.getNegativeSlope());
+    }
+    return rewritePostOp<IE::ReLUOp>(_log, avgPoolOp, rewriter, producerOp, avgPoolOp->getLoc(), avgPoolOp.getInput());
+}
+
+mlir::LogicalResult rewriteClamp(const Logger& _log, IE::AvgPoolOp avgPoolOp, mlir::PatternRewriter& rewriter,
+                                 IE::LayerWithPostOpInterface producerOp) {
+    const auto clampAttr = avgPoolOp.getClampAttr();
+    if (clampAttr == nullptr) {
+        return mlir::success();  // Success by default, nothing happened
+    }
+
+    const auto min = clampAttr.getAs<mlir::FloatAttr>("min");
+    const auto max = clampAttr.getAs<mlir::FloatAttr>("max");
+
+    auto clampOp = rewriter.create<IE::ClampOp>(avgPoolOp->getLoc(), avgPoolOp.getInput(), min, max);
+    const auto isSupported = producerOp.isSupportedClampOp(clampOp, [&](const auto& msg) {
+        _log.trace("{0}", msg.str());
+    });
+    rewriter.eraseOp(clampOp);
+
+    if (isSupported) {
+        producerOp.setClampAttr(avgPoolOp.getClampAttr());
+        avgPoolOp.removeClampAttr();
+        return mlir::success();
+    } else {
+        _log.nest().trace("avgPoolOp producer does not support the clamp in avgPoolOp!");
+        return mlir::failure();
+    }
+}
+
 mlir::LogicalResult FuseIdentityAvgPoolWithPostOp::matchAndRewrite(IE::AvgPoolOp avgPoolOp,
                                                                    mlir::PatternRewriter& rewriter) const {
     _log.trace("Got '{0}' at '{1}'", avgPoolOp->getName(), avgPoolOp->getLoc());
 
-    // Found the identity avgPool with postOp
-    if (!isIdentityAvgPoolWithPostOp(avgPoolOp)) {
-        _log.nest().trace("Op is not identity avgPool with postOp!");
+    // Found the identity avgPool with PPE
+    if (!isIdentityAvgPoolWithPPE(avgPoolOp)) {
+        _log.nest().trace("Op is not identity avgPool with PPE!");
         return mlir::failure();
     }
 
@@ -137,37 +197,22 @@ mlir::LogicalResult FuseIdentityAvgPoolWithPostOp::matchAndRewrite(IE::AvgPoolOp
         return mlir::failure();
     }
 
-    if (producerOp.getPostOp() != nullptr) {
+    if ((producerOp.getPostOp() != nullptr && avgPoolOp.getPostOpAttr() != nullptr) ||
+        (producerOp.getClampAttr() != nullptr && avgPoolOp.getClampAttr() != nullptr)) {
         _log.nest().trace("avgPoolOp producer already has post-processing!");
         return mlir::failure();
     }
 
-    auto postOp = avgPoolOp->getResult(0).getDefiningOp();
-    const auto postOpAttr = avgPoolOp.getPostOpAttr();
-    if (const auto clamp = mlir::dyn_cast<IE::ClampAttr>(postOpAttr)) {
-        postOp =
-                rewriter.create<IE::ClampOp>(avgPoolOp->getLoc(), avgPoolOp.getInput(), clamp.getMin(), clamp.getMax());
-    } else if (const auto leakyRelu = mlir::dyn_cast<IE::LeakyReluAttr>(postOpAttr)) {
-        postOp = rewriter.create<IE::LeakyReluOp>(avgPoolOp->getLoc(), avgPoolOp.getInput(),
-                                                  leakyRelu.getNegativeSlope());
-    } else if (mlir::isa<IE::ReluAttr>(postOpAttr)) {
-        postOp = rewriter.create<IE::ReLUOp>(avgPoolOp->getLoc(), avgPoolOp.getInput());
-    }
-
-    const auto logCb = [&](const formatv_object_base& msg) {
-        _log.trace("{0}", msg.str());
-    };
-    if (!producerOp.isSupportedPostOp(postOp, logCb)) {
-        _log.nest().trace("avgPoolOp producer does not support the post-processing in avgPoolOp!");
-        rewriter.eraseOp(postOp);
+    if (rewritePostOps(_log, avgPoolOp, rewriter, producerOp).failed()) {
         return mlir::failure();
     }
-    rewriter.eraseOp(postOp);
 
-    // Set postOp for producer and then replace the avgPoolOp
-    producerOp.setPostOpAttr(avgPoolOp.getPostOpAttr());
+    if (rewriteClamp(_log, avgPoolOp, rewriter, producerOp).failed()) {
+        return mlir::failure();
+    }
+
+    // Replace the AvgPool with its producer, clamp/post_op fused
     rewriter.replaceOp(avgPoolOp, producerOp->getResult(0));
-
     return mlir::success();
 }
 
@@ -202,11 +247,12 @@ mlir::LogicalResult FuseIdentityQuantizedAvgPool::matchAndRewrite(IE::AvgPoolOp 
 
     auto parentPoolOp = origOp.getInput().getDefiningOp<IE::AvgPoolOp>();
 
-    if (parentPoolOp == nullptr || !isIdentityAvgPoolWithPostOp(parentPoolOp)) {
+    if (parentPoolOp == nullptr || !isIdentityAvgPoolWithPPE(parentPoolOp)) {
         _log.trace("There is no parent pool with postop");
         return mlir::failure();
     }
 
+    origOp.setClampAttr(parentPoolOp.getClampAttr());
     origOp.setPostOpAttr(parentPoolOp.getPostOpAttr());
     origOp.setOperand(parentPoolOp.getInput());
     rewriter.eraseOp(parentPoolOp);
@@ -249,7 +295,7 @@ mlir::LogicalResult FuseIdentityWithQuantizedAdd::matchAndRewrite(IE::AddOp orig
 
     auto parentPoolOp = origOp.getInput1().getDefiningOp<IE::AvgPoolOp>();
 
-    if (parentPoolOp == nullptr || !isIdentityAvgPoolWithPostOp(parentPoolOp)) {
+    if (parentPoolOp == nullptr || !isIdentityAvgPoolWithPPE(parentPoolOp) || parentPoolOp.getPostOpAttr() == nullptr) {
         _log.trace("There is no parent pool with postop");
         return mlir::failure();
     }
@@ -273,6 +319,7 @@ mlir::LogicalResult FuseIdentityWithQuantizedAdd::matchAndRewrite(IE::AddOp orig
     }
     rewriter.eraseOp(postOp);
 
+    origOp.setClampAttr(parentPoolOp.getClampAttr());
     origOp.setPostOpAttr(parentPoolOp.getPostOpAttr());
     origOp.setOperand(0, parentPoolOp.getInput());
     origOp.setOperand(1, parentPoolOp.getInput());

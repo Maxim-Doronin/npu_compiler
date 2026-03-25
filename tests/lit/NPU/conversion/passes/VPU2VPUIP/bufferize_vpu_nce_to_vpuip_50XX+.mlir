@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -19,16 +19,16 @@ func.func @ErrataSuperdenseNCEAveragePool(%arg0: tensor<1x16x15x15xf16, {mem_spa
         ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = -3.4028234663852886E+38 : f64, clamp_high = 3.4028234663852886E+38 : f64, scale = 1.000000e+00 : f64, prelu_alpha = [1.000000e-01], bias = 0.000000e+00 : f64, adder = 0.000000e+00 : f64>,
         strides = [1, 1]
     } -> tensor<1x16x15x13xf16, {mem_space = @CMX_NN, order = #NCHW}> {
-        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 32, 7, 4] <left = 1 : i64, right = 0 : i64, top = 0 : i64, bottom = 13 : i64> #VPU.mpe_mode<CUBOID_16x16>
+        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 32, 7, 4] pad [1, 0, 0, 13] #VPU.mpe_mode<CUBOID_16x16>
     }
 
     return %1 : tensor<1x16x15x13xf16, {mem_space = @CMX_NN, order = #NCHW}>
 
-    // CHECK:       VPUIP.NCEClusterTask {
+    // CHECK:       VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 708 : i64} <{
     // CHECK-NOT:       is_small_kernel_optimized,
     // CHECK-SAME:      is_superdense,
     // CHECK-SAME:      task_type = #VPUIP.nce_task_type<AVEPOOL>
-    // CHECK-SAME:  }
+    // CHECK-SAME:  }>
 }
 
 // -----
@@ -44,11 +44,11 @@ func.func @EltwiseSubtract(%arg0: tensor<1x64x28x28xf16, {mem_space = @CMX_NN, o
                 op_type = #VPU.eltwise_type<SUBTRACT>,
                 ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = -3.4028234663852886E+38 : f64, clamp_high = 3.4028234663852886E+38 : f64, prelu_alpha = [1.000000e-01], adder = 0.000000e+00 : f64>
             } -> tensor<1x64x28x28xf16, {mem_space = @CMX_NN, order = #NHWC}> {
-        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 64, 5, 28] <left = 0 , right = 0, top = 0, bottom = 0> #VPU.mpe_mode<VECTOR_FP16>
-        VPU.DPU.Workload outOffsets [0, 0, 5, 0] outSizes [1, 64, 5, 28] <left = 0 , right = 0, top = 0, bottom = 0> #VPU.mpe_mode<VECTOR_FP16>
-        VPU.DPU.Workload outOffsets [0, 0, 10, 0] outSizes [1, 64, 5, 28] <left = 0 , right = 0, top = 0, bottom = 0> #VPU.mpe_mode<VECTOR_FP16>
-        VPU.DPU.Workload outOffsets [0, 0, 15, 0] outSizes [1, 64, 5, 28] <left = 0 , right = 0, top = 0, bottom = 0> #VPU.mpe_mode<VECTOR_FP16>
-        VPU.DPU.Workload outOffsets [0, 0, 20, 0] outSizes [1, 64, 8, 28] <left = 0 , right = 0, top = 0, bottom = 0> #VPU.mpe_mode<VECTOR_FP16>
+        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 64, 5, 28] pad [0, 0, 0, 0] #VPU.mpe_mode<VECTOR_FP16>
+        VPU.DPU.Workload outOffsets [0, 0, 5, 0] outSizes [1, 64, 5, 28] pad [0, 0, 0, 0] #VPU.mpe_mode<VECTOR_FP16>
+        VPU.DPU.Workload outOffsets [0, 0, 10, 0] outSizes [1, 64, 5, 28] pad [0, 0, 0, 0] #VPU.mpe_mode<VECTOR_FP16>
+        VPU.DPU.Workload outOffsets [0, 0, 15, 0] outSizes [1, 64, 5, 28] pad [0, 0, 0, 0] #VPU.mpe_mode<VECTOR_FP16>
+        VPU.DPU.Workload outOffsets [0, 0, 20, 0] outSizes [1, 64, 8, 28] pad [0, 0, 0, 0] #VPU.mpe_mode<VECTOR_FP16>
     }
     return %1 : tensor<1x64x28x28xf16, {mem_space = @CMX_NN, order = #NHWC}>
 
@@ -108,7 +108,7 @@ func.func @NceEltwiseMultiply(%arg0: tensor<1x64x28x28xf16, {order = #NHWC, mem_
                 op_type = #VPU.eltwise_type<MULTIPLY>,
                 ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = -3.4028234663852886E+38 : f64, clamp_high = 3.4028234663852886E+38 : f64, prelu_alpha = [1.000000e-01], adder = 0.000000e+00 : f64>
             } -> tensor<1x64x28x28xf16, {mem_space = @CMX_NN, order = #NHWC}> {
-        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 64, 28, 28] <left = 0 , right = 0, top = 0, bottom = 0> #VPU.mpe_mode<VECTOR_FP16>
+        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 64, 28, 28] pad [0, 0, 0, 0] #VPU.mpe_mode<VECTOR_FP16>
     }
 
     return %0 : tensor<1x64x28x28xf16, {order = #NHWC, mem_space = @CMX_NN}>
@@ -142,15 +142,15 @@ func.func @NCEReduce(%arg0: tensor<1x64x28x28xf16, {order = #NHWC, mem_space = @
                 ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = -3.4028234663852886E+38 : f64, clamp_high = 3.4028234663852886E+38 : f64,
                     scale = 1.000000e+00 : f64, prelu_alpha = [1.000000e+00], bias = 0.000000e+00 : f64, adder = 0.000000e+00 : f64>
             } -> tensor<1x1x28x28xf16, {mem_space = @CMX_NN, order = #NHWC}> {
-        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 64, 28, 28] <left = 0 , right = 0, top = 0, bottom = 0> #VPU.mpe_mode<CUBOID_16x16>
+        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 64, 28, 28] pad [0, 0, 0, 0] #VPU.mpe_mode<CUBOID_16x16>
     }
 
     return %0 : tensor<1x1x28x28xf16, {order = #NHWC, mem_space = @CMX_NN}>
 
-    // CHECK:       VPUIP.NCEClusterTask {
+    // CHECK:       VPUIP.NCEClusterTask <{
     // CHECK-SAME:      is_superdense,
     // CHECK-SAME:      task_type = #VPUIP.nce_task_type<REDUCEMEAN>
-    // CHECK-SAME:  }
+    // CHECK-SAME:  }>
 }
 
 
@@ -168,15 +168,15 @@ func.func @NCEReducesSum(%arg0: tensor<1x64x28x28xf16, {order = #NHWC, mem_space
                 ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = -3.4028234663852886E+38 : f64, clamp_high = 3.4028234663852886E+38 : f64,
                     scale = 1.000000e+00 : f64, prelu_alpha = [1.000000e+00], bias = 0.000000e+00 : f64, adder = 0.000000e+00 : f64>
             } -> tensor<1x1x28x28xf16, {mem_space = @CMX_NN, order = #NHWC}> {
-        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 64, 28, 28] <left = 0 , right = 0, top = 0, bottom = 0> #VPU.mpe_mode<CUBOID_16x16>
+        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 64, 28, 28] pad [0, 0, 0, 0] #VPU.mpe_mode<CUBOID_16x16>
     }
 
     return %0 : tensor<1x1x28x28xf16, {order = #NHWC, mem_space = @CMX_NN}>
 
-    // CHECK:       VPUIP.NCEClusterTask {
+    // CHECK:       VPUIP.NCEClusterTask <{
     // CHECK-SAME:      is_superdense,
     // CHECK-SAME:      task_type = #VPUIP.nce_task_type<REDUCESUM>
-    // CHECK-SAME:  }
+    // CHECK-SAME:  }>
 }
 
 // -----
@@ -199,7 +199,7 @@ func.func @NcePermute(%arg0: tensor<1x3x224x224xf16, {mem_space = @CMX_NN}>)
         ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = -3.4028234663852886E+38 : f64, clamp_high = 3.4028234663852886E+38 : f64,
             scale = 5.000000e-01 : f64, prelu_alpha = [1.000000e+00], adder = 0.000000e+00 : f64>
     } -> tensor<1x4x224x224xf16, {mem_space = @CMX_NN, order = #NHWC}> {
-        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 3, 224, 224] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16>
+        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 3, 224, 224] pad [0, 0, 0, 0] #VPU.mpe_mode<CUBOID_16x16>
     }
 
     return %0 : tensor<1x4x224x224xf16, {mem_space = @CMX_NN, order = #NHWC}>
@@ -254,7 +254,7 @@ func.func @NcePermuteQuantOut(%arg0: tensor<1x3x224x224xf16, {mem_space = @CMX_N
         ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = 0.000000e+00 : f64, clamp_high = 2.550000e+02 : f64,
             scale = 5.000000e-01 : f64, prelu_alpha = [1.000000e+00], adder = 0.000000e+00 : f64>
     } -> tensor<1x4x224x224x!qElemType, {mem_space = @CMX_NN, order = #NHWC}> {
-        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 3, 224, 224] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16>
+        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 3, 224, 224] pad [0, 0, 0, 0] #VPU.mpe_mode<CUBOID_16x16>
     }
 
     return %0 : tensor<1x4x224x224x!qElemType, {mem_space = @CMX_NN, order = #NHWC}>
@@ -310,7 +310,7 @@ func.func @NcePermuteQuantInQuantOut(%arg0: tensor<1x3x224x224x!qElemType, {mem_
             scale = 3.0517578125E-5 : f64, prelu_alpha = [1.000000e+00], bias = 0.000000e+00 : f64, adder = 0.000000e+00 : f64,
             in1_mult = [1.638400e+04], in2_mult = [1.638400e+04]>
     } -> tensor<1x4x224x224x!qElemType, {mem_space = @CMX_NN, order = #NHWC}> {
-        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 3, 224, 224] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16>
+        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 3, 224, 224] pad [0, 0, 0, 0] #VPU.mpe_mode<CUBOID_16x16>
     }
 
     return %0 : tensor<1x4x224x224x!qElemType, {mem_space = @CMX_NN, order = #NHWC}>
@@ -385,7 +385,7 @@ func.func @NcePermute_MultiTile(%in: !InputTensor) -> !OutputTensor {
             ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = 0.000000e+00 : f64, clamp_high = 2.550000e+02 : f64,
                 scale = 5.000000e-01 : f64, prelu_alpha = [1.000000e+00], adder = 0.000000e+00 : f64>
         } -> !OutputTensor {
-            VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 3, 256, 224] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16>
+            VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 3, 256, 224] pad [0, 0, 0, 0] #VPU.mpe_mode<CUBOID_16x16>
         }
 
     return %out : !OutputTensor
@@ -449,7 +449,7 @@ module @NceConvIDUAutopad {
                     strides = [1, 1]
                 } : tensor<1x3x16x16xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<16x1x1x16xf16, {mem_space = @CMX_NN, order = #NHWC}>, tensor<16x1x1x4xsi32, {mem_space = @CMX_NN}>
                   -> tensor<1x16x16x16xf16, {mem_space = @CMX_NN, order = #NHWC}> {
-            VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 16, 16] <left = 0, right = 0, top = 0, bottom = 0> #VPU.mpe_mode<VECTOR_FP16>
+            VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 16, 16] pad [0, 0, 0, 0] #VPU.mpe_mode<VECTOR_FP16>
         }
 
         return %0 : tensor<1x16x16x16xf16, {mem_space = @CMX_NN, order = #NHWC}>

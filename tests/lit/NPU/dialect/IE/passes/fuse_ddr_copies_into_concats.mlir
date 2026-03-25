@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -95,6 +95,8 @@ func.func @FuseTwoDDR2DDRCopies(%LHS_ARG: memref<1x64x125x250x!qElemType, #NHWC,
 !qElemType = !quant.uniform<u8:f16, 0.019874431572708431:128>
 
 // CHECK-LABEL: @FuseLeftDDR2DDRCopy
+// CHECK-SAME: [[LHS_INPUT:%[^:]+]]: memref<1x64x125x250x!qElemType, #NHWC, @CMX_NN>,
+// CHECK-SAME: [[RHS_INPUT:%[^:]+]]: memref<1x64x125x250x!qElemType, #NHWC, @DDR>
 func.func @FuseLeftDDR2DDRCopy(%LHS_ARG: memref<1x64x125x250x!qElemType, #NHWC, @CMX_NN>,
                                %RHS_ARG: memref<1x64x125x250x!qElemType, #NHWC, @DDR>)
     -> memref<1x64x250x250x!qElemType, #NHWC, @DDR> {
@@ -136,15 +138,13 @@ func.func @FuseLeftDDR2DDRCopy(%LHS_ARG: memref<1x64x125x250x!qElemType, #NHWC, 
 
     return %CONCAT : memref<1x64x250x250x!qElemType, #NHWC, @DDR>
 
-    // CHECK:        ([[LHS_INPUT:%arg.+]]: memref<1x64x125x250x!qElemType, #NHWC, @CMX_NN>,
-
     // CHECK:   [[CONCAT_ALLOC:%.+]] = memref.alloc() : memref<1x64x250x250x!qElemType, #NHWC, @DDR>
 
     // CHECK:   [[LHS_SUBVIEW:%.+]] = VPUIP.SubView [[CONCAT_ALLOC]] [0, 0, 0, 0] [1, 64, 125, 250]
     // CHECK:   [[RHS_SUBVIEW:%.+]] = VPUIP.SubView [[CONCAT_ALLOC]] [0, 0, 125, 0] [1, 64, 125, 250]
 
-    // CHECK:   [[RHS_INPUT:%.+]] = VPUIP.Copy
-    // CHECK-SAME:      inputs(%arg1 : memref<1x64x125x250x!qElemType, #NHWC, @DDR>)
+    // CHECK:   [[RHS_INPUT_COPY:%.+]] = VPUIP.Copy
+    // CHECK-SAME:      inputs([[RHS_INPUT]] : memref<1x64x125x250x!qElemType, #NHWC, @DDR>)
     // CHECK-SAME:      outputs([[RHS_SUBVIEW]]
 
     // CHECK:   [[LHS_CMX2DDR_COPY:%.+]] = VPUIP.Copy
@@ -157,7 +157,7 @@ func.func @FuseLeftDDR2DDRCopy(%LHS_ARG: memref<1x64x125x250x!qElemType, #NHWC, 
     // CHECK-SAME:          strides = [4000000, 1, 16000, 64]
     // CHECK-SAME:      }, @DDR>
 
-    // CHECK:   [[CONCAT:%.+]] = VPUIP.ConcatView inputs([[LHS_CMX2DDR_COPY]], [[RHS_INPUT]]
+    // CHECK:   [[CONCAT:%.+]] = VPUIP.ConcatView inputs([[LHS_CMX2DDR_COPY]], [[RHS_INPUT_COPY]]
     // CHECK:   return [[CONCAT]] : memref<1x64x250x250x!qElemType, #NHWC, @DDR>
 }
 
@@ -168,6 +168,8 @@ func.func @FuseLeftDDR2DDRCopy(%LHS_ARG: memref<1x64x125x250x!qElemType, #NHWC, 
 !qElemType = !quant.uniform<u8:f16, 0.019874431572708431:128>
 
 // CHECK-LABEL: @FuseRightDDR2DDRCopy
+// CHECK-SAME: [[LHS_INPUT:%[^:]+]]: memref<1x64x125x250x!qElemType, #NHWC, @DDR>,
+// CHECK-SAME: [[RHS_INPUT:%[^:]+]]: memref<1x64x125x250x!qElemType, #NHWC, @CMX_NN>
 func.func @FuseRightDDR2DDRCopy(%LHS_ARG: memref<1x64x125x250x!qElemType, #NHWC, @DDR>,
                                 %RHS_ARG: memref<1x64x125x250x!qElemType, #NHWC, @CMX_NN>)
     -> memref<1x64x250x250x!qElemType, #NHWC, @DDR> {
@@ -209,14 +211,11 @@ func.func @FuseRightDDR2DDRCopy(%LHS_ARG: memref<1x64x125x250x!qElemType, #NHWC,
 
     return %CONCAT : memref<1x64x250x250x!qElemType, #NHWC, @DDR>
 
-    // CHECK:        ([[LHS_INPUT:%arg.+]]: memref<1x64x125x250x!qElemType, #NHWC, @DDR>,
-    // CHECK-SAME:    [[RHS_INPUT:%arg.+]]: memref<1x64x125x250x!qElemType, #NHWC, @CMX_NN>)
-
     // CHECK:   [[CONCAT_ALLOC:%.+]] = memref.alloc() : memref<1x64x250x250x!qElemType, #NHWC, @DDR>
 
     // CHECK:   [[LHS_SUBVIEW:%.+]] = VPUIP.SubView [[CONCAT_ALLOC]] [0, 0, 0, 0] [1, 64, 125, 250]
-    // CHECK:   [[LHS_INPUT:%.+]] = VPUIP.Copy
-    // CHECK-SAME:      inputs(%arg0 : memref<1x64x125x250x!qElemType, #NHWC, @DDR>)
+    // CHECK:   [[LHS_INPUT_COPY:%.+]] = VPUIP.Copy
+    // CHECK-SAME:      inputs([[LHS_INPUT]] : memref<1x64x125x250x!qElemType, #NHWC, @DDR>)
     // CHECK-SAME:      outputs([[LHS_SUBVIEW]]
 
     // CHECK:   [[RHS_SUBVIEW:%.+]] = VPUIP.SubView [[CONCAT_ALLOC]] [0, 0, 125, 0] [1, 64, 125, 250]
@@ -231,7 +230,7 @@ func.func @FuseRightDDR2DDRCopy(%LHS_ARG: memref<1x64x125x250x!qElemType, #NHWC,
     // CHECK-SAME:          strides = [4000000, 1, 16000, 64]
     // CHECK-SAME:      }, @DDR>
 
-    // CHECK:   [[CONCAT:%.+]] = VPUIP.ConcatView inputs([[LHS_INPUT]], [[RHS_CMX2DDR_COPY]]
+    // CHECK:   [[CONCAT:%.+]] = VPUIP.ConcatView inputs([[LHS_INPUT_COPY]], [[RHS_CMX2DDR_COPY]]
     // CHECK:   return [[CONCAT]] : memref<1x64x250x250x!qElemType, #NHWC, @DDR>
 }
 
@@ -242,6 +241,8 @@ func.func @FuseRightDDR2DDRCopy(%LHS_ARG: memref<1x64x125x250x!qElemType, #NHWC,
 !qElemType = !quant.uniform<u8:f16, 0.019874431572708431:128>
 
 // CHECK-LABEL: @SkipDDR2DDRClusterCopy
+// CHECK-SAME:   [[LHS_INPUT:%[^:]+]]: memref<1x64x125x250x!qElemType, #NHWC, @DDR>,
+// CHECK-SAME:   [[RHS_INPUT:%[^:]+]]: memref<1x64x125x250x!qElemType, #NHWC, @DDR>
 func.func @SkipDDR2DDRClusterCopy(%LHS_ARG: memref<1x64x125x250x!qElemType, #NHWC, @DDR>,
                                   %RHS_ARG: memref<1x64x125x250x!qElemType, #NHWC, @DDR>)
     -> memref<1x64x250x250x!qElemType, #NHWC, @DDR> {
@@ -281,11 +282,11 @@ func.func @SkipDDR2DDRClusterCopy(%LHS_ARG: memref<1x64x125x250x!qElemType, #NHW
     // CHECK:   [[RHS_SUBVIEW:%.+]] = VPUIP.SubView [[CONCAT_ALLOC]] [0, 0, 125, 0] [1, 64, 125, 250]
 
     // CHECK:   [[LHS_DDR2DDR_COPY:%.+]] = VPUIP.Copy
-    // CHECK-SAME:      inputs(%arg0 : memref<1x64x125x250x!qElemType, #NHWC, @DDR>)
+    // CHECK-SAME:      inputs([[LHS_INPUT]] : memref<1x64x125x250x!qElemType, #NHWC, @DDR>)
     // CHECK-SAME:      outputs([[LHS_SUBVIEW]] : memref<1x64x125x250x!qElemType,
 
     // CHECK:   [[RHS_DDR2DDR_COPY:%.+]] = VPUIP.Copy
-    // CHECK-SAME:      inputs(%arg1 : memref<1x64x125x250x!qElemType, #NHWC, @DDR>)
+    // CHECK-SAME:      inputs([[RHS_INPUT]] : memref<1x64x125x250x!qElemType, #NHWC, @DDR>)
     // CHECK-SAME:      outputs([[RHS_SUBVIEW]] : memref<1x64x125x250x!qElemType,
 
     // CHECK:   [[CONCAT:%.+]] = VPUIP.ConcatView inputs([[LHS_DDR2DDR_COPY]], [[RHS_DDR2DDR_COPY]]

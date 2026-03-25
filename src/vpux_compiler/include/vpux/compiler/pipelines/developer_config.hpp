@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -52,7 +52,6 @@ private:
 
     std::string _irPrintingFilter;
     std::string _irPrintingLocation;
-    std::string _irPrintingFile;  // deprecated #E194687
     std::string _irPrintingOrderStr;
     bool _printToFileTree = false;
     bool _printFullIR = false;
@@ -61,8 +60,10 @@ private:
     bool _allowPrintingHexConstant = true;
     bool _printDebugInfo = false;
     bool _printDebugInfoPrettyForm = false;
+    bool _printSsaPrettyForm = true;
     std::string _printAsTextualPipelineFilePath = "";
     std::string _printDotOptions;
+    std::string _dumpIntermediateValues;
 
     std::unique_ptr<llvm::Regex> _irDumpFilter;
     std::unique_ptr<llvm::raw_fd_ostream> _irDumpFile;

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -20,6 +20,7 @@
 #include "vpux/compiler/dialect/VPU/utils/auto_padding_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
@@ -232,7 +233,7 @@ private:
         }
 
         const auto elemTypeBitWidth = outputType.getElemTypeSize().count();
-        const auto canUseAutopad = outputChannels == VPU::NCEInvariant::VPU_CHANNEL_ALIGNMENT &&
+        const auto canUseAutopad = outputChannels % VPU::NCEInvariant::VPU_CHANNEL_ALIGNMENT == 0 &&
                                    VPU::areChannelsCompatibleWithODUAutoPad(unpaddedOutputChannels, elemTypeBitWidth);
         if (!canUseAutopad) {
             _log.nest().trace("Cannot autopad output");
@@ -327,10 +328,8 @@ private:
             newShape[Dims4D::Filter::IC.ind()] = 1;
             newShape[Dims4D::Filter::KY.ind()] = 1;
             newShape[Dims4D::Filter::KX.ind()] = weightSetSize;
-            auto reshapeOp =
-                    builder.create<VPU::ReshapeOp>(takeOpLoc(nceOp, "weights_flatten"), sliceOp.getResult(),
-                                                   /*shape=*/nullptr,
-                                                   /*special_zero=*/false, getIntArrayAttr(&getContext(), newShape));
+            auto reshapeOp = builder.create<VPU::ReshapeOp>(takeOpLoc(nceOp, "weights_flatten"), sliceOp.getResult(),
+                                                            getIntArrayAttr(&getContext(), newShape));
 
             auto layoutCastOp =
                     builder.create<VPU::LayoutCastOp>(takeOpLoc(nceOp, "weights_layout_cast"), reshapeOp.getOutput(),

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -148,8 +148,7 @@ module @TwoFunctions attributes {config.arch = #config.arch_kind<NPU50XX>, confi
                                         compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 2], [0, 0, 0, 4]],
                                         memory_shapes = [[1, 16, 16, 2], [1, 16, 16, 2], [1, 16, 16, 2]],
                                         memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 2], [0, 0, 0, 4]]}>
-        %5 = VPUIP.NCEClusterTask {is_permute_quantize,
-                                   minimumHardwareExecutionCost = 153 : i64, task_type = #VPUIP.nce_task_type<ELTWISE>}
+        %5 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 153 : i64} <{is_permute_quantize, task_type = #VPUIP.nce_task_type<ELTWISE>}>
               input(%3 : !VPUIP.DistributedBuffer<1x16x16x6xf16, #NHWC, @CMX_NN,
                                                 {mode = "OVERLAPPED", num_tiles = [1, 1, 1, 3], num_clusters = 3 : i64, uniform_distributed_segments,
                                                 compute_shapes = [[1, 16, 16, 2], [1, 16, 16, 2], [1, 16, 16, 2]],
@@ -298,8 +297,8 @@ module @TwoFunctions attributes {config.arch = #config.arch_kind<NPU50XX>, confi
                                         compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
                                         memory_shapes = [[1, 32, 4, 4], [1, 32, 4, 4], [1, 32, 4, 4]],
                                         memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]}>
-        %17 = VPUIP.NCEClusterTask {is_superdense, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
-                                  kernel_size = [3, 3], kernel_strides = [1, 1], minimumHardwareExecutionCost = 689 : i64, task_type = #VPUIP.nce_task_type<CONV>}
+        %17 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 689 : i64} <{is_superdense, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+                                  kernel_size = [3, 3], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
                   input(%11 : !VPUIP.DistributedBuffer<1x16x6x6xf16, #NHWC, @CMX_NN,
                               {mode = "DUPLICATED", num_clusters = 3 : i64, alignment = [1, 16, 1, 1], uniform_distributed_segments,
                               compute_shapes = [[1, 16, 6, 6], [1, 16, 6, 6], [1, 16, 6, 6]],

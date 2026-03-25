@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,7 +9,9 @@
 #include "vpux/compiler/core/async_deps_info.hpp"
 #include "vpux/compiler/core/feasible_memory_scheduler_spilling.hpp"
 #include "vpux/compiler/core/linear_scan_handler.hpp"
+#include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
+#include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/utils/hw_settings.hpp"
 
 #include "common/utils.hpp"
@@ -22,6 +24,8 @@
 #include <mlir/Parser/Parser.h>
 
 #include <gtest/gtest.h>
+
+// Run cmd: npuUnitTests --gtest_filter="MLIR_FeasibleMemorySchedulerSpilling.*"
 
 using namespace vpux;
 
@@ -55,7 +59,7 @@ TEST_F(MLIR_FeasibleMemorySchedulerSpilling, RemoveComputeOpRelocationSpillsForI
                 }
 
                 %t2, %r2 = async.execute [%t0, %t1] (%r0 as %arg2: !async.value<!Type_CMX>, %r1 as %arg3: !async.value<!Type_CMX>) -> !async.value<!Type_CMX> attributes {VPUIP.executor = @DPU, VPUIP.num_units = 1 : i64} {
-                    %1 = VPUIP.NCEClusterTask {is_inplace = true, minimumHardwareExecutionCost = 21125 : i64, task_type = #VPUIP.nce_task_type<ELTWISE>} input(%arg2 : !Type_CMX) weights(%arg3 : !Type_CMX) parent_input(%arg2 : !Type_CMX) parent_output(%buf_cmx_1 : !Type_CMX) outputs(%buf_cmx_1 : !Type_CMX) -> !Type_CMX  variants : {
+                    %1 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 21125 : i64} <{is_inplace = true, task_type = #VPUIP.nce_task_type<ELTWISE>}> input(%arg2 : !Type_CMX) weights(%arg3 : !Type_CMX) parent_input(%arg2 : !Type_CMX) parent_output(%buf_cmx_1 : !Type_CMX) outputs(%buf_cmx_1 : !Type_CMX) -> !Type_CMX  variants : {
                             DPUTask {cluster_id = 0 : i64, mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, outEnd = [31, 31, 31], outStart = [0, 0, 0], pad = #VPU.Padding<bottom = 0 : i64, left = 0 : i64, right = 0 : i64, top = 0 : i64>}
                         } PPE : {
                             PPETask {ppe = #VPU.PPEStub<>}
@@ -219,7 +223,7 @@ TEST_F(MLIR_FeasibleMemorySchedulerSpilling, RemoveComputeOpRelocationSpillsForR
                 }
 
                 %t2, %r2 = async.execute [%t0] (%r0 as %arg8: !async.value<!Conv_In_CMX>) -> !async.value<!Conv_Out_CMX> attributes {VPUIP.executor = @DPU, VPUIP.num_units = 1 : i64} {
-                    %270 = VPUIP.NCEClusterTask {constantsFused = true, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], minimumHardwareExecutionCost = 11735 : i64, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<CONV>}
+                    %270 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 11735 : i64, constantsFused = true} <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<CONV>}>
                         input(%arg8 : !Conv_In_CMX) weights(%arg1 : !Conv_Weights_CMX)  weight_table(%arg2 : !Conv_WT_CMX) parent_input(%arg8 : !Conv_In_CMX) parent_output(%conv1_out_cmx : !Conv_Out_CMX) outputs(%conv1_out_cmx : !Conv_Out_CMX) -> !Conv_Out_CMX  variants : {
                             DPUTask {cluster_id = 0 : i64, inEnd = [27, 27, 127], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, outEnd = [27, 27, 511], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
                         } PPE : {
@@ -229,7 +233,7 @@ TEST_F(MLIR_FeasibleMemorySchedulerSpilling, RemoveComputeOpRelocationSpillsForR
                 }
 
                 %t4, %r4 = async.execute [%t1, %t2] (%r1 as %arg8: !async.value<!EltWise_CMX>, %r2 as %arg9: !async.value<!Conv_Out_CMX>) -> !async.value<!EltWise_CMX> attributes {VPUIP.executor = @DPU, VPUIP.num_units = 1 : i64} {
-                    %270 = VPUIP.NCEClusterTask {is_inplace = true, minimumHardwareExecutionCost = 21125 : i64, task_type = #VPUIP.nce_task_type<ELTWISE>}
+                    %270 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 21125 : i64} <{is_inplace = true, task_type = #VPUIP.nce_task_type<ELTWISE>}>
                         input(%arg9 : !Conv_Out_CMX) weights(%arg8 : !EltWise_CMX) parent_input(%arg9 : !Conv_Out_CMX) parent_output(%conv1_out_cmx : !Conv_Out_CMX) outputs(%conv1_out_cmx : !Conv_Out_CMX) -> !EltWise_CMX  variants : {
                             DPUTask {cluster_id = 0 : i64, inEnd = [27, 27, 511], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, outEnd = [27, 27, 511], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
                             } PPE : {
@@ -240,7 +244,7 @@ TEST_F(MLIR_FeasibleMemorySchedulerSpilling, RemoveComputeOpRelocationSpillsForR
                 }
 
                 %t5, %r5 = async.execute [%t4] (%r4 as %arg8: !async.value<!EltWise_CMX>) -> !async.value<!DWConv_OUT_CMX> attributes {VPUIP.executor = @DPU, VPUIP.num_units = 1 : i64} {
-                        %270 = VPUIP.NCEClusterTask {constantsFused = true, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], minimumHardwareExecutionCost = 8240 : i64, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<DWCONV>}
+                        %270 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 8240 : i64, constantsFused = true} <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<DWCONV>}>
                         input(%arg8 : !EltWise_CMX) weights(%arg4 : !DWConv_Weights_CMX)  weight_table(%arg5 : !DWConv_WT_CMX) parent_input(%arg8 : !EltWise_CMX) parent_output(%dwconv_out_cmx : !DWConv_OUT_CMX) outputs(%dwconv_out_cmx : !DWConv_OUT_CMX) -> !DWConv_OUT_CMX  variants : {
                         DPUTask {cluster_id = 0 : i64, inEnd = [27, 9, 63], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [27, 9, 63], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
                         } PPE : {
@@ -436,7 +440,7 @@ TEST_F(MLIR_FeasibleMemorySchedulerSpilling, RemoveComputeOpRelocationSpillsForS
                 }
 
                 %t2, %r2 = async.execute [%t0, %t1] (%r0 as %arg2: !async.value<!Type_CMX>, %r1 as %arg3: !async.value<!Type_CMX>) -> !async.value<!Type_CMX> attributes {VPUIP.executor = @DPU, VPUIP.num_units = 1 : i64} {
-                    %270 = VPUIP.NCEClusterTask {is_inplace = true, minimumHardwareExecutionCost = 21125 : i64, task_type = #VPUIP.nce_task_type<ELTWISE>} input(%arg2 : !Type_CMX) weights(%arg3 : !Type_CMX) parent_input(%arg2 : !Type_CMX) parent_output(%buf_cmx_3 : !Type_CMX) outputs(%buf_cmx_3 : !Type_CMX) -> !Type_CMX  variants : {
+                    %270 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 21125 : i64} <{is_inplace = true, task_type = #VPUIP.nce_task_type<ELTWISE>}> input(%arg2 : !Type_CMX) weights(%arg3 : !Type_CMX) parent_input(%arg2 : !Type_CMX) parent_output(%buf_cmx_3 : !Type_CMX) outputs(%buf_cmx_3 : !Type_CMX) -> !Type_CMX  variants : {
                             DPUTask {cluster_id = 0 : i64, mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, outEnd = [15, 71, 127], outStart = [0, 0, 0], pad = #VPU.Padding<bottom = 0 : i64, left = 0 : i64, right = 0 : i64, top = 0 : i64>}
                         } PPE : {
                             PPETask {ppe = #VPU.PPEStub<>}
@@ -605,4 +609,392 @@ TEST_F(MLIR_FeasibleMemorySchedulerSpilling, RemoveComputeOpRelocationSpillsForS
     // zero-copy and upsamplingDMA have the same CMX range of output buffer
     EXPECT_EQ(scheduledOps[5].beginOutputResource(0), scheduledOps[6].beginOutputResource(0));
     EXPECT_EQ(scheduledOps[5].endOutputResource(0), scheduledOps[6].endOutputResource(0));
+}
+
+TEST_F(MLIR_FeasibleMemorySchedulerSpilling, OptimizeDataOpsSpillsForReRead) {
+    constexpr llvm::StringLiteral inputIR = R"(
+        #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+        !Type_DDR = memref<1x32x32x32xf16, #NCHW, @DDR>
+        !Type_CMX = memref<1x32x32x32xf16, #NCHW, [@CMX_NN, 0]>
+
+        module @test attributes {config.arch = #config.arch_kind<NPU50XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+            config.ExecutorResource 2 of @DMA_NN
+            config.Resources 3 of @NCE at 2.100000e+03 MHz {
+                config.MemoryResource 1326182 bytes of @CMX_NN_FragmentationAware
+                config.MemoryResource 1473536 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
+                config.ExecutorResource 2 of @SHAVE_ACT
+                config.ExecutorResource 1 of @DPU
+            }
+            config.Resources 1 of @global {
+                config.ExecutorResource 1 of @M2I
+                config.ExecutorResource 2 of @DMA_NN
+                config.MemoryResource 67108864000 bytes of @DDR {config.bandwidth = 64 : i64, config.derateFactor = 6.000000e-01 : f64}
+            }
+            func.func @main(%arg0: !Type_DDR, %arg1: !Type_DDR) -> !Type_CMX {
+
+                %buf_cmx_1 = memref.alloc() : !Type_CMX
+                %buf_cmx_2 = memref.alloc() : !Type_CMX
+
+                %t0, %r0 = async.execute -> !async.value<!Type_CMX> attributes {VPUIP.executor = @DMA_NN, VPUIP.num_units = 1 : i64} {
+                    %1 = VPUIP.Copy inputs(%arg0 : !Type_DDR) outputs(%buf_cmx_1 : !Type_CMX) -> !Type_CMX
+                    async.yield %1 : !Type_CMX
+                }
+
+                %t1, %r1 = async.execute -> !async.value<!Type_CMX> attributes {VPUIP.executor = @DMA_NN, VPUIP.num_units = 1 : i64} {
+                    %1 = VPUIP.Copy inputs(%arg1 : !Type_DDR) outputs(%buf_cmx_2 : !Type_CMX) -> !Type_CMX
+                    async.yield %1 : !Type_CMX
+                }
+
+                %t2, %r2 = async.execute [%t0, %t1] (%r0 as %arg2: !async.value<!Type_CMX>, %r1 as %arg3: !async.value<!Type_CMX>)
+                        -> !async.value<!Type_CMX> attributes {VPUIP.executor = @DPU, VPUIP.num_units = 1 : i64} {
+                    %1 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 21125 : i64} <{is_inplace = true, task_type = #VPUIP.nce_task_type<ELTWISE>}>
+                    input(%arg2 : !Type_CMX) weights(%arg3 : !Type_CMX) parent_input(%arg2 : !Type_CMX) parent_output(%buf_cmx_1 : !Type_CMX) outputs(%buf_cmx_1 : !Type_CMX) -> !Type_CMX  variants : {
+                            DPUTask {cluster_id = 0 : i64, mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, outEnd = [31, 31, 31], outStart = [0, 0, 0], pad = #VPU.Padding<bottom = 0 : i64, left = 0 : i64, right = 0 : i64, top = 0 : i64>}
+                        } PPE : {
+                            PPETask {ppe = #VPU.PPEStub<>}
+                        }
+                    async.yield %1: !Type_CMX
+                }
+
+                %r = async.await %r2 : !async.value<!Type_CMX>
+                return %r : !Type_CMX
+            }
+        }
+    )";
+
+    const auto arch = config::ArchKind::NPU50XX;
+    VPU::initializeSingletons(registry, VPU::DeviceVersion{std::nullopt, arch});
+
+    mlir::MLIRContext ctx(registry);
+    ctx.loadDialect<vpux::VPU::VPUDialect>();
+
+    auto module = mlir::parseSourceString<mlir::ModuleOp>((inputIR).str(), &ctx);
+    ASSERT_TRUE(module.get() != nullptr);
+    auto func = module.get().lookupSymbol<mlir::func::FuncOp>("main");
+    ASSERT_TRUE(func != nullptr);
+
+    // Prepare variables
+    const auto memKind = VPU::MemoryKind::CMX_NN;
+    const auto secondLvlMemKind = VPU::MemoryKind::DDR;
+    auto aliasesInfo = AliasesInfoMemType<VPU::MemoryKind::CMX_NN>{func};
+    AsyncDepsInfo depsInfo{func};
+    auto liveRange = MemLiveRangeInfoMemType<VPU::MemoryKind::CMX_NN>(func, aliasesInfo);
+    auto log = vpux::Logger::global().nest("feasible-memory-scheduler-spilling");
+    uint64_t alignment = vpux::DEFAULT_CMX_ALIGNMENT;
+    auto memKindAttr = mlir::SymbolRefAttr::get(&ctx, stringifyEnum(memKind));
+    auto available = config::getAvailableMemory(*module, memKindAttr);
+    const auto maxSize = available.size();
+    auto reservedMemVec = config::getReservedMemOffsetAndSizeVec(*module, memKindAttr);
+    LinearScan<mlir::Value, LinearScanHandler> scan(maxSize.count(), reservedMemVec, alignment);
+    auto vpuDev = VPU::getVPUDeviceType(module->getOperation());
+    auto costModel = VPU::CostModelConfig::createCostModel(&ctx);
+    auto tileOp = config::getTileExecutor(*module);
+    ASSERT_TRUE(tileOp != nullptr);
+    auto tileCount = tileOp.getCount();
+    auto dmaPorts = config::getAvailableExecutor(*module, config::ExecutorKind::DMA_NN);
+    ASSERT_TRUE(dmaPorts != nullptr);
+    auto dmaCount = dmaPorts.getCount();
+
+    // init schedule
+    FeasibleMemoryScheduler initSchedule(memKind, secondLvlMemKind, liveRange, depsInfo, log, scan, arch, vpuDev,
+                                         costModel, tileCount, dmaCount, /*enableScheduleStatistics*/ false,
+                                         /*optimizeFragmentation*/ true,
+                                         /*activelySpillForPrefetching*/ false);
+    auto scheduledOps = initSchedule.generateSchedule();
+    // The initial scheduled ops
+    // op = 0   cycles = 1 -> 2         inputs = <none>         outputs = [0 65536] size = 65536
+    // op = 1   cycles = 1 -> 2         inputs = <none>         outputs = [65536 131072] size = 65536
+    // op = 2   cycles = 2 -> 3         inputs = [0 65536] size = 65536, [65536 131072] size = 65536
+
+    // Insert dummy spill ops to simulate re-read scenario
+    // op = 0   cycles = 1 -> 2         inputs = <none>         outputs = [0 65536] size = 65536
+    // op = 1   cycles = 1 -> 2         inputs = <none>         outputs = [65536 131072] size = 65536
+    // op = 2   cycles = 2 -> 3         inputs = [0 65536] size = 65536, [65536 131072] size = 65536
+    // op = 1   cycles = 3 -> 4         inputs = [0 65536] size = 65536, outputs = <none>
+    // op = 1   cycles = 4 -> 5         inputs = <none>         outputs = [0 65536] size = 65536
+    scheduledOps.emplace_back(1, FeasibleMemoryScheduler::EOpType::IMPLICIT_SPILL_WRITE_OP, 3, 1342464, true);
+    scheduledOps.emplace_back(1, FeasibleMemoryScheduler::EOpType::IMPLICIT_SPILL_READ_OP, 4, 1342464, true);
+    EXPECT_EQ(scheduledOps.size(), 5);
+    scheduledOps[4].outputResourceInfo_ = scheduledOps[0].outputResourceInfo_;
+
+    FeasibleMemorySchedulerSpilling spilling(memKind, secondLvlMemKind, depsInfo, aliasesInfo, log, scan);
+    spilling.optimizeDataOpsSpills(scheduledOps);
+
+    // spill_write should be removed
+    EXPECT_EQ(scheduledOps.size(), 4);
+    EXPECT_EQ(scheduledOps[0].opType_, FeasibleMemoryScheduler::EOpType::ORIGINAL_OP);             // copy op 1
+    EXPECT_EQ(scheduledOps[1].opType_, FeasibleMemoryScheduler::EOpType::ORIGINAL_OP);             // copy op 2
+    EXPECT_EQ(scheduledOps[2].opType_, FeasibleMemoryScheduler::EOpType::ORIGINAL_OP);             // nce task
+    EXPECT_EQ(scheduledOps[3].opType_, FeasibleMemoryScheduler::EOpType::IMPLICIT_SPILL_READ_OP);  // reread copy
+
+    spilling.insertSpillDmaOps(scheduledOps);
+    // Count the number of VPUIP.Copy ops after inserting spill DMAs
+    // Should have: 2 original copies + 1 reread copy = 3 total
+    size_t numOfDMA = 0;
+    func->walk([&](VPUIP::CopyOp /*copyOp*/) {
+        numOfDMA++;
+    });
+    EXPECT_EQ(numOfDMA, 3);
+}
+
+TEST_F(MLIR_FeasibleMemorySchedulerSpilling, RemoveRedundantSpillWrite) {
+    mlir::MLIRContext ctx(registry);
+
+    // Create a simple IR with 2 CopyOps and 1 NCEOp
+    constexpr llvm::StringLiteral inputIR = R"(
+        #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+        !Type_DDR = memref<1x32x32x32xf16, #NCHW, @DDR>
+        !Type_CMX = memref<1x32x32x32xf16, #NCHW, [@CMX_NN, 0]>
+
+        module @test {
+            func.func @main(%arg0: !Type_DDR, %arg1: !Type_DDR) -> !Type_CMX {
+
+                %buf_cmx_1 = memref.alloc() : !Type_CMX
+                %buf_cmx_2 = memref.alloc() : !Type_CMX
+                %buf_cmx_3 = memref.alloc() : !Type_CMX
+
+                %t0, %r0 = async.execute -> !async.value<!Type_CMX> attributes {VPUIP.executor = @DMA_NN, VPUIP.num_units = 1 : i64} {
+                    %1 = VPUIP.Copy inputs(%arg0 : !Type_DDR) outputs(%buf_cmx_1 : !Type_CMX) -> !Type_CMX
+                    async.yield %1 : !Type_CMX
+                }
+
+                %t1, %r1 = async.execute -> !async.value<!Type_CMX> attributes {VPUIP.executor = @DMA_NN, VPUIP.num_units = 1 : i64} {
+                    %1 = VPUIP.Copy inputs(%arg1 : !Type_DDR) outputs(%buf_cmx_2 : !Type_CMX) -> !Type_CMX
+                    async.yield %1 : !Type_CMX
+                }
+
+                %t2, %r2 = async.execute [%t0, %t1] (%r0 as %arg2: !async.value<!Type_CMX>, %r1 as %arg3: !async.value<!Type_CMX>) -> !async.value<!Type_CMX> attributes {VPUIP.executor = @DPU, VPUIP.num_units = 1 : i64} {
+                    %1 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 21125 : i64} <{task_type = #VPUIP.nce_task_type<ELTWISE>}> input(%arg2 : !Type_CMX) weights(%arg3 : !Type_CMX) parent_input(%arg2 : !Type_CMX) parent_output(%buf_cmx_3 : !Type_CMX) outputs(%buf_cmx_3 : !Type_CMX) -> !Type_CMX  variants : {
+                            DPUTask {cluster_id = 0 : i64, mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, outEnd = [31, 31, 31], outStart = [0, 0, 0], pad = #VPU.Padding<bottom = 0 : i64, left = 0 : i64, right = 0 : i64, top = 0 : i64>}
+                        } PPE : {
+                            PPETask {ppe = #VPU.PPEStub<>}
+                        }
+                    async.yield %1: !Type_CMX
+                }
+
+                %r = async.await %r2 : !async.value<!Type_CMX>
+                return %r : !Type_CMX
+            }
+        }
+    )";
+
+    auto module = mlir::parseSourceString<mlir::ModuleOp>(inputIR, &ctx);
+    ASSERT_TRUE(module.get() != nullptr);
+
+    auto func = module.get().lookupSymbol<mlir::func::FuncOp>("main");
+    ASSERT_TRUE(func != nullptr);
+
+    auto log = vpux::Logger::global();
+
+    // Run helper utilities used by scheduler which allow it to gather data
+    // represented in the IR
+    AliasesInfo aliasesInfo{func};
+    AsyncDepsInfo depsInfo{func};
+
+    // Assume the following buffer configuration of an eltwise
+    // input1: [     0 -  65536]
+    // input2: [ 65536 - 131072]
+    // output: [131072 - 196608]
+    const size_t bufSize = 65536;
+    const size_t buf1Offset = 0;
+    const size_t buf2Offset = 65536;
+    const size_t buf3Offset = 131072;
+
+    VPUIP::NCEClusterTaskOp nceOp = nullptr;
+    func.walk([&](mlir::Operation* op) {
+        if (mlir::isa<VPUIP::NCEClusterTaskOp>(op)) {
+            nceOp = mlir::cast<VPUIP::NCEClusterTaskOp>(op);
+        }
+    });
+    ASSERT_TRUE(nceOp != nullptr);
+
+    auto buf1 = aliasesInfo.getRoot(nceOp.getInput());
+    auto buf2 = aliasesInfo.getRoot(nceOp.getWeights());
+    auto buf3 = aliasesInfo.getRoot(nceOp.getOutputBuff());
+
+    // Required components needed to construct FeasibleMemorySchedulerSpilling object
+    const auto memKind = VPU::MemoryKind::CMX_NN;
+    const auto secondLvlMemKind = VPU::MemoryKind::DDR;
+    uint64_t alignment = vpux::DEFAULT_CMX_ALIGNMENT;
+    LinearScan<mlir::Value, LinearScanHandler> scan(1024 * 1024, {}, alignment);
+
+    FeasibleMemorySchedulerSpilling spilling(memKind, secondLvlMemKind, depsInfo, aliasesInfo, log, scan);
+
+    // Initialize example scheduled ops structure that could have been produced during scheduling
+    // This is a simple IR but by manually preparing it it is possible to create a scenario where there
+    // is a case for performing redundant spill-write removal optimization
+    // Below scheduledOps structure has following operations
+    //  opId  info
+    //  0     copyOp
+    //  1     copyOp
+    //  2     spill write
+    //  3     eltwise
+    // spill write can be optimized
+
+    FeasibleMemoryScheduler::ScheduledOpInfoVec scheduledOps = {
+            {0,                                              // opId
+             FeasibleMemoryScheduler::EOpType::ORIGINAL_OP,  // opType
+             0,                                              // cycleBegin
+             1,                                              // cycleEnd
+             {},                                             // inputResources
+             {{buf1Offset, buf1Offset + bufSize, buf1}}},    // outputResources
+            {1, FeasibleMemoryScheduler::EOpType::ORIGINAL_OP, 1, 2, {}, {{buf2Offset, buf2Offset + bufSize, buf2}}},
+            {1,
+             FeasibleMemoryScheduler::EOpType::IMPLICIT_SPILL_WRITE_OP,
+             3,
+             4,
+             {{buf2Offset, buf2Offset + bufSize, buf2}},
+             {}},
+            {2,
+             FeasibleMemoryScheduler::EOpType::ORIGINAL_OP,
+             2,
+             3,
+             {{buf1Offset, buf1Offset + bufSize, buf1}, {buf2Offset, buf2Offset + bufSize, buf2}},
+             {{buf3Offset, buf3Offset + bufSize, buf3}}}};
+
+    // Perform redundant spill-write optimization. After it scheduledOps size should be 3 as
+    // spill-write should no longer be present
+    spilling.removeRedundantSpillWrites(scheduledOps);
+
+    EXPECT_EQ(scheduledOps.size(), 3);
+
+    // Verify offset for the previously redundant spill-write buffer
+    EXPECT_EQ(scan.handler().getAddress(buf2), buf2Offset);
+}
+
+// Verifies that spill write removal optimization is skipped when there are multiple SPILL_READ operations
+TEST_F(MLIR_FeasibleMemorySchedulerSpilling, SkipOptimizationForMultipleSpillReads) {
+    mlir::MLIRContext ctx(registry);
+
+    constexpr llvm::StringLiteral inputIR = R"(
+        #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+        !Type_DDR = memref<1x32x32x32xf16, #NCHW, @DDR>
+        !Type_CMX = memref<1x32x32x32xf16, #NCHW, [@CMX_NN, 0]>
+
+        module @test {
+            func.func @main(%arg0: !Type_DDR, %arg1: !Type_DDR) -> !Type_CMX {
+                %buf_cmx_1 = memref.alloc() : !Type_CMX
+                %buf_cmx_2 = memref.alloc() : !Type_CMX
+
+                %t0, %r0 = async.execute -> !async.value<!Type_CMX> attributes {VPUIP.executor = @DMA_NN} {
+                    %1 = VPUIP.Copy inputs(%arg0 : !Type_DDR) outputs(%buf_cmx_1 : !Type_CMX) -> !Type_CMX
+                    async.yield %1 : !Type_CMX
+                }
+
+                %t1, %r1 = async.execute -> !async.value<!Type_CMX> attributes {VPUIP.executor = @DMA_NN} {
+                    %1 = VPUIP.Copy inputs(%arg1 : !Type_DDR) outputs(%buf_cmx_2 : !Type_CMX) -> !Type_CMX
+                    async.yield %1 : !Type_CMX
+                }
+
+                %t2, %r2 = async.execute [%t0, %t1] (%r0 as %arg2: !async.value<!Type_CMX>, %r1 as %arg3: !async.value<!Type_CMX>)
+                        -> !async.value<!Type_CMX> attributes {VPUIP.executor = @DPU} {
+                    %1 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 21125 : i64}
+                        <{is_inplace = true, task_type = #VPUIP.nce_task_type<ELTWISE>}>
+                        input(%arg2 : !Type_CMX) weights(%arg3 : !Type_CMX)
+                        parent_input(%arg2 : !Type_CMX) parent_output(%buf_cmx_1 : !Type_CMX)
+                        outputs(%buf_cmx_1 : !Type_CMX) -> !Type_CMX variants : {
+                            DPUTask {cluster_id = 0 : i64, mpe_mode = #VPU.mpe_mode<CUBOID_8x16>,
+                                    outEnd = [31, 31, 31], outStart = [0, 0, 0],
+                                    pad = #VPU.Padding<bottom = 0 : i64, left = 0 : i64, right = 0 : i64, top = 0 : i64>}
+                        } PPE : {
+                            PPETask {ppe = #VPU.PPEStub<>}
+                        }
+                    async.yield %1: !Type_CMX
+                }
+
+                %r = async.await %r2 : !async.value<!Type_CMX>
+                return %r : !Type_CMX
+            }
+        }
+    )";
+
+    auto module = mlir::parseSourceString<mlir::ModuleOp>(inputIR, &ctx);
+    ASSERT_TRUE(module.get() != nullptr);
+
+    auto func = module.get().lookupSymbol<mlir::func::FuncOp>("main");
+    ASSERT_TRUE(func != nullptr);
+
+    auto log = vpux::Logger::global();
+    AliasesInfo aliasesInfo{func};
+    AsyncDepsInfo depsInfo{func};
+
+    const size_t bufSize = 65536;
+    const size_t buf1SpilledOffset = 0;
+    const size_t buf2Offset = 65536;
+    const int64_t newOutputOffset = 131072;
+
+    VPUIP::NCEClusterTaskOp nceOp = nullptr;
+    func.walk([&](mlir::Operation* op) {
+        if (mlir::isa<VPUIP::NCEClusterTaskOp>(op)) {
+            nceOp = mlir::cast<VPUIP::NCEClusterTaskOp>(op);
+        }
+    });
+    ASSERT_TRUE(nceOp != nullptr);
+
+    auto buf1Spilled = aliasesInfo.getRoot(nceOp.getInput());
+    auto buf2 = aliasesInfo.getRoot(nceOp.getWeights());
+
+    const auto memKind = VPU::MemoryKind::CMX_NN;
+    const auto secondLvlMemKind = VPU::MemoryKind::DDR;
+    uint64_t alignment = vpux::DEFAULT_CMX_ALIGNMENT;
+    LinearScan<mlir::Value, LinearScanHandler> scan(1024 * 1024, {}, alignment);
+
+    FeasibleMemorySchedulerSpilling spilling(memKind, secondLvlMemKind, depsInfo, aliasesInfo, log, scan);
+
+    // Scenario: One SPILL_WRITE followed by MULTIPLE SPILL_READs
+    FeasibleMemoryScheduler::ScheduledOpInfoVec scheduledOps = {
+            {0,
+             FeasibleMemoryScheduler::EOpType::ORIGINAL_OP,
+             0,
+             1,
+             {},
+             {{buf1SpilledOffset, buf1SpilledOffset + bufSize, buf1Spilled}}},
+            {1, FeasibleMemoryScheduler::EOpType::ORIGINAL_OP, 1, 2, {}, {{buf2Offset, buf2Offset + bufSize, buf2}}},
+            {2,
+             FeasibleMemoryScheduler::EOpType::ORIGINAL_OP,
+             2,
+             3,
+             {{buf1SpilledOffset, buf1SpilledOffset + bufSize, buf1Spilled}, {buf2Offset, buf2Offset + bufSize, buf2}},
+             {{buf1SpilledOffset, buf1SpilledOffset + bufSize, buf1Spilled}}},
+            // One SPILL_WRITE
+            {2,
+             FeasibleMemoryScheduler::EOpType::IMPLICIT_SPILL_WRITE_OP,
+             3,
+             4,
+             {{buf1SpilledOffset, buf1SpilledOffset + bufSize, buf1Spilled}},
+             {}},
+            // First SPILL_READ
+            {2,
+             FeasibleMemoryScheduler::EOpType::IMPLICIT_SPILL_READ_OP,
+             4,
+             5,
+             {},
+             {{newOutputOffset, newOutputOffset + bufSize, buf1Spilled}}},
+            // Second SPILL_READ - this causes the optimization to be skipped
+            {2,
+             FeasibleMemoryScheduler::EOpType::IMPLICIT_SPILL_READ_OP,
+             5,
+             6,
+             {},
+             {{newOutputOffset + bufSize, newOutputOffset + 2 * bufSize, buf1Spilled}}}};
+
+    size_t initialSize = scheduledOps.size();
+
+    // Perform spilling relocation optimization
+    spilling.removeComputeOpRelocationSpills(scheduledOps);
+
+    // With multiple SPILL_READs, the optimization should be SKIPPED
+    // Therefore, all operations should still be present
+    EXPECT_EQ(scheduledOps.size(), initialSize);
+
+    // Verify operations are still present
+    EXPECT_EQ(scheduledOps[3].opType_, FeasibleMemoryScheduler::EOpType::IMPLICIT_SPILL_WRITE_OP);
+    EXPECT_EQ(scheduledOps[4].opType_, FeasibleMemoryScheduler::EOpType::IMPLICIT_SPILL_READ_OP);
+    EXPECT_EQ(scheduledOps[5].opType_, FeasibleMemoryScheduler::EOpType::IMPLICIT_SPILL_READ_OP);
+
+    // Verify inPlace attribute is still present (optimization was skipped)
+    EXPECT_TRUE(nceOp.getIsInplace().has_value());
 }

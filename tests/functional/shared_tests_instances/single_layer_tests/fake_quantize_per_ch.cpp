@@ -1,5 +1,7 @@
+//
 // Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
+//
 
 #include "vpu_ov2_layer_test.hpp"
 
@@ -56,6 +58,7 @@ class FakeQuantPerChLayerTestConfig_NPU3720 : public FakeQuantPerChLayerTest_NPU
 
 class FakeQuantPerChLayerTest_NPU4000 : public FakeQuantPerChLayerTestConfig_NPU3720 {};
 class FakeQuantPerChLayerTest_NPU5010 : public FakeQuantPerChLayerTestConfig_NPU3720 {};
+class FakeQuantPerChLayerTest_NPU5020 : public FakeQuantPerChLayerTestConfig_NPU3720 {};
 
 typedef std::tuple<ov::Shape, std::vector<float>, std::vector<float>, std::vector<float>, std::vector<float>>
         FakeQuantPerChCustomLimitsTestParams;
@@ -117,6 +120,12 @@ TEST_P(FakeQuantPerChLayerTest_NPU5010, SW) {
     setReferenceSoftwareMode();
     run(Platform::NPU5010);
 }
+TEST_P(FakeQuantPerChLayerTest_NPU5020, SW) {
+    rel_threshold = 0.001;
+    abs_threshold = 0.2;
+    setReferenceSoftwareMode();
+    run(Platform::NPU5020);
+}
 
 TEST_P(FakeQuantPerChCustomLimitsLayerTest_NPU3720, SW) {
     rel_threshold = 0.1;
@@ -149,6 +158,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_FakeQuantPerCh, FakeQuantPerChLayerTestConfig_NPU
 
 INSTANTIATE_TEST_SUITE_P(smoke_FakeQuantPerCh, FakeQuantPerChLayerTest_NPU4000, ::testing::ValuesIn(shapesSW));
 INSTANTIATE_TEST_SUITE_P(smoke_FakeQuantPerCh, FakeQuantPerChLayerTest_NPU5010, ::testing::ValuesIn(shapesSW));
+INSTANTIATE_TEST_SUITE_P(smoke_FakeQuantPerCh, FakeQuantPerChLayerTest_NPU5020, ::testing::ValuesIn(shapesSW));
 
 INSTANTIATE_TEST_SUITE_P(smoke_tiling_FakeQuantPerCh, FakeQuantPerChLayerTestConfig_NPU3720,
                          ::testing::ValuesIn(shapesTiling));

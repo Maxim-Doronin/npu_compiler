@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,6 +7,7 @@
 // REQUIRES: arch-NPU37XX
 
 // CHECK-LABEL: @TimestampToDMA
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1xui64>)
 func.func @TimestampToDMA(%arg0: memref<1xui64>) -> memref<1xui64> {
     %0 = VPUIP.StaticAlloc<0> -> memref<1xui64, @CMX_NN>
     %1 = VPUIP.Timestamp(%0 : memref<1xui64, @CMX_NN>) -> memref<1xui64, @CMX_NN>
@@ -21,6 +22,6 @@ func.func @TimestampToDMA(%arg0: memref<1xui64>) -> memref<1xui64> {
     // CHECK-SAME:           outputs([[VAR0]] : memref<1xui64, @CMX_NN>)
     // CHECK:       [[VAR3:%.+]] = VPUIP.NNDMA
     // CHECK:           inputs([[VAR2]] : memref<1xui64, @CMX_NN>)
-    // CHECK:           outputs(%arg0 : memref<1xui64>)
+    // CHECK:           outputs([[ARG_0]] : memref<1xui64>)
     // CHECK:       return [[VAR3]] : memref<1xui64>
 }

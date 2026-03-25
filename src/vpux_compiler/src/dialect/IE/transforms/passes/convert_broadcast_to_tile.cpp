@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -105,7 +105,7 @@ mlir::LogicalResult ConvertBroadcastToTile<ConcreteOp>::matchAndRewrite(Concrete
                 Const::createConst(rewriter, takeOpLoc(origOp, "n_repeats"), dataType, ArrayRef(repeats));
 
         auto reshapeInputOp = rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_in"), origOp.getInput(),
-                                                             nullptr, false, adjustedInputShapeAttr);
+                                                             adjustedInputShapeAttr);
 
         rewriter.replaceOpWithNewOp<IE::TileOp>(origOp, origOp.getType(), reshapeInputOp.getOutput(), repeatsConstOp,
                                                 nullptr /*repeats_value*/);
@@ -137,7 +137,7 @@ mlir::LogicalResult ConvertBroadcastToTile<ConcreteOp>::matchAndRewrite(Concrete
                     outputBoundedShapeAttr);
         } else {
             auto reshapeInputOp = rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_in"), origOp.getInput(),
-                                                                 nullptr, false, adjustedInputShapeAttr);
+                                                                 adjustedInputShapeAttr);
             rewriter.replaceOpWithNewOp<IE::DynamicTileOp>(
                     origOp, origOp.getType(), reshapeInputOp.getOutput(), origOp.getTargetShape(), nullptr /*repeats*/,
                     nullptr /*repeats_value*/, outputShapeAttr, outputBoundedShapeAttr);

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -329,7 +329,7 @@ void VPUIP::arch37xx::ClusterNCERewriter::getInputBuffers(
     auto parentInput = *nceTask.getInputs().begin();
     auto parentInputType = mlir::cast<vpux::VPUIP::DistributedBufferType>(parentInput.getType());
 
-    mlir::UnitAttr isSegmented = isSegmentedNCETask(parentInputType);
+    auto isSegmented = isSegmentedNCETask(parentInputType);
 
     parentInputBuffs = VPU::isSegmentedOverC(parentInputType.getDistribution())
                                ? inputBuffs
@@ -403,25 +403,25 @@ void VPUIP::arch37xx::ClusterNCERewriter::getOutputBuffers(SmallVector<mlir::Val
     }
 }
 
-mlir::UnitAttr VPUIP::arch37xx::ClusterNCERewriter::isSegmentedNCETask(VPUIP::DistributedBufferType inputType) const {
+bool VPUIP::arch37xx::ClusterNCERewriter::isSegmentedNCETask(VPUIP::DistributedBufferType inputType) const {
     // Only for explicit SEGMENTED mode, not in combination with
     // DUPLICATED or MULTICASTED
     if (inputType.getDistribution().getMode().getValue() != VPU::DistributionMode::SEGMENTED) {
-        return nullptr;
+        return false;
     }
 
     // Segmentation not present on H axis
     const auto numTiles = parseIntArrayAttr<int64_t>(inputType.getDistribution().getNumTiles());
     if (numTiles[Dims4D::Act::H.ind()] <= 1) {
-        return nullptr;
+        return false;
     }
 
     // Segmentation not supported with non NHWC input such as CM Conv
     if (inputType.getDimsOrder() != DimsOrder::NHWC) {
-        return nullptr;
+        return false;
     }
 
-    return mlir::UnitAttr::get(_ctx);
+    return true;
 }
 
 namespace vpux::VPUIP::arch37xx {

@@ -1,7 +1,8 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
+
 #include <llvm/ADT/SmallVector.h>
 #include <mlir/Dialect/Arith/Utils/Utils.h>
 #include <mlir/Support/LLVM.h>

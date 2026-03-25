@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -47,18 +47,17 @@ mlir::LogicalResult mergeNCAndRewrite(mlir::PatternRewriter& rewriter, mlir::MLI
 
         auto broadcastOp = IE::createBroadcast(rewriter, appendLoc(loc, "broadcast"), origValue, broadcastShape);
 
-        return rewriter.createOrFold<IE::ReshapeOp>(loc, broadcastOp, nullptr, false,
-                                                    getIntArrayAttr(ctx, ShapeRef(reshapeShape)));
+        return rewriter.createOrFold<IE::ReshapeOp>(loc, broadcastOp, getIntArrayAttr(ctx, ShapeRef(reshapeShape)));
     };
 
     auto activationReshapeShape = Shape({1, origOutShape[N] * origOutShape[C], origOutShape[H], origOutShape[W]});
-    auto activationReshapeOp = rewriter.createOrFold<IE::ReshapeOp>(loc, activation, nullptr, false,
-                                                                    getIntArrayAttr(ctx, activationReshapeShape));
+    auto activationReshapeOp =
+            rewriter.createOrFold<IE::ReshapeOp>(loc, activation, getIntArrayAttr(ctx, activationReshapeShape));
     auto scaleShiftOp =
             rewriter.create<IE::ScaleShiftOp>(loc, activationReshapeOp, getNewValue(origScaleShiftOp.getWeights()),
                                               getNewValue(origScaleShiftOp.getBiases()));
 
-    rewriter.replaceOpWithNewOp<IE::ReshapeOp>(origScaleShiftOp, scaleShiftOp.getOutput(), nullptr, false,
+    rewriter.replaceOpWithNewOp<IE::ReshapeOp>(origScaleShiftOp, scaleShiftOp.getOutput(),
                                                getIntArrayAttr(ctx, origOutShape));
 
     return mlir::success();

@@ -1,13 +1,15 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/ELF/utils/utils.hpp"
 #include "vpux/compiler/act_kernels/shave_binary_resources.h"
 #include "vpux/compiler/dialect/ELF/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 
 #include <vpux_elf/accessor.hpp>
 #include <vpux_elf/reader.hpp>
@@ -62,9 +64,7 @@ int64_t vpux::ELF::getOffsetOfSymRef(ELF::SymbolReferenceMap& symRefMap, mlir::S
 }
 
 vpux::ELF::MainOp vpux::ELF::getElfMainOp(mlir::ModuleOp moduleOp) {
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp netFunc;
-    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
+    auto netFunc = net::getMainFunc(moduleOp);
     return getElfMainOp(netFunc);
 }
 
@@ -176,6 +176,8 @@ elf::platform::ArchKind mapPlatformToElfArchKind(config::Platform platform) {
     case config::Platform::NPU5000:
     case config::Platform::NPU5010:
         return elf::platform::ArchKind::VPUX501X;
+    case config::Platform::NPU5020:
+        return elf::platform::ArchKind::VPUX502X;
     }
     VPUX_THROW("Invalid platform");
 }

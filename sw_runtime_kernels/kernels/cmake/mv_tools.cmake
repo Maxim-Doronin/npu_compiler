@@ -1,6 +1,6 @@
 #
-# Copyright (C) 2023 Intel Corporation.
-# SPDX-License-Identifier: Apache 2.0
+# Copyright (C) 2023-2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
 #
 
 set(NPU_MV_TOOLS_DIR "${VPUX_SOURCE_DIR}/bin/MoviTools")

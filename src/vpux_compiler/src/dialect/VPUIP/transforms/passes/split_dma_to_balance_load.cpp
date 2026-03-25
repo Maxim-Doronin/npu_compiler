@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/dialect/VPU/transforms/factories/gather_dma_constants.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
@@ -130,36 +131,49 @@ BuffersPair getConstantParts(mlir::Value originalConstant, vpux::Dim tileDim, ml
     return {firstCst, secondCst};
 }
 
-void replaceDmaWithTwoParts(VPURT::TaskOp taskOp, VPUIP::NNDMAOp dmaOp, BuffersPair inputs, BuffersPair outputs,
-                            int64_t numDmaPorts, mlir::OpBuilder builder, vpux::Logger log) {
+void createDMATask(VPURT::TaskOp originalTaskOp, VPUIP::NNDMAOp originalDmaOp, mlir::Value input, mlir::Value output,
+                   int64_t port, StringRef locSuffix, mlir::OpBuilder builder) {
+    auto newLoc = takeOpLoc(originalTaskOp, locSuffix);
+    auto newDmaOp = VPURT::wrapIntoTaskOp<VPUIP::NNDMAOp>(
+            builder, originalTaskOp.getWaitBarriers(), originalTaskOp.getUpdateBarriers(), newLoc, input, output, port,
+            originalDmaOp.getIsOutOfOrder(), originalDmaOp.getIsCritical(), originalDmaOp.getSpillIdAttr(),
+            /*compress_candidate=*/false);
+
+    if (originalDmaOp.getProfilingBufferMgmt()) {
+        newDmaOp.setProfilingBufferMgmt(true);
+    }
+}
+
+void createDMATask(VPURT::TaskOp originalTaskOp, VPUIP::GatherDMAOp originalGatherDmaOp, mlir::Value indices,
+                   mlir::Value output, int64_t port, StringRef locSuffix, mlir::OpBuilder builder) {
+    auto newLoc = takeOpLoc(originalTaskOp, locSuffix);
+    VPURT::wrapIntoTaskOp<VPUIP::GatherDMAOp>(
+            builder, originalTaskOp.getWaitBarriers(), originalTaskOp.getUpdateBarriers(), newLoc,
+            originalGatherDmaOp.getInput(), indices, output, originalGatherDmaOp.getElementSize(),
+            originalGatherDmaOp.getPadding(), port);
+}
+
+template <typename DmaOpType>
+void replaceDmaWithTwoParts(VPURT::TaskOp taskOp, DmaOpType dmaOp, BuffersPair inputs, BuffersPair outputs,
+                            int64_t numDmaPorts, ArrayRef<mlir::Value> removableInputs, mlir::OpBuilder builder,
+                            vpux::Logger log) {
     builder.setInsertionPoint(taskOp);
-    const auto insertNewDma = [&](mlir::Value input, mlir::Value output, int64_t newDmaPort, StringRef locSuffix) {
-        const auto newLoc = takeOpLoc(taskOp, locSuffix);
-        auto newDmaOp = VPURT::wrapIntoTaskOp<VPUIP::NNDMAOp>(
-                builder, taskOp.getWaitBarriers(), taskOp.getUpdateBarriers(), newLoc, input, output, newDmaPort,
-                dmaOp.getIsOutOfOrder(), dmaOp.getIsCritical(), dmaOp.getSpillIdAttr(),
-                /*compress_candidate=*/false);  // split gives more improvement than compression
+    const auto firstPartPort = dmaOp.getPort().value();
+    const auto secondPartPort = (firstPartPort + 1) % numDmaPorts;
 
-        if (dmaOp.getProfilingBufferMgmt()) {
-            newDmaOp.setProfilingBufferMgmt(true);
-        }
-    };
+    createDMATask(taskOp, dmaOp, inputs.first, outputs.first, firstPartPort, "first_part", builder);
+    createDMATask(taskOp, dmaOp, inputs.second, outputs.second, secondPartPort, "second_part", builder);
 
-    int64_t firstPartPort = dmaOp.getPort().value();
-    int64_t secondPartPort = (firstPartPort + 1) % numDmaPorts;
-
-    insertNewDma(inputs.first, outputs.first, firstPartPort, "first_part");
-    insertNewDma(inputs.second, outputs.second, secondPartPort, "second_part");
-
-    SmallVector<mlir::Value> oldArgs{dmaOp.getInput(), dmaOp.getOutputBuff()};
     taskOp->erase();
-    for (mlir::Value prevArg : oldArgs) {
-        mlir::Operation* bufferOp = prevArg.getDefiningOp();
-        if (bufferOp->getUsers().empty()) {
-            bufferOp->erase();
+    for (mlir::Value input : removableInputs) {
+        if (auto* op = input.getDefiningOp()) {
+            if (op->use_empty()) {
+                op->erase();
+            }
         }
     }
-    log.trace("Replaced DMA with parts");
+
+    log.trace("Replaced DMA with two parts");
 }
 
 // Trivial constant is constant without LAST or PREFERRED_LAST transformation, so SubView transformation can be
@@ -237,42 +251,95 @@ void splitFoldedConstToBufferDma(VPURT::TaskOp taskOp, VPUIP::NNDMAOp dmaOp, Con
 
     BuffersPair inputBuffers = {firstCst, secondCst};
     auto outputBuffers = getReplacementBuffers(dmaOp.getOutputBuff(), tileDim, builder);
-    replaceDmaWithTwoParts(taskOp, dmaOp, inputBuffers, outputBuffers, numDmaPorts, builder, log);
+    SmallVector<mlir::Value> removableInputs;
+    removableInputs.push_back(dmaOp.getInput());
+    removableInputs.push_back(dmaOp.getOutputBuff());
+
+    replaceDmaWithTwoParts(taskOp, dmaOp, inputBuffers, outputBuffers, numDmaPorts, removableInputs, builder, log);
 }
 
-void splitDmaIntoParts(VPURT::TaskOp taskOp, int64_t numDmaPorts, mlir::OpBuilder builder, vpux::Logger log) {
-    auto dmaOp = mlir::dyn_cast<VPUIP::NNDMAOp>(taskOp.getInnerTaskOp());
-    const auto inputBuffType = mlir::cast<vpux::NDTypeInterface>(dmaOp.getInput().getType());
-    const auto maybeTileDim = VPUIP::getCopyDMATilingDim(dmaOp);
+template <typename DmaOpType>
+void splitDMATask(VPURT::TaskOp taskOp, DmaOpType dmaOp, int64_t numDmaPorts, mlir::Value origInput,
+                  std::function<std::optional<vpux::Dim>(DmaOpType, vpux::Logger)> getTilingDim,
+                  std::function<BuffersPair(mlir::Value, vpux::Dim, mlir::OpBuilder)> getReplacementInputBuffers,
+                  std::function<bool(DmaOpType, vpux::Dim, vpux::Logger)> alignmentCheck, mlir::OpBuilder builder,
+                  vpux::Logger log) {
+    auto maybeTileDim = getTilingDim(dmaOp, log);
     if (!maybeTileDim.has_value()) {
-        log.trace("Can't find split dim for shape {0}, skip", inputBuffType.getShape());
+        log.trace("No valid tiling dimension found, skip");
         return;
     }
     const auto tileDim = maybeTileDim.value();
 
-    // Check if split would create empty parts due to sub-byte alignment constraints
-    const auto [firstPartSize, secondPartSize] = VPUIP::getSplitPartSizes(inputBuffType, tileDim);
+    const auto outBuffType = mlir::cast<vpux::NDTypeInterface>(dmaOp.getOutputBuff().getType());
+    const auto [firstPartSize, secondPartSize] = VPUIP::getSplitPartSizes(outBuffType, tileDim);
     if (firstPartSize == 0 || secondPartSize == 0) {
-        log.trace("Split would create empty part (firstPartSize={0}, secondPartSize={1}), skip", firstPartSize,
-                  secondPartSize);
+        log.trace("Split would create empty part (first={0}, second={1}), skip", firstPartSize, secondPartSize);
         return;
     }
 
-    BuffersPair inputBuffers;
-    if (auto inputCst = dmaOp.getInput().getDefiningOp<Const::DeclareOp>()) {
-        if (!isTrivialConst(inputCst)) {
-            splitFoldedConstToBufferDma(taskOp, dmaOp, inputCst, tileDim, numDmaPorts, builder, log);
-            return;
-        }
-        inputBuffers = getConstantParts(dmaOp.getInput(), tileDim, builder);
-        log.trace("Splitting Const->Buffer DMA");
-    } else {
-        inputBuffers = getReplacementBuffers(dmaOp.getInput(), tileDim, builder);
-        log.trace("Splitting Buffer->Buffer DMA");
+    if (alignmentCheck && !alignmentCheck(dmaOp, tileDim, log)) {
+        log.trace("Split would create unaligned input, skip");
+        return;
     }
 
+    // Generate input and output buffers
+    auto inputBuffers = getReplacementInputBuffers(origInput, tileDim, builder);
     auto outputBuffers = getReplacementBuffers(dmaOp.getOutputBuff(), tileDim, builder);
-    replaceDmaWithTwoParts(taskOp, dmaOp, inputBuffers, outputBuffers, numDmaPorts, builder, log);
+
+    SmallVector<mlir::Value> removableInputs = {origInput, dmaOp.getOutputBuff()};
+    replaceDmaWithTwoParts(taskOp, dmaOp, inputBuffers, outputBuffers, numDmaPorts, removableInputs, builder, log);
+}
+
+std::optional<vpux::Dim> getNNDMATilingDim(VPUIP::NNDMAOp dmaOp, vpux::Logger /*log*/) {
+    return VPUIP::getCopyDMATilingDim(dmaOp);
+}
+
+std::optional<vpux::Dim> getGatherDMATilingDim(VPUIP::GatherDMAOp gatherOp, vpux::Logger /*log*/) {
+    const auto indicesType = mlir::cast<vpux::NDTypeInterface>(gatherOp.getIndices().getType());
+    return vpux::getHighestNonTrivialDim(indicesType.getShape(), indicesType.getDimsOrder());
+}
+
+bool checkGatherIndicesAlignment(VPUIP::GatherDMAOp gatherOp, vpux::Dim tileDim, vpux::Logger log) {
+    const auto indicesType = mlir::cast<vpux::NDTypeInterface>(gatherOp.getIndices().getType());
+    const int64_t indicesTileDimSize = indicesType.getShape()[tileDim];
+    if (indicesTileDimSize % vpux::VPU::INDICES_ALIGNMENT != 0) {
+        log.trace("Split would create unaligned indices (size={0}, alignment={1}), skip", indicesTileDimSize,
+                  vpux::VPU::INDICES_ALIGNMENT);
+        return false;
+    }
+    return true;
+}
+
+void handleNNDMASplit(VPURT::TaskOp taskOp, VPUIP::NNDMAOp dmaOp, int64_t numDmaPorts, mlir::OpBuilder builder,
+                      vpux::Logger log) {
+    if (auto inputCst = dmaOp.getInput().getDefiningOp<Const::DeclareOp>()) {
+        if (!isTrivialConst(inputCst)) {
+            const auto maybeTileDim = VPUIP::getCopyDMATilingDim(dmaOp);
+            if (maybeTileDim.has_value()) {
+                splitFoldedConstToBufferDma(taskOp, dmaOp, inputCst, maybeTileDim.value(), numDmaPorts, builder, log);
+            }
+            return;
+        }
+    }
+
+    auto getReplacementInputBuffers = [&](mlir::Value input, vpux::Dim tileDim,
+                                          mlir::OpBuilder builder) -> BuffersPair {
+        if (auto cstOp = input.getDefiningOp<Const::DeclareOp>()) {
+            return getConstantParts(input, tileDim, builder);
+        } else {
+            return getReplacementBuffers(input, tileDim, builder);
+        }
+    };
+
+    splitDMATask<VPUIP::NNDMAOp>(taskOp, dmaOp, numDmaPorts, dmaOp.getInput(), getNNDMATilingDim,
+                                 getReplacementInputBuffers, nullptr, builder, log);
+}
+
+void handleGatherDMASplit(VPURT::TaskOp taskOp, VPUIP::GatherDMAOp gatherDMAOp, int64_t numDmaPorts,
+                          mlir::OpBuilder builder, vpux::Logger log) {
+    splitDMATask<VPUIP::GatherDMAOp>(taskOp, gatherDMAOp, numDmaPorts, gatherDMAOp.getIndices(), getGatherDMATilingDim,
+                                     getReplacementBuffers, checkGatherIndicesAlignment, builder, log);
 }
 
 //
@@ -291,11 +358,7 @@ private:
 
 void SplitDMAToBalanceLoad::safeRunOnFunc() {
     auto func = getOperation();
-
-    auto module = func->getParentOfType<mlir::ModuleOp>();
-
-    auto dmaOp = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN);
-    auto dmaPortCount = dmaOp.getCount();
+    auto dmaPortCount = config::getNumOfDMAPorts(func);
     if (dmaPortCount != 2) {
         return;
     }
@@ -304,24 +367,34 @@ void SplitDMAToBalanceLoad::safeRunOnFunc() {
         if (taskOp.getExecutorKind() != config::ExecutorKind::DMA_NN) {
             return;
         }
-
-        auto dmaOp = mlir::dyn_cast<VPUIP::NNDMAOp>(taskOp.getInnerTaskOp());
-        if (dmaOp == nullptr) {
-            return;
-        }
-        VPUX_THROW_UNLESS(dmaOp.getPort().has_value(), "DMA at '{0}' has no portId", dmaOp->getLoc());
-
-        if (!dmaOp.getSplitCandidate()) {
-            return;
-        }
-        _log.trace("Found split candidate at '{0}'", dmaOp->getLoc());
-        mlir::Operation* inputOp = dmaOp.getInput().getDefiningOp();
-        if (!mlir::isa<VPURT::DeclareBufferOp, Const::DeclareOp>(inputOp)) {
-            _log.warning("Can't split op because of unsupported source");
-            return;
-        }
         mlir::OpBuilder builder(taskOp.getOperation());
-        splitDmaIntoParts(taskOp, dmaPortCount, builder, _log.nest());
+
+        if (auto dmaOp = mlir::dyn_cast<VPUIP::NNDMAOp>(taskOp.getInnerTaskOp())) {
+            VPUX_THROW_UNLESS(dmaOp.getPort().has_value(), "DMA at '{0}' has no portId", dmaOp->getLoc());
+
+            if (!dmaOp.getSplitCandidate()) {
+                return;
+            }
+            _log.trace("Found split candidate at '{0}'", dmaOp->getLoc());
+            mlir::Operation* inputOp = dmaOp.getInput().getDefiningOp();
+            if (!mlir::isa<VPURT::DeclareBufferOp, Const::DeclareOp>(inputOp)) {
+                _log.warning("Can't split op because of unsupported source");
+                return;
+            }
+            handleNNDMASplit(taskOp, dmaOp, dmaPortCount, builder, _log.nest());
+            return;
+        }
+
+        if (auto gatherDMAOp = mlir::dyn_cast<VPUIP::GatherDMAOp>(taskOp.getInnerTaskOp())) {
+            VPUX_THROW_UNLESS(gatherDMAOp.getPort().has_value(), "Gather DMA at '{0}' has no portId",
+                              gatherDMAOp->getLoc());
+            if (!gatherDMAOp.getSplitCandidate()) {
+                return;
+            }
+            _log.trace("Found split candidate at '{0}'", gatherDMAOp->getLoc());
+            handleGatherDMASplit(taskOp, gatherDMAOp, dmaPortCount, builder, _log.nest());
+            return;
+        }
     });
     _log.trace("Done");
 }

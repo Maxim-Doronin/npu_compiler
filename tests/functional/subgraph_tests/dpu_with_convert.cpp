@@ -1,3 +1,4 @@
+//
 // Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -225,6 +226,30 @@ TEST_P(MaxPoolWithF16ToF32ConvertTest, NPU5010_HW) {
 TEST_P(EltwiseWithF16ToF32ConvertTest, NPU5010_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
+}
+TEST_P(ConvWithF16ToF32ConvertTest, NPU5020_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
+}
+
+TEST_P(GroupConvWithF16ToF32ConvertTest, NPU5020_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
+}
+
+TEST_P(AvgPoolWithF16ToF32ConvertTest, NPU5020_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
+}
+
+TEST_P(MaxPoolWithF16ToF32ConvertTest, NPU5020_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
+}
+
+TEST_P(EltwiseWithF16ToF32ConvertTest, NPU5020_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
 }
 
 const std::vector<ov::Shape> inputShapes = {{1, 16, 48, 32}, {1, 1024, 4, 8}, {1, 16, 128, 32}};

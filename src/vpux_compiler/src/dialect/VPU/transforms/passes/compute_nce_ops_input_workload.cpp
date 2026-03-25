@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -185,8 +185,8 @@ SmallVector<Shape> getInputOffsetsPerCluster(NCEOpInterface nceOp, Logger log) {
 
 std::pair<SmallVector<int64_t>, SmallVector<int64_t>> compute5DInputWorkload(NCEOpInterface nceOp,
                                                                              DPUWorkloadOp dpuTaskOp, Logger log) {
-    const auto outWlStart = parseIntArrayAttr<int64_t>(dpuTaskOp.getOutOffsets());
-    const auto outWlSize = parseIntArrayAttr<int64_t>(dpuTaskOp.getOutSizes());
+    const auto outWlStart = dpuTaskOp.getConstOutputOffsets();
+    const auto outWlSize = dpuTaskOp.getConstOutputSizes();
 
     const auto inputType = mlir::cast<vpux::NDTypeInterface>(nceOp->getOperand(0).getType());
     auto fullInputShape = inputType.getShape();
@@ -250,12 +250,12 @@ std::pair<SmallVector<int64_t>, SmallVector<int64_t>> compute5DInputWorkload(NCE
 
 std::pair<SmallVector<int64_t>, SmallVector<int64_t>> computeInputWorkload(NCEOpInterface nceOp,
                                                                            DPUWorkloadOp dpuTaskOp, Logger log) {
-    const auto outWlStart = parseIntArrayAttr<int64_t>(dpuTaskOp.getOutOffsets());
+    const auto outWlStart = dpuTaskOp.getConstOutputOffsets();
     if (outWlStart.size() == DimsGroups5D::Act::numDims) {
         return compute5DInputWorkload(nceOp, dpuTaskOp, log);
     }
 
-    const auto outWlSize = parseIntArrayAttr<int64_t>(dpuTaskOp.getOutSizes());
+    const auto outWlSize = dpuTaskOp.getConstOutputSizes();
 
     const auto inputType = mlir::cast<vpux::NDTypeInterface>(nceOp->getOperand(0).getType());
     auto fullInputShape = inputType.getShape();
@@ -341,7 +341,7 @@ void ComputeNCEInputWorkloadsPass::safeRunOnFunc() {
         const auto perClusterStartOffsets = getInputOffsetsPerCluster(nceOp, _log);
         auto workloads = nceOp.getWorkloads().getOps<DPUWorkloadOp>();
         for (auto workload : llvm::make_early_inc_range(workloads)) {
-            if (!workload.getInOffsets().has_value() || !workload.getInSizes().has_value()) {
+            if (!workload.getStaticInOffsets().has_value() || !workload.getStaticInSizes().has_value()) {
                 mlir::OpBuilder builder(workload);
                 SmallVector<int64_t> inStart = {};
                 SmallVector<int64_t> inSize = {};
@@ -368,12 +368,14 @@ void ComputeNCEInputWorkloadsPass::safeRunOnFunc() {
                                       globalInputOffsets[Dims4D::Act::C]);
                 }
 
-                const auto inStartAttr = getIntArrayAttr(builder.getContext(), inStart);
-                const auto inSizeAttr = getIntArrayAttr(builder.getContext(), inSize);
+                const auto inStartAttr = mlir::DenseI64ArrayAttr::get(builder.getContext(), inStart);
+                const auto inSizeAttr = mlir::DenseI64ArrayAttr::get(builder.getContext(), inSize);
 
                 auto workloadWithInputOffsets = builder.create<DPUWorkloadOp>(
-                        workload.getLoc(), workload.getOutOffsets(), workload.getOutSizes(), inStartAttr, inSizeAttr,
-                        workload.getPad(), workload.getMpeMode(), workload.getClusterIdAttr());
+                        workload.getLoc(), workload.getOutOffsets(), workload.getOutSizes(),
+                        workload.getStaticOutOffsetsAttr(), workload.getStaticOutSizesAttr(), std::nullopt,
+                        std::nullopt, inStartAttr, inSizeAttr, workload.getMpeModeAttr(), workload.getPad(),
+                        workload.getStaticPadAttr(), workload.getClusterIdAttr());
 
                 _log.trace("DpuTaskOp '{0}' replaced with {1}", workload, workloadWithInputOffsets);
 

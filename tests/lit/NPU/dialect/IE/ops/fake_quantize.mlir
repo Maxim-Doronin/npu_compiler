@@ -1,11 +1,13 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --canonicalize %s | FileCheck %s
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
+// CHECK-LABEL: @FuseFQ
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x3x16x16xf16>)
 func.func @FuseFQ(%arg0: tensor<1x3x16x16xf16>) -> tensor<1x3x16x16xf16> {
     %input_low = const.Declare tensor<f32> = dense<0.0> : tensor<f32>
     %input_high = const.Declare tensor<f32> = dense<255.0> : tensor<f32>
@@ -22,7 +24,7 @@ func.func @FuseFQ(%arg0: tensor<1x3x16x16xf16>) -> tensor<1x3x16x16xf16> {
     // CHECK-DAG:   [[ILOW:%.+]] = const.Declare tensor<f32> = dense<0.000000e+00> : tensor<f32>
     // CHECK-DAG:   [[IHIGH:%.+]] = const.Declare tensor<f32> = dense<2.550000e+02> : tensor<f32>
 
-    // CHECK:   [[FQ:%.+]] = IE.FakeQuantize(%arg0, [[ILOW]], [[IHIGH]], [[ILOW]], [[IHIGH]])
+    // CHECK:   [[FQ:%.+]] = IE.FakeQuantize([[ARG_0]], [[ILOW]], [[IHIGH]], [[ILOW]], [[IHIGH]])
 
     // CHECK-NOT:   IE.FakeQuantize
 
@@ -31,6 +33,8 @@ func.func @FuseFQ(%arg0: tensor<1x3x16x16xf16>) -> tensor<1x3x16x16xf16> {
 
 // -----
 
+// CHECK-LABEL: @DoNotFuseFQ
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x3x16x16xf16>)
 func.func @DoNotFuseFQ(%arg0: tensor<1x3x16x16xf16>) -> tensor<1x3x16x16xf16> {
     %input_low = const.Declare tensor<f32> = dense<0.0> : tensor<f32>
     %input_high_1 = const.Declare tensor<f32> = dense<255.0> : tensor<f32>
@@ -49,7 +53,7 @@ func.func @DoNotFuseFQ(%arg0: tensor<1x3x16x16xf16>) -> tensor<1x3x16x16xf16> {
     // CHECK-DAG:   [[IHIGH1:%.+]] = const.Declare tensor<f32> = dense<2.550000e+02> : tensor<f32>
     // CHECK-DAG:   [[IHIGH2:%.+]] = const.Declare tensor<f32> = dense<1.280000e+02> : tensor<f32>
 
-    // CHECK:   [[FQ1:%.+]] = IE.FakeQuantize(%arg0, [[ILOW]], [[IHIGH1]], [[ILOW]], [[IHIGH1]])
+    // CHECK:   [[FQ1:%.+]] = IE.FakeQuantize([[ARG_0]], [[ILOW]], [[IHIGH1]], [[ILOW]], [[IHIGH1]])
 
     // CHECK:   [[FQ2:%.+]] = IE.FakeQuantize([[FQ1]], [[ILOW]], [[IHIGH1]], [[ILOW]], [[IHIGH2]])
 

@@ -84,6 +84,10 @@ TEST_F(EltwiseMultiplyLayerTest, NPU5010_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
+TEST_F(EltwiseMultiplyLayerTest, NPU5020_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
+}
 
 typedef Eltwise2InputLayerTest<ov::op::v1::Add> EltwiseAddLayerTest;
 class EltwiseAddLayerTest_HostCompile : public EltwiseLayerTest, virtual public VpuOv2LayerTest {};
@@ -128,6 +132,16 @@ TEST_P(EltwiseAddLayerTest_HostCompile, NPU5010_HC) {
     setHostCompileMode();
     setPluginCompilerType();
     run(Platform::NPU5010);
+}
+
+TEST_F(EltwiseAddLayerTest, NPU5020_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
+}
+
+TEST_F(EltwiseSubtractLayerTest, NPU5020_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
 }
 
 const std::vector<std::vector<ov::test::InputShape>> dynamicShapes = {

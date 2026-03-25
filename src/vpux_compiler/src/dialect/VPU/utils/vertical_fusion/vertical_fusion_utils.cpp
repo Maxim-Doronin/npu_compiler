@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -21,6 +21,7 @@
 #include <llvm/ADT/TypeSwitch.h>
 
 #include <queue>
+#include <variant>
 
 using namespace vpux;
 using namespace VPU;

@@ -1,9 +1,16 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/utils/tiling_algorithm/scf_tiling/scf_tiling.hpp"
+#include <llvm/ADT/STLExtras.h>
+#include <llvm/ADT/StringRef.h>
+#include <llvm/Support/raw_ostream.h>
+#include <mlir/Dialect/Func/IR/FuncOps.h>
+#include <mlir/Dialect/Tensor/IR/Tensor.h>
+#include <mlir/IR/Builders.h>
+#include <mlir/IR/Value.h>
 
 #include "vpux/compiler/dialect/VPU/utils/reorder_ir_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/scf/scf_utils.hpp"
@@ -11,16 +18,17 @@
 #include "vpux/compiler/dialect/VPU/utils/tiling_pass_config_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v2/vertical_fusion_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vertical_fusion_algorithm.hpp"
-#include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/utils/core/error.hpp"
 #include "vpux/utils/core/numeric.hpp"
 
 #include "mlir/Dialect/Affine/Utils.h"
 #include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/Dominance.h"
+#include "vpux/utils/logger/logger.hpp"
 
-#include <deque>
+#include <cmath>
 
 using namespace vpux;
 
@@ -63,9 +71,6 @@ void correctOffsetAndSizeByRemainder(mlir::RewriterBase& builder, mlir::OffsetSi
         }
 
         if (auto loopOp = mlir::dyn_cast<mlir::LoopLikeOpInterface>(blockArgOffset.getOwner()->getParentOp())) {
-            auto mainStepBound = builder.create<mlir::arith::ConstantIndexOp>(loopOp.getLoc(), data.first);
-            auto remainderStep = builder.create<mlir::arith::ConstantIndexOp>(loopOp.getLoc(), data.second);
-
             VPUX_THROW_WHEN(!loopOp.getLoopInductionVars().has_value() || loopOp.getLoopInductionVars()->size() != 1,
                             "The loop {0} has incorrect induction varriables", loopOp);
             VPUX_THROW_WHEN(!loopOp.getLoopSteps().has_value() || loopOp.getLoopSteps()->size() != 1,
@@ -82,6 +87,9 @@ void correctOffsetAndSizeByRemainder(mlir::RewriterBase& builder, mlir::OffsetSi
             auto loopStep = mlir::cast<mlir::Value>(loopOp.getLoopSteps()->front());
 
             builder.setInsertionPointToStart(&loopOp.getLoopRegions().front()->front());
+
+            auto mainStepBound = builder.create<mlir::arith::ConstantIndexOp>(loopOp.getLoc(), data.first);
+            auto remainderStep = builder.create<mlir::arith::ConstantIndexOp>(loopOp.getLoc(), data.second);
             auto isNotRemainder = builder.create<mlir::arith::CmpIOp>(loopOp.getLoc(), mlir::arith::CmpIPredicate::ult,
                                                                       inductionVar, mainStepBound);
             auto ifOp = builder.create<mlir::scf::IfOp>(
@@ -146,6 +154,11 @@ SmallVector<mlir::OpFoldResult> vpux::VPU::staticTileSizeComputation(
     }
 
     auto tilingDims = getSCFTilingOrderedDims(lastOperation, strategy);
+
+    if (tilingDims.empty()) {
+        lastOperation->removeAttr(tilingStrategy);
+        return {};
+    }
     std::unordered_map<Dim, int64_t> sizes;
 
     // if we have uneven distribution for tensor's size among tiles,
@@ -157,16 +170,22 @@ SmallVector<mlir::OpFoldResult> vpux::VPU::staticTileSizeComputation(
 
     for (auto dim : tilingDims) {
         auto tileRemainderNumber = 0;
+        auto offsetTile = 0;
         auto remainderSize = 0;
         for (auto tile : tiles.value() | reversed) {
             if (tile.shape[dim] == sizes[dim]) {
                 break;
             }
-            ++tileRemainderNumber;
+
+            if (offsetTile == 0 || offsetTile != tile.offsets[dim]) {
+                ++tileRemainderNumber;
+            }
+
             remainderSize = tile.shape[dim];
+            offsetTile = tile.offsets[dim];
         }
-        if (tileRemainderNumber > 1) {
-            remainders[dim] = std::make_pair((firstTile.axis[dim] - tileRemainderNumber) * sizes[dim], remainderSize);
+        if (tileRemainderNumber > 1 && offsetTile != 0) {
+            remainders[dim] = std::make_pair(offsetTile, remainderSize);
         }
     }
 
@@ -294,150 +313,106 @@ mlir::LogicalResult vpux::VPU::applySCFTiling(mlir::Operation* operation, mlir::
         forOp.getResult(0).setType(outputType);
 
         auto* terminator = forOp.getBody()->getTerminator();
-        if (terminator != nullptr) {
-            llvm::for_each(terminator->getOperands(), [&](mlir::Value operand) {
-                operand.setType(outputType);
-
-                if (auto insertSlice = mlir::dyn_cast_or_null<mlir::tensor::InsertSliceOp>(operand.getDefiningOp())) {
-                    insertSlice.getDestMutable().get().setType(outputType);
-                    if (auto blockArg = mlir::dyn_cast_or_null<mlir::BlockArgument>(insertSlice.getDest())) {
-                        auto argIndex = blockArg.getArgNumber() - forOp.getNumInductionVars();
-                        forOp.getInitArgs()[argIndex].setType(outputType);
-                    }
-                    // insert_slice is in innermost loop
-                    correctOffsetAndSizeByRemainder(builder, insertSlice, remainders);
-                } else {
-                    // outer loop has no insertSlice op, modify init args by setting order to the last one
-                    forOp.getInitArgs().back().setType(outputType);
-                }
-            });
+        if (terminator == nullptr) {
+            return;
         }
+        llvm::for_each(terminator->getOperands(), [&](mlir::Value operand) {
+            operand.setType(outputType);
+
+            if (auto insertSlice = mlir::dyn_cast_or_null<mlir::tensor::InsertSliceOp>(operand.getDefiningOp())) {
+                insertSlice.getDestMutable().get().setType(outputType);
+                if (auto blockArg = mlir::dyn_cast_or_null<mlir::BlockArgument>(insertSlice.getDest())) {
+                    auto argIndex = blockArg.getArgNumber() - forOp.getNumInductionVars();
+                    forOp.getInitArgs()[argIndex].setType(outputType);
+                }
+                // insert_slice is in innermost loop
+                correctOffsetAndSizeByRemainder(builder, insertSlice, remainders);
+            } else {
+                // outer loop has no insertSlice op, modify init args by setting order to the last one
+                forOp.getInitArgs().back().setType(outputType);
+            }
+        });
     });
 
     builder.replaceOp(operation, tilingResult->replacements);
 
     return mlir::success();
 }
+// Listener to track which original producers have been tiled.
+// Uses operation name + location as fingerprint to uniquely identify operations.
+// Note: We only track that an original op was tiled (in a set), not store pointer to tiled op,
+// because tiled op pointers can become invalid during subsequent loop restructuring.
+class TiledOpsTrackingListener : public mlir::RewriterBase::ForwardingListener {
+public:
+    explicit TiledOpsTrackingListener(llvm::DenseMap<mlir::Operation*, VPU::PendingSliceReplacement>& skipConnectionMap,
+                                      mlir::OpBuilder::Listener* previousListener = nullptr,
+                                      Logger& log = Logger::global())
+            : ForwardingListener(previousListener), skipConnectionMap(skipConnectionMap), log(log) {
+    }
 
-// copied from llvm, the logic is adjusted before llvm 20 update
-static std::tuple<mlir::OpResult, std::optional<mlir::OpOperand*>> getUntiledProducerFromSliceSource(
-        mlir::OpOperand* source, ArrayRef<mlir::LoopLikeOpInterface> loops) {
-    std::optional<mlir::OpOperand*> destinationIterArg;
-    auto loopIt = loops.rbegin();
-    while (auto iterArg = mlir::dyn_cast<mlir::BlockArgument>(source->get())) {
-        auto loop = *loopIt;
-        if (iterArg.getOwner()->getParentOp() != loop) {
-            break;
+    void expectProducerFusion(mlir::Operation* originalProducer) {
+        pendingProducers.emplace_back(originalProducer, originalProducer->getName(), originalProducer->getLoc());
+        log.debug("Expecting producer {0} to be tiled for fusion", originalProducer->getName());
+    }
+
+    void notifyOperationInserted(mlir::Operation* op, mlir::OpBuilder::InsertPoint insertPoint) override {
+        if (!mlir::isa<mlir::TilingInterface>(op) || op->getNumResults() == 0) {
+            ForwardingListener::notifyOperationInserted(op, insertPoint);
+            return;
         }
-        source = loop.getTiedLoopInit(iterArg);
-        loopIt++;
-    }
-    if (loopIt == loops.rend()) {
-        destinationIterArg = source;
-    }
-    return {mlir::dyn_cast<mlir::OpResult>(source->get()), destinationIterArg};
-}
-
-/// Implementation of tile consumer and fuse producer greedily.
-mlir::FailureOr<mlir::scf::SCFTileAndFuseResult> tileConsumerAndFuseProducers(
-        mlir::RewriterBase& rewriter, mlir::TilingInterface consumer, const mlir::scf::SCFTileAndFuseOptions& options,
-        std::unordered_map<mlir::Operation*, mlir::Value>& tiledOpsLink) {
-    // This transformation is only valid for ops that return values (i.e. not
-    // valid to use with operations that have memref operands).
-    if (!consumer->getNumResults()) {
-        return rewriter.notifyMatchFailure(consumer, "invalid pattern for op with no results");
-    }
-
-    // 1. First tile the consumer.
-    mlir::SetVector<mlir::Operation*> fusedProducers, tiledAndFusedOps;
-
-    auto tilingResult = tileUsingSCF(rewriter, consumer, options.tilingOptions);
-
-    if (failed(tilingResult)) {
-        return rewriter.notifyMatchFailure(consumer, "failed to tile consumer");
-    }
-    for (auto* tiledOp : tilingResult->tiledOps) {
-        tiledAndFusedOps.insert(tiledOp);
-    }
-
-    // If there are no loops generated, fusion is immaterial.
-    auto& loops = tilingResult->loops;
-    if (loops.empty()) {
-        DenseMap<mlir::Value, mlir::Value> replacements;
-        if (!tilingResult->tiledOps.empty()) {
-            for (auto [origVal, newResult] :
-                 llvm::zip_equal(consumer->getResults(), tilingResult->tiledOps.front()->getResults())) {
-                replacements[origVal] = newResult;
-            }
+        // Track newly inserted TilingInterface operations that match pending producers
+        // Find the first pending producer with matching operation name and location (FIFO order)
+        auto it = std::find_if(pendingProducers.begin(), pendingProducers.end(),
+                               [&](const std::tuple<mlir::Operation*, mlir::OperationName, mlir::Location>& entry) {
+                                   return std::get<1>(entry) == op->getName() && std::get<2>(entry) == op->getLoc();
+                               });
+        if (it == pendingProducers.end()) {
+            ForwardingListener::notifyOperationInserted(op, insertPoint);
+            return;
         }
-        return mlir::scf::SCFTileAndFuseResult{std::move(fusedProducers), std::move(tiledAndFusedOps), loops,
-                                               replacements};
-    }
-
-    // To keep track of replacements for now just record the map from the original
-    // untiled value to the result number of the for loop. Since the loop gets
-    // potentially replaced during fusion, keeping the value directly wont work.
-    DenseMap<mlir::Value, size_t> origValToResultNumber;
-    for (auto [index, result] : llvm::enumerate(consumer->getResults())) {
-        origValToResultNumber[result] = index;
-    }
-
-    std::function<void(mlir::Operation*, std::deque<mlir::tensor::ExtractSliceOp>&)> addCandidateSlices =
-            [&](mlir::Operation* fusedOp, std::deque<mlir::tensor::ExtractSliceOp>& candidates) {
-                for (mlir::Value operand : fusedOp->getOperands()) {
-                    if (auto sliceOp = operand.getDefiningOp<mlir::tensor::ExtractSliceOp>()) {
-                        if (candidates.empty() || llvm::find(candidates, sliceOp) == candidates.end()) {
-                            candidates.push_back(sliceOp);
-                        }
-                    } else if (auto padOp = mlir::dyn_cast<mlir::tensor::PadOp>(operand.getDefiningOp())) {
-                        addCandidateSlices(padOp, candidates);
-                    }
-                }
-            };
-
-    std::deque<mlir::tensor::ExtractSliceOp> candidates;
-    addCandidateSlices(tiledAndFusedOps.back(), candidates);
-    mlir::OpBuilder::InsertionGuard g(rewriter);
-    while (!candidates.empty()) {
-        // Traverse the slices in BFS fashion.
-        mlir::tensor::ExtractSliceOp candidateSliceOp = candidates.front();
-        candidates.pop_front();
-
-        // Find the original producer of the slice.
-        auto [fusableProducer, destinationInitArg] =
-                getUntiledProducerFromSliceSource(&candidateSliceOp.getSourceMutable(), loops);
-        if (!fusableProducer) {
-            continue;
+        // Check whether this newly inserted tiled op corresponds to the preselected
+        // 'biggest user' branch of any skip-connection source.
+        // If yes, mark biggestUserTiled=true so fusion control can later allow fusing
+        // the shared skip-source producer only after the largest branch is materialized.
+        auto skipConnectionIter = llvm::find_if(skipConnectionMap, [&](const auto& entry) {
+            return entry.second.biggestUserOp == std::get<0>(*it);
+        });
+        if (skipConnectionIter != skipConnectionMap.end()) {
+            skipConnectionIter->second.biggestUserTiled = true;
+            log.debug(" Biggest user of skip connection op {0} has been tiled: {1}",
+                      std::get<0>(*skipConnectionIter)->getName(), op->getName());
+            ForwardingListener::notifyOperationInserted(op, insertPoint);
+            return;
+        }
+        // Track fusion progress for skip-connection source producers:
+        // store the currently materialized tiled result (`tiledValue`) of the original producer.
+        // This value is later used by deferred replacement logic to rewire ExtractSlice users
+        // from smaller branches to slices derived from the largest-branch tiled tensor.
+        // Each time the skip-source operation is updated/tiled/fused, this callback is triggered
+        // again because we intentionally keep that producer in `pendingProducers` (do not erase it
+        // in this path). This lets us keep `tiledValue` synchronized with the latest materialized
+        // result.
+        if (skipConnectionMap.contains(std::get<0>(*it))) {
+            skipConnectionMap.find(std::get<0>(*it))->getSecond().tiledValue = op->getResult(0);
+            log.debug("Producer of skip connection has been tiled: {0}", op->getName());
+        } else {
+            // Clear pendingProducers only when the tiled operation is not a skip-connection producer.
+            // We need to keep tracking operations that originate skip connections whenever they are
+            // tiled or updated.
+            // scf::tileConsumerAndFuseProducersUsingSCF may update this operation after tiling/fusion,
+            // so we keep tracking it until the transformation finishes to keep tiledValue up to date.
+            pendingProducers.erase(it);
         }
 
-        auto fuseSlice = options.fusionControlFn(candidateSliceOp, fusableProducer, destinationInitArg.has_value());
-        if (!fuseSlice.has_value()) {
-            continue;
-        }
-
-        // The operands of the fused producer might themselved be slices of
-        // values produced by operations that implement the `TilingInterface`.
-        // Add these operations to the worklist.
-        auto fusedResult = mlir::scf::tileAndFuseProducerOfSlice(rewriter, candidateSliceOp, loops);
-        if (!fusedResult) {
-            continue;
-        }
-
-        if (mlir::Operation* tiledAndFusedOp = fusedResult->tiledAndFusedProducer.getDefiningOp()) {
-            fusedProducers.insert(fusedResult->origProducer.getDefiningOp());
-            tiledAndFusedOps.insert(tiledAndFusedOp);
-            tiledOpsLink[fusedResult->origProducer.getDefiningOp()] = fusedResult->tiledAndFusedProducer;
-            addCandidateSlices(tiledAndFusedOp, candidates);
-        }
+        ForwardingListener::notifyOperationInserted(op, insertPoint);
     }
 
-    DenseMap<mlir::Value, mlir::Value> replacements;
-    for (auto [origVal, resultNumber] : origValToResultNumber) {
-        replacements[origVal] = loops.front()->getResult(resultNumber);
-    }
-
-    return mlir::scf::SCFTileAndFuseResult{std::move(fusedProducers), std::move(tiledAndFusedOps), loops, replacements};
-}
+private:
+    // Queue of (original operation, operation name, location) tuples - maintains insertion order
+    SmallVector<std::tuple<mlir::Operation*, mlir::OperationName, mlir::Location>, 8> pendingProducers;
+    llvm::DenseMap<mlir::Operation*, VPU::PendingSliceReplacement>& skipConnectionMap;
+    Logger log;
+};
 
 llvm::SetVector<mlir::Operation*> collectTiledAndFusedOps(mlir::Operation* op) {
     SmallVector<mlir::Operation*> worklist;
@@ -623,6 +598,12 @@ SmallVector<mlir::Operation*> vpux::VPU::applySCFVerticalFusion(mlir::Operation*
 
     VPU::VF::v2::VFCase bestVFCase = computeVFSCFCase(outputType, lastOp, allowedDims, config, operation, log);
 
+    const auto& tilingStorage = bestVFCase.getTilingStorage();
+
+    // Build skip connection map: operations with multiple uses and user op which require biggest tile
+    llvm::DenseMap<mlir::Operation*, VPU::PendingSliceReplacement> skipConnectionMap =
+            analyzeSkipConnectionsForTiling(allOpsToFuse, tilingStorage, log);
+
     if (VPU::hasDynamicDimAlignment(operation) && !bestVFCase.isInitialized()) {
         // We are retrying VF search with disabled dynamic alignment
         VPU::removeDynamicDimAlignment(operation);
@@ -659,45 +640,81 @@ SmallVector<mlir::Operation*> vpux::VPU::applySCFVerticalFusion(mlir::Operation*
     mlir::scf::SCFTileAndFuseOptions tilingAndFuseOptions;
     tilingAndFuseOptions.setTilingOptions(std::move(tilingOptions));
 
-    // linked original ops to fused result operations
-    std::unordered_map<mlir::Operation*, mlir::Value> tiledOpsLink;
+    SmallVector<std::pair<mlir::tensor::ExtractSliceOp, mlir::Value>> pendingSliceReplacements;
     // check if VF has loop to substitute slice with existing operation
-    bool hasVFLoop = false;
+    bool hasSkipConnection = false;
+
+    // Save the previous listener and create our tracking listener
+    auto* previousListener = builder.getListener();
+    TiledOpsTrackingListener listener(skipConnectionMap, previousListener, log);
+    builder.setListener(&listener);
 
     mlir::scf::SCFTileAndFuseOptions::ControlFnTy controlFn =
             [&](mlir::tensor::ExtractSliceOp sliceOp, mlir::OpResult originalProducer,
                 bool) -> std::optional<mlir::scf::SCFTileAndFuseOptions::ControlFnResult> {
-        auto isFusable = allOpsToFuse.contains(originalProducer.getOwner());
-        if (isFusable) {
-            if (tiledOpsLink.count(originalProducer.getOwner()) > 0) {
-                mlir::OpBuilder::InsertionGuard g(builder);
-                builder.setInsertionPoint(sliceOp);
-                // substitute with existing operation
-                auto tiledValue = tiledOpsLink[originalProducer.getOwner()];
-                builder.replaceAllUsesWith(sliceOp->getResults(), tiledValue);
-                builder.eraseOp(sliceOp);
-                hasVFLoop = true;
-
-                // Return an empty optional to signal "do not fuse".
-                return std::nullopt;
-            }
+        if (!allOpsToFuse.contains(originalProducer.getOwner())) {
+            // Return an empty optional to signal "do not fuse".
+            return std::nullopt;
+        }
+        auto skipConnectionIter = skipConnectionMap.find(originalProducer.getOwner());
+        if (skipConnectionIter == skipConnectionMap.end()) {
+            // if skip connection op is not involved - fuse as usual
             originalProducer.getOwner()->setAttr(tilingStrategy, bestVFCase.getTiling());
+            // Notify listener that this producer is about to be fused
+            listener.expectProducerFusion(originalProducer.getOwner());
             // Return a result to signal "fuse this op".
             return mlir::scf::SCFTileAndFuseOptions::ControlFnResult{};
         }
-        // Return an empty optional to signal "do not fuse".
-        return std::nullopt;
+        log.debug("Attempting to fuse producer of skip connection: {0} at loc: {1}",
+                  originalProducer.getOwner()->getName(), originalProducer.getOwner()->getLoc());
+        auto& deferredReplacement = skipConnectionIter->getSecond();
+
+        // Check if Operation which originates skip connection has been tiled already
+        if (deferredReplacement.tiledValue != nullptr) {
+            log.debug("Operation which originates skip connection has been tiled already. Save current sliceOp "
+                      "for future replacement.\n");
+            deferredReplacement.relatedExtractSlices.insert(sliceOp);
+            // Return an empty optional to signal "do not fuse".
+            return std::nullopt;
+        }
+
+        if (!deferredReplacement.biggestUserTiled && !deferredReplacement.allUsersWithTheSameTileSize) {
+            log.debug("Biggest user not tiled yet, cannot fuse producer. Skipping fusion for this producer");
+            deferredReplacement.relatedExtractSlices.insert(sliceOp);
+            // Return an empty optional to signal "do not fuse".
+            return std::nullopt;
+        }
+
+        // If the skip-source op has not been tiled yet, allow fusion only after the largest user branch was
+        // tiled (or when all branches have the same tile size).
+        // Assumption: tile+fuse walks a single branch bottom-up. It tiles users first and then continues
+        // upward along the same branch to the skip-source producer.
+        // With this assumption, once the largest branch is tiled we proceed and expect the next step to tile
+        // and fuse the skip-source from that same branch, not from a different branch.
+        log.debug("Biggest User tiled (or all users have the same tile size), allowing fusion");
+        // Treat current sliceOp as the biggest-branch slice and remember it for future replacements.
+        deferredReplacement.biggestTileExtractSlice = sliceOp;
+
+        originalProducer.getOwner()->setAttr(tilingStrategy, bestVFCase.getTiling());
+        listener.expectProducerFusion(originalProducer.getOwner());
+        hasSkipConnection = true;
+        // Return a result to signal "fuse this op".
+        return mlir::scf::SCFTileAndFuseOptions::ControlFnResult{};
     };
     tilingAndFuseOptions.setFusionControlFn(std::move(controlFn));
-
     builder.setInsertionPoint(operation);
-    auto tiledResults = tileConsumerAndFuseProducers(builder, tilingInterfaceOp, tilingAndFuseOptions, tiledOpsLink);
+
+    auto tiledResults =
+            mlir::scf::tileConsumerAndFuseProducersUsingSCF(builder, tilingInterfaceOp, tilingAndFuseOptions);
 
     if (mlir::failed(tiledResults) || tiledResults->replacements.empty() || tiledResults->loops.empty() ||
         tiledResults->fusedProducers.empty()) {
         operation->setAttr(tilingStrategy, strategy);
+        builder.setListener(previousListener);
         return {};
     }
+
+    applyDeferredSliceReplacements(builder, skipConnectionMap, log);
 
     // propagate result type with order and bounds attributes to operations
     // created in SCF functions.
@@ -710,33 +727,34 @@ SmallVector<mlir::Operation*> vpux::VPU::applySCFVerticalFusion(mlir::Operation*
         auto loop = mlir::cast<mlir::scf::ForOp>(loopOperation);
 
         auto* terminator = loop.getBody()->getTerminator();
-        if (terminator != nullptr) {
-            llvm::for_each(terminator->getOperands(), [&](mlir::Value operand) {
-                operand.setType(loop.getResult(0).getType());
-
-                if (auto insertSlice = mlir::dyn_cast_or_null<mlir::tensor::InsertSliceOp>(operand.getDefiningOp())) {
-                    // insert_slice is in innermost loop
-                    correctOffsetAndSizeByRemainder(builder, insertSlice, remainders);
-                    insertSlice.getDestMutable().get().setType(loop.getResult(0).getType());
-                    if (auto blockArg = mlir::dyn_cast_or_null<mlir::BlockArgument>(insertSlice.getDest())) {
-                        auto argIndex = blockArg.getArgNumber() - loop.getNumInductionVars();
-                        loop.getInitArgs()[argIndex].setType(operand.getType());
-                    }
-                    if (hasVFLoop) {
-                        // reorder operations in the loop body to ensure that operation in the loop
-                        // is in order after resolving circle dependencies
-                        vpux::VPU::reorderOperations(to_small_vector(loop.getBody()->without_terminator() |
-                                                                     transformed([](mlir::Operation& op) {
-                                                                         return &op;
-                                                                     })));
-                    }
-
-                } else {
-                    // outer loop has no insertSlice op, modify init args by setting order to the last one
-                    loop.getInitArgs().back().setType(operand.getType());
-                }
-            });
+        if (terminator == nullptr) {
+            return;
         }
+        llvm::for_each(terminator->getOperands(), [&](mlir::Value operand) {
+            operand.setType(loop.getResult(0).getType());
+
+            auto insertSlice = mlir::dyn_cast_or_null<mlir::tensor::InsertSliceOp>(operand.getDefiningOp());
+            if (insertSlice == nullptr) {
+                // outer loop has no insertSlice op, modify init args by setting order to the last one
+                loop.getInitArgs().back().setType(operand.getType());
+                return;
+            }
+            // insert_slice is in innermost loop
+            correctOffsetAndSizeByRemainder(builder, insertSlice, remainders);
+            insertSlice.getDestMutable().get().setType(loop.getResult(0).getType());
+            if (auto blockArg = mlir::dyn_cast_or_null<mlir::BlockArgument>(insertSlice.getDest())) {
+                auto argIndex = blockArg.getArgNumber() - loop.getNumInductionVars();
+                loop.getInitArgs()[argIndex].setType(operand.getType());
+            }
+            if (hasSkipConnection) {
+                // reorder operations in the loop body to ensure that operation in the loop
+                // is in order after resolving circle dependencies
+                vpux::VPU::reorderOperations(
+                        to_small_vector(loop.getBody()->without_terminator() | transformed([](mlir::Operation& op) {
+                                            return &op;
+                                        })));
+            }
+        });
     });
 
     for (mlir::OpResult res : operation->getResults()) {
@@ -748,6 +766,8 @@ SmallVector<mlir::Operation*> vpux::VPU::applySCFVerticalFusion(mlir::Operation*
     if (operation->use_empty()) {
         builder.eraseOp(operation);
     }
+
+    builder.setListener(previousListener);
 
     return to_small_vector(tiledResults->fusedProducers);
 }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -164,7 +164,8 @@ void KernelParamsSerializer::addLLVMMemrefArgToVector(SmallVector<uint8_t>& vec,
     //        https://mlir.llvm.org/docs/TargetLLVMIR/#ranked-memref-types
     uint32_t allocatedPointer =
             0;  // Both allocatedPointer and alignedPointer will be relocated (they will be solved by the linker).
-    uint32_t alignedPointer = 0;
+    uint32_t alignedPointer = 0;  // (They are linked before execution, in IMDemo.)
+                                  // We use only alignedPointer.
     int32_t offset = 0;
 
     auto sizeVec = std::vector<int32_t>(rankMemref);

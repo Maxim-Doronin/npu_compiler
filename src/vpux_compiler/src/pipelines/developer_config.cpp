@@ -1,29 +1,27 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/pipelines/options_mapper.hpp"
-
+#include "vpux/compiler/pipelines/developer_config.hpp"
+#include "vpux/compiler/core/developer_build_utils.hpp"
 #include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
+#include "vpux/compiler/dialect/core/utils/dump_intermediate_values.hpp"
 #include "vpux/compiler/locverif/locations_verifier.hpp"
+#include "vpux/compiler/pipelines/function_statistics_instrumentation.hpp"
+#include "vpux/compiler/pipelines/options_mapper.hpp"
 #include "vpux/compiler/utils/dot_printer.hpp"
 #include "vpux/compiler/utils/memory_usage_collector.hpp"
 #include "vpux/utils/core/error.hpp"
-
-#include "vpux/compiler/core/developer_build_utils.hpp"
-#include "vpux/compiler/pipelines/developer_config.hpp"
-#include "vpux/compiler/pipelines/function_statistics_instrumentation.hpp"
 
 #if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
 #include "vpux/compiler/core/developer_build_utils.hpp"
 #endif
 
-#include <mlir/Pass/Pass.h>
-#include <mlir/Support/Timing.h>
-
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Support/Format.h>
+#include <mlir/Pass/Pass.h>
+#include <mlir/Support/Timing.h>
 
 namespace vpux {
 
@@ -34,7 +32,6 @@ DeveloperConfig::DeveloperConfig(Logger log): _log(log) {
 
     parseEnv("IE_NPU_IR_PRINTING_FILTER", _irPrintingFilter);
     parseEnv("IE_NPU_IR_PRINT_TO_FILE_TREE", _printToFileTree);
-    parseEnv("IE_NPU_IR_PRINTING_FILE", _irPrintingFile);  // deprecated #E194687
     parseEnv("IE_NPU_IR_PRINTING_LOCATION", _irPrintingLocation);
     parseEnv("IE_NPU_IR_PRINTING_ORDER", _irPrintingOrderStr);
     parseEnv("IE_NPU_PRINT_FULL_IR", _printFullIR);
@@ -43,20 +40,15 @@ DeveloperConfig::DeveloperConfig(Logger log): _log(log) {
     parseEnv("IE_NPU_PRINT_HEX_CONSTANT", _allowPrintingHexConstant);
     parseEnv("IE_NPU_PRINT_DEBUG_INFO", _printDebugInfo);
     parseEnv("IE_NPU_PRINT_DEBUG_INFO_PRETTY_FORM", _printDebugInfoPrettyForm);
+    parseEnv("IE_NPU_PRINT_SSA_PRETTY_FORM", _printSsaPrettyForm);
     parseEnv("IE_NPU_PRINT_AS_TEXTUAL_PIPELINE_FILE", _printAsTextualPipelineFilePath);
-
     parseEnv("IE_NPU_PRINT_DOT", _printDotOptions);
+    parseEnv("IE_NPU_DUMP_INTERMEDIATE_VALUES", _dumpIntermediateValues);
 #endif  // defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
 
     if (_printToFileTree && _irPrintingLocation.empty()) {
         _log.info("PrintTree location not specified, defaulting to .");
         _irPrintingLocation = ".";
-    }
-
-    if (!_irPrintingFile.empty() && _irPrintingLocation.empty()) {
-        _log.warning("IE_NPU_IR_PRINTING_FILE is deprecated and is going to be removed in UD2026.08, please use "
-                     "IE_NPU_IR_PRINTING_LOCATION instead");
-        _irPrintingLocation = _irPrintingFile;
     }
 
     if (!_irPrintingOrderStr.empty()) {
@@ -154,7 +146,9 @@ public:
 
         auto module =
                 mlir::isa<mlir::ModuleOp>(op) ? mlir::cast<mlir::ModuleOp>(op) : op->getParentOfType<mlir::ModuleOp>();
-        if (config::getWorkloadManagementStatus(module) == WorkloadManagementStatus::FAILED) {
+
+        const bool isWlmFailed = config::getWorkloadManagementStatus(module) == WorkloadManagementStatus::FAILED;
+        if (isWlmFailed) {
             _log.warning("WLM Failed Pass {0} on Operation {1}", pass->getName(), op->getLoc());
         } else {
             _log.error("Failed Pass {0} on Operation {1}", pass->getName(), op->getLoc());
@@ -220,6 +214,9 @@ void DeveloperConfig::setup(mlir::PassManager& pm, const intel_npu::Config& conf
         if (_printDebugInfo) {
             flags.enableDebugInfo(true, _printDebugInfoPrettyForm);
         }
+        if (_printSsaPrettyForm) {
+            flags.printNameLocAsPrefix();
+        }
 
         if (_printToFileTree) {
             pm.enableIRPrintingToFileTree(shouldPrintBeforePass, shouldPrintAfterPass, _printFullIR,
@@ -235,6 +232,11 @@ void DeveloperConfig::setup(mlir::PassManager& pm, const intel_npu::Config& conf
     if (!_printDotOptions.empty()) {
         addDotPrinter(pm, _printDotOptions);
     }
+
+    if (!_dumpIntermediateValues.empty()) {
+        addIntermediateValueDumper(pm, _dumpIntermediateValues, _log);
+    }
+
     // Locations verifier
     addLocationsVerifier(pm);
 

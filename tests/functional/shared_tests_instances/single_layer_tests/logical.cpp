@@ -103,6 +103,15 @@ TEST_P(ShaveCodeGenLogicalLayerTestCommon, NPU5010) {
     setPluginCompilerType();
     run(Platform::NPU5010);
 }
+TEST_P(LogicalLayerTestCommon, NPU5020_SW) {
+    setReferenceSoftwareMode();
+    run(Platform::NPU5020);
+}
+
+TEST_P(DynamicLogicalLayerTest, NPU5020_SW) {
+    setReferenceSoftwareMode();
+    run(Platform::NPU5020);
+}
 
 }  // namespace test
 }  // namespace ov

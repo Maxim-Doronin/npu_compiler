@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,6 +7,7 @@
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
 // CHECK-LABEL: @ParsePrintGroupSparseTensorPartial
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x32x16x16xf16>)
 func.func @ParsePrintGroupSparseTensorPartial(%arg0: tensor<1x32x16x16xf16>) -> tensor<1x32x16x16xf16> {
     %0 = const.Declare tensor<1x32x16x16xi1> = dense<1> : tensor<1x32x16x16xi1>
     %1 = VPU.GroupSparseTensor(%arg0, %0)
@@ -16,7 +17,7 @@ func.func @ParsePrintGroupSparseTensorPartial(%arg0: tensor<1x32x16x16xf16>) -> 
     return %2#0 : tensor<1x32x16x16xf16>
 
     // CHECK-DAG:       [[SM:%.+]] = const.Declare tensor<1x32x16x16xi1> = dense<true> : tensor<1x32x16x16xi1>
-    // CHECK:       [[VAL0:%.+]] = VPU.GroupSparseTensor(%arg0, [[SM]])
+    // CHECK:       [[VAL0:%.+]] = VPU.GroupSparseTensor([[ARG_0]], [[SM]])
     // CHECK-SAME:                 -> !VPU.SparseTensor<data=tensor<1x32x16x16xf16>, sparsity_map=tensor<1x32x16x16xi1>>
     // CHECK:       [[VAL1:%.+]]:2 = builtin.unrealized_conversion_cast
     // CHECK-SAME:                      [[VAL0]] : !VPU.SparseTensor<data=tensor<1x32x16x16xf16>, sparsity_map=tensor<1x32x16x16xi1>>
@@ -27,6 +28,7 @@ func.func @ParsePrintGroupSparseTensorPartial(%arg0: tensor<1x32x16x16xf16>) -> 
 // -----
 
 // CHECK-LABEL: @ParsePrintGroupSparseTensor
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x32x16x16xf16>)
 func.func @ParsePrintGroupSparseTensor(%arg0: tensor<1x32x16x16xf16>) -> tensor<1x32x16x16xf16> {
     %0 = const.Declare tensor<1x32x16x16xi1> = dense<1> : tensor<1x32x16x16xi1>
     %1 = const.Declare tensor<1x32x1x1xi32> = dense<1> : tensor<1x32x1x1xi32>
@@ -39,7 +41,7 @@ func.func @ParsePrintGroupSparseTensor(%arg0: tensor<1x32x16x16xf16>) -> tensor<
 
     // CHECK-DAG:   [[SM:%.+]] = const.Declare tensor<1x32x16x16xi1> = dense<true> : tensor<1x32x16x16xi1>
     // CHECK-DAG:   [[SE:%.+]] = const.Declare tensor<1x32x1x1xi32> = dense<1> : tensor<1x32x1x1xi32>
-    // CHECK:       [[VAL0:%.+]] = VPU.GroupSparseTensor(%arg0, [[SM]], [[SE]])
+    // CHECK:       [[VAL0:%.+]] = VPU.GroupSparseTensor([[ARG_0]], [[SM]], [[SE]])
     // CHECK-SAME:                 -> !VPU.SparseTensor<data=tensor<1x32x16x16xf16>, sparsity_map=tensor<1x32x16x16xi1>, storage_element_table=tensor<1x32x1x1xi32>>
     // CHECK:       [[VAL1:%.+]]:3 = builtin.unrealized_conversion_cast
     // CHECK-SAME:                      [[VAL0]] : !VPU.SparseTensor<data=tensor<1x32x16x16xf16>, sparsity_map=tensor<1x32x16x16xi1>, storage_element_table=tensor<1x32x1x1xi32>>
@@ -50,6 +52,7 @@ func.func @ParsePrintGroupSparseTensor(%arg0: tensor<1x32x16x16xf16>) -> tensor<
 // -----
 
 // CHECK-LABEL: @ParsePrintGroupSparseTensorWeights
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<16x32x1x1xf16>)
 func.func @ParsePrintGroupSparseTensorWeights(%arg0: tensor<16x32x1x1xf16>)
         -> !VPU.SparseTensor<data=tensor<16x32x1x1xf16>, sparsity_map=tensor<16x1x1x128xi1>, is_weights,
                              #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<0> : tensor<16xi64>, alignment = 16 : i64>> {
@@ -63,7 +66,7 @@ func.func @ParsePrintGroupSparseTensorWeights(%arg0: tensor<16x32x1x1xf16>)
                                   #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<0> : tensor<16xi64>, alignment = 16 : i64>>
 
     // CHECK-DAG:   [[CST_SM:%.+]] = const.Declare tensor<16x1x1x128xi1> = dense<true> : tensor<16x1x1x128xi1>
-    // CHECK:       [[VAL0:%.+]] = VPU.GroupSparseTensor(%arg0, [[CST_SM]]) {
+    // CHECK:       [[VAL0:%.+]] = VPU.GroupSparseTensor([[ARG_0]], [[CST_SM]]) {
     // CHECK:            is_weights
     // CHECK:            sparsity_compression = #VPU.SparsityCompression<axis = 0 : i64, numElems = dense<0> : tensor<16xi64>, alignment = 16 : i64>
     // CHECK:        } -> !VPU.SparseTensor<data=tensor<16x32x1x1xf16>, sparsity_map=tensor<16x1x1x128xi1>, is_weights
@@ -74,6 +77,7 @@ func.func @ParsePrintGroupSparseTensorWeights(%arg0: tensor<16x32x1x1xf16>)
 // -----
 
 // CHECK-LABEL: @ParsePrintGroupSparseSeAttrTensor
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x32x16x16xf16>)
 func.func @ParsePrintGroupSparseSeAttrTensor(%arg0: tensor<1x32x16x16xf16>) -> tensor<1x32x16x16xf16> {
     %0 = const.Declare tensor<1x32x32x32xi1> = dense<1> : tensor<1x32x32x32xi1>
     %1 = const.Declare tensor<1x1x32x32xi32> = dense<1> : tensor<1x1x32x32xi32>
@@ -87,7 +91,7 @@ func.func @ParsePrintGroupSparseSeAttrTensor(%arg0: tensor<1x32x16x16xf16>) -> t
 
     // CHECK-DAG:   [[SM:%.+]] = const.Declare tensor<1x32x32x32xi1> = dense<true> : tensor<1x32x32x32xi1>
     // CHECK-DAG:   [[SE:%.+]] = const.Declare tensor<1x1x32x32xi32> = dense<1> : tensor<1x1x32x32xi32>
-    // CHECK:       [[VAL0:%.+]] = VPU.GroupSparseTensor(%arg0, [[SM]], [[SE]])
+    // CHECK:       [[VAL0:%.+]] = VPU.GroupSparseTensor([[ARG_0]], [[SM]], [[SE]])
     // CHECK-SAME:                 {seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 32, 32, 32]>}
     // CHECK-SAME:                 -> !VPU.SparseTensor<data=tensor<1x32x16x16xf16>, sparsity_map=tensor<1x32x32x32xi1>, storage_element_table=tensor<1x1x32x32xi32>, #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 32, 32, 32]>>
 
@@ -170,6 +174,7 @@ func.func @CanonicalizeMultipleSlice(%arg0: tensor<1x32x64x64xf16, {order = #NHW
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @CanonicalizeSEAttrSlice
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x64x4x4xf16, {order = #NHWC}>)
 func.func @CanonicalizeSEAttrSlice(%arg0: tensor<1x64x4x4xf16, {order = #NHWC}>)
         -> !VPU.SparseTensor<data=tensor<1x64x3x4xf16, {mem_space = @CMX_NN, order = #NHWC}>,
                              sparsity_map=tensor<1x64x5x9xi1>,
@@ -201,7 +206,7 @@ func.func @CanonicalizeSEAttrSlice(%arg0: tensor<1x64x4x4xf16, {order = #NHWC}>)
                                              #VPU.SEInterpolate<mode = <BILINEAR>, coordinate_transformation_mode = <ASYMMETRIC>, scale = [1., 1., 2., 2.], offsets = [0, 0, 0, 0], sizes = [1, 64, 5, 9]>>
 
     // CHECK:       [[SM:%.+]] = const.Declare tensor<1x64x5x9xi1> = dense<true> : tensor<1x64x9x9xi1>, [#const.SubView<[0, 0, 0, 0], [1, 64, 5, 9]>]
-    // CHECK:       [[DATA:%.+]] = VPU.Copy(%arg0) {out_mem_space = @CMX_NN} : tensor<1x64x4x4xf16, {order = #NHWC}> -> tensor<1x64x4x4xf16, {mem_space = @CMX_NN, order = #NHWC}>
+    // CHECK:       [[DATA:%.+]] = VPU.Copy([[ARG_0]]) {out_mem_space = @CMX_NN} : tensor<1x64x4x4xf16, {order = #NHWC}> -> tensor<1x64x4x4xf16, {mem_space = @CMX_NN, order = #NHWC}>
 
     // CHECK:       [[SE_TABLE:%.+]] = VPU.StorageElementTable {
     // CHECK-SAME:                       dataElemType = f16,
@@ -229,6 +234,7 @@ func.func @CanonicalizeSEAttrSlice(%arg0: tensor<1x64x4x4xf16, {order = #NHWC}>)
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @CanonicalizeSEAttrMultipleSlice
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x64x4x4xf16, {order = #NHWC}>)
 func.func @CanonicalizeSEAttrMultipleSlice(%arg0: tensor<1x64x4x4xf16, {order = #NHWC}>)
         -> (!VPU.SparseTensor<data=tensor<1x64x3x4xf16, {mem_space = @CMX_NN, order = #NHWC}>,
                              sparsity_map=tensor<1x64x5x9xi1>,
@@ -282,7 +288,7 @@ func.func @CanonicalizeSEAttrMultipleSlice(%arg0: tensor<1x64x4x4xf16, {order = 
     // CHECK-DAG:       [[SM_SLICE_0:%.+]] = const.Declare tensor<1x64x4x9xi1> = dense<true> : tensor<1x64x9x9xi1>, [#const.SubView<[0, 0, 5, 0], [1, 64, 4, 9]>]
     // CHECK-DAG:       [[SM_SLICE_1:%.+]] = const.Declare tensor<1x64x5x9xi1> = dense<true> : tensor<1x64x9x9xi1>, [#const.SubView<[0, 0, 0, 0], [1, 64, 5, 9]>]
 
-    // CHECK:       [[DATA:%.+]] = VPU.Copy(%arg0) {out_mem_space = @CMX_NN} : tensor<1x64x4x4xf16, {order = #NHWC}>
+    // CHECK:       [[DATA:%.+]] = VPU.Copy([[ARG_0]]) {out_mem_space = @CMX_NN} : tensor<1x64x4x4xf16, {order = #NHWC}>
     // CHECK-SAME:      -> tensor<1x64x4x4xf16, {mem_space = @CMX_NN, order = #NHWC}>
 
     // VPU.StorageElementTable is constant operation, SliceOp was fused into it

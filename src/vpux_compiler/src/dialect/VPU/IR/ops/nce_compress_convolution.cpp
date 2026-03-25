@@ -1,8 +1,6 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
-//
-
 //
 
 #include "vpux/compiler/core/layers.hpp"
@@ -239,10 +237,11 @@ mlir::FailureOr<OutputTiling> vpux::VPU::NCECompressConvolutionOp::getTilingStra
 //
 
 bool vpux::VPU::NCECompressConvolutionOp::checkStrategyCompatibility(VPU::MultiClusterStrategy strategy, size_t) {
-    const auto arch = config::getArch(getOperation());
     const auto outputType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
     const auto batchSize = outputType.getShape()[Dims4D::Act::N];
-    if (batchSize > 1 && batchSize <= VPU::getMaxArchDPUClusterNum(arch)) {
+    const auto enabledTileNum = config::getNumOfTiles(getOperation());
+
+    if (batchSize > 1 && batchSize <= enabledTileNum) {
         return strategy == VPU::MultiClusterStrategy::SplitOverBatch;
     }
 
@@ -425,4 +424,31 @@ vpux::VPU::SparsitySupport vpux::VPU::NCECompressConvolutionOp::sparsitySupport(
         excludeMode = VPU::NCESparsity::bitwiseNot(VPU::SparsitySupport::SPARSE_OUTPUTS);
     }
     return VPU::SparsitySupport::SPARSE_OUTPUTS & excludeMode;
+}
+
+mlir::LogicalResult vpux::VPU::NCECompressConvolutionOp::reifyResultShapes(
+        mlir::OpBuilder& builder, mlir::ReifiedRankedShapedTypeDims& reifiedReturnShapes) {
+    // Parse attributes
+    const auto strides = parseIntArrayAttr<int64_t>(getStrides());
+
+    const auto padTop = getPad().getTop().getValue().getSExtValue();
+    const auto padBottom = getPad().getBottom().getValue().getSExtValue();
+    const auto padLeft = getPad().getLeft().getValue().getSExtValue();
+    const auto padRight = getPad().getRight().getValue().getSExtValue();
+
+    const auto dataPaddingAbove = SmallVector<int64_t>({padTop, padLeft});
+    const auto dataPaddingBelow = SmallVector<int64_t>({padBottom, padRight});
+
+    const auto rawFilterShape = Shape(parseIntArrayAttr<int64_t>(getRawFilterShape()));
+    SmallVector<int64_t> kernelSize{rawFilterShape[Dims4D::Filter::KY], rawFilterShape[Dims4D::Filter::KX]};
+
+    // Compute output shape using utility
+    auto outShape = reifyConvPoolTensors(builder, getInput(), getOutput(), getFilter(), kernelSize, strides,
+                                         dataPaddingAbove, dataPaddingBelow, getLoc());
+    if (mlir::failed(outShape)) {
+        return outShape;
+    }
+
+    reifiedReturnShapes.emplace_back(std::move(outShape.value()));
+    return mlir::success();
 }

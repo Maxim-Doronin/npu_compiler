@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -415,6 +415,7 @@ config.Resources 1 of @NCE at 6.000000e+02 MHz
 
 // -----
 
+// CHECK-LABEL: nndma_f32tof16
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
 module attributes {config.arch = #config.arch_kind<NPU40XX>} {
@@ -437,9 +438,13 @@ config.Resources 1 of @NCE at 6.000000e+02 MHz
     %2 = VPURT.DeclareBuffer <NetworkOutput> [0] <0> {swizzlingKey = 0 : i64} -> memref<1x3x4x5xf16, {order = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>, strides = [288, 96, 16, 1]}, @DDR>
     %3 = VPUMI40XX.NNDMA <{port = 0 : i64}> taskLocation(%0 : !VPURegMapped.Index<0:0:0>)
         inputs(%1 : memref<1x3x4x5xf32, @DDR>)
-        outputs(%2 : memref<1x3x4x5xf16, {order = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>, strides = [288, 96, 16, 1]}, @DDR>) start_after(1) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:0>
+        outputs(%2 : memref<1x3x4x5xf16, {order = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>, strides = [288, 96, 16, 1]}, @DDR>) start_after(1) clean_after(0) acceleration_mode(<DISABLE>) 
+        dma_transaction(#VPUMI40XX.NNDMATransaction<inputType = memref<1x3x4x5xf32, @DDR>, outputType = memref<1x3x4x5xf16, @DDR>>)
+        -> !VPURegMapped.Index<0:0:0>
 
-    // CHECK:   descriptor(<numPlanes = 3 : i32, len = 80 : i32, srcWidth = 80 : i32, srcStride = 80 : i32, srcPlaneStride = 80 : i32, dstWidth = 10 : i32, dstStride = 32 : i32, dstPlaneStride = 192 : i32>)
+    // CHECK    :   VPUMI40XX.NNDMA
+    // CHECK-NOT:   descriptor
+    // CHECK    :   dma_transaction(#VPUMI40XX.NNDMATransaction<inputType = memref<1x3x4x5xf32, @DDR>, outputType = memref<1x3x4x5xf16, @DDR>>)
 
     ELF.ABIVersion {sym_name = "LoaderABIVersion"}
     VPUMI40XX.OpRanges

@@ -1,9 +1,10 @@
 //
-// Copyright (C) 2025 Intel Corporation
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/NPU50XX/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
@@ -87,14 +88,12 @@ public:
         auto newFakeConvertInputShape = to_small_vector(fakeConvertInputShape);
         newFakeConvertInputShape.insert(newFakeConvertInputShape.begin(), targetRank - fakeConvertInputShape.size(), 1);
 
-        auto activationReshapeOp =
-                rewriter.create<IE::ReshapeOp>(appendLoc(loc, "act_reshape"), fakeConvertInput, nullptr, false,
-                                               getIntArrayAttr(ctx, newFakeConvertInputShape));
+        auto activationReshapeOp = rewriter.create<IE::ReshapeOp>(appendLoc(loc, "act_reshape"), fakeConvertInput,
+                                                                  getIntArrayAttr(ctx, newFakeConvertInputShape));
 
         auto newFakeConvertScaleShape = SmallVector<size_t>{1, 1, 1, 1};
-        auto filterReshapeOp =
-                rewriter.create<IE::ReshapeOp>(appendLoc(loc, "scale_reshape"), origOp.getScale(), nullptr, false,
-                                               getIntArrayAttr(ctx, newFakeConvertScaleShape));
+        auto filterReshapeOp = rewriter.create<IE::ReshapeOp>(appendLoc(loc, "scale_reshape"), origOp.getScale(),
+                                                              getIntArrayAttr(ctx, newFakeConvertScaleShape));
 
         // Broadcast filter
         auto targetShape = Shape{newFakeConvertInputShape[Dims4D::Filter::IC.ind()], 1, 1, 1};
@@ -118,9 +117,8 @@ public:
                 /*postOp=*/nullptr, /*clamp=*/nullptr,
                 /*outputPadding=*/nullptr, /*inputPadding=*/nullptr);
 
-        auto convOutReshape =
-                rewriter.create<IE::ReshapeOp>(appendLoc(loc, "conv_reshape"), depthWiseConv.getOutput(), nullptr,
-                                               false, getIntArrayAttr(ctx, getShape(origOp.getOutput())));
+        auto convOutReshape = rewriter.create<IE::ReshapeOp>(appendLoc(loc, "conv_reshape"), depthWiseConv.getOutput(),
+                                                             getIntArrayAttr(ctx, getShape(origOp.getOutput())));
 
         // Create a pair of dummy Quantize->Dequantize operations to ensure the data actually gets converted
         const auto dequantType = mlir::cast<NDTypeInterface>(origOp.getOutput().getType()).getElementType();
@@ -172,9 +170,9 @@ public:
 
 template <typename ConcreteOp>
 bool MoveDividePost<ConcreteOp>::isLegalTransformation(ConcreteOp op) const {
-    // IE::MatMulOp should not have post op
+    // IE::MatMulOp should not have post op or clamp
     if constexpr (std::is_same_v<ConcreteOp, IE::MatMulOp>) {
-        return op.getPostOpAttr() == nullptr;
+        return !IE::hasPPE(op);
     }
     // IE::FullyConnectedOp should not have bias
     else if constexpr (std::is_same_v<ConcreteOp, IE::FullyConnectedOp>) {

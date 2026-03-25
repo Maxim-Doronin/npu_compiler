@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -55,9 +55,9 @@ func.func @UniquifyWeightsTableCopies(%input1: memref<1x128x1x1xf16, #NHWC>, %in
     %wt1_alloc = VPURT.AllocDistributed -> !WeightTableDistType
     %wt1_cmx = VPUIP.Copy inputs(%wt : memref<1152x1x1x4xsi32>) outputs(%wt1_alloc : !WeightTableDistType) -> !WeightTableDistType
     %conv1_out = VPURT.AllocDistributed -> !OutDistType
-    %conv1 = VPUIP.NCEClusterTask {is_zero_offset_weights_table, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
-                                  kernel_size = [1, 1], kernel_strides = [1, 1], minimumHardwareExecutionCost = 1029 : i64,
-                                  mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<CONV>}
+    %conv1 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 1029 : i64} <{is_zero_offset_weights_table, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+                                  kernel_size = [1, 1], kernel_strides = [1, 1],
+                                  mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<CONV>}>
             input(%in1_cmx : !InDistType) weights(%weights1_cmx : !WeightsDistType)
             weight_table(%wt1_cmx : !WeightTableDistType) parent_input(%in1_cmx : !InDistType)
             parent_output(%conv1_out : !OutDistType) outputs(%conv1_out : !OutDistType) -> !OutDistType variants : {
@@ -84,9 +84,9 @@ func.func @UniquifyWeightsTableCopies(%input1: memref<1x128x1x1xf16, #NHWC>, %in
     %wt2_alloc = VPURT.AllocDistributed -> !WeightTableDistType
     %wt2_cmx = VPUIP.Copy inputs(%wt : memref<1152x1x1x4xsi32>) outputs(%wt2_alloc : !WeightTableDistType) -> !WeightTableDistType
     %conv2_out = VPURT.AllocDistributed -> !OutDistType
-    %conv2 = VPUIP.NCEClusterTask {is_zero_offset_weights_table, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
-                                  kernel_size = [1, 1], kernel_strides = [1, 1], minimumHardwareExecutionCost = 1029 : i64,
-                                  mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<CONV>}
+    %conv2 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 1029 : i64} <{is_zero_offset_weights_table, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+                                  kernel_size = [1, 1], kernel_strides = [1, 1],
+                                  mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<CONV>}>
             input(%in2_cmx : !InDistType) weights(%weights2_cmx : !WeightsDistType)
             weight_table(%wt2_cmx : !WeightTableDistType) parent_input(%in2_cmx : !InDistType)
             parent_output(%conv2_out : !OutDistType) outputs(%conv2_out : !OutDistType) -> !OutDistType variants : {
@@ -126,7 +126,7 @@ func.func @UniquifyWeightsTableCopies(%input1: memref<1x128x1x1xf16, #NHWC>, %in
     // CHECK-SAME:      -> !VPUIP.DistributedBuffer<1152x1x1x4xsi32, #NCHW, @CMX_NN
 
     // CHECK:     [[CONV1_OUT:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x1152x1x1xf16, #NHWC, @CMX_NN
-    // CHECK:     [[CONV1:%.+]] = VPUIP.NCEClusterTask {is_zero_offset_weights_table,
+    // CHECK:     [[CONV1:%.+]] = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 1029 : i64} <{is_zero_offset_weights_table,
     // CHECK-SAME:      input([[IN1_CMX]] : !VPUIP.DistributedBuffer<1x128x1x1xf16, #NHWC, @CMX_NN
     // CHECK-SAME:      weights([[WEIGHTS1_CMX]] : !VPUIP.DistributedBuffer<1152x128x1x1xf16, #NHWC, @CMX_NN
     // CHECK-SAME:      weight_table([[WT_CMX]] : !VPUIP.DistributedBuffer<1152x1x1x4xsi32, #NCHW, @CMX_NN
@@ -144,7 +144,7 @@ func.func @UniquifyWeightsTableCopies(%input1: memref<1x128x1x1xf16, #NHWC>, %in
     // CHECK-SAME:      outputs([[WEIGHTS2_ALLOC]] : !VPUIP.DistributedBuffer<1152x128x1x1xf16, #NHWC, @CMX_NN
     // CHECK-SAME:      -> !VPUIP.DistributedBuffer<1152x128x1x1xf16, #NHWC, @CMX_NN
     // CHECK:     [[CONV2_OUT:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x1152x1x1xf16, #NHWC, @CMX_NN
-    // CHECK:     [[CONV2:%.+]] = VPUIP.NCEClusterTask {is_zero_offset_weights_table,
+    // CHECK:     [[CONV2:%.+]] = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 1029 : i64} <{is_zero_offset_weights_table,
     // CHECK-SAME:      input([[IN2_CMX]] : !VPUIP.DistributedBuffer<1x128x1x1xf16, #NHWC, @CMX_NN
     // CHECK-SAME:      weights([[WEIGHTS2_CMX]] : !VPUIP.DistributedBuffer<1152x128x1x1xf16, #NHWC, @CMX_NN
     // CHECK-SAME:      weight_table([[WT_CMX]] : !VPUIP.DistributedBuffer<1152x1x1x4xsi32, #NCHW, @CMX_NN
@@ -180,9 +180,9 @@ func.func @DoNotUniquifyWhenSiblingViewOp(%input1: memref<1x128x1x1xf16, #NHWC>,
     %wt1_alloc = memref.alloc() : !WeightTableDistType
     %wt1_cmx = VPUIP.Copy inputs(%wt : memref<1152x1x1x4xsi32>) outputs(%wt1_alloc : !WeightTableDistType) -> !WeightTableDistType
     %conv1_out = memref.alloc() : !OutDistType
-    %conv1 = VPUIP.NCEClusterTask {is_zero_offset_weights_table, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
-                                  kernel_size = [1, 1], kernel_strides = [1, 1], minimumHardwareExecutionCost = 1029 : i64,
-                                  mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<CONV>}
+    %conv1 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 1029 : i64} <{is_zero_offset_weights_table, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+                                  kernel_size = [1, 1], kernel_strides = [1, 1],
+                                  mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<CONV>}>
             input(%in1_cmx : !InDistType) weights(%weights1_cmx : !WeightsDistType)
             weight_table(%wt1_cmx : !WeightTableDistType) parent_input(%in1_cmx : !InDistType)
             parent_output(%conv1_out : !OutDistType) outputs(%conv1_out : !OutDistType) -> !OutDistType variants : {
@@ -202,9 +202,9 @@ func.func @DoNotUniquifyWhenSiblingViewOp(%input1: memref<1x128x1x1xf16, #NHWC>,
     %wt2_alloc = memref.alloc() : !WeightTableDistType
     %wt2_cmx = VPUIP.Copy inputs(%reshape : memref<1152x1x1x4xsi32>) outputs(%wt2_alloc : !WeightTableDistType) -> !WeightTableDistType
     %conv2_out = memref.alloc() : !OutDistType
-    %conv2 = VPUIP.NCEClusterTask {is_zero_offset_weights_table, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
-                                  kernel_size = [1, 1], kernel_strides = [1, 1], minimumHardwareExecutionCost = 1029 : i64,
-                                  mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<CONV>}
+    %conv2 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 1029 : i64} <{is_zero_offset_weights_table, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+                                  kernel_size = [1, 1], kernel_strides = [1, 1],
+                                  mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<CONV>}>
             input(%in2_cmx : !InDistType) weights(%weights2_cmx : !WeightsDistType)
             weight_table(%wt2_cmx : !WeightTableDistType) parent_input(%in2_cmx : !InDistType)
             parent_output(%conv2_out : !OutDistType) outputs(%conv2_out : !OutDistType) -> !OutDistType variants : {
@@ -231,7 +231,7 @@ func.func @DoNotUniquifyWhenSiblingViewOp(%input1: memref<1x128x1x1xf16, #NHWC>,
     // CHECK-SAME:      outputs([[WT_ALLOC]] : memref<1152x1x1x4xsi32, @CMX_NN>) -> memref<1152x1x1x4xsi32, @CMX_NN>
 
     // CHECK:     [[CONV1_OUT:%.+]] = memref.alloc() : memref<1x1152x1x1xf16, #NHWC, @CMX_NN>
-    // CHECK:     [[CONV1:%.+]] = VPUIP.NCEClusterTask {is_zero_offset_weights_table,
+    // CHECK:     [[CONV1:%.+]] = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 1029 : i64} <{is_zero_offset_weights_table,
     // CHECK-SAME:      input([[IN1_CMX]] : memref<1x128x1x1xf16, #NHWC, @CMX_NN>
     // CHECK-SAME:      weights([[WEIGHTS1_CMX]] : memref<1152x128x1x1xf16, #NHWC, @CMX_NN>
     // CHECK-SAME:      weight_table([[WT_CMX]] : memref<1152x1x1x4xsi32, @CMX_NN>
@@ -252,7 +252,7 @@ func.func @DoNotUniquifyWhenSiblingViewOp(%input1: memref<1x128x1x1xf16, #NHWC>,
     // CHECK:     [[WT2_CMX:%.+]] = VPUIP.Copy inputs([[WT_RESHAPE1]] : memref<1152x1x1x4xsi32>)
     // CHECK-SAME:      outputs([[WT2_ALLOC]] : memref<1152x1x1x4xsi32, @CMX_NN>) -> memref<1152x1x1x4xsi32, @CMX_NN>
     // CHECK:     [[CONV2_OUT:%.+]] = memref.alloc() : memref<1x1152x1x1xf16, #NHWC, @CMX_NN>
-    // CHECK:     [[CONV2:%.+]] = VPUIP.NCEClusterTask {is_zero_offset_weights_table,
+    // CHECK:     [[CONV2:%.+]] = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 1029 : i64} <{is_zero_offset_weights_table,
     // CHECK-SAME:      input([[IN2_CMX]] : memref<1x128x1x1xf16, #NHWC, @CMX_NN>
     // CHECK-SAME:      weights([[WEIGHTS2_CMX]] : memref<1152x128x1x1xf16, #NHWC, @CMX_NN>
     // CHECK-SAME:      weight_table([[WT2_CMX]] : memref<1152x1x1x4xsi32, @CMX_NN>

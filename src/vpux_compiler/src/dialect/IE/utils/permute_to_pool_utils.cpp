@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2026 Intel Corporation.
+// Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -144,6 +144,11 @@ bool vpux::isLegalConvertToPool(NDTypeInterface inputType, NDTypeInterface outpu
         const bool is16BitsQuantization = (inputQuantType.getStorageType().getIntOrFloatBitWidth() == 16);
         if (is16BitsQuantization) {
             log.trace("NCE MaxPool does not support quantized 16 bits input");
+            return false;
+        }
+        const bool isSubByteQuantization = (inputQuantType.getStorageType().getIntOrFloatBitWidth() < 8);
+        if (isSubByteQuantization) {
+            log.trace("NCE MaxPool does not support sub-byte quantized input");
             return false;
         }
     }

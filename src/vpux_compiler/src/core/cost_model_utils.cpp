@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,8 @@
 #include "vpux/compiler/dialect/VPU/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
+#include "vpux/compiler/dialect/VPU/utils/hash_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/op_tiling_cache.hpp"
 #include "vpux/compiler/dialect/VPU/utils/ppe_version_config.hpp"
 #include "vpux/compiler/dialect/VPU/utils/singleton_cache.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/attributes.hpp"
@@ -16,6 +18,7 @@
 #include "vpux/compiler/dialect/VPUIP/utils/swizzling_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/utils/hash.hpp"
 #include "vpux/utils/core/numeric.hpp"
 
 #include <vpu/dma_types.h>
@@ -109,8 +112,9 @@ VPUNN::Swizzling vpux::getVPUNNSwizzlingKey(mlir::Type type) {
 }
 
 VPUNN::ActivationFunction vpux::getVPUNNActivationFunction(VPU::PPEAttr ppeAttr) {
-    const auto ppeMode = VPU::PpeVersionConfig::getFactoryAs<VPU::IPpeAdapterMode>().getMode(ppeAttr);
-    const auto clampLow = VPU::PpeVersionConfig::getFactoryAs<VPU::IPpeAdapterClamp>().getClamps(ppeAttr).first;
+    const auto& ppeConfig = VPU::getPpeConfig(ppeAttr.getContext());
+    const auto ppeMode = ppeConfig.getFactoryAs<VPU::IPpeAdapterMode>().getMode(ppeAttr);
+    const auto clampLow = ppeConfig.getFactoryAs<VPU::IPpeAdapterClamp>().getClamps(ppeAttr).first;
 
     switch (ppeMode) {
     case VPU::PPEMode::LRELU:
@@ -393,7 +397,7 @@ VPUNN::DPUWorkload vpux::getDPUWorkload(VPUIP::DPUTaskOp dpuTaskOp, [[maybe_unus
     }
 
     // Set actual IC for compress conv, to pass compute shape to VPUNN
-    if (nceClusterOp.getInputChannelsCompressionAttr() != nullptr) {
+    if (nceClusterOp.getInputChannelsCompression()) {
         if (nceClusterOp.getCmSpPatternAttr() != nullptr) {
             auto cm_sp_pattern = checked_cast<uint16_t>(nceClusterOp.getCmSpPatternAttr().getValue().getSExtValue());
             std::bitset<16> cm_sp_pattern_bits(cm_sp_pattern);
@@ -464,8 +468,8 @@ VPUNN::DPUWorkload vpux::getDPUWorkload(VPUIP::DPUTaskOp dpuTaskOp, [[maybe_unus
     // Note: Compressed Convolutions are an alternative way to avoid padding the input channels to 16, by only
     // padding them to 4. For these workloads, VPUNN does not expect the IDU autopad to be marked as enabled
     const auto usesIDUAutopad = vpunnDPUWorkload.inputs[0].z() < VPU::NCEInvariant::VPU_CHANNEL_ALIGNMENT &&
-                                nceClusterOp.getInputChannelsCompressionAttr() == nullptr;
-    const auto usesODUAutopad = vpunnDPUWorkload.outputs[0].z() < VPU::NCEInvariant::VPU_CHANNEL_ALIGNMENT;
+                                !nceClusterOp.getInputChannelsCompression();
+    const auto usesODUAutopad = vpunnDPUWorkload.outputs[0].z() % VPU::NCEInvariant::VPU_CHANNEL_ALIGNMENT != 0;
     if (usesIDUAutopad) {
         vpunnDPUWorkload.input_autopad = true;
     }
@@ -837,11 +841,10 @@ std::string getSwKernelOperationName(VPUIP::SwKernelOp swKernelOp) {
 // VPU to VPUIP dialect, or any other optimization place that will change the order of the parameters, please revise
 // accordingly in this place and request a cache update.
 // getShaveWorkloadFunction
-std::map<std::string, std::function<void(VPUNN::SHAVEWorkload::Parameters&, std::string&, VPUIP::SwKernelOp)>>
+std::map<std::string, std::function<void(VPUNN::SHAVEWorkload::Parameters&, VPUIP::SwKernelOp)>>
         operationHandlersVPUIP = {
                 {"MVN",
-                 [](VPUNN::SHAVEWorkload::Parameters& params, std::string& shaveFunction,
-                    VPUIP::SwKernelOp swKernelOp) {
+                 [](VPUNN::SHAVEWorkload::Parameters& params, VPUIP::SwKernelOp swKernelOp) {
                      auto swKernelRunOps = swKernelOp.getBody().getOps<VPUIP::SwKernelRun>();
                      auto swKernelRunOp = *swKernelRunOps.begin();
                      auto attributeArray = mlir::dyn_cast_or_null<mlir::ArrayAttr>(swKernelRunOp->getAttr("attrs"));
@@ -851,49 +854,46 @@ std::map<std::string, std::function<void(VPUNN::SHAVEWorkload::Parameters&, std:
                      auto acrossChannels = mlir::dyn_cast_or_null<mlir::BoolAttr>(attributeArray[0]);
                      VPUX_THROW_WHEN(!acrossChannels, "MVN operation does not have the accross channels attribute");
 
-                     shaveFunction = acrossChannels.getValue() ? "MVN_3Ax" : "MVN_2Ax";
                      VPUNN::SHAVEWorkload::Param param =
                              acrossChannels.getValue() ? 3 : 2;  // how many axes are selected
                      params = std::vector{param};
                  }},
                 {"MVN6",
-                 [](VPUNN::SHAVEWorkload::Parameters& params, std::string&, VPUIP::SwKernelOp) {
+                 [](VPUNN::SHAVEWorkload::Parameters& params, VPUIP::SwKernelOp) {
                      VPUNN::SHAVEWorkload::Param param = 1;  // how many axes are selected
                      params = std::vector{param};
                  }},
                 {"softmax",
-                 [](VPUNN::SHAVEWorkload::Parameters& params, std::string&, VPUIP::SwKernelOp) {
+                 [](VPUNN::SHAVEWorkload::Parameters& params, VPUIP::SwKernelOp) {
                      VPUNN::SHAVEWorkload::Param param = 1;  // select dimension (N(0), C(1), H(2), W(3))
                      params = std::vector{param};
                  }},
                 {"gather",
-                 [](VPUNN::SHAVEWorkload::Parameters& params, std::string&, VPUIP::SwKernelOp) {
+                 [](VPUNN::SHAVEWorkload::Parameters& params, VPUIP::SwKernelOp) {
                      VPUNN::SHAVEWorkload::Param paramAxis = 1;
                      VPUNN::SHAVEWorkload::Param paramBatches = 1;
                      params = std::vector{paramAxis, paramBatches};
                  }},
                 {"normalizel2onlyc",
-                 [](VPUNN::SHAVEWorkload::Parameters& params, std::string&, VPUIP::SwKernelOp) {
+                 [](VPUNN::SHAVEWorkload::Parameters& params, VPUIP::SwKernelOp) {
                      VPUNN::SHAVEWorkload::Param param = 1;  // select dimension (N(0), C(1), H(2), W(3))
                      params = std::vector{param};
                  }},
 };
 
-std::map<std::string, std::function<void(VPUNN::SHAVEWorkload::Parameters&, std::string&, VPU::SWOpInterface)>>
-        operationHandlersVPU = {
+std::map<std::string, std::function<void(VPUNN::SHAVEWorkload::Parameters&, VPU::SWOpInterface)>> operationHandlersVPU =
+        {
                 {"MVN",
-                 [](VPUNN::SHAVEWorkload::Parameters& params, std::string& shave_function,
-                    VPU::SWOpInterface operation) {
+                 [](VPUNN::SHAVEWorkload::Parameters& params, VPU::SWOpInterface operation) {
                      auto acrossChannelsAttr = operation->getAttr("across_channels");
                      auto acrossChannels = mlir::dyn_cast_or_null<mlir::BoolAttr>(acrossChannelsAttr);
                      VPUX_THROW_WHEN(!acrossChannels, "MVN operation does not have the across_channels attribute");
-                     shave_function = acrossChannels.getValue() ? "MVN_3Ax" : "MVN_2Ax";
                      VPUNN::SHAVEWorkload::Param param =
                              acrossChannels.getValue() ? 3 : 2;  // how many axes are selected
                      params = std::vector{param};
                  }},
                 {"MVN6",
-                 [](VPUNN::SHAVEWorkload::Parameters& params, std::string&, VPU::SWOpInterface operation) {
+                 [](VPUNN::SHAVEWorkload::Parameters& params, VPU::SWOpInterface operation) {
                      auto axesAttr = operation->getAttr("axes");
                      auto axes = mlir::dyn_cast_or_null<mlir::ArrayAttr>(axesAttr);
                      VPUX_THROW_WHEN(!axes, "MVN6 operation does not have the axes attribute");
@@ -901,7 +901,7 @@ std::map<std::string, std::function<void(VPUNN::SHAVEWorkload::Parameters&, std:
                      params = std::vector{param};
                  }},
                 {"softmax",
-                 [](VPUNN::SHAVEWorkload::Parameters& params, std::string&, VPU::SWOpInterface operation) {
+                 [](VPUNN::SHAVEWorkload::Parameters& params, VPU::SWOpInterface operation) {
                      auto axisIndAttr = operation->getAttr("axisInd");
                      auto axisInd = mlir::dyn_cast_or_null<mlir::IntegerAttr>(axisIndAttr);
                      VPUX_THROW_WHEN(!axisInd, "softmax operation does not have the axisInd attribute");
@@ -910,7 +910,7 @@ std::map<std::string, std::function<void(VPUNN::SHAVEWorkload::Parameters&, std:
                      params = std::vector{param};
                  }},
                 {"gather",
-                 [](VPUNN::SHAVEWorkload::Parameters& params, std::string&, VPU::SWOpInterface operation) {
+                 [](VPUNN::SHAVEWorkload::Parameters& params, VPU::SWOpInterface operation) {
                      auto gatherOp = mlir::dyn_cast<vpux::VPU::GatherOp>(operation.getOperation());
                      VPUX_THROW_WHEN(!gatherOp, "Operation is not a GatherOp");
 
@@ -923,7 +923,7 @@ std::map<std::string, std::function<void(VPUNN::SHAVEWorkload::Parameters&, std:
                      params = std::vector{paramAxis, paramBatches};
                  }},
                 {"normalizel2onlyc",
-                 [](VPUNN::SHAVEWorkload::Parameters& params, std::string&, VPU::SWOpInterface) {
+                 [](VPUNN::SHAVEWorkload::Parameters& params, VPU::SWOpInterface) {
                      VPUNN::SHAVEWorkload::Param param = 1;  // select dimension (N(0), C(1), H(2), W(3))
                      params = std::vector{param};
                  }},
@@ -940,7 +940,7 @@ std::vector<VPUNN::VPUTensor> getVPUNNTensorFromArrayRef(ArrayRef<mlir::Value> v
 
 std::unique_ptr<VPUNN::SHAVEWorkload> getShaveWorkloadFunction(VPUIP::SwKernelOp swKernelOp,
                                                                ArrayRef<mlir::Value> inputs,
-                                                               ArrayRef<mlir::Value> outputs, bool isShave2ApiUsed) {
+                                                               ArrayRef<mlir::Value> outputs) {
     auto swKernelName = getSwKernelOperationName(swKernelOp);
 
     auto vpuDev = vpux::VPU::getVPUDeviceType(swKernelOp);
@@ -958,56 +958,52 @@ std::unique_ptr<VPUNN::SHAVEWorkload> getShaveWorkloadFunction(VPUIP::SwKernelOp
     std::vector<VPUNN::VPUTensor> inputTensors = getVPUNNTensorFromArrayRef(inputs, vpuDev);
     std::vector<VPUNN::VPUTensor> outputTensors = getVPUNNTensorFromArrayRef(outputs, vpuDev);
 
-    // search operation
-    std::string shaveFunction;
-    auto mapOfKernels = shaveUtilIntf.getSwKernelContainer();
-    auto it = mapOfKernels.find(swKernelName);
-
-    if (it == mapOfKernels.end()) {
+    // Check if operation is supported
+    if (!shaveUtilIntf.isSwKernelOpSupported(swKernelName)) {
         return nullptr;
     }
 
-    shaveFunction = it->second;
     // Execute the handler for the current operation
-    if (isShave2ApiUsed) {
-        auto handlerIt = operationHandlersVPUIP.find(shaveFunction);
+    if (shaveUtilIntf.isShave2ApiUsed()) {
+        auto handlerIt = operationHandlersVPUIP.find(swKernelName);
         if (handlerIt != operationHandlersVPUIP.end()) {
-            // Since for some operations that are influenced by some extraparamteres since we cannot figure out
-            // them from the operation attributes, we are going to take that specific array, then we will get the values
-            // and add them into a single string which will be passed to VPUNN as extra parameter. VPUNN profiling
-            // system will cover the specific implementation of the higher level operation and will retrieve from cache
-            // the correct result.
-            auto swKernelRunOps = swKernelOp.getBody().getOps<VPUIP::SwKernelRun>();
-            auto swKernelRunOp = *swKernelRunOps.begin();
-            auto attributeArray = mlir::dyn_cast_or_null<mlir::ArrayAttr>(swKernelRunOp->getAttr("attrs"));
-
-            std::string attrValuesStr;
-            if (attributeArray != nullptr) {
-                llvm::raw_string_ostream rso(attrValuesStr);
-                for (auto attr : attributeArray) {
-                    std::string attrStr;
-                    llvm::raw_string_ostream attrStream(attrStr);
-                    attr.print(attrStream);
-                    attrStream.flush();
-                    std::replace(attrStr.begin(), attrStr.end(), ',', '.');
-                    rso << attrStr << ";";
-                }
-                rso.flush();
-            }
-            extraParams["attrs"] = attrValuesStr;
-            handlerIt->second(params, shaveFunction, swKernelOp);
+            handlerIt->second(params, swKernelOp);
         }
     }
+    if (vpuDev > VPUNN::VPUDevice::VPU_4_0) {
+        // Since for some operations that are influenced by some extraparamteres since we cannot figure out
+        // them from the operation attributes, we are going to take that specific array, then we will get the values
+        // and add them into a single string which will be passed to VPUNN as extra parameter. VPUNN profiling
+        // system will cover the specific implementation of the higher level operation and will retrieve from cache
+        // the correct result.
+        auto swKernelRunOps = swKernelOp.getBody().getOps<VPUIP::SwKernelRun>();
+        auto swKernelRunOp = *swKernelRunOps.begin();
+        auto attributeArray = mlir::dyn_cast_or_null<mlir::ArrayAttr>(swKernelRunOp->getAttr("attrs"));
 
-    auto swwl = std::make_unique<VPUNN::SHAVEWorkload>(shaveFunction, vpuDev, inputTensors, outputTensors, params,
+        std::string attrValuesStr;
+        if (attributeArray != nullptr) {
+            llvm::raw_string_ostream rso(attrValuesStr);
+            for (auto attr : attributeArray) {
+                std::string attrStr;
+                llvm::raw_string_ostream attrStream(attrStr);
+                attr.print(attrStream);
+                attrStream.flush();
+                std::replace(attrStr.begin(), attrStr.end(), ',', '.');
+                rso << attrStr << ";";
+            }
+            rso.flush();
+        }
+        extraParams["attrs"] = attrValuesStr;
+    }
+
+    auto swwl = std::make_unique<VPUNN::SHAVEWorkload>(swKernelName, vpuDev, inputTensors, outputTensors, params,
                                                        extraParams);
     return swwl;
 }
 
 std::unique_ptr<VPUNN::SHAVEWorkload> getShaveWorkloadFunction(VPU::SWOpInterface operation,
-                                                               std::vector<VPUNN::VPUTensor> inputTensors,
-                                                               std::vector<VPUNN::VPUTensor> outputTensors,
-                                                               bool isShave2ApiUsed) {
+                                                               const std::vector<VPUNN::VPUTensor>& inputTensors,
+                                                               const std::vector<VPUNN::VPUTensor>& outputTensors) {
     auto swKernelName = operation->getName().stripDialect().str();
 
     auto vpuDev = vpux::VPU::getVPUDeviceType(operation);
@@ -1020,43 +1016,42 @@ std::unique_ptr<VPUNN::SHAVEWorkload> getShaveWorkloadFunction(VPU::SWOpInterfac
     std::string baseLevelString{"VPU"};
     extraParams["level"] = baseLevelString;
 
-    auto mapOfKernels = shaveUtilIntf.getSwKernelContainer();
-    auto it = mapOfKernels.find(swKernelName);
-
-    if (it == mapOfKernels.end()) {
+    // Check if operation is supported
+    if (!shaveUtilIntf.isSwKernelOpSupported(swKernelName)) {
         return nullptr;
     }
 
-    std::string shaveFunction = it->second;
-    if (isShave2ApiUsed) {
-        auto handlerIt = operationHandlersVPU.find(shaveFunction);
+    if (shaveUtilIntf.isShave2ApiUsed()) {
+        auto handlerIt = operationHandlersVPU.find(swKernelName);
         if (handlerIt != operationHandlersVPU.end()) {
-            // Process attributes and populate extraParams
-            for (auto attr : operation->getAttrs()) {
-                auto attrName = attr.getName().str();
-                if (attrName == "multiClusterStrategy") {
-                    continue;
-                }
-                extraParams[attrName] = formatv("{0}", attr.getValue()).str();
+            handlerIt->second(params, operation);
+        }
+    }
+    if (vpuDev > VPUNN::VPUDevice::VPU_4_0) {
+        // Process attributes and populate extraParams
+        for (auto attr : operation->getAttrs()) {
+            auto attrName = attr.getName().str();
+            if (attrName == "multiClusterStrategy") {
+                continue;
             }
-            handlerIt->second(params, shaveFunction, operation);
+            extraParams[attrName] = formatv("{0}", attr.getValue()).str();
         }
     }
 
-    auto swwl = std::make_unique<VPUNN::SHAVEWorkload>(shaveFunction, vpuDev, inputTensors, outputTensors, params,
+    auto swwl = std::make_unique<VPUNN::SHAVEWorkload>(swKernelName, vpuDev, inputTensors, outputTensors, params,
                                                        extraParams);
     return swwl;
 }
 
 std::unique_ptr<VPUNN::SHAVEWorkload> getShaveWorkloadFunction(VPU::SWOpInterface operation,
                                                                ArrayRef<mlir::Value> inputs,
-                                                               ArrayRef<mlir::Value> outputs, bool isShave2ApiUsed) {
+                                                               ArrayRef<mlir::Value> outputs) {
     auto vpuDev = vpux::VPU::getVPUDeviceType(operation);
 
     std::vector<VPUNN::VPUTensor> inputTensors = getVPUNNTensorFromArrayRef(inputs, vpuDev);
     std::vector<VPUNN::VPUTensor> outputTensors = getVPUNNTensorFromArrayRef(outputs, vpuDev);
 
-    return getShaveWorkloadFunction(operation, std::move(inputTensors), std::move(outputTensors), isShave2ApiUsed);
+    return getShaveWorkloadFunction(operation, std::move(inputTensors), std::move(outputTensors));
 }
 
 size_t getShaveActCycleForSwKernelFunc(VPUIP::SwKernelOp swKernelOp, ArrayRef<mlir::Value> inputs,
@@ -1064,7 +1059,7 @@ size_t getShaveActCycleForSwKernelFunc(VPUIP::SwKernelOp swKernelOp, ArrayRef<ml
                                        const std::shared_ptr<VPUNN::VPUCostModel>& costModel) {
     auto log = vpux::Logger::global().nest("Get Shave Act Cycle For SW Kernel Function", 0);
 
-    auto swwl = getShaveWorkloadFunction(swKernelOp, inputs, outputs, costModel->isShave2ApiUsed());
+    auto swwl = getShaveWorkloadFunction(swKernelOp, inputs, outputs);
     if (swwl == nullptr) {
         return 1;
     }
@@ -1085,7 +1080,7 @@ size_t getShaveActCycleForSwKernelFunc(VPUIP::SwKernelOp swKernelOp, ArrayRef<ml
     return cost;
 }
 
-std::unique_ptr<VPUNN::SHAVEWorkload> vpux::getVPUNNSWKernelOp(VPUIP::SwKernelOp swKernelOp, bool isShave2ApiUsed) {
+std::unique_ptr<VPUNN::SHAVEWorkload> vpux::getVPUNNSWKernelOp(VPUIP::SwKernelOp swKernelOp) {
     // Exclude strange sw ops produced by compiler like cache_flush_invalidate op
     if (swKernelOp.getInputs().empty() || swKernelOp.getOutputBuffs().empty()) {
         return nullptr;
@@ -1095,45 +1090,49 @@ std::unique_ptr<VPUNN::SHAVEWorkload> vpux::getVPUNNSWKernelOp(VPUIP::SwKernelOp
     auto outputs = to_small_vector(swKernelOp.getOutputBuffs());
 
     SmallVector<mlir::Value> smallVecInputs(inputs.begin(), inputs.end());
-    SmallVector<mlir::Value> smallVecOutputs{outputs[0]};
+    SmallVector<mlir::Value> smallVecOutputs(outputs.begin(), outputs.end());
 
-    return getShaveWorkloadFunction(swKernelOp, smallVecInputs, smallVecOutputs, isShave2ApiUsed);
+    return getShaveWorkloadFunction(swKernelOp, smallVecInputs, smallVecOutputs);
 }
 
-std::unique_ptr<VPUNN::SHAVEWorkload> vpux::getVPUNNSWKernelOp(VPU::SWOpInterface operation, bool isShave2ApiUsed) {
+std::unique_ptr<VPUNN::SHAVEWorkload> vpux::getVPUNNSWKernelOp(VPU::SWOpInterface operation) {
     const auto operName = operation->getName().stripDialect().str();
 
     auto inputs = to_small_vector(operation->getOperands());
-    auto output = operation->getResult(0);
+    // Convert OpResults to Values
+    SmallVector<mlir::Value> outputs;
+    for (auto result : operation->getResults()) {
+        outputs.push_back(result);
+    }
 
-    return getShaveWorkloadFunction(operation, inputs, {output}, isShave2ApiUsed);
+    return getShaveWorkloadFunction(operation, inputs, outputs);
 }
 
 std::unique_ptr<VPUNN::SHAVEWorkload> vpux::getVPUNNSWKernelOp(VPU::SWOpInterface operation,
-                                                               vpux::NDTypeInterface outputNDType,
-                                                               ArrayRef<vpux::NDTypeInterface> inputTypes,
-                                                               bool isShave2APIused) {
+                                                               ArrayRef<vpux::NDTypeInterface> outputTypes,
+                                                               ArrayRef<vpux::NDTypeInterface> inputTypes) {
     auto vpuDev = vpux::VPU::getVPUDeviceType(operation);
 
     const auto operName = operation->getName().stripDialect().str();
-    auto outputTensor = getVPUNNTensor(outputNDType.getShape(), getElementType(outputNDType.getElementType(), vpuDev));
-    std::vector<VPUNN::VPUTensor> outputTensors = {outputTensor};
+    std::vector<VPUNN::VPUTensor> outputTensors;
+    for (auto outputNd : outputTypes) {
+        outputTensors.push_back(getVPUNNTensor(outputNd.getShape(), getElementType(outputNd.getElementType(), vpuDev)));
+    }
 
     std::vector<VPUNN::VPUTensor> inputTensors;
     for (auto inputNd : inputTypes) {
         inputTensors.push_back(getVPUNNTensor(inputNd.getShape(), getElementType(inputNd.getElementType(), vpuDev)));
     }
 
-    return getShaveWorkloadFunction(operation, std::move(inputTensors), std::move(outputTensors), isShave2APIused);
+    return getShaveWorkloadFunction(operation, std::move(inputTensors), std::move(outputTensors));
 }
 
 std::unique_ptr<VPUNN::SHAVEWorkload> vpux::getVPUNNSWKernelOp(VPU::SWOpInterface operation,
-                                                               std::vector<VPUNN::VPUTensor> outputTensors,
-                                                               std::vector<VPUNN::VPUTensor> inputTensors,
-                                                               bool isShave2ApiUsed) {
+                                                               const std::vector<VPUNN::VPUTensor>& outputTensors,
+                                                               const std::vector<VPUNN::VPUTensor>& inputTensors) {
     const auto operName = operation->getName().stripDialect().str();
 
-    return getShaveWorkloadFunction(operation, std::move(inputTensors), std::move(outputTensors), isShave2ApiUsed);
+    return getShaveWorkloadFunction(operation, inputTensors, outputTensors);
 }
 
 size_t vpux::calculateShaveActCycles(VPUIP::SwKernelOp swKernelOp,
@@ -1146,16 +1145,15 @@ size_t vpux::calculateShaveActCycles(VPUIP::SwKernelOp swKernelOp,
     auto outputNdType = mlir::cast<vpux::NDTypeInterface>(swKernelOp->getResult(0).getType());
     auto inputElemType = inputNdType.getElementType();
     auto outputElemType = outputNdType.getElementType();
-
     // CostModel does not support F32/SI32 layers
-    if (!costModel->isShave2ApiUsed()) {
-        if (inputElemType.isF32() || outputElemType.isF32()) {
-            return 1;
-        }
-        if (inputElemType.isSignedInteger(32) || outputElemType.isSignedInteger(32)) {
-            return 1;
-        }
+
+    if (inputElemType.isF32() || outputElemType.isF32()) {
+        return 1;
     }
+    if (inputElemType.isSignedInteger(32) || outputElemType.isSignedInteger(32)) {
+        return 1;
+    }
+
     auto inputs = to_small_vector(swKernelOp.getInputs());
     auto outputs = to_small_vector(swKernelOp.getOutputBuffs());
 
@@ -1203,7 +1201,21 @@ size_t vpux::getDPUTaskOpCost(VPUIP::DPUTaskOp dpuTaskOp, const std::shared_ptr<
         return 1;
     }
 
+    // Enable a cache for DPU workload costs because the sanity check step within the VPU cost model is
+    // computationally expensive. This sanity check may be invoked multiple times for the same workload when it is
+    // split to fit hardware constraints.
+    // TODO: This cache can be removed once the sanity check cost is sufficiently optimized.
     auto vpunnDPUWorkload = vpux::getDPUWorkload(dpuTaskOp, arch);
+    auto& cache = VPU::getGlobalOpTilingCache();
+    llvm::hash_code wlHash;
+    const auto useCache = cache.isCacheSupported();
+    if (useCache) {
+        wlHash = llvm::hash_combine(static_cast<void*>(costModel.get()), vpunnDPUWorkload.hash());
+        auto cachedCost = cache.getDPUWorkloadCost(wlHash);
+        if (cachedCost.has_value()) {
+            return cachedCost.value();
+        }
+    }
 
     // TODO: Should RUNTIME_OVERHEAD_PER_WORKLOAD be added?
     std::string vpunnInputCheckInfo;
@@ -1216,6 +1228,11 @@ size_t vpux::getDPUTaskOpCost(VPUIP::DPUTaskOp dpuTaskOp, const std::shared_ptr<
                   vpunnInputCheckInfo);
         VPU::printVPUNNWorkloadConfig(vpunnDPUWorkload, logCb);
     }
+
+    if (useCache) {
+        cache.updateDPUWorkloadCost(wlHash, cost);
+    }
+
     return cost;
 }
 

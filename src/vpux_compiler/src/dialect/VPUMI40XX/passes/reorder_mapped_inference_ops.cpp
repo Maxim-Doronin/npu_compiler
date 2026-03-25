@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -13,6 +13,9 @@
 #include "vpux/compiler/utils/passes.hpp"
 
 #include <npu_40xx_nnrt.hpp>
+
+#include <llvm/ADT/DenseMap.h>
+#include <llvm/ADT/SmallVector.h>
 
 namespace vpux::VPUMI40XX {
 #define GEN_PASS_DECL_REORDERMPIOPS
@@ -34,28 +37,101 @@ private:
     void safeRunOnFunc() final;
 };
 
+mlir::Operation* moveOrCloneOp(mlir::Operation* op, mlir::OpBuilder& builder) {
+    const auto sameBlock = op->getBlock() == builder.getInsertionBlock();
+    const auto moveSafe = sameBlock && mlir::isMemoryEffectFree(op);
+
+    if (moveSafe) {
+        op->moveBefore(builder.getInsertionBlock(), builder.getInsertionPoint());
+        return op;
+    }
+
+    auto* clonedOp = builder.clone(*op);
+    op->replaceAllUsesWith(clonedOp);
+    op->erase();
+    return clonedOp;
+}
+
 template <typename OpT, typename Functor = vpux::FuncRef<bool(OpT)>>
 mlir::Operation* linearizeOps(
         mlir::func::FuncOp func, mlir::OpBuilder& builder, Functor&& condition = [](OpT) {
             return true;
         }) {
-    auto ops = func.getOps<OpT>();
+    // Collect first to avoid iterator invalidation while moving ops.
+    // Reserve a small default to avoid repeated growth for common cases.
+    constexpr size_t expectedOpsToMove = 64;
+    vpux::SmallVector<mlir::Operation*> opsToMove;
+    opsToMove.reserve(expectedOpsToMove);
+    for (auto op : func.getOps<OpT>()) {
+        if (condition(op)) {
+            opsToMove.push_back(op.getOperation());
+        }
+    }
 
     mlir::Operation* lastOp = nullptr;
-    for (auto op : llvm::make_early_inc_range(ops)) {
-        if (!condition(op)) {
-            continue;
-        }
-
-        lastOp = builder.clone(*op.getOperation());
-
-        op.replaceAllUsesWith(lastOp);
-        op.erase();
+    for (auto* op : opsToMove) {
+        lastOp = moveOrCloneOp(op, builder);
 
         builder.setInsertionPointAfter(lastOp);
     }
 
     return lastOp;
+}
+
+// DeclareTaskBuffer ordering is particularly hot (many repeated scans). Bucket once and then
+// emit/move in the required firmware order.
+void linearizeDeclareTaskBufferOps(mlir::func::FuncOp func, mlir::OpBuilder& builder) {
+    using TaskType = VPURegMapped::TaskType;
+
+    auto makeKey = [](size_t tileIdx, size_t listIdx, TaskType type) -> uint64_t {
+        // Pack into a stable key: [ tileIdx (16) | listIdx (16) | taskType (32) ]
+        return (static_cast<uint64_t>(tileIdx) << 48) | (static_cast<uint64_t>(listIdx) << 32) |
+               static_cast<uint32_t>(type);
+    };
+
+    // Reserve for expected unique (tileIdx, listIdx, taskType) combinations.
+    // Rule of thumb: VPU_MAX_TILES * expected_list_count * expected_task_types.
+    // 256 keeps rehashing low for typical firmware list widths and task mix.
+    constexpr size_t expectedBucketCount = 256;
+
+    vpux::DenseMap<uint64_t, vpux::SmallVector<mlir::Operation*>> buckets;
+    buckets.reserve(expectedBucketCount);
+
+    // Bucket all DeclareTaskBufferOp once in original order.
+    for (auto op : func.getOps<VPUMI40XX::DeclareTaskBufferOp>()) {
+        const auto index = mlir::cast<vpux::VPURegMapped::IndexType>(op.getIndex().getType());
+        const auto tileIdx = checked_cast<size_t>(index.getTileIdx());
+        const auto listIdx = checked_cast<size_t>(index.getListIdx());
+        const auto type = op.getTaskType();
+
+        buckets[makeKey(tileIdx, listIdx, type)].push_back(op.getOperation());
+    }
+
+    auto moveBucket = [&](size_t tileIdx, size_t listIdx, TaskType type) {
+        const auto key = makeKey(tileIdx, listIdx, type);
+        auto it = buckets.find(key);
+        if (it == buckets.end()) {
+            return;
+        }
+        for (auto* op : it->second) {
+            auto* lastOp = moveOrCloneOp(op, builder);
+            builder.setInsertionPointAfter(lastOp);
+        }
+    };
+
+    for (auto tileIndex : irange(nn_public::VPU_MAX_TILES)) {
+        moveBucket(tileIndex, 0, TaskType::DPUInvariant);
+        moveBucket(tileIndex, 0, TaskType::DPUVariant);
+
+        moveBucket(tileIndex, 0, TaskType::ActKernelRange);
+        moveBucket(tileIndex, 1, TaskType::ActKernelRange);
+
+        moveBucket(tileIndex, 0, TaskType::ActKernelInvocation);
+        moveBucket(tileIndex, 1, TaskType::ActKernelInvocation);
+
+        moveBucket(tileIndex, 0, TaskType::DMA);
+        moveBucket(tileIndex, 1, TaskType::DMA);
+    }
 }
 
 template <VPURT::BufferSection SEC>
@@ -93,24 +169,7 @@ void ReorderMPIOpsPass::safeRunOnFunc() {
     // tile0: DPUInvariant -> DPUVariant -> Ranges -> Invocations -> DMA from DDR -> DMA from CMX
     // tile1: DPUInvariant -> DPUVariant -> Ranges -> Invocations -> DMA from DDR -> DMA from CMX
     // ...
-    for (auto tileIndex : irange(nn_public::VPU_MAX_TILES)) {
-        linearizeOps<VPUMI40XX::DeclareTaskBufferOp>(func, builder,
-                                                     taskType<VPURegMapped::TaskType::DPUInvariant>(tileIndex));
-        linearizeOps<VPUMI40XX::DeclareTaskBufferOp>(func, builder,
-                                                     taskType<VPURegMapped::TaskType::DPUVariant>(tileIndex));
-        linearizeOps<VPUMI40XX::DeclareTaskBufferOp>(func, builder,
-                                                     taskType<VPURegMapped::TaskType::ActKernelRange>(tileIndex, 0));
-        linearizeOps<VPUMI40XX::DeclareTaskBufferOp>(func, builder,
-                                                     taskType<VPURegMapped::TaskType::ActKernelRange>(tileIndex, 1));
-        linearizeOps<VPUMI40XX::DeclareTaskBufferOp>(
-                func, builder, taskType<VPURegMapped::TaskType::ActKernelInvocation>(tileIndex, 0));
-        linearizeOps<VPUMI40XX::DeclareTaskBufferOp>(
-                func, builder, taskType<VPURegMapped::TaskType::ActKernelInvocation>(tileIndex, 1));
-        linearizeOps<VPUMI40XX::DeclareTaskBufferOp>(func, builder,
-                                                     taskType<VPURegMapped::TaskType::DMA>(tileIndex, 0));
-        linearizeOps<VPUMI40XX::DeclareTaskBufferOp>(func, builder,
-                                                     taskType<VPURegMapped::TaskType::DMA>(tileIndex, 1));
-    }
+    linearizeDeclareTaskBufferOps(func, builder);
 
     linearizeOps<Const::DeclareOp>(func, builder);
 

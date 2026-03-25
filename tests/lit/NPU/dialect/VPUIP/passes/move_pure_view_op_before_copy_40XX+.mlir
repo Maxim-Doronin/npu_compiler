@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -378,7 +378,7 @@ func.func @ChangeForStridedCopy(
     %2 = VPUIP.GenericReshape inputs(%1 : memref<1x2048x8192xui8, @DDR>) -> memref<1x1x2048x8192xui8, @DDR>
 
     %3 = VPUIP.QuantizeCast inputs(%2 : memref<1x1x2048x8192xui8, @DDR>) -> memref<1x1x2048x8192x!qElemType, @DDR>
-    
+
     %4 = VPUIP.ShapeCast {shape = [1, 2048, 64, 128]} inputs(%3 : memref<1x1x2048x8192x!qElemType, @DDR>) -> memref<1x2048x64x128x!qElemType, @DDR>
 
     %5 = VPUIP.PermuteCast {dst_order = #NHWC, mem_perm = #NHWC}
@@ -458,4 +458,3 @@ func.func @NoChangeForStridedCopyShapeCast(
     // CHECK:   VPUIP.Copy
     // CHECK:   VPUIP.ShapeCast
 }
-

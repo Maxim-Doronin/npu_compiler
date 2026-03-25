@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,12 +9,12 @@
 using namespace vpux;
 
 constexpr double NPU37XX_FRAGMENTATION_AVOID_RATIO_PIPELINING_LARGE_WEIGHTS = 0.45;
-constexpr double DEFAULT_FRAGMENTATION_AVOID_RATIO_PIPELINING_LARGE_WEIGHTS = 0.36;
+constexpr double NPU50XX_FRAGMENTATION_AVOID_RATIO_PIPELINING_LARGE_WEIGHTS = 0.32;
 
 const std::unordered_map<config::ArchKind, double> fragmentationDefaultRatioForPipelinlingMap = {
         {config::ArchKind::NPU37XX, NPU37XX_FRAGMENTATION_AVOID_RATIO_PIPELINING_LARGE_WEIGHTS},
         {config::ArchKind::NPU40XX, NPU37XX_FRAGMENTATION_AVOID_RATIO_PIPELINING_LARGE_WEIGHTS},
-        {config::ArchKind::NPU50XX, DEFAULT_FRAGMENTATION_AVOID_RATIO_PIPELINING_LARGE_WEIGHTS},
+        {config::ArchKind::NPU50XX, NPU50XX_FRAGMENTATION_AVOID_RATIO_PIPELINING_LARGE_WEIGHTS},
 };
 
 double VPU::getFragmentationAvoidRatioPipeliningLargeWeights(config::ArchKind archKind) {

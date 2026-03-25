@@ -1,3 +1,4 @@
+//
 // Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -114,6 +115,11 @@ TEST_P(DynamicGatherwithAddNPUTest, NPU5010_HW_TestKindSubgraph) {
     abs_threshold = 0.0f;
     setDefaultHardwareMode();
     run(Platform::NPU5010);
+}
+TEST_P(DynamicGatherwithAddNPUTest, NPU5020_HW_TestKindSubgraph) {
+    abs_threshold = 0.0f;
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
 }
 
 const std::vector<InputType> inputPrecision = {ov::element::f16};

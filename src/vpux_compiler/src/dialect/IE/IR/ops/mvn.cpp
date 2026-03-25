@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -114,16 +114,16 @@ mlir::LogicalResult ReshapeBatched::matchAndRewrite(IE::MVNOp origOp, mlir::Patt
     newShape[Dims4D::Act::H.ind()] = origShape[Dims4D::Act::C];
     newShape[Dims4D::Act::W.ind()] = origShape[Dims4D::Act::H] * origShape[Dims4D::Act::W];
     const auto newShapeAttr = getIntArrayAttr(rewriter.getContext(), newShape);
-    auto inputReshape = rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_in"), origOp.getInput(),
-                                                             nullptr, false, newShapeAttr);
+    auto inputReshape =
+            rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_in"), origOp.getInput(), newShapeAttr);
 
     auto newMvnOp = rewriter.create<IE::MVNOp>(origOp->getLoc(), inputReshape,
                                                mlir::BoolAttr::get(rewriter.getContext(), false),
                                                origOp.getNormalizeVarianceAttr(), origOp.getEpsAttr());
 
     const auto origShapeAttr = getIntArrayAttr(origOp->getContext(), origShape);
-    auto outputReshape = rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_out"), newMvnOp, nullptr,
-                                                              false, origShapeAttr);
+    auto outputReshape =
+            rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_out"), newMvnOp, origShapeAttr);
 
     rewriter.replaceOp(origOp, outputReshape);
     return mlir::success();

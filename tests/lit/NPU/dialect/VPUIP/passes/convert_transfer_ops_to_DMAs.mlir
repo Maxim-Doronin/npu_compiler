@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,6 +7,7 @@
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
 // CHECK-LABEL: @CopyToDMA
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x2x2x2xf16>)
 func.func @CopyToDMA(%arg0: memref<1x2x2x2xf16>) -> memref<1x2x2x2xf16> {
     %0 = const.Declare memref<1x2x2x2xf16> = dense<1.0> : tensor<1x2x2x2xf16>
     %1 = VPUIP.Copy inputs(%0 : memref<1x2x2x2xf16>) outputs(%arg0 : memref<1x2x2x2xf16>) -> memref<1x2x2x2xf16>
@@ -17,7 +18,7 @@ func.func @CopyToDMA(%arg0: memref<1x2x2x2xf16>) -> memref<1x2x2x2xf16> {
 
     // CHECK:       [[VAR1:%.+]] = VPUIP.NNDMA
     // CHECK-SAME:      inputs([[VAR0]] : memref<1x2x2x2xf16>)
-    // CHECK-SAME:      outputs(%arg0 : memref<1x2x2x2xf16>) -> memref<1x2x2x2xf16>
+    // CHECK-SAME:      outputs([[ARG_0]] : memref<1x2x2x2xf16>) -> memref<1x2x2x2xf16>
 
     // CHECK: return [[VAR1]] : memref<1x2x2x2xf16>
 }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -48,4 +48,50 @@ module @MemoryLimitTest {
     // CHECK-SMALL-LIMIT-NEXT:   return [[ADD_ONE]]
 
     // CHECK-SMALL-LIMIT-NOT: func.func @init_part1
+}
+
+// -----
+
+{-#
+  dialect_resources: {
+    builtin: {
+            vpux_ow_0: "0x10000000ABCDABCDABCDABCE"
+        }
+  }
+#-}
+
+// Note: this test verifies that same-blob constants remain together (in the
+// same init schedule), even when their type or shape do not match e.g.
+// `dense_resource<blob> : tensor<2x3x4xf16>` and `dense_resource<blob> : tensor<24xf32>`.
+// This is possible due to OV model compression feature that can squash same-binary-data
+// constants and make multiple such constants point to the same buffer.
+
+// CHECK-BIG-LIMIT: @SameBlobConstants
+// CHECK-SMALL-LIMIT: @SameBlobConstants
+module @SameBlobConstants {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
+        DataInfo "input" : tensor<2x2xf16>
+    } outputsInfo : {
+        DataInfo "output" : tensor<2x2xf16>
+    }
+
+    // Note: large limit results in single init function being present
+
+    // CHECK-BIG-LIMIT: func.func @init([[NEWSHAPE:%.+]]: tensor<4xf16>, [[ORIG:%.+]]: tensor<2x2xf16>, [[NEWTYPE:%.+]]: tensor<2x2xi16>)
+
+
+    // Note: small limit still results in single init function, because
+    //       same-blob constants must not be split (due to compiler-plugin contract)
+
+    // CHECK-SMALL-LIMIT: func.func @init([[NEWSHAPE:%.+]]: tensor<4xf16>, [[ORIG:%.+]]: tensor<2x2xf16>, [[NEWTYPE:%.+]]: tensor<2x2xi16>)
+
+    func.func @main(%dummy: tensor<2x2xf16>) -> tensor<2x2xf16> {
+        %orig = const.Declare tensor<2x2xf16> = dense_resource<vpux_ow_0> : tensor<2x2xf16>,
+            [#const.Add<42.0>]
+        %newshape = const.Declare tensor<3x2xf16> = dense_resource<vpux_ow_0> : tensor<4xf16>,
+            [#const.Rescale<2.0>, #const.Reshape<[2, 2]>, #const.PadWithZero<[0, 0], [1, 0]>]
+        %newtype = const.Declare tensor<2x3xf16> = dense_resource<vpux_ow_0> : tensor<2x2xi16>,
+            [#const.CastElemType<f16>, #const.PadWithZero<[0, 0], [0, 1]>]
+        return %dummy : tensor<2x2xf16>
+    }
 }

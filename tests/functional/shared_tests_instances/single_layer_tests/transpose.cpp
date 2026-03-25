@@ -28,6 +28,11 @@ TEST_P(TransposeLayerTest_NPU5010, SW) {
     setReferenceSoftwareMode();
     run(Platform::NPU5010);
 }
+class TransposeLayerTest_NPU5020 : public TransposeLayerTestCommon {};
+TEST_P(TransposeLayerTest_NPU5020, SW) {
+    setReferenceSoftwareMode();
+    run(Platform::NPU5020);
+}
 
 }  // namespace test
 }  // namespace ov
@@ -35,6 +40,7 @@ TEST_P(TransposeLayerTest_NPU5010, SW) {
 using ov::test::TransposeLayerTest_NPU3720;
 using ov::test::TransposeLayerTest_NPU4000;
 using ov::test::TransposeLayerTest_NPU5010;
+using ov::test::TransposeLayerTest_NPU5020;
 
 namespace {
 
@@ -164,4 +170,6 @@ INSTANTIATE_TEST_SUITE_P(smoke_precommit_Transpose, TransposeLayerTest_NPU4000, 
                          TransposeLayerTest_NPU4000::getTestCaseName);
 INSTANTIATE_TEST_SUITE_P(smoke_precommit_Transpose, TransposeLayerTest_NPU5010, paramsMemPerm,
                          TransposeLayerTest_NPU5010::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(smoke_precommit_Transpose, TransposeLayerTest_NPU5020, paramsMemPerm,
+                         TransposeLayerTest_NPU5020::getTestCaseName);
 }  // namespace

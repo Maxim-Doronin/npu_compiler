@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -238,9 +238,7 @@ void UnrollUpsamplingDMAPass::safeRunOnFunc() {
     }
     auto& ctx = getContext();
     auto func = getOperation();
-    auto module = func->getParentOfType<mlir::ModuleOp>();
-    auto dmaOp = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN);
-    auto dmaPortCount = dmaOp.getCount();
+    auto dmaPortCount = config::getNumOfDMAPorts(func);
 
     mlir::RewritePatternSet patterns(&ctx);
     patterns.insert<UpsamplingDMARewriter>(&ctx, dmaPortCount, _log);

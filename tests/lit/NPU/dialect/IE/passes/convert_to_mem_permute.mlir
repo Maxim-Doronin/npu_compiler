@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -11,6 +11,9 @@
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
 // CHECK-LABEL: @ConvertToMemPermute
+// CHECK-SAME:     [[ARG_0:%[^:]+]]: tensor<1x2x3x4xf32>
+// CHECK-SAME:     [[ARG_1:%[^:]+]]: tensor<1x2x3x4xf32, {order = #NHWC}>
+// CHECK-SAME:     [[ARG_2:%[^:]+]]: tensor<1x2x3x4xf32>
 func.func @ConvertToMemPermute(%arg0: tensor<1x2x3x4xf32>,
                             %arg1: tensor<1x2x3x4xf32, {order = #NHWC}>,
                             %arg2: tensor<1x2x3x4xf32>) ->
@@ -25,8 +28,8 @@ func.func @ConvertToMemPermute(%arg0: tensor<1x2x3x4xf32>,
     // CHECK-NOT: IE.Transpose
     // CHECK-NOT: IE.Reorder
     // CHECK-NOT: IE.Reorder
-    // CHECK:     [[VAL0:%.+]] = IE.MemPermute(%arg0) {dst_order = #NCHW, mem_perm = #NWCH} : tensor<1x2x3x4xf32> -> tensor<1x4x2x3xf32>
-    // CHECK:     [[VAL1:%.+]] = IE.MemPermute(%arg1) {dst_order = #NCHW, mem_perm = #NWCH} : tensor<1x2x3x4xf32, {order = #NHWC}> -> tensor<1x2x3x4xf32>
-    // CHECK:     [[VAL2:%.+]] = IE.MemPermute(%arg2) {dst_order = #NHWC, mem_perm = #NHWC} : tensor<1x2x3x4xf32> -> tensor<1x2x3x4xf32, {order = #NHWC}>
-    // CHECK:     return [[VAL0]], [[VAL1:%.+]], [[VAL2:%.+]] : tensor<1x4x2x3xf32>, tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32, {order = #NHWC}>
+    // CHECK:     [[VAL0:%.+]] = IE.MemPermute([[ARG_0]]) {dst_order = #NCHW, mem_perm = #NWCH} : tensor<1x2x3x4xf32> -> tensor<1x4x2x3xf32>
+    // CHECK:     [[VAL1:%.+]] = IE.MemPermute([[ARG_1]]) {dst_order = #NCHW, mem_perm = #NWCH} : tensor<1x2x3x4xf32, {order = #NHWC}> -> tensor<1x2x3x4xf32>
+    // CHECK:     [[VAL2:%.+]] = IE.MemPermute([[ARG_2]]) {dst_order = #NHWC, mem_perm = #NHWC} : tensor<1x2x3x4xf32> -> tensor<1x2x3x4xf32, {order = #NHWC}>
+    // CHECK:     return [[VAL0]], [[VAL1]], [[VAL2]] : tensor<1x4x2x3xf32>, tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32, {order = #NHWC}>
 }

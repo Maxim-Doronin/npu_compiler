@@ -1,9 +1,9 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW allow-custom-values=true enable-sw-kernel-fifo-per-shave-engine=false workload-management-enable=false" --mlir-elide-elementsattrs-if-larger 8 --default-hw-mode-vpuip="function-outlining=\"naive='num-parts=2'\"" --vpuip-finalize %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW allow-custom-values=true enable-sw-kernel-fifo-per-shave-engine=false" --mlir-elide-elementsattrs-if-larger 8 --default-hw-mode-vpuip="function-outlining=\"naive='num-parts=2'\"" %s | FileCheck %s
 // REQUIRES: arch-NPU40XX
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
@@ -96,12 +96,12 @@ module @SoftMax attributes {config.arch = #config.arch_kind<NPU40XX>, config.com
         // CHECK-SAME{LITERAL}:  memory_shapes = [[1, 1, 1, 1000], [1, 1, 1, 1000], [1, 1, 1, 1000], [1, 1, 1, 1000], [1, 1, 1, 1000], [1, 1, 1, 1000]]
         // CHECK-SAME{LITERAL}:  memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]}>)
 
-        // CHECK: VPURT.Task waits([[BAR1]] : !VPURT.Barrier) updates([[BAR2]] : !VPURT.Barrier) <{clean_after = 2 : ui64}> {
+        // CHECK: VPURT.Task waits([[BAR1]] : !VPURT.Barrier) updates([[BAR2]] : !VPURT.Barrier) {
         // CHECK:   VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_SoftMax
         // CHECK-SAME:              inputs([[BUFF0]] as {{[^:]+}}: memref<1x1x1x1000xf16, [@CMX_NN, 0]>)
         // CHECK-SAME:              outputs([[BUFF6]] as {{[^:]+}}: memref<1x1x1x1000xf16, [@CMX_NN, 0]>) on tile 0
 
-        // CHECK: VPURT.Task waits([[BAR1]] : !VPURT.Barrier) updates([[BAR2]] : !VPURT.Barrier) <{clean_after = 2 : ui64}> {
+        // CHECK: VPURT.Task waits([[BAR1]] : !VPURT.Barrier) updates([[BAR2]] : !VPURT.Barrier) {
         // CHECK:   VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_SoftMax
         // CHECK-SAME:              inputs([[BUFF1]] as {{[^:]+}}: memref<1x1x1x1000xf16, [@CMX_NN, 1]>)
         // CHECK-SAME:              outputs([[BUFF7]] as {{[^:]+}}: memref<1x1x1x1000xf16, [@CMX_NN, 1]>) on tile 1
@@ -111,17 +111,17 @@ module @SoftMax attributes {config.arch = #config.arch_kind<NPU40XX>, config.com
         // CHECK-SAME:              inputs([[BUFF2]] as {{[^:]+}}: memref<1x1x1x1000xf16, [@CMX_NN, 2]>)
         // CHECK-SAME:              outputs([[BUFF8]] as {{[^:]+}}: memref<1x1x1x1000xf16, [@CMX_NN, 2]>) on tile 2
 
-        // CHECK: VPURT.Task waits([[BAR1]] : !VPURT.Barrier) updates([[BAR2]] : !VPURT.Barrier) <{clean_after = 2 : ui64}> {
+        // CHECK: VPURT.Task waits([[BAR1]] : !VPURT.Barrier) updates([[BAR2]] : !VPURT.Barrier) {
         // CHECK:   VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_SoftMax
         // CHECK-SAME:              inputs([[BUFF3]] as {{[^:]+}}: memref<1x1x1x1000xf16, [@CMX_NN, 3]>)
         // CHECK-SAME:               outputs([[BUFF9]] as {{[^:]+}}: memref<1x1x1x1000xf16, [@CMX_NN, 3]>) on tile 3
 
-        // CHECK: VPURT.Task waits([[BAR1]] : !VPURT.Barrier) updates([[BAR2]] : !VPURT.Barrier) <{clean_after = 2 : ui64}> {
+        // CHECK: VPURT.Task waits([[BAR1]] : !VPURT.Barrier) updates([[BAR2]] : !VPURT.Barrier) {
         // CHECK:   VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_SoftMax
         // CHECK-SAME:              inputs([[BUFF4]] as {{[^:]+}}: memref<1x1x1x1000xf16, [@CMX_NN, 4]>)
         // CHECK-SAME:              outputs([[BUFF10]] as {{[^:]+}}: memref<1x1x1x1000xf16, [@CMX_NN, 4]>) on tile 4
 
-        // CHECK: VPURT.Task waits([[BAR1]] : !VPURT.Barrier) updates([[BAR2]] : !VPURT.Barrier) <{clean_after = 2 : ui64}> {
+        // CHECK: VPURT.Task waits([[BAR1]] : !VPURT.Barrier) updates([[BAR2]] : !VPURT.Barrier) {
         // CHECK:   VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_SoftMax
         // CHECK-SAME:              inputs([[BUFF5]] as {{[^:]+}}: memref<1x1x1x1000xf16, [@CMX_NN, 5]>)
         // CHECK-SAME:              outputs([[BUFF11]] as {{[^:]+}}: memref<1x1x1x1000xf16, [@CMX_NN, 5]>) on tile 5
@@ -204,8 +204,7 @@ module @TwoFunctions attributes {config.arch = #config.arch_kind<NPU40XX>, confi
                                         to !DistributedBuffer0
 
         %4 = VPURT.AllocDistributed -> !DistributedBuffer1
-        %5 = VPUIP.NCEClusterTask {is_permute_quantize,
-                                   minimumHardwareExecutionCost = 153 : i64, task_type = #VPUIP.nce_task_type<ELTWISE>}
+        %5 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 153 : i64} <{is_permute_quantize, task_type = #VPUIP.nce_task_type<ELTWISE>}>
                 input(%3 : !DistributedBuffer0)
                 weights(%3 : !DistributedBuffer0)
                 parent_input(%3 : !DistributedBuffer0)
@@ -324,9 +323,8 @@ module @TwoFunctions attributes {config.arch = #config.arch_kind<NPU40XX>, confi
                                         compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
                                         memory_shapes = [[1, 32, 4, 4], [1, 32, 4, 4], [1, 32, 4, 4], [1, 32, 4, 4], [1, 32, 4, 4], [1, 32, 4, 4]],
                                         memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]}>
-        %17 = VPUIP.NCEClusterTask
-                    {is_superdense, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
-                     kernel_size = [3, 3], kernel_strides = [1, 1], minimumHardwareExecutionCost = 689 : i64, task_type = #VPUIP.nce_task_type<CONV>}
+        %17 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 689 : i64} <{is_superdense, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+                     kernel_size = [3, 3], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
                 input(%11 : !VPUIP.DistributedBuffer<1x16x6x6xf16, #NHWC, @CMX_NN,
                             {mode = "DUPLICATED", num_clusters = 6 : i64, alignment = [1, 16, 1, 1], uniform_distributed_segments,
                             compute_shapes = [[1, 16, 6, 6], [1, 16, 6, 6], [1, 16, 6, 6], [1, 16, 6, 6], [1, 16, 6, 6], [1, 16, 6, 6]],
@@ -485,101 +483,101 @@ module @TwoFunctions attributes {config.arch = #config.arch_kind<NPU40XX>, confi
 
     // CHECK-LABEL: @main
         // Permute
-        // CHECK:VPURT.Task waits({{[^:]+}} : !VPURT.Barrier) updates({{[^:]+}} : !VPURT.Barrier) <{clean_after = {{[^:]+}} : ui64}>
+        // CHECK:VPURT.Task waits({{[^:]+}} : !VPURT.Barrier) updates({{[^:]+}} : !VPURT.Barrier)
         // CHECK:  VPUIP.NCEClusterTask
         // CHECK-SAME: ELTWISE
 
-        // CHECK:VPURT.Task waits({{[^:]+}} : !VPURT.Barrier) updates({{[^:]+}} : !VPURT.Barrier) <{clean_after = {{[^:]+}} : ui64}>
+        // CHECK:VPURT.Task waits({{[^:]+}} : !VPURT.Barrier) updates({{[^:]+}} : !VPURT.Barrier)
         // CHECK:  VPUIP.NCEClusterTask
         // CHECK-SAME: ELTWISE
 
-        // CHECK:VPURT.Task waits({{[^:]+}} : !VPURT.Barrier) updates({{[^:]+}} : !VPURT.Barrier) <{clean_after = {{[^:]+}} : ui64}>
+        // CHECK:VPURT.Task waits({{[^:]+}} : !VPURT.Barrier) updates({{[^:]+}} : !VPURT.Barrier)
         // CHECK:  VPUIP.NCEClusterTask
         // CHECK-SAME: ELTWISE
 
-        // CHECK:VPURT.Task waits({{[^:]+}} : !VPURT.Barrier) updates({{[^:]+}} : !VPURT.Barrier) <{clean_after = {{[^:]+}} : ui64}>
+        // CHECK:VPURT.Task waits({{[^:]+}} : !VPURT.Barrier) updates({{[^:]+}} : !VPURT.Barrier)
         // CHECK:  VPUIP.NCEClusterTask
         // CHECK-SAME: ELTWISE
 
-        // CHECK:VPURT.Task waits({{[^:]+}} : !VPURT.Barrier) updates({{[^:]+}} : !VPURT.Barrier) <{clean_after = {{[^:]+}} : ui64}>
+        // CHECK:VPURT.Task waits({{[^:]+}} : !VPURT.Barrier) updates({{[^:]+}} : !VPURT.Barrier)
         // CHECK:  VPUIP.NCEClusterTask
         // CHECK-SAME: ELTWISE
 
-        // CHECK:VPURT.Task waits({{[^:]+}} : !VPURT.Barrier) updates({{[^:]+}} : !VPURT.Barrier) <{clean_after = {{[^:]+}} : ui64}>
+        // CHECK:VPURT.Task waits({{[^:]+}} : !VPURT.Barrier) updates({{[^:]+}} : !VPURT.Barrier)
         // CHECK:  VPUIP.NCEClusterTask
         // CHECK-SAME: ELTWISE
 
 
-        // CHECK:VPURT.Task waits({{[^:]+}} : !VPURT.Barrier) updates({{[^:]+}} : !VPURT.Barrier) <{clean_after = {{[^:]+}} : ui64}>
+        // CHECK:VPURT.Task waits({{[^:]+}} : !VPURT.Barrier) updates({{[^:]+}} : !VPURT.Barrier)
         // CHECK:  VPUIP.NCEClusterTask
         // CHECK-SAME: CONV
 
-        // CHECK:VPURT.Task waits({{[^:]+}} : !VPURT.Barrier) updates({{[^:]+}} : !VPURT.Barrier) <{clean_after = {{[^:]+}} : ui64}>
+        // CHECK:VPURT.Task waits({{[^:]+}} : !VPURT.Barrier) updates({{[^:]+}} : !VPURT.Barrier)
         // CHECK:  VPUIP.NCEClusterTask
         // CHECK-SAME: CONV
 
-        // CHECK:VPURT.Task waits({{[^:]+}} : !VPURT.Barrier) updates({{[^:]+}} : !VPURT.Barrier) <{clean_after = {{[^:]+}} : ui64}>
+        // CHECK:VPURT.Task waits({{[^:]+}} : !VPURT.Barrier) updates({{[^:]+}} : !VPURT.Barrier)
         // CHECK:  VPUIP.NCEClusterTask
         // CHECK-SAME: CONV
 
-        // CHECK:VPURT.Task waits({{[^:]+}} : !VPURT.Barrier) updates({{[^:]+}} : !VPURT.Barrier) <{clean_after = {{[^:]+}} : ui64}>
+        // CHECK:VPURT.Task waits({{[^:]+}} : !VPURT.Barrier) updates({{[^:]+}} : !VPURT.Barrier)
         // CHECK:  VPUIP.NCEClusterTask
         // CHECK-SAME: CONV
 
-        // CHECK:VPURT.Task waits({{[^:]+}} : !VPURT.Barrier) updates({{[^:]+}} : !VPURT.Barrier) <{clean_after = {{[^:]+}} : ui64}>
+        // CHECK:VPURT.Task waits({{[^:]+}} : !VPURT.Barrier) updates({{[^:]+}} : !VPURT.Barrier)
         // CHECK:  VPUIP.NCEClusterTask
         // CHECK-SAME: CONV
 
-        // CHECK:VPURT.Task waits({{[^:]+}} : !VPURT.Barrier) updates({{[^:]+}} : !VPURT.Barrier) <{clean_after = {{[^:]+}} : ui64}>
+        // CHECK:VPURT.Task waits({{[^:]+}} : !VPURT.Barrier) updates({{[^:]+}} : !VPURT.Barrier)
         // CHECK:  VPUIP.NCEClusterTask
         // CHECK-SAME: CONV
 
 
-        // CHECK:VPURT.Task waits({{[^:]+}}: !VPURT.Barrier) updates({{[^:]+}}: !VPURT.Barrier) <{clean_after = {{[^:]+}} : ui64}>
+        // CHECK:VPURT.Task waits({{[^:]+}}: !VPURT.Barrier) updates({{[^:]+}}: !VPURT.Barrier)
         // CHECK:  VPUIP.SW.Kernel
         // CHECK-SAME: builtin_SoftMax
 
-        // CHECK:VPURT.Task waits({{[^:]+}}: !VPURT.Barrier) updates({{[^:]+}}: !VPURT.Barrier) <{clean_after = {{[^:]+}} : ui64}>
+        // CHECK:VPURT.Task waits({{[^:]+}}: !VPURT.Barrier) updates({{[^:]+}}: !VPURT.Barrier)
         // CHECK:  VPUIP.SW.Kernel
         // CHECK-SAME: builtin_SoftMax
 
-        // CHECK:VPURT.Task waits({{[^:]+}}: !VPURT.Barrier) updates({{[^:]+}}: !VPURT.Barrier) <{clean_after = {{[^:]+}} : ui64}>
+        // CHECK:VPURT.Task waits({{[^:]+}}: !VPURT.Barrier) updates({{[^:]+}}: !VPURT.Barrier)
         // CHECK:  VPUIP.SW.Kernel
         // CHECK-SAME: builtin_SoftMax
 
-        // CHECK:VPURT.Task waits({{[^:]+}}: !VPURT.Barrier) updates({{[^:]+}}: !VPURT.Barrier) <{clean_after = {{[^:]+}} : ui64}>
+        // CHECK:VPURT.Task waits({{[^:]+}}: !VPURT.Barrier) updates({{[^:]+}}: !VPURT.Barrier)
         // CHECK:  VPUIP.SW.Kernel
         // CHECK-SAME: builtin_SoftMax
 
-        // CHECK:VPURT.Task waits({{[^:]+}}: !VPURT.Barrier) updates({{[^:]+}}: !VPURT.Barrier) <{clean_after = {{[^:]+}} : ui64}>
+        // CHECK:VPURT.Task waits({{[^:]+}}: !VPURT.Barrier) updates({{[^:]+}}: !VPURT.Barrier)
         // CHECK:  VPUIP.SW.Kernel
         // CHECK-SAME: builtin_SoftMax
 
-        // CHECK:VPURT.Task waits({{[^:]+}}: !VPURT.Barrier) updates({{[^:]+}}: !VPURT.Barrier) <{clean_after = {{[^:]+}} : ui64}>
+        // CHECK:VPURT.Task waits({{[^:]+}}: !VPURT.Barrier) updates({{[^:]+}}: !VPURT.Barrier)
         // CHECK:  VPUIP.SW.Kernel
         // CHECK-SAME: builtin_SoftMax
 
-        // CHECK:VPURT.Task waits({{[^:]+}}: !VPURT.Barrier) updates({{[^:]+}}: !VPURT.Barrier) <{clean_after = {{[^:]+}} : ui64}>
+        // CHECK:VPURT.Task waits({{[^:]+}}: !VPURT.Barrier) updates({{[^:]+}}: !VPURT.Barrier)
         // CHECK:  VPUIP.SW.Kernel
         // CHECK-SAME: builtin_SoftMax
 
-        // CHECK:VPURT.Task waits({{[^:]+}}: !VPURT.Barrier) updates({{[^:]+}}: !VPURT.Barrier) <{clean_after = {{[^:]+}} : ui64}>
+        // CHECK:VPURT.Task waits({{[^:]+}}: !VPURT.Barrier) updates({{[^:]+}}: !VPURT.Barrier)
         // CHECK:  VPUIP.SW.Kernel
         // CHECK-SAME: builtin_SoftMax
 
-        // CHECK:VPURT.Task waits({{[^:]+}}: !VPURT.Barrier) updates({{[^:]+}}: !VPURT.Barrier) <{clean_after = {{[^:]+}} : ui64}>
+        // CHECK:VPURT.Task waits({{[^:]+}}: !VPURT.Barrier) updates({{[^:]+}}: !VPURT.Barrier)
         // CHECK:  VPUIP.SW.Kernel
         // CHECK-SAME: builtin_SoftMax
 
-        // CHECK:VPURT.Task waits({{[^:]+}}: !VPURT.Barrier) updates({{[^:]+}}: !VPURT.Barrier) <{clean_after = {{[^:]+}} : ui64}>
+        // CHECK:VPURT.Task waits({{[^:]+}}: !VPURT.Barrier) updates({{[^:]+}}: !VPURT.Barrier)
         // CHECK:  VPUIP.SW.Kernel
         // CHECK-SAME: builtin_SoftMax
 
-        // CHECK:VPURT.Task waits({{[^:]+}}: !VPURT.Barrier) updates({{[^:]+}}: !VPURT.Barrier) <{clean_after = {{[^:]+}} : ui64}>
+        // CHECK:VPURT.Task waits({{[^:]+}}: !VPURT.Barrier) updates({{[^:]+}}: !VPURT.Barrier)
         // CHECK:  VPUIP.SW.Kernel
         // CHECK-SAME: builtin_SoftMax
 
-        // CHECK:VPURT.Task waits({{[^:]+}}: !VPURT.Barrier) updates({{[^:]+}}: !VPURT.Barrier) <{clean_after = {{[^:]+}} : ui64}>
+        // CHECK:VPURT.Task waits({{[^:]+}}: !VPURT.Barrier) updates({{[^:]+}}: !VPURT.Barrier)
         // CHECK:  VPUIP.SW.Kernel
         // CHECK-SAME: builtin_SoftMax
 

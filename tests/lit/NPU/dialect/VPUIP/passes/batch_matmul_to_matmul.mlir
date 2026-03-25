@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -33,7 +33,7 @@ func.func @main() -> () {
     %WAIT_BARRIER = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
     // CHECK:   [[WAIT_BARRIER:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
     VPURT.Task updates(%WAIT_BARRIER : !VPURT.Barrier) {
-        %MATMUL = VPUIP.NCEClusterTask {
+        %MATMUL = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<
                 left = 0 : i64,
                 right = 0 : i64,
@@ -43,7 +43,7 @@ func.func @main() -> () {
             kernel_size = [1, 1],
             kernel_strides = [1, 1],
             task_type = #VPUIP.nce_task_type<CONV>
-        }
+        }>
         input(%IN : memref<2x1x16x4x1xf16, #GNHWC, [@CMX_NN, 0]>)
         weights(%WEIGHTS : memref<2x32x16x1x1xf16, #GNHWC, [@CMX_NN, 0]>)
         weight_table(%WEIGHT_TABLE : memref<2x32x1x1x4xsi32, [@CMX_NN, 0]>)
@@ -133,7 +133,7 @@ func.func @main() -> () {
     %WAIT_BARRIER = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
     // CHECK:   [[WAIT_BARRIER:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
     VPURT.Task updates(%WAIT_BARRIER : !VPURT.Barrier) {
-        %MATMUL = VPUIP.NCEClusterTask {
+        %MATMUL = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<
                 left = 0 : i64,
                 right = 0 : i64,
@@ -143,7 +143,7 @@ func.func @main() -> () {
             kernel_size = [1, 1],
             kernel_strides = [1, 1],
             task_type = #VPUIP.nce_task_type<CONV>
-        }
+        }>
         input(%IN : memref<2x1x16x4x1x!qElemType, #GNHWC, [@CMX_NN, 0]>)
         weights(%WEIGHT : memref<2x32x16x1x1xf16, #GNHWC, [@CMX_NN, 0]>)
         weight_table(%WEIGHT_TABLE : memref<2x32x1x1x4xsi32, [@CMX_NN, 0]>)
@@ -221,7 +221,7 @@ func.func @main() -> () {
     %WAIT_BARRIER = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
     // CHECK:   [[WAIT_BARRIER:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
     VPURT.Task updates(%WAIT_BARRIER : !VPURT.Barrier) {
-        %MATMUL = VPUIP.NCEClusterTask {
+        %MATMUL = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<
                 left = 0 : i64,
                 right = 0 : i64,
@@ -231,7 +231,7 @@ func.func @main() -> () {
             kernel_size = [1, 1],
             kernel_strides = [1, 1],
             task_type = #VPUIP.nce_task_type<CONV>
-        }
+        }>
         input(%IN : memref<1x1x16x4x1xf16, #GNHWC, [@CMX_NN, 0]>)
         weights(%WEIGHTS : memref<1x32x16x1x1xf16, #GNHWC, [@CMX_NN, 0]>)
         weight_table(%WEIGHT_TABLE : memref<1x32x1x1x4xsi32, [@CMX_NN, 0]>)

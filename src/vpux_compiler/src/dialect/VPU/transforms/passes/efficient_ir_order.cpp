@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -176,16 +176,25 @@ void reorderConcatBranches(VPU::ConcatOp concatOp) {
         }
     }
 
-    auto isSymmetricConcat = [&patternOps] {
-        if (patternOps.empty()) {
+    // Only consider whether the SW task and the DPU task are symmetrical.
+    SmallVector<SmallVector<mlir::Operation*>> filteredPatternOps;
+    for (const auto& branch : patternOps) {
+        const auto filteredBranch = to_small_vector(branch | filtered([](auto* op) {
+                                                        return !mlir::isa<VPU::ViewLikeOpInterface>(op);
+                                                    }));
+        filteredPatternOps.push_back(filteredBranch);
+    }
+
+    auto isSymmetricConcat = [&filteredPatternOps] {
+        if (filteredPatternOps.empty()) {
             return false;
         }
 
-        const auto& firstBranch = patternOps.front();
+        const auto& firstBranch = filteredPatternOps.front();
         if (firstBranch.empty()) {
             return false;
         }
-        for (const auto& branch : patternOps) {
+        for (const auto& branch : filteredPatternOps) {
             if (branch.size() != firstBranch.size()) {
                 return false;
             }

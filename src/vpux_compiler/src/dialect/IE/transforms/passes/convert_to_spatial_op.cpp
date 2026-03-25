@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/IE/utils/roll_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/VPU/utils/se_roll_utils.hpp"
+#include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
@@ -289,8 +290,7 @@ mlir::LogicalResult TransposeRoll::matchAndRewrite(IE::RollOp origOp, mlir::Patt
 
 class ConvertToSpatialOpPass final : public IE::impl::ConvertToSpatialOpBase<ConvertToSpatialOpPass> {
 public:
-    explicit ConvertToSpatialOpPass(const bool m2iEnabled, const bool seOpsEnabled, Logger log)
-            : _m2iEnabled(m2iEnabled), _seOpsEnabled(seOpsEnabled), _log(log) {
+    explicit ConvertToSpatialOpPass(const bool m2iEnabled, Logger log): _m2iEnabled(m2iEnabled), _log(log) {
         _log.setName(Base::getArgumentName());
     }
 
@@ -301,7 +301,6 @@ private:
 
 private:
     bool _m2iEnabled;
-    bool _seOpsEnabled;
     Logger _log;
 };
 
@@ -316,10 +315,6 @@ mlir::LogicalResult ConvertToSpatialOpPass::initialize(mlir::MLIRContext* ctx) {
         _m2iEnabled = m2iEnabled.getValue();
     }
 
-    if (seOpsEnabled.hasValue()) {
-        _seOpsEnabled = seOpsEnabled.getValue();
-    }
-
     return mlir::success();
 }
 
@@ -330,16 +325,16 @@ mlir::LogicalResult ConvertToSpatialOpPass::initialize(mlir::MLIRContext* ctx) {
 void ConvertToSpatialOpPass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
+    auto moduleOp = getModuleOp(func);
 
     mlir::RewritePatternSet patterns(&ctx);
     if (!_m2iEnabled) {
         patterns.add<TransposeInterpolation>(&ctx, _log);
     }
 
-    if (_seOpsEnabled) {
+    if (vpux::config::hasEnableSEPtrsOperations(moduleOp)) {
         patterns.add<TransposeRoll>(&ctx, _log);
     }
-
     collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 
@@ -349,7 +344,6 @@ void ConvertToSpatialOpPass::safeRunOnFunc() {
 // createConvertToSpatialOpPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::IE::createConvertToSpatialOpPass(const bool m2iEnabled, const bool seOpsEnabled,
-                                                                   Logger log) {
-    return std::make_unique<ConvertToSpatialOpPass>(m2iEnabled, seOpsEnabled, log);
+std::unique_ptr<mlir::Pass> vpux::IE::createConvertToSpatialOpPass(const bool m2iEnabled, Logger log) {
+    return std::make_unique<ConvertToSpatialOpPass>(m2iEnabled, log);
 }

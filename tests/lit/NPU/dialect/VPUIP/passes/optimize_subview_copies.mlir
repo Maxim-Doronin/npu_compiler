@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -57,10 +57,10 @@ func.func @OptimizeSubviewCopyConvPattern(
         -> !InputDistributed
 
     %allocConv = VPURT.AllocDistributed -> !OutputDistributed
-    %conv = VPUIP.NCEClusterTask {
+    %conv = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1], kernel_strides = [1, 1],
-            task_type = #VPUIP.nce_task_type<CONV>}
+            task_type = #VPUIP.nce_task_type<CONV>}>
         input(%nceTilingCopy : !InputDistributed)
         weights(%weights : !WeightsDistributed)
         parent_input(%nceTilingCopy : !InputDistributed)
@@ -162,10 +162,10 @@ func.func @OptimizeSubviewCopy2ConvPattern(
         -> !InputDistributed
 
     %allocConv0 = VPURT.AllocDistributed -> !OutputDistributed0
-    %conv0 = VPUIP.NCEClusterTask {
+    %conv0 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1], kernel_strides = [1, 1],
-            task_type = #VPUIP.nce_task_type<CONV>}
+            task_type = #VPUIP.nce_task_type<CONV>}>
         input(%nceTilingCopy : !InputDistributed)
         weights(%weights : !WeightsDistributed)
         parent_input(%nceTilingCopy : !InputDistributed)
@@ -179,10 +179,10 @@ func.func @OptimizeSubviewCopy2ConvPattern(
     }
 
     %allocConv1 = VPURT.AllocDistributed -> !OutputDistributed1
-    %conv1 = VPUIP.NCEClusterTask {
+    %conv1 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1], kernel_strides = [1, 1],
-            task_type = #VPUIP.nce_task_type<CONV>}
+            task_type = #VPUIP.nce_task_type<CONV>}>
         input(%nceTilingCopy : !InputDistributed)
         weights(%weights : !WeightsDistributed)
         parent_input(%nceTilingCopy : !InputDistributed)
@@ -300,10 +300,10 @@ func.func @Optimize2SubviewCopyConvPattern(
         -> !InputDistributed
 
     %allocConv0 = VPURT.AllocDistributed -> !OutputDistributed0
-    %conv0 = VPUIP.NCEClusterTask {
+    %conv0 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1], kernel_strides = [1, 1],
-            task_type = #VPUIP.nce_task_type<CONV>}
+            task_type = #VPUIP.nce_task_type<CONV>}>
         input(%nceTilingCopy0 : !InputDistributed)
         weights(%weights : !WeightsDistributed)
         parent_input(%nceTilingCopy0 : !InputDistributed)
@@ -317,10 +317,10 @@ func.func @Optimize2SubviewCopyConvPattern(
     }
 
     %allocConv1 = VPURT.AllocDistributed -> !OutputDistributed1
-    %conv1 = VPUIP.NCEClusterTask {
+    %conv1 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1], kernel_strides = [1, 1],
-            task_type = #VPUIP.nce_task_type<CONV>}
+            task_type = #VPUIP.nce_task_type<CONV>}>
         input(%nceTilingCopy1 : !InputDistributed)
         weights(%weights : !WeightsDistributed)
         parent_input(%nceTilingCopy1 : !InputDistributed)
@@ -464,10 +464,10 @@ func.func @Optimize2SubviewCopyConvPatternWithOptimizableCopyIn(
         -> !InputDistributed
 
     %allocConv0 = VPURT.AllocDistributed -> !OutputDistributed0
-    %conv0 = VPUIP.NCEClusterTask {
+    %conv0 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1], kernel_strides = [1, 1],
-            task_type = #VPUIP.nce_task_type<CONV>}
+            task_type = #VPUIP.nce_task_type<CONV>}>
         input(%nceTilingCopy0 : !InputDistributed)
         weights(%weights : !WeightsDistributed)
         parent_input(%nceTilingCopy0 : !InputDistributed)
@@ -481,10 +481,10 @@ func.func @Optimize2SubviewCopyConvPatternWithOptimizableCopyIn(
     }
 
     %allocConv1 = VPURT.AllocDistributed -> !OutputDistributed1
-    %conv1 = VPUIP.NCEClusterTask {
+    %conv1 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1], kernel_strides = [1, 1],
-            task_type = #VPUIP.nce_task_type<CONV>}
+            task_type = #VPUIP.nce_task_type<CONV>}>
         input(%nceTilingCopy1 : !InputDistributed)
         weights(%weights : !WeightsDistributed)
         parent_input(%nceTilingCopy1 : !InputDistributed)
@@ -624,10 +624,10 @@ func.func @Optimize2SubviewCopyConvPatternKeepCopyInWithOtherUsers(
         -> !InputDistributed
 
     %allocConv0 = VPURT.AllocDistributed -> !OutputDistributed0
-    %conv0 = VPUIP.NCEClusterTask {
+    %conv0 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1], kernel_strides = [1, 1],
-            task_type = #VPUIP.nce_task_type<CONV>}
+            task_type = #VPUIP.nce_task_type<CONV>}>
         input(%nceTilingCopy0 : !InputDistributed)
         weights(%weights : !WeightsDistributed)
         parent_input(%nceTilingCopy0 : !InputDistributed)
@@ -641,10 +641,10 @@ func.func @Optimize2SubviewCopyConvPatternKeepCopyInWithOtherUsers(
     }
 
     %allocConv1 = VPURT.AllocDistributed -> !OutputDistributed1
-    %conv1 = VPUIP.NCEClusterTask {
+    %conv1 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1], kernel_strides = [1, 1],
-            task_type = #VPUIP.nce_task_type<CONV>}
+            task_type = #VPUIP.nce_task_type<CONV>}>
         input(%nceTilingCopy1 : !InputDistributed)
         weights(%weights : !WeightsDistributed)
         parent_input(%nceTilingCopy1 : !InputDistributed)
@@ -778,10 +778,10 @@ func.func @Optimize2SubviewCopyConvPatternKeepCopyInNotCMX2DDR(
         -> !InputDistributed
 
     %allocConv0 = VPURT.AllocDistributed -> !OutputDistributed0
-    %conv0 = VPUIP.NCEClusterTask {
+    %conv0 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1], kernel_strides = [1, 1],
-            task_type = #VPUIP.nce_task_type<CONV>}
+            task_type = #VPUIP.nce_task_type<CONV>}>
         input(%nceTilingCopy0 : !InputDistributed)
         weights(%weights : !WeightsDistributed)
         parent_input(%nceTilingCopy0 : !InputDistributed)
@@ -795,10 +795,10 @@ func.func @Optimize2SubviewCopyConvPatternKeepCopyInNotCMX2DDR(
     }
 
     %allocConv1 = VPURT.AllocDistributed -> !OutputDistributed1
-    %conv1 = VPUIP.NCEClusterTask {
+    %conv1 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1], kernel_strides = [1, 1],
-            task_type = #VPUIP.nce_task_type<CONV>}
+            task_type = #VPUIP.nce_task_type<CONV>}>
         input(%nceTilingCopy1 : !InputDistributed)
         weights(%weights : !WeightsDistributed)
         parent_input(%nceTilingCopy1 : !InputDistributed)
@@ -930,10 +930,10 @@ func.func @Optimize2SubviewCopyConvPatternKeepCopyInNotDuplicatedLike(
         -> !InputDistributed
 
     %allocConv0 = VPURT.AllocDistributed -> !OutputDistributed0
-    %conv0 = VPUIP.NCEClusterTask {
+    %conv0 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1], kernel_strides = [1, 1],
-            task_type = #VPUIP.nce_task_type<CONV>}
+            task_type = #VPUIP.nce_task_type<CONV>}>
         input(%nceTilingCopy0 : !InputDistributed)
         weights(%weights : !WeightsDistributed)
         parent_input(%nceTilingCopy0 : !InputDistributed)
@@ -947,10 +947,10 @@ func.func @Optimize2SubviewCopyConvPatternKeepCopyInNotDuplicatedLike(
     }
 
     %allocConv1 = VPURT.AllocDistributed -> !OutputDistributed1
-    %conv1 = VPUIP.NCEClusterTask {
+    %conv1 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1], kernel_strides = [1, 1],
-            task_type = #VPUIP.nce_task_type<CONV>}
+            task_type = #VPUIP.nce_task_type<CONV>}>
         input(%nceTilingCopy1 : !InputDistributed)
         weights(%weights : !WeightsDistributed)
         parent_input(%nceTilingCopy1 : !InputDistributed)
@@ -1076,10 +1076,10 @@ func.func @Optimize2SubviewCopyConvPatternWithKeepCopyInNotFitInCMX(
         -> !InputDistributed
 
     %allocConv0 = VPURT.AllocDistributed -> !OutputDistributed0
-    %conv0 = VPUIP.NCEClusterTask {
+    %conv0 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1], kernel_strides = [1, 1],
-            task_type = #VPUIP.nce_task_type<CONV>}
+            task_type = #VPUIP.nce_task_type<CONV>}>
         input(%nceTilingCopy0 : !InputDistributed)
         weights(%weights : !WeightsDistributed)
         parent_input(%nceTilingCopy0 : !InputDistributed)
@@ -1093,10 +1093,10 @@ func.func @Optimize2SubviewCopyConvPatternWithKeepCopyInNotFitInCMX(
     }
 
     %allocConv1 = VPURT.AllocDistributed -> !OutputDistributed1
-    %conv1 = VPUIP.NCEClusterTask {
+    %conv1 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1], kernel_strides = [1, 1],
-            task_type = #VPUIP.nce_task_type<CONV>}
+            task_type = #VPUIP.nce_task_type<CONV>}>
         input(%nceTilingCopy1 : !InputDistributed)
         weights(%weights : !WeightsDistributed)
         parent_input(%nceTilingCopy1 : !InputDistributed)
@@ -1224,10 +1224,10 @@ func.func @Optimize2SubviewCopyConvPatternWithOptimizeCopyInWithStrides(
         -> !InputDistributed
 
     %allocConv0 = VPURT.AllocDistributed -> !OutputDistributed0
-    %conv0 = VPUIP.NCEClusterTask {
+    %conv0 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1], kernel_strides = [1, 1],
-            task_type = #VPUIP.nce_task_type<CONV>}
+            task_type = #VPUIP.nce_task_type<CONV>}>
         input(%nceTilingCopy0 : !InputDistributed)
         weights(%weights : !WeightsDistributed)
         parent_input(%nceTilingCopy0 : !InputDistributed)
@@ -1241,10 +1241,10 @@ func.func @Optimize2SubviewCopyConvPatternWithOptimizeCopyInWithStrides(
     }
 
     %allocConv1 = VPURT.AllocDistributed -> !OutputDistributed1
-    %conv1 = VPUIP.NCEClusterTask {
+    %conv1 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1], kernel_strides = [1, 1],
-            task_type = #VPUIP.nce_task_type<CONV>}
+            task_type = #VPUIP.nce_task_type<CONV>}>
         input(%nceTilingCopy1 : !InputDistributed)
         weights(%weights : !WeightsDistributed)
         parent_input(%nceTilingCopy1 : !InputDistributed)
@@ -1327,10 +1327,10 @@ func.func @OptimizeSubview2CopyConvPattern(
         -> !InputDistributed
 
     %allocConv0 = VPURT.AllocDistributed -> !OutputDistributed0
-    %conv0 = VPUIP.NCEClusterTask {
+    %conv0 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1], kernel_strides = [1, 1],
-            task_type = #VPUIP.nce_task_type<CONV>}
+            task_type = #VPUIP.nce_task_type<CONV>}>
         input(%nceTilingCopy0 : !InputDistributed)
         weights(%weights : !WeightsDistributed)
         parent_input(%nceTilingCopy0 : !InputDistributed)
@@ -1349,10 +1349,10 @@ func.func @OptimizeSubview2CopyConvPattern(
         -> !InputDistributed
 
     %allocConv1 = VPURT.AllocDistributed -> !OutputDistributed1
-    %conv1 = VPUIP.NCEClusterTask {
+    %conv1 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1], kernel_strides = [1, 1],
-            task_type = #VPUIP.nce_task_type<CONV>}
+            task_type = #VPUIP.nce_task_type<CONV>}>
         input(%nceTilingCopy1 : !InputDistributed)
         weights(%weights : !WeightsDistributed)
         parent_input(%nceTilingCopy1 : !InputDistributed)
@@ -1428,10 +1428,10 @@ func.func @NonDistributedOptimizeSubviewCopyConvPattern(
             -> !InputCMXType
 
     %allocConv0 =  memref.alloc(): !OutputCMXType
-    %conv0 = VPUIP.NCEClusterTask {
+    %conv0 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1], kernel_strides = [1, 1],
-            task_type = #VPUIP.nce_task_type<CONV>}
+            task_type = #VPUIP.nce_task_type<CONV>}>
         input(%copy0 : !InputCMXType)
         weights(%weights : !WeightsCMXType)
         parent_input(%copy0 : !InputCMXType)
@@ -1445,10 +1445,10 @@ func.func @NonDistributedOptimizeSubviewCopyConvPattern(
     }
 
     %allocConv1 =  memref.alloc(): !OutputCMXType
-    %conv1 = VPUIP.NCEClusterTask {
+    %conv1 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1], kernel_strides = [1, 1],
-            task_type = #VPUIP.nce_task_type<CONV>}
+            task_type = #VPUIP.nce_task_type<CONV>}>
         input(%copy1 : !InputCMXType)
         weights(%weights : !WeightsCMXType)
         parent_input(%copy1 : !InputCMXType)
@@ -1525,10 +1525,10 @@ func.func @NonDistributedOptimizeSubviewCopyConvPatternWithOptimizedCopyIn(
             -> !InputCMXType
 
     %allocConv0 =  memref.alloc(): !OutputCMXType
-    %conv0 = VPUIP.NCEClusterTask {
+    %conv0 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1], kernel_strides = [1, 1],
-            task_type = #VPUIP.nce_task_type<CONV>}
+            task_type = #VPUIP.nce_task_type<CONV>}>
         input(%copy0 : !InputCMXType)
         weights(%weights : !WeightsCMXType)
         parent_input(%copy0 : !InputCMXType)
@@ -1542,10 +1542,10 @@ func.func @NonDistributedOptimizeSubviewCopyConvPatternWithOptimizedCopyIn(
     }
 
     %allocConv1 =  memref.alloc(): !OutputCMXType
-    %conv1 = VPUIP.NCEClusterTask {
+    %conv1 = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1], kernel_strides = [1, 1],
-            task_type = #VPUIP.nce_task_type<CONV>}
+            task_type = #VPUIP.nce_task_type<CONV>}>
         input(%copy1 : !InputCMXType)
         weights(%weights : !WeightsCMXType)
         parent_input(%copy1 : !InputCMXType)
@@ -1620,10 +1620,10 @@ func.func @NotOptimizeSubviewCopyCDimTooBig(
         -> !InputDistributed
 
     %allocConv = VPURT.AllocDistributed -> !OutputDistributed
-    %conv = VPUIP.NCEClusterTask {
+    %conv = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1], kernel_strides = [1, 1],
-            task_type = #VPUIP.nce_task_type<CONV>}
+            task_type = #VPUIP.nce_task_type<CONV>}>
         input(%nceTilingCopy : !InputDistributed)
         weights(%weights : !WeightsDistributed)
         parent_input(%nceTilingCopy : !InputDistributed)
@@ -1695,10 +1695,10 @@ func.func @NotOptimizeSubviewWithNonCopyConsumer(
         -> !InputDistributed
 
     %allocConv = VPURT.AllocDistributed -> !OutputDistributed
-    %conv = VPUIP.NCEClusterTask {
+    %conv = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1], kernel_strides = [1, 1],
-            task_type = #VPUIP.nce_task_type<CONV>}
+            task_type = #VPUIP.nce_task_type<CONV>}>
         input(%nceTilingCopy : !InputDistributed)
         weights(%weights : !WeightsDistributed)
         parent_input(%nceTilingCopy : !InputDistributed)
@@ -1771,10 +1771,10 @@ func.func @NotOptimizeSubviewWithCopyConsumerNotToCMX(
         -> !InputDistributed
 
     %allocConv = VPURT.AllocDistributed -> !OutputDistributed
-    %conv = VPUIP.NCEClusterTask {
+    %conv = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1], kernel_strides = [1, 1],
-            task_type = #VPUIP.nce_task_type<CONV>}
+            task_type = #VPUIP.nce_task_type<CONV>}>
         input(%nceTilingCopy : !InputDistributed)
         weights(%weights : !WeightsDistributed)
         parent_input(%nceTilingCopy : !InputDistributed)
@@ -1851,10 +1851,10 @@ func.func @NotOptimizeSubviewWithDistributedAndNonDistributedCopies(
         -> !InputDistributed
 
     %allocConv = VPURT.AllocDistributed -> !OutputDistributed
-    %conv = VPUIP.NCEClusterTask {
+    %conv = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1], kernel_strides = [1, 1],
-            task_type = #VPUIP.nce_task_type<CONV>}
+            task_type = #VPUIP.nce_task_type<CONV>}>
         input(%nceTilingCopy : !InputDistributed)
         weights(%weights : !WeightsDistributed)
         parent_input(%nceTilingCopy : !InputDistributed)
@@ -1926,10 +1926,10 @@ func.func @NotOptimizeSubviewWithNon1x1SpatialSize(
         -> !InputDistributed
 
     %allocConv = VPURT.AllocDistributed -> !OutputDistributed
-    %conv = VPUIP.NCEClusterTask {
+    %conv = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1], kernel_strides = [1, 1],
-            task_type = #VPUIP.nce_task_type<CONV>}
+            task_type = #VPUIP.nce_task_type<CONV>}>
         input(%nceTilingCopy : !InputDistributed)
         weights(%weights : !WeightsDistributed)
         parent_input(%nceTilingCopy : !InputDistributed)
@@ -2015,10 +2015,10 @@ func.func @NotOptimizeSubviewWithNonConvEndConsumer(
         -> !InputDistributed
 
     %allocConv = VPURT.AllocDistributed -> !OutputDistributed
-    %conv = VPUIP.NCEClusterTask {
+    %conv = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1], kernel_strides = [1, 1],
-            task_type = #VPUIP.nce_task_type<CONV>}
+            task_type = #VPUIP.nce_task_type<CONV>}>
         input(%nceTilingCopy : !InputDistributed)
         weights(%weights : !WeightsDistributed)
         parent_input(%nceTilingCopy : !InputDistributed)
@@ -2032,10 +2032,10 @@ func.func @NotOptimizeSubviewWithNonConvEndConsumer(
     }
 
     %allocPool = VPURT.AllocDistributed -> !PoolOutputDistributed
-    %maxpool = VPUIP.NCEClusterTask {
+    %maxpool = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1], kernel_strides = [1, 1],
-            task_type = #VPUIP.nce_task_type<MAXPOOL>}
+            task_type = #VPUIP.nce_task_type<MAXPOOL>}>
         input(%nceTilingCopy : !InputDistributed)
         weight_table(%wtablePool : !PoolWTableDistributed)
         parent_input(%nceTilingCopy : !InputDistributed)
@@ -2119,10 +2119,10 @@ func.func @NotOptimizeSubviewWithRMS(
         -> !InputDistributed
 
     %allocConv = VPURT.AllocDistributed -> !OutputDistributed
-    %conv = VPUIP.NCEClusterTask {
+    %conv = VPUIP.NCEClusterTask <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1], kernel_strides = [1, 1],
-            task_type = #VPUIP.nce_task_type<CONV>}
+            task_type = #VPUIP.nce_task_type<CONV>}>
         input(%nceTilingCopy : !InputDistributed)
         weights(%weights : !WeightsDistributed)
         parent_input(%nceTilingCopy : !InputDistributed)

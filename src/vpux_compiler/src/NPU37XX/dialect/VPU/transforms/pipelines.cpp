@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -81,12 +81,8 @@ void vpux::VPU::arch37xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     pm.addPass(VPU::createSplitRealDFTOpsPass(log));
 
     if (options.enableSEPtrsOperations || options.enableExperimentalSEPtrsOperations) {
-        pm.addPass(VPU::createSplitSEOpsPass(
-                /*seOpsEnabled=*/isOptionEnabled(options.enableSEPtrsOperations),
-                /*seExperimentalOpsEnabled=*/isOptionEnabled(options.enableExperimentalSEPtrsOperations), log));
-        pm.addPass(VPU::createLowerOpsToSENCEPass(
-                /*seOpsEnabled=*/isOptionEnabled(options.enableSEPtrsOperations),
-                /*seExperimentalOpsEnabled=*/isOptionEnabled(options.enableExperimentalSEPtrsOperations), log));
+        pm.addPass(VPU::createSplitSEOpsPass(log));
+        pm.addPass(VPU::createLowerOpsToSENCEPass(log));
     }
 
     pm.addPass(VPU::createFuseClampPass(log));
@@ -130,7 +126,7 @@ void vpux::VPU::arch37xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     pm.addPass(VPU::createCorrectNCEWorkloadsPass(log));
     pm.addPass(VPU::createResolveEltwiseWithZTiledWorkloadsPass(log));
     if (options.enableShaveCodeGen) {
-        VPU::buildShaveCodeGenPipeline(pm);
+        ShaveCodeGen::buildShaveCodeGenPipelineVPU(pm);
     }
     pm.addPass(mlir::createCanonicalizerPass(grc));
     pm.addPass(createAdjustDynamicOpsBeforeBufferizationPass());
@@ -162,7 +158,7 @@ void vpux::VPU::arch37xx::buildReferenceSWPipeline(mlir::OpPassManager& pm,
     pm.addPass(VPU::createUnrollFlashSDPAPass(log));
     pm.addPass(VPU::createBoundedTensorsToDynamicDimsMaskPass(log));
     if (options.enableShaveCodeGen) {
-        VPU::buildShaveCodeGenPipeline(pm);
+        ShaveCodeGen::buildShaveCodeGenPipelineVPU(pm);
     }
     pm.addPass(mlir::createCanonicalizerPass(grc));
     pm.addPass(createAdjustDynamicOpsBeforeBufferizationPass());

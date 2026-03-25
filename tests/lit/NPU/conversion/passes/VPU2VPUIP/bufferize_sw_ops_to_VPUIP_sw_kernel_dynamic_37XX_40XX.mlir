@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -79,7 +79,7 @@ func.func @DynamicLSTMSequence(
 
       %outputHiddenValues, %outputHiddenState, %outputCellState = VPU.LSTMSequence(%cmx_input1, %cmx_input2,
         %cmx_input3, %cmx_input4, %cmx_input5)
-            {direction = #IE.rnn_seq_direction<BIDIRECTIONAL>}
+            {direction = #IE.rnn_seq_direction<BIDIRECTIONAL>, operandSegmentSizes = array<i32: 1, 1, 1, 0, 1, 0, 1>}
         : !InputDistributed1, !InputDistributed2, !InputDistributed2, !InputDistributed3, !InputDistributed4
         -> !OutputDistributed1, !OutputDistributed2, !OutputDistributed3
 

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,6 +10,7 @@
 !qElemType = !quant.uniform<i8<-127:127>:f16:0, {0.011811023622047244:-42,0.0090543491633858271:-6,0.010630690206692913:-14}>
 
 // CHECK-LABEL: @ConstantsDequantizeSplitFakeQuantForMultiZP
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x3x16x16xf16>
 func.func @ConstantsDequantizeSplitFakeQuantForMultiZP(%arg0: tensor<1x3x16x16xf16>) -> tensor<1x3x16x16xf16> {
     %cst = const.Declare tensor<3x3x1x1xf16> = dense<9> : tensor<3x3x1x1xui8>, [#const.CastElemType<f16>]
     %cst_low = const.Declare tensor<3x1x1x1xf16> = dense<[[[[-1.0]]], [[[-1.1]]], [[[-1.2]]]]> : tensor<3x1x1x1xf16>
@@ -22,7 +23,7 @@ func.func @ConstantsDequantizeSplitFakeQuantForMultiZP(%arg0: tensor<1x3x16x16xf
 
     // CHECK-NOT:   IE.FakeQuantize
     // CHECK-DAG:   [[CST:%.+]] = const.Declare tensor<3x3x1x1xf16> = dense<9> : tensor<3x3x1x1xui8>, [#const.CastElemType<f16>, #const.CastElemType<!qElemType>, #const.Dequantize]
-    // CHECK:       [[CONV:%.+]] =  IE.Convolution(%arg0, [[CST]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x3x16x16xf16>, tensor<3x3x1x1xf16> -> tensor<1x3x16x16xf16>
+    // CHECK:       [[CONV:%.+]] =  IE.Convolution([[ARG_0]], [[CST]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x3x16x16xf16>, tensor<3x3x1x1xf16> -> tensor<1x3x16x16xf16>
 
     // CHECK:       return [[CONV]] : tensor<1x3x16x16xf16>
 }

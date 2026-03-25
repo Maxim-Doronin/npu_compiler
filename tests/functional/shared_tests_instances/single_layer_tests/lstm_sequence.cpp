@@ -1,3 +1,4 @@
+//
 // Copyright (C) 2018-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -190,14 +191,21 @@ class LSTMSequenceLayerTestCommon : public LSTMSequenceTest, virtual public VpuO
         if (i == funcInputs.size()) {
             return;
         }
+
         if (i == 3 && (mode == utils::SequenceTestsMode::CONVERT_TO_TI_MAX_SEQ_LEN_PARAM ||
                        mode == utils::SequenceTestsMode::CONVERT_TO_TI_RAND_SEQ_LEN_PARAM ||
                        mode == utils::SequenceTestsMode::PURE_SEQ_RAND_SEQ_LEN_PARAM)) {
             // sequence_lengths
             EXPECT_EQ(funcInputs[i].get_element_type(), ov::element::i64);
+            inputTensor = ov::Tensor{funcInputs[i].get_element_type(), targetInputStaticShapes[i]};
+            totalSize = ov::shape_size(targetInputStaticShapes[i]);
             auto inputData = inputTensor.data<ov::element_type_traits<ov::element::i64>::value_type>();
-            for (size_t i = 0; i < totalSize; i++) {
-                inputData[i] = seqLength;
+
+            std::mt19937 gen(42);
+            std::uniform_int_distribution<int64_t> dist(1, seqLength);
+
+            for (size_t j = 0; j < totalSize; j++) {
+                inputData[j] = dist(gen);
             }
             inputs.insert({funcInputs[i].get_node_shared_ptr(), inputTensor});
         }
@@ -254,6 +262,7 @@ private:
     unsigned int seedW = 52;
     unsigned int seedR = 53;
     unsigned int seedB = 54;
+
     // thresholds:
     double mse_thr = 0.001f;      // mean square error
     double abs_thr_hidden = 0.3;  // the real error will be catch by mse and cosine. Big absolute deference for this
@@ -365,35 +374,48 @@ private:
     }
     template <typename T>
     double get_max_abs(T* actual, T* expected, size_t size) {
-        double max_abs = 0.0f;
+        double max_abs = 0.0;
+
         for (size_t i = 0; i < size; i++) {
-            double abs = std::abs((double)actual[i] - (double)expected[i]);
-            if (abs > max_abs) {
-                max_abs = abs;
+            double diff = static_cast<double>(actual[i]) - static_cast<double>(expected[i]);
+            double abs_diff = std::abs(diff);
+            if (abs_diff > max_abs) {
+                max_abs = abs_diff;
             }
         }
         return max_abs;
     }
     template <typename T>
     double get_mse(T* actual, T* expected, size_t size, bool reduction_mean = true) {
-        double mse = 0.0f;
+        double mse = 0.0;
+
         for (size_t i = 0; i < size; i++) {
-            double abs = std::abs((double)actual[i] - (double)expected[i]);
-            mse += abs * abs;
+            double diff = static_cast<double>(actual[i]) - static_cast<double>(expected[i]);
+            mse += diff * diff;
         }
-        return (reduction_mean ? (mse / size) : mse);
+        return (reduction_mean ? (mse / static_cast<double>(size)) : mse);
     }
+
     template <typename T>
     double get_cosine_similarity(T* actual, T* expected, size_t size) {
-        double product = 0.0f, normA = 0.0f, normB = 0.0f;
+        const double epsilon = std::is_same_v<T, float16> ? 1e-4 : std::is_same_v<T, float> ? 1e-7 : 1e-10;
+
+        double product = 0.0, normA = 0.0, normB = 0.0;
+
         for (size_t i = 0; i < size; i++) {
-            product += (double)actual[i] * (double)expected[i];
-            normA += (double)actual[i] * (double)actual[i];
-            normB += (double)expected[i] * (double)expected[i];
+            double actualVal = static_cast<double>(actual[i]);
+            double expectedVal = static_cast<double>(expected[i]);
+
+            product += actualVal * expectedVal;
+            normA += actualVal * actualVal;
+            normB += expectedVal * expectedVal;
         }
+
         normA = sqrt(normA);
         normB = sqrt(normB);
-        if (normA == 0 || normB == 0) {
+        if (normA < epsilon && normB < epsilon) {
+            return 1.0;
+        } else if (normA < epsilon || normB < epsilon) {
             return 0.0;
         }
         return product / (normA * normB);
@@ -454,9 +476,8 @@ private:
         auto* actualBuffer = actualOutputs[i].data<T>();
         std::vector<std::string> errors;
 #ifdef LSTM_PRINT_DEBUG_STATISTICS
-        std::cout << "[ COMPARATION Y] [  b,   d,   s] :         mse | max abs val | cos similarity |   min value |    "
-                     "max "
-                     "value |       mean  | standard deviation | "
+        std::cout << "[ COMPARATION Y] [  b,   d,   s] :         mse | max abs val | cos similarity |   min value | "
+                     "max value |       mean  | standard deviation | "
                   << std::endl;
         std::vector<double> v_mse_hidden_vals;
         std::vector<double> v_max_abs_hidden_vals;
@@ -629,20 +650,31 @@ TEST_P(LSTMSequenceLayerTestCommon, NPU5010_HW_SINGLE_CLUSTER) {
     run(Platform::NPU5010);
 }
 
+TEST_P(LSTMSequenceLayerTestCommonSwDpu, NPU5010_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5010);
+}
+
+TEST_P(LSTMSequenceLayerTestCommon, NPU5020_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
+}
+
 }  // namespace test
 }  // namespace ov
 
 using namespace ov::test;
 namespace {
-std::vector<utils::SequenceTestsMode> mode = {
-        utils::SequenceTestsMode::PURE_SEQ,
-};
+std::vector<utils::SequenceTestsMode> mode = {utils::SequenceTestsMode::PURE_SEQ,
+                                              utils::SequenceTestsMode::PURE_SEQ_RAND_SEQ_LEN_PARAM};
 
 std::vector<std::vector<std::string>> activations = {{"sigmoid", "tanh", "tanh"}};
 std::vector<float> clip{0.f};
-std::vector<ov::op::RecurrentSequenceDirection> direction = {ov::op::RecurrentSequenceDirection::FORWARD,
-                                                             ov::op::RecurrentSequenceDirection::REVERSE,
-                                                             ov::op::RecurrentSequenceDirection::BIDIRECTIONAL};
+std::vector<ov::op::RecurrentSequenceDirection> direction = {
+        ov::op::RecurrentSequenceDirection::FORWARD,
+        ov::op::RecurrentSequenceDirection::REVERSE,
+        ov::op::RecurrentSequenceDirection::BIDIRECTIONAL,
+};
 std::vector<ov::element::Type> modelTypes = {ov::element::f32};
 
 std::vector<size_t> seq_lengths_zero_clip{3};
@@ -659,15 +691,17 @@ const auto lstmConfig = ::testing::Combine(
 INSTANTIATE_TEST_SUITE_P(smoke_precommit_LSTMSequenceCommonZeroClip, LSTMSequenceLayerTestCommon, lstmConfig,
                          LSTMSequenceLayerTestCommon::getTestCaseName);
 
-// --------- NPU4000 Target speed up scenario---------
+// --------- Target speed up scenario ---------
 std::vector<size_t> seq_lengthsPt{2};  // 160 real case reduced for speed reason
 std::vector<size_t> batchPt{1, 2};
-std::vector<size_t> hidden_sizePt{16, 17, 64, 128, 144};
+std::vector<size_t> hidden_sizePt{16, 64, 128, 144};
 std::vector<size_t> input_sizePt{64};
 std::vector<float> clipPt{0.f};
-std::vector<ov::op::RecurrentSequenceDirection> directionPt = {ov::op::RecurrentSequenceDirection::BIDIRECTIONAL,
-                                                               ov::op::RecurrentSequenceDirection::REVERSE};
-// FORWARD BIDIRECTIONAL
+std::vector<ov::op::RecurrentSequenceDirection> directionPt = {
+        ov::op::RecurrentSequenceDirection::BIDIRECTIONAL,
+        ov::op::RecurrentSequenceDirection::REVERSE,
+};
+
 const auto lstmConfigPt = ::testing::Combine(
         ::testing::ValuesIn(mode), ::testing::ValuesIn(seq_lengthsPt), ::testing::ValuesIn(batchPt),
         ::testing::ValuesIn(hidden_sizePt), ::testing::ValuesIn(input_sizePt), ::testing::ValuesIn(activations),
@@ -678,14 +712,29 @@ const auto lstmConfigPt = ::testing::Combine(
 INSTANTIATE_TEST_SUITE_P(smoke_precommit_LSTMSequencePt, LSTMSequenceLayerTestCommon, lstmConfigPt,
                          LSTMSequenceLayerTestCommon::getTestCaseName);
 
-// --------- NPU4000 Accuracy check scenario---------
+// --------- Target speed up scenario only for SequenceTestsMode::PURE_SEQ ---------
+std::vector<size_t> hidden_sizePtConst{17};
+
+const auto lstmConfigPtConst = ::testing::Combine(
+        ::testing::Values(utils::SequenceTestsMode::PURE_SEQ), ::testing::ValuesIn(seq_lengthsPt),
+        ::testing::ValuesIn(batchPt), ::testing::ValuesIn(hidden_sizePtConst), ::testing::ValuesIn(input_sizePt),
+        ::testing::ValuesIn(activations), ::testing::ValuesIn(clipPt), ::testing::ValuesIn(directionPt),
+        ::testing::Values(ov::test::utils::InputLayerType::CONSTANT), ::testing::ValuesIn(modelTypes),
+        ::testing::Values(test_utils::TARGET_DEVICE));
+
+INSTANTIATE_TEST_SUITE_P(smoke_precommit_LSTMSequencePtConst, LSTMSequenceLayerTestCommon, lstmConfigPtConst,
+                         LSTMSequenceLayerTestCommon::getTestCaseName);
+
+// --------- Accuracy check scenario ---------
 std::vector<size_t> seqLengthsAccuracy{25};  // 160 real case reduced for speed reason
 std::vector<size_t> batchAccuracy{1};
 std::vector<size_t> hiddenSizeAccuracy{128};
 std::vector<size_t> inputSizeAccuracy{64};
 std::vector<float> clipAccuracy{0.f};
-std::vector<ov::op::RecurrentSequenceDirection> directionAccuracy = {ov::op::RecurrentSequenceDirection::BIDIRECTIONAL};
-// FORWARD BIDIRECTIONAL
+std::vector<ov::op::RecurrentSequenceDirection> directionAccuracy = {ov::op::RecurrentSequenceDirection::FORWARD,
+                                                                     ov::op::RecurrentSequenceDirection::REVERSE,
+                                                                     ov::op::RecurrentSequenceDirection::BIDIRECTIONAL};
+
 const auto lstmConfigAccuracy = ::testing::Combine(
         ::testing::ValuesIn(mode), ::testing::ValuesIn(seqLengthsAccuracy), ::testing::ValuesIn(batchAccuracy),
         ::testing::ValuesIn(hiddenSizeAccuracy), ::testing::ValuesIn(inputSizeAccuracy),

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -16,6 +16,7 @@
 }>
 
 // CHECK-LABEL: @Fold
+// CHECK-SAME: [[ARG_0:%[^:]+]]: memref<1x128x16x16xf16, #NHWC, @CMX_NN>
 func.func @Fold(%arg0: memref<1x128x16x16xf16, #NHWC, @CMX_NN>, %arg1: memref<1x128x16x16xf16, #NHWC, @CMX_NN>) -> memref<1x128x16x16xf16, #NHWC, @CMX_NN> {
     %0 = builtin.unrealized_conversion_cast %arg0 : memref<1x128x16x16xf16, #NHWC, @CMX_NN> to !DistributedBuffer
     %1 = VPUIP.DistributedCast inputs(%0 : !DistributedBuffer) -> !DistributedBuffer
@@ -23,5 +24,5 @@ func.func @Fold(%arg0: memref<1x128x16x16xf16, #NHWC, @CMX_NN>, %arg1: memref<1x
     return %2 : memref<1x128x16x16xf16, #NHWC, @CMX_NN>
 
     // CHECK-NOT:  VPUIP.DistributedCast
-    // CHECK:      return %arg0 : memref<1x128x16x16xf16, #NHWC, @CMX_NN>
+    // CHECK:      return [[ARG_0]] : memref<1x128x16x16xf16, #NHWC, @CMX_NN>
 }

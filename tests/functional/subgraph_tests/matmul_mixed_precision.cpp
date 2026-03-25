@@ -105,6 +105,10 @@ TEST_P(MatMulMixedPrecisionTestCommon, NPU5010_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
+TEST_P(MatMulMixedPrecisionTestCommon, NPU5020_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
+}
 
 INSTANTIATE_TEST_SUITE_P(smoke_MatMulMixedPrecisionOneICSplit, MatMulMixedPrecisionTestCommon,
                          ::testing::Values(MatMulMixedPrecisionTestParams{
@@ -210,6 +214,10 @@ TEST_P(MatMulMixedPrecisionTestOutputQuantized, NPU4000_HW) {
 TEST_P(MatMulMixedPrecisionTestOutputQuantized, NPU5010_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
+}
+TEST_P(MatMulMixedPrecisionTestOutputQuantized, NPU5020_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
 }
 
 INSTANTIATE_TEST_SUITE_P(smoke_MatMulMixedPrecisionOutputQuantized, MatMulMixedPrecisionTestOutputQuantized,

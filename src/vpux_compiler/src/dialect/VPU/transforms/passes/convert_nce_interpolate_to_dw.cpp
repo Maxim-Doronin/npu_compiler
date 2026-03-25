@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -320,6 +320,7 @@ void ConvertNCEInterpolateToDWPass::convertToDWConv(VPU::NCEInterpolateOp origOp
                                                     VPU::StorageElementTableOp storageElementTable,
                                                     Const::DeclareOp origWeights, config::ArchKind arch) const {
     auto nestedLog = _log.nest();
+    auto* ctx = origOp.getContext();
     mlir::OpBuilder builder(origOp);
     auto data = groupSparseOp.getData();
     auto sparsityMap = groupSparseOp.getSparsityMap();
@@ -331,9 +332,10 @@ void ConvertNCEInterpolateToDWPass::convertToDWConv(VPU::NCEInterpolateOp origOp
 
     const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     const auto OC = outputType.getShape()[Dims4D::Act::C];
-    const auto origPpeAttr = VPU::PpeVersionConfig::retrievePPEAttribute(origOp);
+    const auto& ppeConfig = VPU::getPpeConfig(ctx);
+    const auto origPpeAttr = ppeConfig.retrievePPEAttribute(origOp);
     const auto adaptedOutElemType =
-            VPU::PpeVersionConfig::getFactoryAs<VPU::IPpeAdapterFpPreluAlpha>().adaptTypeForPreluAlphaScaling(
+            ppeConfig.getFactoryAs<VPU::IPpeAdapterFpPreluAlpha>().adaptTypeForPreluAlphaScaling(
                     origPpeAttr, outputType.getElementType());
 
     const auto isNewWeightTableFormat = VPU::MPEEngineConfig::useNewWeightTableFormat(origOp, false);
@@ -356,7 +358,7 @@ void ConvertNCEInterpolateToDWPass::convertToDWConv(VPU::NCEInterpolateOp origOp
     const auto rawFilterShape = getIntArrayAttr(
             builder,
             SmallVector<int64_t>{OC, 1, origWeightsShape[Dims4D::Filter::KY], origWeightsShape[Dims4D::Filter::KX]});
-    const auto padding = VPU::getPaddingAttr(origOp.getContext(), 0, 0, 0, 0);
+    const auto padding = VPU::getPaddingAttr(ctx, 0, 0, 0, 0);
     auto dwConv = builder.create<VPU::NCEDepthConvolutionOp>(
             origOp->getLoc(), outputType, sparseInput, weights, weightsTable, newWeightsTableTensors.dataPointerTensor,
             newWeightsTableTensors.sparsityPointerTensor, newWeightsTableTensors.scaleTensor,

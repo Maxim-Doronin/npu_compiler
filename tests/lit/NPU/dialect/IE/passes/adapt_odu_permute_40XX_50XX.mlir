@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -154,4 +154,37 @@ func.func @AddPermuteODUWithNoPermuteCastBefore(%arg0: tensor<1x16x1x64xf16, {or
     // CHECK-SAME:  tensor<1x16x1x64xf16, {order = #NHWC}>
     // CHECK-SAME:  -> tensor<1x16x1x64xf16, {order = #NWCH}>
     // CHECK:   return [[PERMUTE_CAST]] : tensor<1x16x1x64xf16, {order = #NWCH}>
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
+#NHCW = affine_map<(d0, d1, d2, d3) -> (d0, d2, d1, d3)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @PermuteODUWithTransposedConv
+// CHECK-SAME:    [[INPUT:%.+]]: tensor<1x384x1x4xf16, {order = #NHWC}>
+func.func @PermuteODUWithTransposedConv(%arg0: tensor<1x384x1x4xf16, {order = #NHWC}>) -> tensor<1x128x1x32xf16> {
+    %weights = const.Declare tensor<128x384x1x8xf16, {order = #NHWC}>
+        = dense<2.000000e+00> : tensor<128x384x1x8xf16, {order = #NHWC}>
+    %output_shape = const.Declare tensor<2xsi32> = dense<[1, 32]> : tensor<2xsi32>
+
+    %0 = IE.TransposedConvolution(%arg0, %weights, %output_shape) {dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 1, 0>, pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.Swish<beta = 1.000000e+00 : f64>, spatial_output_padding = [0, 0], strides = [1, 8]} : tensor<1x384x1x4xf16, {order = #NHWC}>, tensor<128x384x1x8xf16, {order = #NHWC}>, tensor<2xsi32> -> tensor<1x128x1x32xf16>
+    return %0 : tensor<1x128x1x32xf16>
+
+    // CHECK-DAG:    [[CST:%.+]] = const.Declare tensor<2xsi32> = dense<[32, 1]> : tensor<2xsi32>
+    // CHECK-DAG:    [[CST_0:%.+]] = const.Declare tensor<128x384x8x1xf16, {order = #NHWC}> = dense<2.000000e+00> : tensor<128x384x1x8xf16, {order = #NHWC}>, [#const.MemPermute<#NHWC, #NHCW>]
+
+    // CHECK:        [[PERMUTE_CAST_IN:%.+]] = IE.PermuteCast([[INPUT]]) {dst_order = #NHWC, mem_perm = #NHCW}
+    // CHECK-SAME:       tensor<1x384x1x4xf16, {order = #NHWC}>
+    // CHECK-SAME:       -> tensor<1x384x4x1xf16, {order = #NHWC}>
+
+    // CHECK:        [[CONV:%.+]] = IE.TransposedConvolution([[PERMUTE_CAST_IN]]
+    // CHECK-SAME:       -> tensor<1x128x32x1xf16, {order = #NCWH}>
+
+    // CHECK:        [[PERMUTE_CAST_OUT:%.+]] = IE.PermuteCast([[CONV]]) {dst_order = #NCHW, mem_perm = #NCHW}
+    // CHECK-SAME:       tensor<1x128x32x1xf16, {order = #NCWH}>
+    // CHECK-SAME:       ->  tensor<1x128x1x32xf16>
+    // CHECK:   return [[PERMUTE_CAST_OUT]] : tensor<1x128x1x32xf16>
 }

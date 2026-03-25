@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -36,6 +36,8 @@ module @VPU.SW  {
     func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
 }
 
+// CHECK-LABEL: @ParsePrintDistributedBufferConvertDMA
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x32x16x16xf32, #NHWC, @DDR>)
 func.func @ParsePrintDistributedBufferConvertDMA(%input: !Input_DDR) -> !Output_DDR {
     %input_cmx = VPURT.AllocDistributed -> !InputDistributed
     %t0 = async.execute
@@ -72,7 +74,7 @@ func.func @ParsePrintDistributedBufferConvertDMA(%input: !Input_DDR) -> !Output_
     //CHECK-SAME:                           pads = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, strides = [1, 1], num_clusters = 4 : i64}>
     //CHECK:        %token = async.execute attributes {VPUIP.executor = @DMA_NN, VPUIP.num_units = 1 : i64, "async-deps-index" = 0 : i64} {
     //CHECK:              VPUIP.ConvertDMA
-    //CHECK-SAME:                          inputs(%arg0 : memref<1x32x16x16xf32, #NHWC, @DDR>
+    //CHECK-SAME:                          inputs([[ARG_0]] : memref<1x32x16x16xf32, #NHWC, @DDR>
     //CHECK-SAME:                          outputs([[INPUT_CMX]] : !VPUIP.DistributedBuffer
     //CHECK:              async.yield
     //CHECK:        }
@@ -82,8 +84,8 @@ func.func @ParsePrintDistributedBufferConvertDMA(%input: !Input_DDR) -> !Output_
     //CHECK-SAME:                           pads = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, strides = [1, 1], num_clusters = 4 : i64}>
     //CHECK:        %token_0 = async.execute attributes {VPUIP.executor = @SHAVE_ACT, "async-deps-index" = 1 : i64} {
     //CHECK:              %results = VPUIP.SW.Kernel
-    //CHECK-SAME:                          inputs([[INPUT_CMX]] as %arg1: !VPUIP.DistributedBuffer
-    //CHECK-SAME:                          outputs([[OUTPUT_CMX]] as %arg2: !VPUIP.DistributedBuffer
+    //CHECK-SAME:                          inputs([[INPUT_CMX]] as {{%[^:]+}}: !VPUIP.DistributedBuffer
+    //CHECK-SAME:                          outputs([[OUTPUT_CMX]] as {{%[^:]+}}: !VPUIP.DistributedBuffer
     //CHECK:              async.yield
     //CHECK:        }
 

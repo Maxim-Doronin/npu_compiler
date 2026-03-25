@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -71,6 +71,29 @@ func.func @NotSwapMultiplyWithPostOp(%arg0: tensor<1x32x1024x80xf32>, %arg1: ten
     // CHECK:       return  [[MATMUL]] : tensor<1x32x1x1024xf32>
 }
 
+
+// -----
+
+// CHECK-LABEL: @NotSwapMultiplyWithClamp
+// CHECK-SAME:      [[INPUT1:%.+]]: tensor<1x32x1024x80xf32>,
+// CHECK-SAME:      [[INPUT2:%.+]]: tensor<1x32x1x80xf32>
+func.func @NotSwapMultiplyWithClamp(%arg0: tensor<1x32x1024x80xf32>, %arg1: tensor<1x32x1x80xf32>) -> tensor<1x32x1x1024xf32> {
+    %cst = const.Declare tensor<1x1x1x1xf32> = dense<0.1> : tensor<1x1x1x1xf32>
+    %0 = IE.Multiply(%cst, %arg0) {
+        auto_broadcast = #IE.auto_broadcast_type<NUMPY>,
+        clamp = {min = 0.000000e+00 : f64, max = 1.000000e+00 : f64}
+    } : tensor<1x1x1x1xf32>, tensor<1x32x1024x80xf32> -> tensor<1x32x1024x80xf32>
+    %1 = IE.MatMul(%arg1, %0) {transpose_b} : tensor<1x32x1x80xf32>, tensor<1x32x1024x80xf32> -> tensor<1x32x1x1024xf32>
+
+    return %1 : tensor<1x32x1x1024xf32>
+
+    // CHECK-DAG:   [[CST:%.+]] = const.Declare
+    // CHECK:       [[MULTIPLY:%.+]] = IE.Multiply([[CST]], [[INPUT1]])
+    // CHECK:       [[MATMUL:%.+]] = IE.MatMul([[INPUT2]], [[MULTIPLY]]) {transpose_b}
+
+    // CHECK:       return  [[MATMUL]] : tensor<1x32x1x1024xf32>
+}
+
 // -----
 
 // CHECK-LABEL: @NotSwapMultiplyForNotSplatConst
@@ -129,6 +152,29 @@ func.func @NotBeneficialForSwapMultiply(%arg0: tensor<1x32x1024x80xf32>, %arg1: 
     // CHECK:       return  [[MATMUL]] : tensor<1x32x1025x1024xf32>
 }
 
+
+// -----
+
+// CHECK-LABEL: @NotBeneficialForSwapMultiplyWithClamp
+// CHECK-SAME:      [[INPUT1:%.+]]: tensor<1x32x1024x80xf32>,
+// CHECK-SAME:      [[INPUT2:%.+]]: tensor<1x32x1025x80xf32>
+func.func @NotBeneficialForSwapMultiplyWithClamp(%arg0: tensor<1x32x1024x80xf32>, %arg1: tensor<1x32x1025x80xf32>) -> tensor<1x32x1025x1024xf32> {
+    %cst = const.Declare tensor<1x1x1x1xf32> = dense<0.1> : tensor<1x1x1x1xf32>
+    %0 = IE.Multiply(%cst, %arg0) {
+        auto_broadcast = #IE.auto_broadcast_type<NUMPY>,
+        clamp = {min = 0.000000e+00 : f64, max = 1.000000e+00 : f64}
+    } : tensor<1x1x1x1xf32>, tensor<1x32x1024x80xf32> -> tensor<1x32x1024x80xf32>
+    %1 = IE.MatMul(%arg1, %0) {transpose_b} : tensor<1x32x1025x80xf32>, tensor<1x32x1024x80xf32> -> tensor<1x32x1025x1024xf32>
+
+    return %1 : tensor<1x32x1025x1024xf32>
+
+    // CHECK-DAG:   [[CST:%.+]] = const.Declare
+    // CHECK:       [[MULTIPLY:%.+]] = IE.Multiply([[CST]], [[INPUT1]])
+    // CHECK:       [[MATMUL:%.+]] = IE.MatMul([[INPUT2]], [[MULTIPLY]]) {transpose_b}
+
+    // CHECK:       return  [[MATMUL]] : tensor<1x32x1025x1024xf32>
+}
+
 // -----
 
 // CHECK-LABEL: @MoveMultiplyPostConcat
@@ -164,7 +210,7 @@ func.func @MoveMultiplyPostConcatWithReshape(%arg0: tensor<1x3584xf16>, %arg1: t
     // CHECK:       [[RESHAPE_4:%.+]] = IE.Reshape([[INPUT4]]) {shape_value = [1, 1, 1, 3584]} : tensor<1x3584xf16> -> tensor<1x1x1x3584xf16>
     // CHECK:       [[CONCAT_LEFT:%.+]] = IE.Concat([[RESHAPE_2]], [[RESHAPE_4]]) {per_axis = #IE.Concat<axis = 1 : i64>} : tensor<1x1x1x3584xf16>, tensor<1x1x1x3584xf16> -> tensor<1x2x1x3584xf16>
     // CHECK:       [[CONCAT_RIGHT:%.+]] = IE.Concat([[RESHAPE_1]], [[RESHAPE_3]]) {per_axis = #IE.Concat<axis = 1 : i64>} : tensor<1x1x1x3584xf16>, tensor<1x1x1x3584xf16> -> tensor<1x2x1x3584xf16>
-    // CHECK:       [[MULTIPLY:%.+]] = IE.Multiply(%5, %4) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x2x1x3584xf16>, tensor<1x2x1x3584xf16> -> tensor<1x2x1x3584xf16>
+    // CHECK:       [[MULTIPLY:%.+]] = IE.Multiply([[CONCAT_RIGHT]], [[CONCAT_LEFT]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x2x1x3584xf16>, tensor<1x2x1x3584xf16> -> tensor<1x2x1x3584xf16>
 
     // CHECK:       return [[MULTIPLY]] : tensor<1x2x1x3584xf16>
 }

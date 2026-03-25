@@ -1,13 +1,16 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
-#include <mlir/IR/Operation.h>
+#include "vpux/compiler/core/tiling.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/data_movement_fwd.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/factories/gather_dma_constants.hpp"
+#include "vpux/utils/logger/logger.hpp"
+
+#include <mlir/IR/Operation.h>
 
 namespace vpux::VPU {
 

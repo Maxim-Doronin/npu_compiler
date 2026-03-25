@@ -1,14 +1,12 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/internal.hpp"
 #include "vpux/compiler/utils/thread_safe_hash_map.hpp"
-#include "vpux/utils/core/dense_map.hpp"
 
 namespace vpux::VPU::VF::v2 {
 

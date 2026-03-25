@@ -1,9 +1,10 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
+#include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
@@ -205,7 +206,7 @@ mlir::LogicalResult GroupsToAttr::matchAndRewrite(IE::GroupConvolutionOp convOp,
         shape[1] *= shape[0];
         shape.erase(shape.begin());
         const auto shapeAttr = getIntArrayAttr(getContext(), shape);
-        return rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(convOp, locSuffix), input, nullptr, false, shapeAttr);
+        return rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(convOp, locSuffix), input, shapeAttr);
     };
 
     mlir::Value newFilter = filter;

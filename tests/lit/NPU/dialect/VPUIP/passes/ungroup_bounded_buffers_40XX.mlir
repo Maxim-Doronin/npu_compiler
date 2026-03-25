@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -31,7 +31,7 @@ func.func @UngroupBoundedBuffersforConvertDMA(%arg0: memref<1x18x15xf32, @DDR>, 
 #NWHC = affine_map<(d0, d1, d2, d3) -> (d0, d3, d2, d1)>
 
 module @VPU.SW {
-  func.func private @builtin_LSTMSequence(memref<*xf16, @CMX_NN>, memref<*xf16, @CMX_NN>, i64, i64, i64) attributes {VPU.kernel_code = "lstm_sequence.cpp", VPU.kernel_entry = "lstm_sequence"}
+  func.func private @builtin_LSTMSequence(memref<*xf16, @CMX_NN>, memref<*xf16, @CMX_NN>, i64, i64, none, i64) attributes {VPU.kernel_code = "lstm_sequence.cpp", VPU.kernel_entry = "lstm_sequence"}
   func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
 }
 
@@ -58,7 +58,7 @@ func.func @ProcessBuffers(%arg0: !VPUIP.BoundedBuffer<data=memref<1x1x35x512xf16
     %alloc_10 = memref.alloc() : memref<1x1x1x128xf16, [@CMX_NN, 0]>
     %alloc_11 = memref.alloc() : memref<1x1x1x128xf16, [@CMX_NN, 0]>
     %results:3 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 3, 0, 0>} @VPU.SW::@builtin_LSTMSequence inputs(%3 as %arg8: !VPUIP.BoundedBuffer<data=memref<1x1x35x512xf16, [@CMX_NN, 0]>, dynamic_shape=memref<4xsi32, [@CMX_NN, 0]>>, %4 as %arg9: memref<1x1x1x128xf16, [@CMX_NN, 0]>, %5 as %arg10: memref<1x1x1x128xf16, [@CMX_NN, 0]>, %6 as %arg11: memref<1x4x128x128xf16, #NWHC, [@CMX_NN, 0]>, %7 as %arg12: memref<1x1x1x2xsi32, [@CMX_NN, 0]>) outputs(%8 as %arg13: !VPUIP.BoundedBuffer<data=memref<1x1x35x128xf16, [@CMX_NN, 0]>, dynamic_shape=memref<4xsi32, [@CMX_NN, 0]>>, %alloc_10 as %arg14: memref<1x1x1x128xf16, [@CMX_NN, 0]>, %alloc_11 as %arg15: memref<1x1x1x128xf16, [@CMX_NN, 0]>) on tile 0 -> (!VPUIP.BoundedBuffer<data=memref<1x1x35x128xf16, [@CMX_NN, 0]>, dynamic_shape=memref<4xsi32, [@CMX_NN, 0]>>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>) {
-        VPUIP.SW.Kernel.run {attrs = [1]}(%arg8, %arg9, %arg10, %arg11, %arg12, %arg13, %arg14, %arg15) : !VPUIP.BoundedBuffer<data=memref<1x1x35x512xf16, [@CMX_NN, 0]>, dynamic_shape=memref<4xsi32, [@CMX_NN, 0]>>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<1x4x128x128xf16, #NWHC, [@CMX_NN, 0]>, memref<1x1x1x2xsi32, [@CMX_NN, 0]>, !VPUIP.BoundedBuffer<data=memref<1x1x35x128xf16, [@CMX_NN, 0]>, dynamic_shape=memref<4xsi32, [@CMX_NN, 0]>>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>
+        VPUIP.SW.Kernel.run {attrs = [[-9223372036854775808, 1023], 1]}(%arg8, %arg9, %arg10, %arg11, %arg12, %arg13, %arg14, %arg15) : !VPUIP.BoundedBuffer<data=memref<1x1x35x512xf16, [@CMX_NN, 0]>, dynamic_shape=memref<4xsi32, [@CMX_NN, 0]>>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<1x4x128x128xf16, #NWHC, [@CMX_NN, 0]>, memref<1x1x1x2xsi32, [@CMX_NN, 0]>, !VPUIP.BoundedBuffer<data=memref<1x1x35x128xf16, [@CMX_NN, 0]>, dynamic_shape=memref<4xsi32, [@CMX_NN, 0]>>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>
     }
 
     return %8, %alloc_10, %alloc_11 : !VPUIP.BoundedBuffer<data=memref<1x1x35x128xf16, [@CMX_NN, 0]>, dynamic_shape=memref<4xsi32, [@CMX_NN, 0]>>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>
@@ -67,8 +67,9 @@ func.func @ProcessBuffers(%arg0: !VPUIP.BoundedBuffer<data=memref<1x1x35x512xf16
     // CHECK: [[ALLOC_0:%.+]] = memref.alloc() : memref<1x1x1x128xf16, [@CMX_NN, 0]>
     // CHECK: [[ALLOC_1:%.+]] = memref.alloc() : memref<1x1x1x128xf16, [@CMX_NN, 0]>
     // CHECK: [[DATA:%.+]], [[DYN_SHAPE:%.+]] = VPUIP.UngroupBoundedBuffer([[GROUP]]) : !VPUIP.BoundedBuffer<data=memref<1x1x35x128xf16, [@CMX_NN, 0]>, dynamic_shape=memref<4xsi32, [@CMX_NN, 0]>> -> memref<1x1x35x128xf16, [@CMX_NN, 0]>, memref<4xsi32, [@CMX_NN, 0]>
-    // CHECK: %results:3, [[DYN_OUT_SHAPES:%.+]] = VPUIP.SW.Kernel {dynamicInputShapesMap = array<i32: 0, -1, -1, -1, -1>, dynamicOutputShapesMap = array<i32: 0, -1, -1>, resultSegmentSizes = array<i32: 3, 1, 0>} @VPU.SW::@builtin_LSTMSequence inputs(%2 as %arg5: memref<1x1x35x512xf16, [@CMX_NN, 0]>, %4 as %arg6: memref<1x1x1x128xf16, [@CMX_NN, 0]>, %5 as %arg7: memref<1x1x1x128xf16, [@CMX_NN, 0]>, %6 as %arg8: memref<1x4x128x128xf16, #NWHC, [@CMX_NN, 0]>, %7 as %arg9: memref<1x1x1x2xsi32, [@CMX_NN, 0]>) dynamicInputShapes(%3 : memref<4xsi32, [@CMX_NN, 0]>) outputs([[DATA]] as %arg10: memref<1x1x35x128xf16, [@CMX_NN, 0]>, [[ALLOC_0]] as %arg11: memref<1x1x1x128xf16, [@CMX_NN, 0]>, [[ALLOC_1]] as %arg12: memref<1x1x1x128xf16, [@CMX_NN, 0]>) dynamicOutputShapes([[DYN_SHAPE]] : memref<4xsi32, [@CMX_NN, 0]>) on tile 0 -> (memref<1x1x35x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<4xsi32, [@CMX_NN, 0]>){
-    // CHECK:   VPUIP.SW.Kernel.run {attrs = [1]}(%arg5, %arg6, %arg7, %arg8, %arg9, %arg10, %arg11, %arg12) : memref<1x1x35x512xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<1x4x128x128xf16, #NWHC, [@CMX_NN, 0]>, memref<1x1x1x2xsi32, [@CMX_NN, 0]>, memref<1x1x35x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>
+    // CHECK: %results:3, [[DYN_OUT_SHAPES:%.+]] = VPUIP.SW.Kernel {dynamicInputShapesMap = array<i32: 0, -1, -1, -1, -1>, dynamicOutputShapesMap = array<i32: 0, -1, -1>, resultSegmentSizes = array<i32: 3, 1, 0>} @VPU.SW::@builtin_LSTMSequence inputs({{%[^ ]+}} as [[ARG_5:%[^:]+]]: memref<1x1x35x512xf16, [@CMX_NN, 0]>, {{%[^ ]+}} as [[ARG_6:%[^:]+]]: memref<1x1x1x128xf16, [@CMX_NN, 0]>, {{%[^ ]+}} as [[ARG_7:%[^:]+]]: memref<1x1x1x128xf16, [@CMX_NN, 0]>, {{%[^ ]+}} as [[ARG_8:%[^:]+]]: memref<1x4x128x128xf16, #NWHC, [@CMX_NN, 0]>, {{%[^ ]+}} as [[ARG_9:%[^:]+]]: memref<1x1x1x2xsi32, [@CMX_NN, 0]>) dynamicInputShapes({{%[^ ]+}} : memref<4xsi32, [@CMX_NN, 0]>) outputs([[DATA]] as [[ARG_10:%[^:]+]]: memref<1x1x35x128xf16, [@CMX_NN, 0]>, [[ALLOC_0]] as [[ARG_11:%[^:]+]]: memref<1x1x1x128xf16, [@CMX_NN, 0]>, [[ALLOC_1]] as [[ARG_12:%[^:]+]]: memref<1x1x1x128xf16, [@CMX_NN, 0]>) dynamicOutputShapes([[DYN_SHAPE]] : memref<4xsi32, [@CMX_NN, 0]>) on tile 0 -> (memref<1x1x35x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<4xsi32, [@CMX_NN, 0]>){
+    // CHECK{LITERAL}: VPUIP.SW.Kernel.run {attrs = [[-9223372036854775808, 1023], 1]}
+    // CHECK: ([[ARG_5]], [[ARG_6]], [[ARG_7]], [[ARG_8]], [[ARG_9]], [[ARG_10]], [[ARG_11]], [[ARG_12]]) : memref<1x1x35x512xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<1x4x128x128xf16, #NWHC, [@CMX_NN, 0]>, memref<1x1x1x2xsi32, [@CMX_NN, 0]>, memref<1x1x35x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>
     // CHECK: }
     // CHECK: return [[GROUP]], [[ALLOC_0]], [[ALLOC_1]] : !VPUIP.BoundedBuffer<data=memref<1x1x35x128xf16, [@CMX_NN, 0]>, dynamic_shape=memref<4xsi32, [@CMX_NN, 0]>>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>
 }

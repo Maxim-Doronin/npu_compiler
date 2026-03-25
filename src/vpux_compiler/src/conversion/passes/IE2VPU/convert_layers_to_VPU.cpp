@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -228,33 +228,28 @@ mlir::LogicalResult GRUCellRewrite::matchAndRewrite(IE::GRUCellOp origOp, mlir::
     const auto inputSize = inputShape[1];
     SmallVector<int64_t> newInputShape = {batchSize, 1, inputSize};
     const auto newInputShapeAttr = getIntArrayAttr(ctx, newInputShape);
-    auto newInput =
-            rewriter.create<VPU::ReshapeOp>(origOp->getLoc(), origOp.getInputData(), nullptr, false, newInputShapeAttr);
+    auto newInput = rewriter.create<VPU::ReshapeOp>(origOp->getLoc(), origOp.getInputData(), newInputShapeAttr);
 
     const auto initialStateShape = getShape(origOp.getInitialHiddenState()).raw();
     const auto hiddenSize = initialStateShape[1];
     SmallVector<int64_t> newInitialStateShape = {batchSize, 1, hiddenSize};
     const auto newInitialStateShapeAttr = getIntArrayAttr(ctx, newInitialStateShape);
     auto newInitialState =
-            rewriter.create<VPU::ReshapeOp>(origOp->getLoc(), origOp.getInitialHiddenState(), /*shape=*/nullptr,
-                                            /*special_zero=*/false, newInitialStateShapeAttr);
+            rewriter.create<VPU::ReshapeOp>(origOp->getLoc(), origOp.getInitialHiddenState(), newInitialStateShapeAttr);
 
     SmallVector<int64_t> newWeightsShape = {1, 3 * hiddenSize, inputSize};
     const auto newWeightsShapeAttr = getIntArrayAttr(ctx, newWeightsShape);
-    auto newWeights =
-            rewriter.create<VPU::ReshapeOp>(origOp->getLoc(), origOp.getWeights(), nullptr, false, newWeightsShapeAttr);
+    auto newWeights = rewriter.create<VPU::ReshapeOp>(origOp->getLoc(), origOp.getWeights(), newWeightsShapeAttr);
 
     SmallVector<int64_t> newReWeightsShape = {1, 3 * hiddenSize, hiddenSize};
     const auto newReWeightsShapeAttr = getIntArrayAttr(ctx, newReWeightsShape);
     auto newReWeights =
-            rewriter.create<VPU::ReshapeOp>(origOp->getLoc(), origOp.getRecurrenceWeights(), /*shape=*/nullptr,
-                                            /*special_zero=*/false, newReWeightsShapeAttr);
+            rewriter.create<VPU::ReshapeOp>(origOp->getLoc(), origOp.getRecurrenceWeights(), newReWeightsShapeAttr);
 
     const auto biasesShape = getShape(origOp.getBiases()).raw();
     SmallVector<int64_t> newBiasesShape = {1, biasesShape[0]};
     const auto newBiasesShapeAttr = getIntArrayAttr(ctx, newBiasesShape);
-    auto newBiases = rewriter.create<VPU::ReshapeOp>(origOp->getLoc(), origOp.getBiases(), /*shape=*/nullptr,
-                                                     /*special_zero=*/false, newBiasesShapeAttr);
+    auto newBiases = rewriter.create<VPU::ReshapeOp>(origOp->getLoc(), origOp.getBiases(), newBiasesShapeAttr);
 
     const auto seqLenAttr = getIntAttr(ctx, 1);
     const auto directionAttr = IE::RNNSequenceDirectionAttr::get(ctx, IE::RNNSequenceDirection::FORWARD);
@@ -265,8 +260,7 @@ mlir::LogicalResult GRUCellRewrite::matchAndRewrite(IE::GRUCellOp origOp, mlir::
                                                 origOp.getShouldLinearBeforeResetAttr(), origOp.getClipAttr());
     SmallVector<int64_t> newOutputShape = {batchSize, hiddenSize};
     const auto newOutputShapeAttr = getIntArrayAttr(ctx, newOutputShape);
-    rewriter.replaceOpWithNewOp<VPU::ReshapeOp>(origOp, gruSeq.getOutputHiddenState(), /*shape=*/nullptr,
-                                                /*special_zero=*/false, newOutputShapeAttr);
+    rewriter.replaceOpWithNewOp<VPU::ReshapeOp>(origOp, gruSeq.getOutputHiddenState(), newOutputShapeAttr);
 
     return mlir::success();
 }
@@ -391,10 +385,12 @@ mlir::LogicalResult LSTMSequenceRewrite::matchAndRewrite(IE::LSTMSequenceOp orig
                            "the DecomposeLSTMSequencePass.");
     }
     _log.trace("Found LSTMSequence Operation '{0}'", origOp->getLoc());
-    rewriter.replaceOpWithNewOp<VPU::LSTMSequenceOp>(origOp, origOp.getInputData(), origOp.getInitialHiddenState(),
-                                                     origOp.getInitialCellState(), origOp.getReccurenceWeights(),
-                                                     origOp.getBiases(), origOp.getSequenceLengthAttr(),
-                                                     origOp.getDirectionAttr(), nullptr);
+
+    rewriter.replaceOpWithNewOp<VPU::LSTMSequenceOp>(
+            origOp, origOp.getInputData(), origOp.getInitialHiddenState(), origOp.getInitialCellState(),
+            origOp.getSequenceLengthData(), origOp.getRecurrenceWeights(), origOp.getBiases(),
+            origOp.getSequenceLengthAttr(), origOp.getDirectionAttr(), /*initial_output_offset_attr=*/nullptr,
+            /*multiClusterStrategy=*/nullptr);
 
     return mlir::success();
 }
@@ -541,7 +537,7 @@ mlir::LogicalResult AddRewrite::matchAndRewrite(IE::AddOp origOp, mlir::PatternR
             auto fillOneCnt = RANK_4D - mlir::cast<vpux::NDTypeInterface>(input.getType()).getRank();
             auto newInputShape = SmallVector<int64_t>(fillOneCnt, 1);
             newInputShape.append(inputShape.begin(), inputShape.end());
-            return rewriter.createOrFold<VPU::ReshapeOp>(origOp.getLoc(), input, nullptr, false,
+            return rewriter.createOrFold<VPU::ReshapeOp>(origOp.getLoc(), input,
                                                          getIntArrayAttr(origOp.getContext(), newInputShape));
         };
         input1 = reshapeTo4D(input1);
@@ -552,8 +548,7 @@ mlir::LogicalResult AddRewrite::matchAndRewrite(IE::AddOp origOp, mlir::PatternR
                                                 origOp.getPostOpAttr());
     if (inputRank < RANK_4D) {
         rewriter.replaceOpWithNewOp<VPU::ReshapeOp>(
-                origOp, newAddOp, nullptr, false,
-                getIntArrayAttr(origOp.getContext(), getShape(origOp.getOutput()).raw()));
+                origOp, newAddOp, getIntArrayAttr(origOp.getContext(), getShape(origOp.getOutput()).raw()));
     } else {
         rewriter.replaceOp(origOp, newAddOp);
     }

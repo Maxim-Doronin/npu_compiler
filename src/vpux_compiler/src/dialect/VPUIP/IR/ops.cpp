@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -483,15 +483,8 @@ public:
         return vpux::VPU::isSupportedTilingStrategyImpl(origOp, strategy, tilingMode, log);
     }
 
-    bool isPrefetchingTilingSupported(mlir::Operation* origOp) const {
-        // Depthwise operations that use ODU autopad do not support prefetching, as this mode requires tiling over
-        // output channels. Such tiling is not supported, because the input still needs to be aligned. As a consequence,
-        // the input would need to be sliced and expanded for its alignment to be correct, which is not supported by the
-        // tiling infrastructure as of now
-        const auto isDepthwiseWithAutopad =
-                mlir::isa<VPU::NCEDepthConvolutionOp, VPU::NCEMaxPoolOp, VPU::NCEAveragePoolOp>(origOp) &&
-                VPU::canAutopadOutput(origOp);
-        return !isDepthwiseWithAutopad;
+    bool isPrefetchingTilingSupported(mlir::Operation* /*origOp*/) const {
+        return true;
     }
 
     bool isPipeliningTilingSupported(mlir::Operation* /*origOp*/) const {
@@ -532,6 +525,46 @@ public:
 
     bool isPipeliningTilingSupported(mlir::Operation* /*origOp*/) const {
         return false;
+    }
+};
+
+template <class MainOpType>
+class NCEDepthwiseTilingInfoOpModel final :
+        public VPU::TilingInfoOpInterface::ExternalModel<NCEDepthwiseTilingInfoOpModel<MainOpType>, MainOpType> {
+public:
+    bool isSupportedTiling(mlir::Operation* origOp, const OutputTiling& tiles, TilingMode tilingMode,
+                           Logger log) const {
+        if (config::getCompilationMode(mlir::cast<MainOpType>(origOp)) == config::CompilationMode::ReferenceSW) {
+            return true;
+        }
+
+        if (VPU::isTilingWLRestrictedDepthwise(mlir::cast<MainOpType>(origOp), tiles)) {
+            return false;
+        }
+
+        switch (tilingMode) {
+        case vpux::TilingMode::ISOLATED:
+            return isSupportedIsolatedTiling(mlir::cast<MainOpType>(origOp), tiles, log);
+        case vpux::TilingMode::PIPELINING:
+        case vpux::TilingMode::PREFETCHING:
+            return isSupportedPrefetchTiling(mlir::cast<MainOpType>(origOp), tiles, log, tilingMode);
+        default:
+            VPUX_THROW("Unknown tiling mode: '{0}'.", getTilingModeStr(tilingMode));
+        }
+    }
+
+    bool isSupportedTilingStrategy(mlir::Operation* origOp, const vpux::Shape& strategy, TilingMode tilingMode,
+                                   Logger log) const {
+        return vpux::VPU::isSupportedTilingStrategyImpl(origOp, strategy, tilingMode, log);
+    }
+
+    bool isPrefetchingTilingSupported(mlir::Operation* origOp) const {
+        const auto isDepthwiseWithAutopad = VPU::canAutopadOutput(origOp);
+        return !isDepthwiseWithAutopad;
+    }
+
+    bool isPipeliningTilingSupported(mlir::Operation* /*origOp*/) const {
+        return true;
     }
 };
 
@@ -713,9 +746,9 @@ void vpux::VPUIP::VPUIPDialect::setupExtraInterfaces(mlir::DialectRegistry& regi
     registry.addExtension(+[](mlir::MLIRContext* ctx, VPU::VPUDialect*) {
         VPU::NCEConvolutionOp::attachInterface<NCETilingInfoOpModel<VPU::NCEConvolutionOp>>(*ctx);
         VPU::NCECompressConvolutionOp::attachInterface<NCETilingInfoOpModel<VPU::NCECompressConvolutionOp>>(*ctx);
-        VPU::NCEDepthConvolutionOp::attachInterface<NCETilingInfoOpModel<VPU::NCEDepthConvolutionOp>>(*ctx);
-        VPU::NCEMaxPoolOp::attachInterface<NCETilingInfoOpModel<VPU::NCEMaxPoolOp>>(*ctx);
-        VPU::NCEAveragePoolOp::attachInterface<NCETilingInfoOpModel<VPU::NCEAveragePoolOp>>(*ctx);
+        VPU::NCEDepthConvolutionOp::attachInterface<NCEDepthwiseTilingInfoOpModel<VPU::NCEDepthConvolutionOp>>(*ctx);
+        VPU::NCEMaxPoolOp::attachInterface<NCEDepthwiseTilingInfoOpModel<VPU::NCEMaxPoolOp>>(*ctx);
+        VPU::NCEAveragePoolOp::attachInterface<NCEDepthwiseTilingInfoOpModel<VPU::NCEAveragePoolOp>>(*ctx);
         VPU::NCEEltwiseOp::attachInterface<NCEEltwiseTilingInfoOpModel<VPU::NCEEltwiseOp>>(*ctx);
         VPU::NCEInterpolateOp::attachInterface<NCETilingInfoOpModel<VPU::NCEInterpolateOp>>(*ctx);
         VPU::NCEPermuteOp::attachInterface<NCETilingInfoOpModel<VPU::NCEPermuteOp>>(*ctx);
@@ -877,6 +910,7 @@ void vpux::VPUIP::VPUIPDialect::setupExtraInterfaces(mlir::DialectRegistry& regi
         VPU::CTCGreedyDecoderOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::GeluOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::SoftPlusOp::attachInterface<SoftwareLayerOpModel>(*ctx);
+        VPU::SoftSignOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::ConvolutionOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::GroupConvolutionOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::DFTOp::attachInterface<SoftwareLayerOpModel>(*ctx);
@@ -904,7 +938,7 @@ void vpux::VPUIP::VPUIPDialect::setupExtraInterfaces(mlir::DialectRegistry& regi
         VPU::ExternalKernelOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::FlashSDPAOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::YuvToRgbOp::attachInterface<SoftwareLayerOpModel>(*ctx);
-        VPU::ReduceMeanSquareOp::attachInterface<SoftwareLayerOpModel>(*ctx);
+        VPU::ReduceSquareOp::attachInterface<SoftwareLayerOpModel>(*ctx);
     });
 
     // When implementing a new SW core, remove the corresponding operation from setupExtraInterfacesAdditional

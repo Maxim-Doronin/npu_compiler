@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -40,7 +40,6 @@ namespace vpux {
 //
 
 std::unique_ptr<mlir::Pass> createConvertIEToVPUNCEPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createConvertIEToVPUM2IPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createConvertLayers2VPUPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createConvertDynamicQuantToVPUNCEPass(Logger log = Logger::global());
 
@@ -76,6 +75,14 @@ std::unique_ptr<mlir::Pass> createConvertEltwiseLayers2MathPass(Logger log = Log
 std::unique_ptr<mlir::Pass> createDecomposeAggregateOpsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createExpandLayersPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createConvertAffine2LLVMPass(Logger log = Logger::global());
+
+//
+// ShaveCodeGen specific passes included in DefaultHW and ReferenceSW
+//
+
+void buildShaveCodeGenPipelineIE(mlir::OpPassManager& pm, Logger log = Logger::global());
+void buildShaveCodeGenPipelineVPU(mlir::OpPassManager& pm, Logger log = Logger::global());
+void buildShaveCodeGenPipelineVPUIP(mlir::OpPassManager& pm, Logger log = Logger::global());
 }  // namespace ShaveCodeGen
 
 // ELF back-end lowerings

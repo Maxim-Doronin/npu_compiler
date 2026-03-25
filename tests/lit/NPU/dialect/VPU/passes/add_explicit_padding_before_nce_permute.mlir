@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -400,7 +400,7 @@ func.func @NCEPermuteEltwiseSliceOnChannels(%arg0: tensor<1x12x77x77xf16>) ->  t
 
     // CHECK:       [[CONST:%.+]] = const.Declare tensor<1x16x77x77xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<1x1x77x77xf32>
 
-    // CHECK:       [[EXPAND:%.+]] = VPU.Expand(%arg0) {pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 3]}
+    // CHECK:       [[EXPAND:%.+]] = VPU.Expand([[INPUT]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 3]}
     // CHECK-SAME:      : tensor<1x12x77x77xf16> -> tensor<1x12x77x80xf16>
 
     // CHECK:       [[NCE_PERMUTE:%.+]] = VPU.NCE.Permute([[EXPAND]])

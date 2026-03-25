@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -87,7 +87,7 @@ VPU::DistributionMode getSWInputTensorDistributionMode(VPU::FlashSDPAOp op, VPU:
                                                        mlir::Value operand);
 VPU::DistributionMode getSWInputTensorDistributionMode(VPU::YuvToRgbOp op, VPU::MultiClusterStrategy strategy,
                                                        mlir::Value operand);
-VPU::DistributionMode getSWInputTensorDistributionMode(VPU::ReduceMeanSquareOp op, VPU::MultiClusterStrategy strategy,
+VPU::DistributionMode getSWInputTensorDistributionMode(VPU::ReduceSquareOp op, VPU::MultiClusterStrategy strategy,
                                                        mlir::Value operand);
 VPU::DistributionMode getSWInputTensorDistributionMode(VPU::ScatterElementsUpdateOp op,
                                                        VPU::MultiClusterStrategy strategy, mlir::Value operand);
@@ -177,7 +177,7 @@ SmallVector<int64_t> getSWInputTensorNumTiles(VPU::FlashSDPAOp op, int64_t numCl
                                               VPU::MultiClusterStrategy strategy, mlir::Value operand);
 SmallVector<int64_t> getSWInputTensorNumTiles(VPU::YuvToRgbOp op, int64_t numClustersAvailableForCompilation,
                                               VPU::MultiClusterStrategy strategy, mlir::Value operand);
-SmallVector<int64_t> getSWInputTensorNumTiles(VPU::ReduceMeanSquareOp op, int64_t numClustersAvailableForCompilation,
+SmallVector<int64_t> getSWInputTensorNumTiles(VPU::ReduceSquareOp op, int64_t numClustersAvailableForCompilation,
                                               VPU::MultiClusterStrategy strategy, mlir::Value operand,
                                               vpux::NDTypeInterface inputType);
 SmallVector<int64_t> getSWInputTensorNumTiles(VPU::ScatterElementsUpdateOp op,

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -156,14 +156,14 @@ func.func @UnrollMaxPool8DistributedOpsWithTiling() -> !OutputDistributed {
     %138 = VPURT.DeclareVirtualBarrier  -> !VPURT.Barrier
     %140 = VPURT.DeclareVirtualBarrier  -> !VPURT.Barrier
     VPURT.Task waits(%138 : !VPURT.Barrier) updates(%140 : !VPURT.Barrier)  {
-      %results:2 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 2, 0, 0>} @VPU.SW::@builtin_MaxPool8 
+      %results:2 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 2, 0, 0>} @VPU.SW::@builtin_MaxPool8
       inputs(
         %0 as %arg3: !InputDistributed)
       outputs(
         %1 as %arg4: !OutputDistributed,
         %2 as %arg5: !OutputIndexDistributed) on tile 0 -> (!OutputDistributed, !OutputIndexDistributed){
-        VPUIP.SW.Kernel.run {attrs = [[1, 3, 3], [1, 2, 2], [1, 1, 1], [0, 1, 1], [0, 0, 1], 1, 
-        [1, 1, 50, 667, 667], [1, 1, 50, 334, 334], [0, 0, 0, 41, 0], [0, 0, 0, 21, 0]]}(%arg3, %arg4, %arg5) : 
+        VPUIP.SW.Kernel.run {attrs = [[1, 3, 3], [1, 2, 2], [1, 1, 1], [0, 1, 1], [0, 0, 1], 1,
+        [1, 1, 50, 667, 667], [1, 1, 50, 334, 334], [0, 0, 0, 41, 0], [0, 0, 0, 21, 0]]}(%arg3, %arg4, %arg5) :
         !InputDistributed, !OutputDistributed, !OutputIndexDistributed
       }
     }
@@ -173,7 +173,7 @@ func.func @UnrollMaxPool8DistributedOpsWithTiling() -> !OutputDistributed {
     // CHECK:   [[BUFFER_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <547136> -> memref<1x13x42x667xf16, [@CMX_NN, 1]>
     // CHECK:   [[BUFFER_2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [2] <547136> -> memref<1x12x42x667xf16, [@CMX_NN, 2]>
     // CHECK:   [[BUFFER_3:%.+]] = VPURT.DeclareBuffer <CMX_NN> [3] <547136> -> memref<1x12x42x667xf16, [@CMX_NN, 3]>
-    
+
     // CHECK:   [[BUFFER_5:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <364736> -> memref<1x13x21x334xf16, [@CMX_NN, 0]>
     // CHECK:   [[BUFFER_6:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <364736> -> memref<1x13x21x334xf16, [@CMX_NN, 1]>
     // CHECK:   [[BUFFER_7:%.+]] = VPURT.DeclareBuffer <CMX_NN> [2] <364736> -> memref<1x12x21x334xf16, [@CMX_NN, 2]>
@@ -183,38 +183,38 @@ func.func @UnrollMaxPool8DistributedOpsWithTiling() -> !OutputDistributed {
     // CHECK:   [[BARRIER_14:%.+]] = VPURT.DeclareVirtualBarrier  -> !VPURT.Barrier
 
     // CHECK:         VPURT.Task waits([[BARRIER_13]] : !VPURT.Barrier) updates([[BARRIER_14]] : !VPURT.Barrier)  {
-    // CHECK-NEXT:      %results:2 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 2, 0, 0>} @VPU.SW::@builtin_MaxPool8 
+    // CHECK-NEXT:      %results:2 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 2, 0, 0>} @VPU.SW::@builtin_MaxPool8
     // CHECK-SAME:      inputs([[BUFFER_0]]
     // CHECK-SAME:      outputs([[BUFFER_5]]
     // CHECK-SAME:      on tile 0
-    // CHECK-NEXT:    VPUIP.SW.Kernel.run 
+    // CHECK-NEXT:    VPUIP.SW.Kernel.run
     // CHECK-SAME{LITERAL}:     {attrs = [[1, 3, 3], [1, 2, 2], [1, 1, 1], [0, 1, 1], [0, 0, 1], 1, [1, 1, 50, 667, 667], [1, 1, 50, 334, 334], [0, 0, 0, 41, 0], [0, 0, 0, 21, 0]]}
     // CHECK-NEXT:    }
 
     // CHECK:         VPURT.Task waits([[BARRIER_13]] : !VPURT.Barrier) updates([[BARRIER_14]] : !VPURT.Barrier)  {
-    // CHECK-NEXT:      %results:2 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 2, 0, 0>} @VPU.SW::@builtin_MaxPool8 
+    // CHECK-NEXT:      %results:2 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 2, 0, 0>} @VPU.SW::@builtin_MaxPool8
     // CHECK-SAME:      inputs([[BUFFER_1]]
     // CHECK-SAME:      outputs([[BUFFER_6]]
     // CHECK-SAME:      on tile 1
-    // CHECK-NEXT:    VPUIP.SW.Kernel.run 
+    // CHECK-NEXT:    VPUIP.SW.Kernel.run
     // CHECK-SAME{LITERAL}:     {attrs = [[1, 3, 3], [1, 2, 2], [1, 1, 1], [0, 1, 1], [0, 0, 1], 1, [1, 1, 50, 667, 667], [1, 1, 50, 334, 334], [0, 0, 13, 41, 0], [0, 0, 13, 21, 0]]}
     // CHECK-NEXT:    }
 
     // CHECK:         VPURT.Task waits([[BARRIER_13]] : !VPURT.Barrier) updates([[BARRIER_14]] : !VPURT.Barrier)  {
-    // CHECK-NEXT:      %results:2 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 2, 0, 0>} @VPU.SW::@builtin_MaxPool8 
+    // CHECK-NEXT:      %results:2 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 2, 0, 0>} @VPU.SW::@builtin_MaxPool8
     // CHECK-SAME:      inputs([[BUFFER_2]]
     // CHECK-SAME:      outputs([[BUFFER_7]]
     // CHECK-SAME:      on tile 2
-    // CHECK-NEXT:    VPUIP.SW.Kernel.run 
+    // CHECK-NEXT:    VPUIP.SW.Kernel.run
     // CHECK-SAME{LITERAL}:     {attrs = [[1, 3, 3], [1, 2, 2], [1, 1, 1], [0, 1, 1], [0, 0, 1], 1, [1, 1, 50, 667, 667], [1, 1, 50, 334, 334], [0, 0, 26, 41, 0], [0, 0, 26, 21, 0]]}
     // CHECK-NEXT:    }
 
     // CHECK:         VPURT.Task waits([[BARRIER_13]] : !VPURT.Barrier) updates([[BARRIER_14]] : !VPURT.Barrier)  {
-    // CHECK-NEXT:      %results:2 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 2, 0, 0>} @VPU.SW::@builtin_MaxPool8 
+    // CHECK-NEXT:      %results:2 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 2, 0, 0>} @VPU.SW::@builtin_MaxPool8
     // CHECK-SAME:      inputs([[BUFFER_3]]
     // CHECK-SAME:      outputs([[BUFFER_8]]
     // CHECK-SAME:      on tile 3
-    // CHECK-NEXT:    VPUIP.SW.Kernel.run 
+    // CHECK-NEXT:    VPUIP.SW.Kernel.run
     // CHECK-SAME{LITERAL}:     {attrs = [[1, 3, 3], [1, 2, 2], [1, 1, 1], [0, 1, 1], [0, 0, 1], 1, [1, 1, 50, 667, 667], [1, 1, 50, 334, 334], [0, 0, 38, 41, 0], [0, 0, 38, 21, 0]]}
     // CHECK-NEXT:    }
 

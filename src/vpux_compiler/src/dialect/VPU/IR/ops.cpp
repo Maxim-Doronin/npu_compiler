@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -17,7 +17,6 @@
 #include "vpux/compiler/dialect/VPU/IR/ops/image.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/internal.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/logical.hpp"
-#include "vpux/compiler/dialect/VPU/IR/ops/m2i.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/normalization.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/pooling.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/recurrent.hpp"
@@ -55,8 +54,6 @@
 #include <vpux/compiler/dialect/VPU/ops/internal.cpp.inc>
 #define GET_OP_CLASSES
 #include <vpux/compiler/dialect/VPU/ops/logical.cpp.inc>
-#define GET_OP_CLASSES
-#include <vpux/compiler/dialect/VPU/ops/m2i.cpp.inc>
 #define GET_OP_CLASSES
 #include <vpux/compiler/dialect/VPU/ops/normalization.cpp.inc>
 #define GET_OP_CLASSES

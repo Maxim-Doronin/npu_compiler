@@ -1,9 +1,11 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
+
 #include "vpux/compiler/dialect/VPURT/interfaces/inference_execution_simulator.hpp"
 #include "vpux/compiler/core/cost_model_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/clustered_op_interface_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
@@ -37,7 +39,7 @@ int64_t getQueueId(VPURT::TaskOp taskOp) {
         auto dpuTask = *(dpuTasks.begin());
         return dpuTask.getClusterId().value_or(0);
     } else if (auto swKernelOp = mlir::dyn_cast<VPUIP::SwKernelOp>(op)) {
-        auto numTiles = VPU::getNumTiles(swKernelOp);
+        auto numTiles = config::getNumOfTiles(swKernelOp);
         auto tileIndex = swKernelOp.getTileIndex().value_or(0);
         auto listIndex = swKernelOp.getListIndex().value_or(0);
         return getShaveQueueIdEncoding(numTiles, tileIndex, listIndex);
@@ -373,7 +375,7 @@ double vpux::VPURT::InferenceExecutionSimulator::getSHAVETotalEnergy() {
     std::set<std::string> unsupportedOps;
     _funcOp->walk([&](VPUIP::SwKernelOp swKernelOp) {
         double shaveEnergy = 0;
-        auto vpunnSwOp = getVPUNNSWKernelOp(swKernelOp, _cycleCostInfo.getCostModel()->isShave2ApiUsed());
+        auto vpunnSwOp = getVPUNNSWKernelOp(swKernelOp);
         if (vpunnSwOp != nullptr) {
             shaveEnergy = _cycleCostInfo.getCostModel()->SHAVEEnergy(*vpunnSwOp);
         } else {

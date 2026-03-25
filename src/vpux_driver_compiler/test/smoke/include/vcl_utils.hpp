@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -144,6 +144,7 @@ vcl_result_t getVclCompiler(const std::map<std::string, std::string>& buildConfi
             {"3720", 0x7D1D},
             {"4000", 0x643E},
             {"5010", 0xB03E},
+            {"5020", 0xFD3E},
     };
 
     const auto supportPlatform = supported_platforms.find(buildConfig.at("NPU_PLATFORM"));

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -47,11 +47,24 @@ private:
                                                 mlir::async::ExecuteOp spillWriteExecOp,
                                                 mlir::async::ExecuteOp insertAfterExecOp, size_t allocatedAddress,
                                                 int spillId);
-    void updateSpillWriteReadUsers(mlir::Value bufferToSpill, mlir::async::ExecuteOp spillWriteExecOp,
-                                   mlir::async::ExecuteOp spillReadExecOp);
+    mlir::async::ExecuteOp insertReReadDmaOp(mlir::async::ExecuteOp opThatWasSpilled, mlir::Value bufferToSpill,
+                                             mlir::async::ExecuteOp insertAfterExecOp, size_t allocatedAddress);
+    void updateSpillWriteReadUsers(mlir::Value bufferToSpill, mlir::async::ExecuteOp spillReadExecOp);
     SmallVector<mlir::Value> getAsyncResultsForBuffer(mlir::async::ExecuteOp opThatWasSpilled, mlir::Value buffer);
     mlir::Value getBufferFromAsyncResult(mlir::Value asyncResult);
     llvm::DenseSet<size_t> identifyDataOpsWithInputOverwrite(FeasibleMemoryScheduler::ScheduledOpInfoVec& scheduledOps);
+
+    // Helper functions for insertReReadDmaOp
+    mlir::Value allocateSpillReadBuffer(mlir::OpBuilder& builder, mlir::Location loc, mlir::Value bufferToSpill);
+    void setupBufferMapping(mlir::IRMapping& valueMapper, mlir::Value bufferToSpill,
+                            mlir::Value actualOutputBufferInBody, mlir::Value newBufferResult);
+    SmallVector<mlir::Operation*> cloneBodyOperations(mlir::OpBuilder& builder, mlir::Block* originalBodyBlock,
+                                                      mlir::IRMapping& valueMapper, mlir::Value bufferToSpill,
+                                                      mlir::Value newBufferResult);
+    void registerReReadAliases(mlir::Value newBufferResult, const SmallVector<mlir::Operation*>& clonedBodyOps,
+                               mlir::async::ExecuteOp newExec);
+    void copyExecuteOpAttributes(mlir::async::ExecuteOp sourceOp, mlir::async::ExecuteOp targetOp);
+    void updateBufferReplacementMap(mlir::Value bufferToSpill, mlir::Value newBufferResult);
 
     // Below nested class is intended to handle data dependency updates
     // for users of spilled buffers
@@ -109,6 +122,14 @@ private:
     DenseMap<mlir::Value, mlir::Value> _bufferReplacementAfterSpillRead;
     // Index identifying spill-write and corresponding spill-reads (can be more than 1)
     int _spillId{-1};
+    // Re-read optimization related variables
+    // Set of operation indexes which are re-reading data into root buffer
+    // insertion of spill_read data should be handled differently because it is not mapped to a spill_write
+    mlir::DenseSet<size_t> _reReadDataInRoot;
+    // Set of root buffers address which were allocated as part of spill optimization
+    // The address should be assigned in optimizeDataOpSpills to make sure the address is correct before inserting
+    // spill_read DMAs
+    mlir::DenseSet<mlir::Value> _spillOptRootBufferAllocated;
 };
 
 }  // namespace vpux

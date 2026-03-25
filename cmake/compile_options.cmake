@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2022-2025 Intel Corporation.
+# Copyright (C) 2022-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -61,6 +61,23 @@ if(MSVC)
     # Use compiler intrinsincs
     add_compile_options(/Oi)
 
+    # Note: CCache requires /Z7 which is set above
+    if(ENABLE_CCACHE_FOR_VISUAL_STUDIO)
+        message(STATUS "CCache for Visual Studio Generator is going to be used")
+        cmake_minimum_required(VERSION 3.21 FATAL_ERROR) # for file(COPY_FILE)
+
+        # see https://github.com/ccache/ccache/wiki/MS-Visual-Studio#usage-with-cmake
+        find_program(CCACHE_PATH ccache REQUIRED)
+        if(CCACHE_PATH)
+            file(COPY_FILE ${CCACHE_PATH} ${CMAKE_BINARY_DIR}/cl.exe
+                 ONLY_IF_DIFFERENT)
+            set(CMAKE_VS_GLOBALS
+                "CLToolExe=cl.exe"
+                "CLToolPath=${CMAKE_BINARY_DIR}"
+                "UseMultiToolTask=true"
+            )
+        endif()
+    endif()
 endif()
 
 function(enable_warnings_as_errors TARGET_NAME)

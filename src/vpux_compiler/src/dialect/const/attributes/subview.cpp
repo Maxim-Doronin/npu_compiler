@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -163,12 +163,12 @@ void generalTransform(MemShapeRef inMemShape, MemShapeRef outMemShape, MemShapeR
     const Byte elemSize = Bit(storageElemTypeSize).to<Byte>();
 
     if (memOffset.size() == 1) {
-        // Opitimized 1D case
+        // Optimized 1D case
 
         std::copy_n(inBuf.data() + memOffset.front() * elemSize.count(),
                     checked_cast<size_t>(outNumElems * elemSize.count()), outBuf.data());
     } else if (memOffset.size() == 2) {
-        // Opitimized 2D case
+        // Optimized 2D case
 
         const auto md0 = MemDim(0);
         const auto md1 = MemDim(1);
@@ -181,19 +181,16 @@ void generalTransform(MemShapeRef inMemShape, MemShapeRef outMemShape, MemShapeR
         const auto off0 = memOffset[md0];
         const auto off1 = memOffset[md1];
 
-        loop_2d(LoopExecPolicy::Parallel, ctx, OUT0, OUT1, [&](int64_t out0, int64_t out1) {
+        // SubView validity guarantees [off1, off1 + OUT1) is within the input row.
+        // Copy each row with std::copy_n.
+        loop_1d(LoopExecPolicy::Parallel, ctx, OUT0, [&](int64_t out0) {
             const auto in0 = out0 + off0;
-            const auto in1 = out1 + off1;
-
-            const auto outRawInd = out1 + out0 * OUT1;
-            const auto inRawInd = in1 + in0 * IN1;
-
-            std::copy_n(inBuf.data() + checked_cast<size_t>(inRawInd * elemSize.count()),
-                        checked_cast<size_t>(elemSize.count()),
-                        outBuf.data() + checked_cast<size_t>(outRawInd * elemSize.count()));
+            const char* src = inBuf.data() + static_cast<size_t>((in0 * IN1 + off1) * elemSize.count());
+            char* dst = outBuf.data() + static_cast<size_t>(out0 * OUT1 * elemSize.count());
+            std::copy_n(src, static_cast<size_t>(OUT1 * elemSize.count()), dst);
         });
     } else if (memOffset.size() == 3) {
-        // Opitimized 3D case
+        // Optimized 3D case
 
         const auto md0 = MemDim(0);
         const auto md1 = MemDim(1);
@@ -210,20 +207,20 @@ void generalTransform(MemShapeRef inMemShape, MemShapeRef outMemShape, MemShapeR
         const auto off1 = memOffset[md1];
         const auto off2 = memOffset[md2];
 
-        loop_3d(LoopExecPolicy::Parallel, ctx, OUT0, OUT1, OUT2, [&](int64_t out0, int64_t out1, int64_t out2) {
+        // SubView validity guarantees [off2, off2 + OUT2) is within the input row.
+        // Copy each contiguous inner slice with std::copy_n.
+        loop_2d(LoopExecPolicy::Parallel, ctx, OUT0, OUT1, [&](int64_t out0, int64_t out1) {
             const auto in0 = out0 + off0;
             const auto in1 = out1 + off1;
-            const auto in2 = out2 + off2;
-
-            const auto outRawInd = out2 + out1 * OUT2 + out0 * OUT2 * OUT1;
-            const auto inRawInd = in2 + in1 * IN2 + in0 * IN2 * IN1;
-
-            std::copy_n(inBuf.data() + checked_cast<size_t>(inRawInd * elemSize.count()),
-                        checked_cast<size_t>(elemSize.count()),
-                        outBuf.data() + checked_cast<size_t>(outRawInd * elemSize.count()));
+            // Compute base indices for input and output blocks
+            const auto outBlockBase = out0 * OUT2 * OUT1 + out1 * OUT2;
+            const auto inBlockBase = in0 * IN2 * IN1 + in1 * IN2 + off2;
+            char* dst = outBuf.data() + static_cast<size_t>(outBlockBase * elemSize.count());
+            const char* src = inBuf.data() + static_cast<size_t>(inBlockBase * elemSize.count());
+            std::copy_n(src, static_cast<size_t>(OUT2 * elemSize.count()), dst);
         });
     } else if (memOffset.size() == 4) {
-        // Opitimized 4D case
+        // Optimized 4D case
 
         const auto md0 = MemDim(0);
         const auto md1 = MemDim(1);
@@ -244,20 +241,19 @@ void generalTransform(MemShapeRef inMemShape, MemShapeRef outMemShape, MemShapeR
         const auto off2 = memOffset[md2];
         const auto off3 = memOffset[md3];
 
-        loop_4d(LoopExecPolicy::Parallel, ctx, OUT0, OUT1, OUT2, OUT3,
-                [&](int64_t out0, int64_t out1, int64_t out2, int64_t out3) {
-                    const auto in0 = out0 + off0;
-                    const auto in1 = out1 + off1;
-                    const auto in2 = out2 + off2;
-                    const auto in3 = out3 + off3;
-
-                    const auto outRawInd = out3 + out2 * OUT3 + out1 * OUT3 * OUT2 + out0 * OUT3 * OUT2 * OUT1;
-                    const auto inRawInd = in3 + in2 * IN3 + in1 * IN3 * IN2 + in0 * IN3 * IN2 * IN1;
-
-                    std::copy_n(inBuf.data() + checked_cast<size_t>(inRawInd * elemSize.count()),
-                                checked_cast<size_t>(elemSize.count()),
-                                outBuf.data() + checked_cast<size_t>(outRawInd * elemSize.count()));
-                });
+        // SubView validity guarantees [off3, off3 + OUT3) is within the input row.
+        // Copy each contiguous inner slice with std::copy_n.
+        loop_3d(LoopExecPolicy::Parallel, ctx, OUT0, OUT1, OUT2, [&](int64_t out0, int64_t out1, int64_t out2) {
+            const auto in0 = out0 + off0;
+            const auto in1 = out1 + off1;
+            const auto in2 = out2 + off2;
+            // Compute base indices for input and output blocks
+            const auto outBlockBase = out0 * OUT3 * OUT2 * OUT1 + out1 * OUT3 * OUT2 + out2 * OUT3;
+            const auto inBlockBase = in0 * IN3 * IN2 * IN1 + in1 * IN3 * IN2 + in2 * IN3 + off3;
+            char* dst = outBuf.data() + static_cast<size_t>(outBlockBase * elemSize.count());
+            const char* src = inBuf.data() + static_cast<size_t>(inBlockBase * elemSize.count());
+            std::copy_n(src, static_cast<size_t>(OUT3 * elemSize.count()), dst);
+        });
     } else {
         // Generic case
 

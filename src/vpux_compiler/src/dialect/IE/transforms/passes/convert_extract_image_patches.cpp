@@ -2,6 +2,7 @@
 // Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
+
 #include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
@@ -294,8 +295,7 @@ mlir::LogicalResult ConvertToSliceConcatRewriter::matchAndRewrite(IE::ExtractIma
             const auto transposeShape = transposeOp.getType().getShape();
             const auto transposeShapeAttr = getIntArrayAttr(ctx, transposeShape);
 
-            auto newReshapeOp =
-                    rewriter.create<IE::ReshapeOp>(transposeOp.getLoc(), concatOp, nullptr, false, transposeShapeAttr);
+            auto newReshapeOp = rewriter.create<IE::ReshapeOp>(transposeOp.getLoc(), concatOp, transposeShapeAttr);
             rewriter.replaceAllOpUsesWith(transposeOp, newReshapeOp);
         }
         return mlir::success();

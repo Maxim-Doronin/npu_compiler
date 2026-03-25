@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -240,7 +240,7 @@ module @RejectDynamicShape {
     return %cos_res : tensor<?x1x1x1000xf16>
 
     // CHECK: func.func @main([[ARG0:%.+]]: tensor<?x1x1x1000xf16>) -> tensor<?x1x1x1000xf16> {
-    // CHECK-NOT: [[VAR0:%.+]] = IE.CodeGenCapsule 
+    // CHECK-NOT: [[VAR0:%.+]] = IE.CodeGenCapsule
   }
 }
 
@@ -285,8 +285,8 @@ module @RejectPeAxisQuant {
     %1 = IE.Dequantize(%0) {dstElemType = f16} : tensor<1x8x3x21x!qElemType> -> tensor<1x8x3x21xf16>
     return %1 : tensor<1x8x3x21xf16>
 
-    // CHECK: func.func @main([[ARG0:%.+]]: tensor<1x8x3x21xf16>) -> tensor<1x8x3x21xf16> 
-    // CHECK-NOT: [[VAR0:%.+]] = IE.CodeGenCapsule 
+    // CHECK: func.func @main([[ARG0:%.+]]: tensor<1x8x3x21xf16>) -> tensor<1x8x3x21xf16>
+    // CHECK-NOT: [[VAR0:%.+]] = IE.CodeGenCapsule
   }
 }
 
@@ -303,7 +303,7 @@ module @RejectBf16 {
     %cos_res = IE.Clamp(%arg0) {min = 1.0, max = 3.0} : tensor<1x1x10x100xbf16> -> tensor<1x1x10x100xbf16>
     return %cos_res : tensor<1x1x10x100xbf16>
 
-    // CHECK: func.func @main([[ARG0:%.+]]: tensor<1x1x10x100xbf16>) -> tensor<1x1x10x100xbf16> 
-    // CHECK-NOT: [[VAR0:%.+]] = IE.CodeGenCapsule 
+    // CHECK: func.func @main([[ARG0:%.+]]: tensor<1x1x10x100xbf16>) -> tensor<1x1x10x100xbf16>
+    // CHECK-NOT: [[VAR0:%.+]] = IE.CodeGenCapsule
   }
 }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -1093,9 +1093,9 @@ InputTiling backInferReduceSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const
 
     auto inputTile = outputTile;
 
-    // For reduce_mean_square, axes is at index 2 (attrs: keepDims, axesSize, axes, epsilon)
+    // For reduce_square, axes is at index 2 (attrs: keepDims, axesSize, axes, epsilon)
     // For other reduce ops, axes is the last attribute
-    const auto axesAttrIndex = (kernelEntryName == "reduce_mean_square") ? 2 : (attrs.size() - 1);
+    const auto axesAttrIndex = (kernelEntryName == "reduce_square") ? 2 : (attrs.size() - 1);
     const auto reversedAxes = parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(attrs[axesAttrIndex]));
     for (const auto reversedAxis : reversedAxes) {
         const auto axis = reverseMemDim(inputOrder, reversedAxis);
@@ -1321,8 +1321,13 @@ SmallVector<mlir::Attribute> getLstmSequenceSwkernelNewAttrsAfterTiling(VPUIP::S
                                                                         const TileInfo& outTile, Logger log) {
     log.trace("Update attrs for LSTMSequence SwKernelOp at '{0}' for out tile {1}", swKernelOp, outTile);
 
+    auto kernelRun = *swKernelOp.getBody().getOps<VPUIP::SwKernelRun>().begin();
+    auto attrs = kernelRun.getAttrs().value();
+
     SmallVector<mlir::Attribute> newAttrs(origAttr.begin(), origAttr.end());
+
     const auto isTileOverNumDirections = outTile.axis[Dims4D::Act::C] > 1;
+
     if (!isTileOverNumDirections) {
         return newAttrs;
     }
@@ -1333,8 +1338,22 @@ SmallVector<mlir::Attribute> getLstmSequenceSwkernelNewAttrsAfterTiling(VPUIP::S
     // tile.
     const auto numDirectionsDimOffset = outTile.offsets[Dims4D::Act::C];
     const auto newDirectionAttr = getIntAttr(swKernelOp.getContext(), numDirectionsDimOffset);
-    newAttrs[0] = newDirectionAttr;
+    newAttrs[1] = newDirectionAttr;
 
+    const auto initialOutputOffset = parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(attrs[2]));
+    SmallVector<int64_t> initialOutputOffsetValues;
+
+    for (auto values : initialOutputOffset) {
+        initialOutputOffsetValues.push_back(values);
+    }
+
+    if (numDirectionsDimOffset == 0) {
+        initialOutputOffsetValues[1] = -1;
+    } else if (numDirectionsDimOffset == 1) {
+        initialOutputOffsetValues[0] = -1;
+    }
+
+    newAttrs[2] = getIntArrayAttr(swKernelOp->getContext(), initialOutputOffsetValues);
     return newAttrs;
 }
 
@@ -1412,8 +1431,8 @@ InputTiling backInferTopKSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const v
 
 bool isReduceKernelEntry(StringRef kernelEntryName) {
     static const std::unordered_set<std::string> reduceEntryNames = {
-            "reduce_l1",   "reduce_l2",          "reduce_logical_and", "reduce_logical_or", "reduce_max",
-            "reduce_mean", "reduce_mean_square", "reduce_min",         "reduce_prod",       "reduce_sum"};
+            "reduce_l1",   "reduce_l2",     "reduce_logical_and", "reduce_logical_or", "reduce_max",
+            "reduce_mean", "reduce_square", "reduce_min",         "reduce_prod",       "reduce_sum"};
 
     return reduceEntryNames.find(kernelEntryName.str()) != reduceEntryNames.end();
 }
@@ -1575,33 +1594,71 @@ InputTiling backInferLSTMCellSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, con
     return TilingInfo{inputTiles};
 }
 
+// The LSTMSequence Op can have varying input numbers, depending on which optional inputs are present:
+void pushLSTMSequenceOptionalInputs(VPUIP::SwKernelOp swKernelOp, const vpux::TileInfo& outputTile,
+                                    SmallVector<TileInfo>& inputTiles) {
+    const auto inputs = swKernelOp.getInputs();
+    const auto numInputs = inputs.size();
+
+    const auto batchSize = outputTile.shape[Dims4D::Act::N];
+    const auto batchOffset = outputTile.offsets[Dims4D::Act::N];
+    const auto batchAxis = outputTile.axis[Dims4D::Act::N];
+    const auto numDirections = outputTile.shape[Dims4D::Act::C];
+    const auto numDirectionsOffset = outputTile.offsets[Dims4D::Act::C];
+    const auto numDirectionsAxis = outputTile.axis[Dims4D::Act::C];
+
+    for (size_t i = 3; i < numInputs - 1; ++i) {
+        const auto inputShape = getShape(inputs[i]);
+        TileInfo inputTile(inputShape);
+
+        const auto isSequenceLengthData =
+                (inputShape[Dims4D::Act::C] == 1 && inputShape[Dims4D::Act::H] == 1 && inputShape[Dims4D::Act::W] == 1);
+
+        const auto isRecurrenceWeights =
+                (inputShape[Dims4D::Act::H] == inputShape[Dims4D::Act::W] && inputShape[Dims4D::Act::H] > 1);
+
+        const auto isBiases = (inputShape[Dims4D::Act::N] == 1 && inputShape[Dims4D::Act::H] > 1);
+
+        if (isSequenceLengthData) {
+            inputTile.shape[Dims4D::Act::N] = batchSize;
+            inputTile.offsets[Dims4D::Act::N] = batchOffset;
+            inputTile.axis[Dims4D::Act::N] = batchAxis;
+        } else if (isRecurrenceWeights) {
+            inputTile.shape[Dims4D::Act::N] = numDirections;
+            inputTile.offsets[Dims4D::Act::N] = numDirectionsOffset;
+            inputTile.axis[Dims4D::Act::N] = numDirectionsAxis;
+        } else if (isBiases) {
+            inputTile.shape[Dims4D::Act::C] = numDirections;
+            inputTile.offsets[Dims4D::Act::C] = numDirectionsOffset;
+            inputTile.axis[Dims4D::Act::C] = numDirectionsAxis;
+        }
+
+        inputTiles.push_back(std::move(inputTile));
+    }
+}
+
 InputTiling backInferLSTMSequenceSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const vpux::TileInfo& outputTile,
                                                    Logger log) {
     auto swKernelRuns = swKernelOp.getBody().getOps<VPUIP::SwKernelRun>();
     VPUX_THROW_UNLESS(std::distance(swKernelRuns.begin(), swKernelRuns.end()) == 1,
                       "SwKernelOp has already been tiled at '{0}'", swKernelOp);
 
-    // inputs
-    const auto inputData = swKernelOp.getInputs()[0];
-    const auto initialHiddenState = swKernelOp.getInputs()[1];
-    const auto initialCellState = swKernelOp.getInputs()[2];
-    const auto weightsHidden = swKernelOp.getInputs()[3];
-    const auto biases = swKernelOp.getInputs()[4];
-    const auto syncBuffer = swKernelOp.getInputs()[5];
+    const auto inputs = swKernelOp.getInputs();
+    const auto numInputs = inputs.size();
+
+    VPUX_THROW_UNLESS(numInputs >= 5, "LSTMSequence requires at least 5 inputs, got {0}", numInputs);
+
+    const auto inputData = inputs[0];
+    const auto initialHiddenState = inputs[1];
+    const auto initialCellState = inputs[2];
 
     const auto inputDataShape = getShape(inputData);
     const auto initialHiddenStateShape = getShape(initialHiddenState);
     const auto initialCellStateShape = getShape(initialCellState);
-    const auto weightsHiddenShape = getShape(weightsHidden);
-    const auto biasesShape = getShape(biases);
-    const auto syncBufferShape = getShape(syncBuffer);
 
     TileInfo inputDataTile(inputDataShape);
     TileInfo initialHiddenStateTile(initialHiddenStateShape);
     TileInfo initialCellStateTile(initialCellStateShape);
-    TileInfo weightsHiddenTile(weightsHiddenShape);
-    TileInfo biasesTile(biasesShape);
-    TileInfo syncBufferTile(syncBufferShape);
 
     const auto batchSize = outputTile.shape[Dims4D::Act::N];
     const auto batchOffset = outputTile.offsets[Dims4D::Act::N];
@@ -1631,17 +1688,13 @@ InputTiling backInferLSTMSequenceSwKernelInputTile(VPUIP::SwKernelOp swKernelOp,
     initialCellStateTile.axis[Dims4D::Act::N] = batchAxis;
     initialCellStateTile.axis[Dims4D::Act::C] = numDirectionsAxis;
 
-    weightsHiddenTile.shape[Dims4D::Act::N] = numDirections;
-    weightsHiddenTile.offsets[Dims4D::Act::N] = numDirectionsOffset;
-    weightsHiddenTile.axis[Dims4D::Act::N] = numDirectionsAxis;
+    SmallVector<TileInfo> inputTiles = {std::move(inputDataTile), std::move(initialHiddenStateTile),
+                                        std::move(initialCellStateTile)};
 
-    biasesTile.shape[Dims4D::Act::C] = numDirections;
-    biasesTile.offsets[Dims4D::Act::C] = numDirectionsOffset;
-    biasesTile.axis[Dims4D::Act::C] = numDirectionsAxis;
+    pushLSTMSequenceOptionalInputs(swKernelOp, outputTile, inputTiles);
 
-    const SmallVector<TileInfo> inputTiles = {std::move(inputDataTile),        std::move(initialHiddenStateTile),
-                                              std::move(initialCellStateTile), std::move(weightsHiddenTile),
-                                              std::move(biasesTile),           std::move(syncBufferTile)};
+    TileInfo syncBufferTile(getShape(inputs[inputs.size() - 1]));
+    inputTiles.push_back(std::move(syncBufferTile));
 
     log.trace("backInferLSTMSequenceSwKernelInputTile  outputTile '{0}'", outputTile);
     log.trace("backInferLSTMSequenceSwKernelInputTile  inputTiles '{0}'", inputTiles);

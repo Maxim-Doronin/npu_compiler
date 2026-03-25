@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -1384,8 +1384,8 @@ func.func @DynamicScaleDequantizationWithTranspose(%input: tensor<16384x2048xsi4
 
   return %3 : tensor<8192x2048xf32>
 
-  // CHECK: [[STRIDED_SLICE_INPUT:%.+]] = IE.StridedSlice(%arg0) {begin_mask = [0], begins_attr = [0], ellipsis_mask = [], end_mask = [0], ends_attr = [8192], new_axis_mask = [], operandSegmentSizes = array<i32: 1, 0, 0, 0>, shrink_axis_mask = [], strides_attr = [1]} : tensor<16384x2048xsi4> -> tensor<8192x2048xsi4>
-  // CHECK: [[STRIDED_SLICE_SCALE:%.+]] = IE.StridedSlice(%arg1) {begin_mask = [0], begins_attr = [0], ellipsis_mask = [], end_mask = [0], ends_attr = [8192], new_axis_mask = [], operandSegmentSizes = array<i32: 1, 0, 0, 0>, shrink_axis_mask = [], strides_attr = [1]} : tensor<16384x1xf32> -> tensor<8192x1xf32>
+  // CHECK: [[STRIDED_SLICE_INPUT:%.+]] = IE.StridedSlice([[INPUT]]) {begin_mask = [0], begins_attr = [0], ellipsis_mask = [], end_mask = [0], ends_attr = [8192], new_axis_mask = [], operandSegmentSizes = array<i32: 1, 0, 0, 0>, shrink_axis_mask = [], strides_attr = [1]} : tensor<16384x2048xsi4> -> tensor<8192x2048xsi4>
+  // CHECK: [[STRIDED_SLICE_SCALE:%.+]] = IE.StridedSlice([[SCALE]]) {begin_mask = [0], begins_attr = [0], ellipsis_mask = [], end_mask = [0], ends_attr = [8192], new_axis_mask = [], operandSegmentSizes = array<i32: 1, 0, 0, 0>, shrink_axis_mask = [], strides_attr = [1]} : tensor<16384x1xf32> -> tensor<8192x1xf32>
   // CHECK: [[QUANTIZE_CAST:%.+]] = IE.QuantizeCast([[STRIDED_SLICE_INPUT]]) {dstElemType = !qElemType} : tensor<8192x2048xsi4> -> tensor<8192x2048x!qElemType>
   // CHECK: [[DYN_DEQUANT:%.+]] = IE.DynamicDequantize([[QUANTIZE_CAST]], [[STRIDED_SLICE_SCALE]]) {dstElemType = f32} : tensor<8192x2048x!qElemType>, tensor<8192x1xf32> -> tensor<8192x2048xf32>
   // CHECK: return [[DYN_DEQUANT]] : tensor<8192x2048xf32>

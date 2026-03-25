@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,6 +12,7 @@
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/transforms/rewriters.hpp"
 #include "vpux/compiler/dialect/IE/utils/pooling_utils.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops/dpu.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -30,8 +31,7 @@ namespace {
 
 bool isEligiblePostOp(mlir::Operation* op, Logger log) {
     auto postOpInterface = op->getOperand(0).getDefiningOp<IE::LayerWithPostOpInterface>();
-    if (postOpInterface == nullptr || postOpInterface.getPostOp() != nullptr ||
-        !postOpInterface->getResult(0).hasOneUse()) {
+    if (postOpInterface == nullptr || postOpInterface.hasPPE() || !postOpInterface->getResult(0).hasOneUse()) {
         return true;
     }
 
@@ -88,8 +88,24 @@ mlir::LogicalResult InsertIdPoolRewriter<ConcreteOp>::matchAndRewrite(ConcreteOp
     }
 
     auto input = concreteOp->getOperand(0);
+    const auto inElemType = mlir::cast<vpux::NDTypeInterface>(input.getType()).getElementType();
+    if (!IE::isAvgPoolSupportedElementType(inElemType)) {
+        _log.trace("Skip inserting identity AvgPool at {0}: unsupported input element type '{1}'", concreteOp->getLoc(),
+                   inElemType);
+        return mlir::failure();
+    }
+
     auto* identityOp = IE::createIdentityAvgPool(input, input.getType(), rewriter, concreteOp->getLoc());
-    if (identityOp == nullptr) {
+    // The identity AvgPool is inserted so it can later be fused into a DPU (NCE) AvgPool.
+    // If the created AvgPool is not supported by NCEAveragePoolOp, it would just be a useless op.
+    auto avgPoolOp = mlir::dyn_cast_if_present<IE::AvgPoolOp>(identityOp);
+    if (avgPoolOp == nullptr) {
+        return mlir::failure();
+    }
+    if (!VPU::NCEAveragePoolOp::isSupported(avgPoolOp, vpux::emptyLogCb, /*checkLayout=*/false,
+                                            /*checkChannelAlignment=*/false)) {
+        _log.trace("Skip inserting identity AvgPool at {0}: not supported by NCE AvgPool", concreteOp->getLoc());
+        rewriter.eraseOp(identityOp);
         return mlir::failure();
     }
 

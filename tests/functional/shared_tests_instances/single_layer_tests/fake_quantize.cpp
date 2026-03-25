@@ -61,6 +61,7 @@ class ShaveCodeGenFakeQuantizeLayerTest_SW : public FakeQuantizeLayerTest_SW_NPU
 };
 
 class FakeQuantizeLayerTest_SW_NPU5010 : public FakeQuantizeLayerTest_SW_NPU3720 {};
+class FakeQuantizeLayerTest_SW_NPU5020 : public FakeQuantizeLayerTest_SW_NPU3720 {};
 
 TEST_P(FakeQuantizeLayerTest_SW_NPU3720, SW) {
     const auto tol = 1.6;                       // To cope with cpu/npu 'limits' diffs
@@ -107,6 +108,22 @@ TEST_P(ShaveCodeGenFakeQuantizeLayerTest_SW, NPU5010) {
     setReferenceSoftwareMode();
     setPluginCompilerType();
     run(Platform::NPU5010);
+}
+TEST_P(FakeQuantizeLayerTest_SW_NPU5020, SW) {
+    const auto tol = 1.6;                       // To cope with cpu/npu 'limits' diffs
+    rel_threshold = fabs(rel_threshold) * tol;  // E#77437
+    abs_threshold = rel_threshold;              // Rely on absolute value check
+    setReferenceSoftwareMode();
+    run(Platform::NPU5020);
+}
+
+TEST_P(ShaveCodeGenFakeQuantizeLayerTest_SW, NPU5020) {
+    const auto tol = 1.6;                       // To cope with cpu/npu 'limits' diffs
+    rel_threshold = fabs(rel_threshold) * tol;  // E#77437
+    abs_threshold = rel_threshold;              // Rely on absolute value check
+    setReferenceSoftwareMode();
+    setPluginCompilerType();
+    run(Platform::NPU5020);
 }
 
 }  // namespace test
@@ -163,6 +180,8 @@ INSTANTIATE_TEST_SUITE_P(smoke_ShaveCodeGenFakeQuantize_PerTensor, ShaveCodeGenF
                          ShaveCodeGenFakeQuantizeLayerTest_SW::getTestCaseName);
 INSTANTIATE_TEST_SUITE_P(smoke_FakeQuantize_PerTensor, FakeQuantizeLayerTest_SW_NPU5010, perTensorCfg,
                          FakeQuantizeLayerTest_SW_NPU5010::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(smoke_FakeQuantize_PerTensor, FakeQuantizeLayerTest_SW_NPU5020, perTensorCfg,
+                         FakeQuantizeLayerTest_SW_NPU5020::getTestCaseName);
 
 // NPU3720 Per-Tensor Tiling
 const auto fqParamsT =

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -37,7 +37,7 @@ public:
         // We need to register hw-specific interfaces (e.g. NCEOpInterface) for VPU NCE ops
         auto interfacesRegistry = vpux::createInterfacesRegistry(arch);
         interfacesRegistry->registerInterfaces(registry);
-        vpux::VPU::initializeSingletonCache(registry, vpux::VPU::DeviceVersion{std::nullopt, arch});
+        vpux::VPU::initializeSingletons(registry, vpux::VPU::DeviceVersion{std::nullopt, arch});
 
         ctx.appendDialectRegistry(registry);
         ctx.loadDialect<vpux::VPU::VPUDialect>();

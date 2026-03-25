@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -417,6 +417,45 @@ TEST_F(MLIR_ConstContentAttrTest, ExpositionOnlyDenseResourceDuplicate) {
 
     const auto attrCopy = attr;
     ASSERT_EQ(attrCopy.getRawHandle().getKey(), attr.getRawHandle().getKey());
+}
+
+TEST_F(MLIR_ConstContentAttrTest, ExpositionOnlyDenseResourceDuplicate_AlternativeBehaviour) {
+    const auto baseType = mlir::RankedTensorType::get({1, 2, 3, 4}, mlir::Float32Type::get(&ctx));
+    const auto vals = generateValues<float>(baseType.getNumElements());
+
+    Const::ExternalConstContentCreationOptions options;
+    options.allowDuplicatesForTheSameResourceName = true;
+
+    const auto attr =
+            Const::createExternalConstContent(baseType, convertArrayRef(ArrayRef<float>(vals)),
+                                              "ExpositionOnlyDenseResourceDuplicate_AlternativeBehaviour", options);
+    const auto attrDuplicate =
+            Const::createExternalConstContent(baseType, convertArrayRef(ArrayRef<float>(vals)),
+                                              "ExpositionOnlyDenseResourceDuplicate_AlternativeBehaviour", options);
+
+    static_assert(!std::is_copy_constructible_v<mlir::AsmResourceBlob> &&
+                  !std::is_copy_assignable_v<mlir::AsmResourceBlob>);
+
+    ASSERT_EQ(attrDuplicate.getRawHandle().getKey(), attr.getRawHandle().getKey())
+            << "Two separately created DenseResourceElementsAttr objects can share the same key as this is explicitly "
+               "allowed";
+    ASSERT_EQ(attrDuplicate.getRawHandle().getBlob(), attr.getRawHandle().getBlob())
+            << "Two separately created DenseResourceElementsAttr objects must share the same blob as this is "
+               "explicitly allowed";
+    ASSERT_EQ(attrDuplicate, attr) << "MLIR uniquifier would re-use already-created dense_resource<>";
+
+    const auto baseType2 = mlir::RankedTensorType::get({2, 2, 3, 4}, mlir::Float16Type::get(&ctx));
+    const auto attrDuplicateWithAnotherType =
+            Const::createExternalConstContent(baseType2, convertArrayRef(ArrayRef<float>(vals)),
+                                              "ExpositionOnlyDenseResourceDuplicate_AlternativeBehaviour", options);
+
+    ASSERT_EQ(attrDuplicateWithAnotherType.getRawHandle().getKey(), attr.getRawHandle().getKey())
+            << "Two separately created DenseResourceElementsAttr objects can share the same key as this is explicitly "
+               "allowed";
+    ASSERT_EQ(attrDuplicateWithAnotherType.getRawHandle().getBlob(), attr.getRawHandle().getBlob())
+            << "Two separately created DenseResourceElementsAttr objects must share the same blob as this is "
+               "explicitly allowed";
+    ASSERT_NE(attrDuplicateWithAnotherType, attr) << "MLIR uniquifier cannot re-use already-created dense_resource<>";
 }
 
 TEST_F(MLIR_ConstContentAttrTest, ReadAndConvertInCpp) {

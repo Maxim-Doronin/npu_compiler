@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -74,21 +74,7 @@ AddressType LinearScanHandler::getSize(mlir::Value val) {
 }
 
 AddressType LinearScanHandler::getAlignment(mlir::Value val) const {
-    if (auto allocOp = val.getDefiningOp<mlir::memref::AllocOp>()) {
-        if (auto alignment = allocOp.getAlignment()) {
-            return checked_cast<AddressType>(alignment.value());
-        }
-    } else if (auto allocOp = val.getDefiningOp<VPURT::Alloc>()) {
-        if (auto alignment = allocOp.getAlignment()) {
-            return checked_cast<AddressType>(alignment.value());
-        }
-    } else if (auto allocOp = val.getDefiningOp<VPURT::AllocDistributed>()) {
-        if (auto alignment = allocOp.getAlignment()) {
-            return checked_cast<AddressType>(alignment.value());
-        }
-    }
-
-    return _defaultAlignment;
+    return vpux::getAlignment(val, _defaultAlignment);
 }
 
 AddressType LinearScanHandler::getAddress(mlir::Value val) const {

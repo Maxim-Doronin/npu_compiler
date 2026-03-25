@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -351,8 +351,6 @@ void ReduceExceedingActiveCountBarriersPass::safeRunOnFunc() {
     const auto updateAnalysis = [&]() {
         barrierInfo.optimizeBarriers(_checkSlotCountWhenOptimizing, /* considerTaskFifoDependency */ true);
         if (shareWaitAndUpdateBarriers) {
-            // Assert tasks are driven by barriers. This will not be required for WLM runs once #E130177 is implemented.
-            // Currently, enabling this for WLM can trigger rollback and performance regressions.
             barrierInfo.shareWaitAndUpdateBarriers(_availableSlots);
         }
         VPURT::orderExecutionTasksAndBarriers(func, barrierInfo, _log);

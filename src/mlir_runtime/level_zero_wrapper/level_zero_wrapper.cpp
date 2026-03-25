@@ -1,7 +1,8 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
+
 #define NOMINMAX
 
 #include "level_zero_wrapper.h"
@@ -11,15 +12,19 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <iostream>
 #include <map>
 #include <memory>
+#include <numeric>
 #include <stdexcept>
 #include <type_traits>
 #include <vector>
 #include "intel_npu/utils/zero/zero_utils.hpp"
+#include "vpux/compiler/core/developer_build_utils.hpp"
 #include "vpux/compiler/dialect/HostExec/params.hpp"
 #include "vpux/compiler/dialect/VPUMI37XX/network_description.hpp"
-#include "vpux/utils/IE/network_metadata.hpp"
+#include "vpux/compiler/network_metadata.hpp"
+#include "vpux/utils/logger/logger.hpp"
 #include "vpux_headers/serial_metadata.hpp"
 #include "ze_graph_ext.h"
 
@@ -156,15 +161,16 @@ struct graph_info {
 };
 
 constexpr size_t max_message_length = 256;
-bool dumpKernelName = false;
-bool enabledFailedArgumentDesc = false;
-
+std::unique_ptr<vpux::Logger> logger = nullptr;
 static char lastErrorMessage[max_message_length];
 #define ERROR_HANDLE(result, msg)                                                         \
     if (result != ZE_RESULT_SUCCESS) {                                                    \
         size_t size = std::min(static_cast<size_t>(max_message_length - 1), strlen(msg)); \
         std::strncpy(lastErrorMessage, msg, size);                                        \
         lastErrorMessage[size] = '\0';                                                    \
+        if (logger != nullptr) {                                                          \
+            logger->error("{0}. code{1}", lastErrorMessage, result);                      \
+        }                                                                                 \
         return static_cast<int32_t>(result);                                              \
     }
 
@@ -175,6 +181,10 @@ struct scratch_buffer {
     ze_context_handle_t contextHandle;
     void* data;
     int64_t size;
+
+    bool inRange(uint64_t address) const {
+        return ((address >= reinterpret_cast<uint64_t>(data)) && (address < (reinterpret_cast<uint64_t>(data) + size)));
+    }
 };
 
 struct ze_memory_deleter {
@@ -187,6 +197,120 @@ struct ze_memory_deleter {
     }
 };
 
+struct graph_argument_binding {
+    uint64_t cmdId;
+    ze_command_list_handle_t commandListHandle;
+    uint64_t networkArgIndex;
+    uint64_t argIndex;
+
+    uint64_t bufferOffset;
+};
+
+std::ostream& operator<<(std::ostream& o, const graph_argument_binding& binding) {
+    o << "cmdId: " << binding.cmdId;
+    o << ", commandListHandle: 0x" << std::hex << reinterpret_cast<uint64_t>(binding.commandListHandle) << std::dec;
+    o << ", networkArgIndex: " << binding.networkArgIndex;
+    o << ", argIndex: " << binding.argIndex;
+    o << ", bufferOffset: " << binding.bufferOffset;
+    return o;
+}
+
+struct execution_context {
+    // commandListIndex, networkArgIndex, list of bindings for the same network argument in the same command list
+    std::vector<std::vector<std::vector<graph_argument_binding>>> argumentBindings;
+    std::vector<uint64_t> mutableCommandListIds;
+    execution_context(size_t numSubGraphs, size_t numNetworkArgs)
+            : argumentBindings(numSubGraphs), mutableCommandListIds(numSubGraphs) {
+        for (auto& bindings : argumentBindings) {
+            bindings.resize(numNetworkArgs);
+        }
+    }
+    void add_binding(size_t graphIndex, const graph_argument_binding& binding) {
+        argumentBindings[graphIndex][binding.networkArgIndex].emplace_back(binding);
+
+        if (logger) {
+            std::ostringstream oss;
+            oss << "Added a binding[" << graphIndex << ", " << binding.networkArgIndex << "] " << binding;
+            logger->info("{0}", oss.str());
+        }
+    }
+
+    std::tuple<uint32_t, std::string> queryDriverExtensionVersion(
+            const char* extName, uint32_t extCurrentVersion, std::vector<ze_driver_extension_properties_t>& extProps,
+            uint32_t count) {
+        const char* functionExtName = nullptr;
+        uint32_t targetVersion = 0;
+
+        for (uint32_t i = 0; i < count; ++i) {
+            auto& property = extProps[i];
+
+            if (strncmp(property.name, extName, strlen(extName)) != 0) {
+                continue;
+            }
+
+            if (property.version >= extCurrentVersion) {
+                functionExtName = property.name;
+                targetVersion = extCurrentVersion;
+                break;
+            }
+
+            // Use the latest version supported by the driver - We need to go through all the properties for older
+            // drivers that use specific names for different graph ext versions, e.g.: ZE_extension_graph_1_1,
+            // ZE_extension_graph_1_2
+            if (property.version > targetVersion) {
+                functionExtName = property.name;
+                targetVersion = property.version;
+            }
+        }
+
+        return std::make_tuple(targetVersion, functionExtName ? functionExtName : "");
+    }
+
+    void reset(void** commandList, uint64_t numCommandLists) {
+        for (auto& bindingsPerCommandList : argumentBindings) {
+            for (auto& bindings : bindingsPerCommandList) {
+                bindings.clear();
+            }
+        }
+        if (commandList == nullptr || numCommandLists == 0) {
+            for (uint64_t i = 0; i < numCommandLists; ++i) {
+                mutableCommandListIds[i] = 0;
+            }
+        } else {
+            ze_command_list_handle_t* commandListHandles = reinterpret_cast<ze_command_list_handle_t*>(commandList);
+            if (commandListHandles[0] != nullptr) {
+                // the first command list may have some commands recorded in npu plugin
+                auto commandListHandle = commandListHandles[0];
+                uint64_t cmdId = 0;
+                if (commandListHandle != nullptr) {
+                    ze_mutable_command_id_exp_desc_t mutable_cmd_id_desc = {};
+                    mutable_cmd_id_desc.stype = ZE_STRUCTURE_TYPE_MUTABLE_COMMAND_ID_EXP_DESC;
+                    mutable_cmd_id_desc.flags = ZE_MUTABLE_COMMAND_EXP_FLAG_GRAPH_ARGUMENTS;
+                    auto result = zeCommandListGetNextCommandIdExp(commandListHandle, &mutable_cmd_id_desc, &cmdId);
+                    if (result == ZE_RESULT_ERROR_UNINITIALIZED) {
+                        // If the command list is closed, set cmdId to 0
+                        cmdId = 0;
+                    } else {
+                        if (result == ZE_RESULT_ERROR_INVALID_ENUMERATION) {
+                            // If ZE_MUTABLE_COMMAND_EXP_FLAG_GRAPH_ARGUMENTS is not supported by the driver, try again
+                            // with ZE_MUTABLE_COMMAND_EXP_FLAG_GRAPH_ARGUMENT_DEPRECATED
+                            mutable_cmd_id_desc.flags = ZE_MUTABLE_COMMAND_EXP_FLAG_GRAPH_ARGUMENT_DEPRECATED;
+                            zeCommandListGetNextCommandIdExp(commandListHandle, &mutable_cmd_id_desc, &cmdId);
+                        }
+                    }
+                }
+                mutableCommandListIds[0] = cmdId;
+            }
+
+            for (uint64_t i = 1; i < numCommandLists; ++i) {
+                // For other command lists, we can just set the mutable command id to 1
+                // as no inference execution command will be recorded in those command lists in npu plugin
+                mutableCommandListIds[i] = 1;
+            }
+        }
+    }
+};
+
 std::unique_ptr<scratch_buffer, ze_memory_deleter> scratchBuffer = nullptr;
 
 // shared library initialization function for ExecutionEngine
@@ -194,14 +318,11 @@ NPU_API(void) __mlir_execution_engine_init() {
     graphMap = new std::map<void*, graph_info>();
 
 #if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
-    auto dumpKernelNameFlag = std::getenv("ENABLE_PRINT_HOSTCOMPILE_KERNEL_NAME");
-    if (dumpKernelNameFlag != nullptr && strcmp(dumpKernelNameFlag, "1")) {
-        dumpKernelName = true;
-    }
-
-    auto enableFailedArgumentFlag = std::getenv("ENABLE_FAILED_ARGUMENT_DESCRIPTOR");
-    if (enableFailedArgumentFlag != nullptr && strcmp(enableFailedArgumentFlag, "1")) {
-        enabledFailedArgumentDesc = true;
+    std::string logLevelFlag;
+    vpux::parseEnv("OV_NPU_LOG_LEVEL", logLevelFlag);
+    if (logLevelFlag.size() > 0 && std::string(logLevelFlag).find("LOG_") == 0) {
+        logger = std::make_unique<vpux::Logger>(llvm::StringLiteral("LEVEL_ZERO_WRAPPER"),
+                                                vpux::Logger::global().level());
     }
 #endif
 }
@@ -222,6 +343,10 @@ NPU_API(void) __mlir_execution_engine_destroy() {
     if (scratchBuffer) {
         scratchBuffer.reset();
     }
+
+    if (logger) {
+        logger.reset();
+    }
 }
 
 NPU_API(void*) npu_level_zero_alloc(int64_t bytes, void* context) {
@@ -230,6 +355,9 @@ NPU_API(void*) npu_level_zero_alloc(int64_t bytes, void* context) {
     }
 
     if (scratchBuffer == nullptr || scratchBuffer->size < bytes) {
+        if (logger) {
+            logger->info("Allocating scratch buffer of size {0} bytes", bytes);
+        }
         ze_host_mem_alloc_flag_t flag = {};
         ze_host_mem_alloc_desc_t desc = {ZE_STRUCTURE_TYPE_HOST_MEM_ALLOC_DESC, nullptr,
                                          static_cast<ze_host_mem_alloc_flags_t>(flag)};
@@ -273,6 +401,10 @@ NPU_API(int32_t) npu_level_zero_append_barrier(void* commandList) {
 NPU_API(int32_t)
 npu_level_zero_create_graph(void* kernel, int64_t kernelSize, void* context, void* device, void* ddiTable,
                             void* commandList, void* commandQueue) {
+    if (logger) {
+        logger->info("Creating graph for kernel at address {0} of size {1}", kernel, kernelSize);
+    }
+
     auto* ddiTableHandle = static_cast<ze_graph_dditable_ext_t*>(ddiTable);
     if (::ddiTableHandle == nullptr) {
         ::ddiTableHandle = ddiTableHandle;
@@ -319,6 +451,10 @@ npu_level_zero_create_graph(void* kernel, int64_t kernelSize, void* context, voi
     }
 
     (*graphMap)[kernel] = graph_info(graphHandle, props.numGraphArgs, numInputArguments);
+
+    if (logger) {
+        logger->info("Created graph for kernel");
+    }
 
     RETURN_SUCCESS();
 }
@@ -400,22 +536,23 @@ int32_t set_arguments(uint64_t index, const vpux::HostExec::MemRefDesc& desc, ze
         result = ddiTableHandle->pfnSetArgumentValue(graphHandle, index, desc.data);
     }
 
+    if (logger) {
+        logger->info("{0}", desc);
+    }
     return result;
 }
 
 NPU_API(int32_t)
 npu_level_zero_execute_graph(void** inputDescs, int32_t numInputs, void** outputDescs, int32_t numOutputs,
                              void* kernelName, void* kernel, int64_t kernelSize, void* context, void* device,
-                             void* ddiTable, void** commandList) {
+                             void* ddiTable, void** commandList, int64_t commandListIndex, void* execCtx) {
+    if (logger) {
+        const char* kernelNameStr = static_cast<const char*>(kernelName);
+        logger->info("Executing graph for kernel {0} at address {1} of size {2} in cmdListIndex {3}", kernelNameStr,
+                     kernel, kernelSize, commandListIndex);
+    }
     auto inputs = reinterpret_cast<vpux::HostExec::MemRefDesc*>(inputDescs);
     auto outputs = reinterpret_cast<vpux::HostExec::MemRefDesc*>(outputDescs);
-
-#if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
-    if (dumpKernelName) {
-        const char* kernelNameStr = static_cast<const char*>(kernelName);
-        std::cout << "Kernel name " << kernelNameStr << std::endl;
-    }
-#endif
 
     if (inputs == nullptr || outputs == nullptr) {
         ERROR_HANDLE(ZE_RESULT_ERROR_INVALID_NULL_POINTER, "Invalid nullpointer");
@@ -471,32 +608,73 @@ npu_level_zero_execute_graph(void** inputDescs, int32_t numInputs, void** output
     }
 
 #if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
-    if ((result != ZE_RESULT_SUCCESS) && enabledFailedArgumentDesc) {
+    if ((result != ZE_RESULT_SUCCESS) && logger) {
         for (uint32_t index = 0; index < graphInfo.numArgs; ++index) {
             vpux::HostExec::MemRefDesc desc;
             if (index < graphInfo.numInputArgs) {
                 desc = inputs[index];
-
             } else {
                 desc = outputs[index - graphInfo.numInputArgs];
             }
-            std::cout << "Set argument index, " << index << " with data ptr, 0x" << std::hex
-                      << reinterpret_cast<uint64_t>(desc.data) << std::dec << reinterpret_cast<uint64_t>(desc.data)
-                      << ", byteSize, " << desc.elementByteSize << ", offset, " << desc.offset << ", byte offset, "
-                      << desc.elementByteSize * desc.offset << std::endl;
-            std::cout.flush();
+            logger->error("Set argument index({0}) with {1}", index, desc);
         }
-        std::cout.flush();
     }
 #endif
 
     ERROR_HANDLE(result, "Failed to append graph execute");
+
+    if (execCtx != nullptr) {
+        auto* execContext = reinterpret_cast<execution_context*>(execCtx);
+        if (commandListIndex >= execContext->mutableCommandListIds.size()) {
+            ERROR_HANDLE(ZE_RESULT_ERROR_INVALID_NULL_POINTER, "Invalid commandList Index");
+        }
+
+        // Need to increase cmdId for each execute graph call
+        // as it is used to index inferences stored in a command list
+        uint64_t cmdId = execContext->mutableCommandListIds[commandListIndex]++;
+
+        for (uint32_t index = 0; index < graphInfo.numArgs; ++index) {
+            // Process inputs
+            if (index < graphInfo.numInputArgs) {
+                auto& input = inputs[index];
+                // For repeating block use case, inputs from the second iteration will be scratch buffer.
+                // so skip those too.
+                if (input.networkArgIndex >= graphInfo.numArgs ||
+                    (scratchBuffer != nullptr && scratchBuffer->inRange(reinterpret_cast<uint64_t>(input.data)))) {
+                    // no need to track this argument as it is not mapped to network argument of main module
+                    continue;
+                }
+                execContext->add_binding(commandListIndex, {cmdId, commandListHandle, input.networkArgIndex, index,
+                                                            input.elementByteSize * input.offset});
+
+            } else {
+                auto& output = outputs[index - graphInfo.numInputArgs];
+                // For repeating block use case, outputs can be from the first iteration to N-1 th iteration.
+                // so skip those too.
+                if (output.networkArgIndex >= graphInfo.numArgs ||
+                    (scratchBuffer != nullptr && scratchBuffer->inRange(reinterpret_cast<uint64_t>(output.data)))) {
+                    // no need to track this argument as it is not mapped to network argument of main module
+                    continue;
+                }
+                execContext->add_binding(commandListIndex, {cmdId, commandListHandle, output.networkArgIndex, index,
+                                                            output.elementByteSize * output.offset});
+            }
+        }
+    }
+
+    if (logger) {
+        logger->info("Executed graph for kernel");
+    }
 
     RETURN_SUCCESS();
 }
 
 NPU_API(int32_t)
 npu_level_zero_submit_commandlist(void** commandLists, void* commandQueue, void* fence, void* event) {
+    if (logger) {
+        logger->info("Submitting command list: fence{0}, event {1}", fence, event);
+    }
+
     auto commandListHandle =
             (commandLists == nullptr) ? nullptr : *reinterpret_cast<ze_command_list_handle_t*>(commandLists);
     auto commandQueueHandle = static_cast<ze_command_queue_handle_t>(commandQueue);
@@ -525,7 +703,9 @@ npu_level_zero_submit_commandlist(void** commandLists, void* commandQueue, void*
             ERROR_HANDLE(result, "Failed to zeCommandQueueExecuteCommandList");
         }
     }
-
+    if (logger) {
+        logger->info("Submitted command list");
+    }
     RETURN_SUCCESS();
 }
 
@@ -699,4 +879,95 @@ npu_level_zero_get_network_metadata(void* metadata, uint64_t metadataSize, void*
     RETURN_SUCCESS();
 }
 
+NPU_API(int32_t)
+npu_level_zero_create_execution_context(void* handle, int64_t numSubGraphs, int64_t numNetworkArgs, void** ret) {
+    if (logger) {
+        logger->info("npu_level_zero_create_execution_context: {0} {1}", numSubGraphs, numNetworkArgs);
+    }
+    execution_context* context = new execution_context(numSubGraphs, numNetworkArgs);
+    *ret = static_cast<void*>(context);
+
+    RETURN_SUCCESS();
+}
+
+NPU_API(int32_t)
+npu_level_zero_reset_execution_context(void* handle, void** commandList, int64_t numCommandLists) {
+    if (logger) {
+        logger->info("npu_level_zero_reset_execution_context");
+    }
+
+    execution_context* context = reinterpret_cast<execution_context*>(handle);
+    if (context != nullptr) {
+        context->reset(commandList, numCommandLists);
+    }
+
+    RETURN_SUCCESS();
+}
+
+NPU_API(int32_t)
+npu_level_zero_destroy_execution_context(void* handle) {
+    if (logger) {
+        logger->info("npu_level_zero_destroy_execution_context");
+    }
+
+    execution_context* context = reinterpret_cast<execution_context*>(handle);
+    if (context != nullptr) {
+        delete context;
+    }
+
+    RETURN_SUCCESS();
+}
+
+NPU_API(int32_t)
+npu_level_zero_update_mutable_command_list(void* handle, void* networkArgArr, uint64_t networkArgArraySize,
+                                           void* argIndexArr, uint64_t argIndexSize) {
+    if (logger) {
+        logger->info("npu_level_zero_update_mutable_command_list");
+    }
+
+    execution_context* context = reinterpret_cast<execution_context*>(handle);
+    uint64_t* networkArgArray = reinterpret_cast<uint64_t*>(networkArgArr);
+    uint64_t* argIndexArray = reinterpret_cast<uint64_t*>(argIndexArr);
+    if (context != nullptr && argIndexArr != nullptr && networkArgArray != nullptr) {
+        for (auto& bindingsPerCmdList : context->argumentBindings) {
+            for (uint64_t index = 0; index < argIndexSize; ++index) {
+                uint64_t argIndex = argIndexArray[index];
+
+                if (argIndex >= networkArgArraySize) {
+                    ERROR_HANDLE(ZE_RESULT_ERROR_INVALID_ARGUMENT, "Invalid argument index");
+                }
+
+                // Process mutable arguments
+                for (auto& binding : bindingsPerCmdList[index]) {
+                    const void* bufferPtr = reinterpret_cast<void*>((networkArgArray)[argIndex] + binding.bufferOffset);
+                    ze_mutable_graph_argument_exp_desc_t desc = {ZE_STRUCTURE_TYPE_MUTABLE_GRAPH_ARGUMENT_EXP_DESC,
+                                                                 nullptr, binding.cmdId,
+                                                                 static_cast<uint32_t>(binding.argIndex), bufferPtr};
+                    ze_mutable_commands_exp_desc_t mutable_commands_exp_desc_t = {
+                            ZE_STRUCTURE_TYPE_MUTABLE_COMMANDS_EXP_DESC, &desc, 0};
+                    auto result = zeCommandListUpdateMutableCommandsExp(binding.commandListHandle,
+                                                                        &mutable_commands_exp_desc_t);
+                    if (logger) {
+                        std::ostringstream oss;
+                        oss << "Updating mutable argument:" << binding << " with buffer pointer " << std::hex
+                            << bufferPtr << std::dec << ", result: " << result;
+                        logger->info("{0}", oss.str());
+                    }
+
+                    if (result != ZE_RESULT_SUCCESS) {
+                        std::ostringstream oss;
+                        oss << "Failed to set mutable argument:" << binding << " with buffer pointer " << std::hex
+                            << bufferPtr << std::dec;
+
+                        ERROR_HANDLE(result, oss.str().c_str());
+                    }
+                }
+            }
+        }
+    } else {
+        ERROR_HANDLE(ZE_RESULT_ERROR_INVALID_NULL_POINTER, "Invalid nullpointer");
+    }
+
+    RETURN_SUCCESS();
+}
 #endif

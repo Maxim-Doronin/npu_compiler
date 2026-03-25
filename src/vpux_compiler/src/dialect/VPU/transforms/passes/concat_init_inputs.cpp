@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -89,9 +89,7 @@ void ConcatInitInputs::updateNetworkInfo(net::NetworkInfoOp netInfo, mlir::func:
 void ConcatInitInputs::safeRunOnModule() {
     auto moduleOp = getOperation();
 
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp entryPointFunc;
-    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, entryPointFunc);
+    auto [netInfo, entryPointFunc] = net::getFromModule(moduleOp);
 
     const auto offset = concatenateFunctionInputs(entryPointFunc);
     updateNetworkInfo(netInfo, entryPointFunc, offset);

@@ -108,6 +108,10 @@ TEST_P(GreaterWithSelectTestCommon, NPU5010_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
+TEST_P(GreaterWithSelectTestCommon, NPU5020_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
+}
 
 const std::vector<GreaterWithSelectTestParams> configs = {
         // {shape, input_generator}

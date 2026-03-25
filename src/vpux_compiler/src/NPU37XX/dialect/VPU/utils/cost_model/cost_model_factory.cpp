@@ -1,10 +1,9 @@
 //
-// Copyright (C) 2025 Intel Corporation
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/NPU37XX/dialect/VPU/utils/cost_model_factory.hpp"
-#include "vpux/compiler/NPU37XX/dialect/VPU/utils/cost_model_shave_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model_data.hpp"
 #include "vpux/utils/core/array_ref.hpp"
 

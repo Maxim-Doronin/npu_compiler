@@ -1,12 +1,16 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
-#include "vpux/compiler/dialect/VPU/utils/cost_model/layer_vpunn_cost.hpp"
+#include "vpux/compiler/dialect/VPU/utils/strategy_manager/operation_strategies.hpp"
+#include "vpux/utils/core/small_vector.hpp"
+
+#include <mlir/IR/Location.h>
+#include <mlir/IR/Operation.h>
+#include <optional>
 
 namespace vpux {
 namespace VPU {

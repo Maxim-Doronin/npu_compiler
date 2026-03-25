@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -36,7 +36,7 @@ func.func @MoveExpandBeforeMultipleSlices(%arg0: tensor<2x70x4x4xf16>, %arg1: te
 // -----
 
 // CHECK-LABEL: func.func @SkipAffineForIncompatibleShapes
-// CHECK-SAME:        [[INPUT:%arg0]]: tensor<1x256x1104x1xf16>
+// CHECK-SAME:        [[INPUT:%[^:]+]]: tensor<1x256x1104x1xf16>
 func.func @SkipAffineForIncompatibleShapes(%arg0: tensor<1x256x1104x1xf16>) -> tensor<1x256x1104x1xf16> {
     %0 = IE.Slice %arg0 [0, 0, 1, 0] [1, 256, 1, 1] : tensor<1x256x1104x1xf16> to tensor<1x256x1x1xf16>
     %1 = IE.Slice %arg0 [0, 0, 1102, 0] [1, 256, 1, 1] : tensor<1x256x1104x1xf16> to tensor<1x256x1x1xf16>
@@ -136,7 +136,7 @@ func.func @MoveReorderBeforeMultipleSlices(%arg0: tensor<2x80x4x4xf16>, %arg1: t
 
     // CHECK:   [[CONV0:%.+]] = IE.Convolution([[SLICE1]], [[INPUT1]])
     // CHECK:   [[CONV1:%.+]] = IE.Convolution([[SLICE0]], [[INPUT1]])
-    // CHECK:   [[CONCAT:%.+]] = IE.Concat(%3, %4)
+    // CHECK:   [[CONCAT:%.+]] = IE.Concat([[CONV0]], [[CONV1]])
 
     // CHECK:   return [[CONCAT]] : tensor<2x16x4x4xf16>
 }
@@ -170,7 +170,7 @@ func.func @MoveReorderBeforeMultipleSlices_ReorderModifiesSliceAxis(%arg0: tenso
 
     // CHECK:   [[CONV0:%.+]] = IE.Convolution([[SLICE1]], [[INPUT1]])
     // CHECK:   [[CONV1:%.+]] = IE.Convolution([[SLICE0]], [[INPUT1]])
-    // CHECK:   [[CONCAT:%.+]] = IE.Concat(%3, %4)
+    // CHECK:   [[CONCAT:%.+]] = IE.Concat([[CONV0]], [[CONV1]])
 
     // CHECK:   return [[CONCAT]] : tensor<2x16x4x4xf16>
 }
@@ -421,7 +421,7 @@ func.func @NoChangesOneSliceConsumer(%arg0: tensor<1x2x128x76xf16>, %arg1: tenso
     // CHECK: [[TRANSPOSE0:%.+]] = IE.Transpose([[SLICE0]]) {order_value = #NCWH}
     // CHECK: [[TRANSPOSE1:%.+]] = IE.Transpose([[SLICE1]]) {order_value = #NCWH}
 
-    // CHECK: [[SOFTMAX0:%.+]] = IE.SoftMax(%arg0) {axisInd = 1 : i64}
+    // CHECK: [[SOFTMAX0:%.+]] = IE.SoftMax([[INPUT0]]) {axisInd = 1 : i64}
 
     // CHECK: return [[TRANSPOSE0]], [[TRANSPOSE1]], [[SOFTMAX0]]
 }
@@ -620,8 +620,8 @@ func.func @MoveAffineReshapeType1BeforeMultipleSlices(%arg0: tensor<1x2x76x64xf1
 
     // CHECK:       [[RESHAPE:%.+]] = IE.AffineReshape([[INPUT]])
     // CHECK-SAME{LITERAL}:   {dim_mapping = [[0], [0], [0], [1]], shape_value = [128, 76]} : tensor<1x2x76x64xf16> -> tensor<128x76xf16>
-    // CHECK:       [[SLICE1:%.+]] = IE.Slice %0 [64, 0] [64, 76] : tensor<128x76xf16> to tensor<64x76xf16>
-    // CHECK:       [[SLICE0:%.+]] = IE.Slice %0 [0, 0] [64, 76] : tensor<128x76xf16> to tensor<64x76xf16>
+    // CHECK:       [[SLICE1:%.+]] = IE.Slice [[RESHAPE]] [64, 0] [64, 76] : tensor<128x76xf16> to tensor<64x76xf16>
+    // CHECK:       [[SLICE0:%.+]] = IE.Slice [[RESHAPE]] [0, 0] [64, 76] : tensor<128x76xf16> to tensor<64x76xf16>
     // CHECK:       [[PERMUTE0:%.+]] = IE.PermuteCast([[SLICE0]]) {dst_order = #CN, mem_perm = #NC} : tensor<64x76xf16> -> tensor<76x64xf16, {order = #CN}>
     // CHECK:       [[PERMUTE1:%.+]] = IE.PermuteCast([[SLICE1]]) {dst_order = #CN, mem_perm = #NC} : tensor<64x76xf16> -> tensor<76x64xf16, {order = #CN}>
     // CHECK:       return [[PERMUTE0]], [[PERMUTE1]] : tensor<76x64xf16, {order = #CN}>, tensor<76x64xf16, {order = #CN}>

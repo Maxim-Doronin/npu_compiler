@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -65,7 +65,7 @@ template <typename ConcreteOp>
 bool MoveMultiplyDividePostLayerGeneric<ConcreteOp>::isLegalTransformation(mlir::Operation* op) const {
     // IE::MatMulOp should not have post op
     if (auto matMulOp = mlir::dyn_cast<IE::MatMulOp>(op)) {
-        return matMulOp.getPostOpAttr() == nullptr;
+        return !IE::hasPPE(matMulOp);
     }
     // IE::FullyConnectedOp should not have bias
     else if (auto fcOp = mlir::dyn_cast<IE::FullyConnectedOp>(op)) {
@@ -270,18 +270,16 @@ mlir::LogicalResult MoveMultiplyDividePostConcat::matchAndRewrite(IE::ConcatOp o
         for (auto p : multiplyOps | indexed) {
             auto multiplyOp = p.value();
             auto reshapeOp = reshapeOps[p.index()];
-            auto leftReshape =
-                    rewriter.create<IE::ReshapeOp>(appendLoc(reshapeOp->getLoc(), "left_reshape"),
-                                                   multiplyOp.getInput1(), nullptr, false,
-                                                   getIntArrayAttr(ctx, getShape(reshapeOp.getOutput()).raw()))
-                            .getOutput();
+            auto leftReshape = rewriter.create<IE::ReshapeOp>(
+                                               appendLoc(reshapeOp->getLoc(), "left_reshape"), multiplyOp.getInput1(),
+                                               getIntArrayAttr(ctx, getShape(reshapeOp.getOutput()).raw()))
+                                       .getOutput();
             multiplyLeftInputs.push_back(leftReshape);
 
-            auto rightReshape =
-                    rewriter.create<IE::ReshapeOp>(appendLoc(reshapeOp->getLoc(), "right_reshape"),
-                                                   multiplyOp.getInput2(), nullptr, false,
-                                                   getIntArrayAttr(ctx, getShape(reshapeOp.getOutput()).raw()))
-                            .getOutput();
+            auto rightReshape = rewriter.create<IE::ReshapeOp>(
+                                                appendLoc(reshapeOp->getLoc(), "right_reshape"), multiplyOp.getInput2(),
+                                                getIntArrayAttr(ctx, getShape(reshapeOp.getOutput()).raw()))
+                                        .getOutput();
             multiplyRightInputs.push_back(rightReshape);
         }
     }

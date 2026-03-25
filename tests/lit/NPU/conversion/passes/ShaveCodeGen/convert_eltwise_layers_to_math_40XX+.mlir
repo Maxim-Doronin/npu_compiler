@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -1801,7 +1801,7 @@ module @SingleCeilFloatLayerFP32 {
   }
 }
 
-// -----    
+// -----
 // IE.Quantize + IE.Dequantize
 
 !qElemType = !quant.uniform<u8:f16, 1.0588235294117647:37>
@@ -1823,7 +1823,7 @@ module @QuantizeLayer {
     } -> tensor<1x32x16x8xf16>
     return %2 : tensor<1x32x16x8xf16>
 
-    // CHECK: [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [#NCHW, #NCHW], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins(%arg1 : tensor<1x32x16x8xf16>) outs(%2 : tensor<1x32x16x8xi8>) {
+    // CHECK: [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [#NCHW, #NCHW], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%[^:]+}} : tensor<1x32x16x8xf16>) outs(%2 : tensor<1x32x16x8xi8>) {
     // CHECK: ^bb0([[IN:%.+]]: f16, [[OUT:%.+]]: i8):
     // CHECK:   [[CST:%.+]] = arith.constant 0.000000e+00 : f16
     // CHECK:   [[CST_0:%.+]] = arith.constant 2.550000e+02 : f16
@@ -1836,14 +1836,14 @@ module @QuantizeLayer {
     // CHECK:   [[OP:%.+]] = arith.fptosi [[MIN]] : f16 to i8
     // CHECK:   linalg.yield [[OP]] : i8
     // CHECK: IE.CGCYield [[LINALG_OP]] : tensor<1x32x16x8xi8>
-    // CHECK: [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [#NCHW, #NCHW], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins(%arg1 : tensor<1x32x16x8xi8>) outs(%2 : tensor<1x32x16x8xf16>) {
-    // CHECK: ^bb0([[IN_2:%.+]]: i8, [[OUT_2:%.+]]: f16): 
+    // CHECK: [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [#NCHW, #NCHW], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%[^:]+}} : tensor<1x32x16x8xi8>) outs(%2 : tensor<1x32x16x8xf16>) {
+    // CHECK: ^bb0([[IN_2:%.+]]: i8, [[OUT_2:%.+]]: f16):
     // CHECK:   [[CST:%.+]] = arith.constant 1.058590e+00 : f16
     // CHECK:   [[CST_0:%.+]] = arith.constant 3.700000e+01 : f16
     // CHECK:   [[OP:%.+]] = arith.sitofp [[IN]] : i8 to f16
     // CHECK:   [[SUB:%.+]] = arith.subf [[OP]], [[CST_0]] : f16
     // CHECK:   [[MUL:%.+]] = arith.mulf [[CST]], [[SUB]] : f16
     // CHECK:   linalg.yield [[MUL]] : f16
-    // CHECK: IE.CGCYield [[LINALG_OP]] : tensor<1x32x16x8xf16>   
+    // CHECK: IE.CGCYield [[LINALG_OP]] : tensor<1x32x16x8xf16>
   }
 }

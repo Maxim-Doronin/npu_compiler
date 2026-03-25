@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -36,7 +36,7 @@ module @GroupProfilingBuffers {
     //CHECK-NEXT:   VPUIP.ProfilingSection  type 1 : 32 bytes from 0
     //CHECK-NEXT:   VPUIP.ProfilingSection  type 4 : 56 bytes from 64
     //CHECK-NEXT:   } : tensor<32xui32>
-    //CHECK:        %arg0: memref<1x48x30x30xf16>, %arg1: memref<1x48x30x30xf32>, %arg2: memref<32xui32>) -> (memref<1x48x30x30xf32>, memref<32xui32>)
+    //CHECK:        [[ARG_0:%[^:]+]]: memref<1x48x30x30xf16>, [[ARG_1:%[^:]+]]: memref<1x48x30x30xf32>, [[ARG_2:%[^:]+]]: memref<32xui32>) -> (memref<1x48x30x30xf32>, memref<32xui32>)
 
     //CHECK:        [[VAR1:%.+]] = VPURT.DeclareBuffer <ProfilingOutput> [0] <0> -> memref<4xui64>
     //CHECK:        VPUIP.NNDMA
@@ -45,5 +45,5 @@ module @GroupProfilingBuffers {
     //CHECK:        [[VAR2:%.+]] = VPURT.DeclareBuffer <ProfilingOutput> [0] <64> -> memref<14xui32>
     //CHECK:        VPUIP.NNDMA
     //CHECK-SAME:   outputs([[VAR2]] : memref<14xui32>)
-    //CHECK:        return %arg1, %arg2 : memref<1x48x30x30xf32>, memref<32xui32>
+    //CHECK:        return [[ARG_1]], [[ARG_2]] : memref<1x48x30x30xf32>, memref<32xui32>
 }

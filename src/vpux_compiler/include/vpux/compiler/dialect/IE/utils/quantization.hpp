@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -51,6 +51,9 @@ void broadcastRange(SmallVectorImpl<T>& lowVals, SmallVectorImpl<T>& highVals, I
 
 mlir::Type rescaleUniformQuantizedType(const mlir::Type tensorType, const double factor);
 
+mlir::quant::UniformQuantizedPerAxisType rescaleUniformQuantizedPerAxisType(
+        const mlir::quant::UniformQuantizedPerAxisType tensorType, ArrayRef<float> factors);
+
 void getFakeQuantParams(vpux::NDTypeInterface qType, int64_t& levels, mlir::RankedTensorType& attrType,
                         mlir::DenseElementsAttr& rMinAttr, mlir::DenseElementsAttr& rMaxAttr);
 
@@ -88,6 +91,7 @@ mlir::Value createFQScaling(mlir::Location loc, mlir::Value input, float scaleFa
 SmallVector<float> getConst(Const::DeclareOp declOp);
 mlir::Value findQuantizedInput(mlir::Value opInput, bool allowPerAxisQuantize);
 bool isSymmetricQuantType(mlir::quant::QuantizedType type);
+bool areAllQuantTypeZeroPointsEqualToZero(mlir::quant::QuantizedType type);
 bool hasLeakyReLUPostOp(mlir::Operation* op);
 bool hasReLUPostOp(mlir::Operation* op);
 bool hasNegativeScales(mlir::quant::QuantizedType type);

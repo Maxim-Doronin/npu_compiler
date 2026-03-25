@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2023-2026 Intel Corporation.
+# Copyright (C) 2023-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -76,6 +76,7 @@ target_include_directories(${TARGET_NAME}
 target_link_libraries(${TARGET_NAME}
     PRIVATE
         openvino::npu_al
+        openvino::npu_ops
         openvino::xml_util
         npu_llvm_utils
         npu_ov_utils

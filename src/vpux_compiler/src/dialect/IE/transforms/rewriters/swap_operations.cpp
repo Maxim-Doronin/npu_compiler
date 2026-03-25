@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -17,6 +17,7 @@
 #include "vpux/compiler/dialect/IE/utils/elem_type_info_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/dialect/IE/utils/transpose_op_utils.hpp"
+#include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
@@ -84,6 +85,24 @@ mlir::Value alignConstant(mlir::PatternRewriter& rewriter, mlir::Operation* pare
                 const auto constInputShape = getShape(constInput);
                 const auto parentInputDimC = getShape(origOp.getInput())[Dims4D::Act::C];
                 if (constInputShape.totalSize() != parentInputDimC) {
+                    auto declareOp = constInput.getDefiningOp<Const::DeclareOp>();
+                    if (declareOp != nullptr) {
+                        const auto content = declareOp.getContent();
+                        const auto elemType = content.getType().getElementType();
+                        if (content.isSplat() && mlir::isa_and_present<mlir::FloatType>(elemType)) {
+                            auto splatAttr = rewriter.getFloatAttr(elemType, content.getSplatValue<double>());
+                            SmallVector<int64_t> newShape(constInputShape.size(), 1);
+                            newShape[Dims4D::Act::C.ind()] = parentInputDimC;
+
+                            const auto newType = mlir::RankedTensorType::get(newShape, elemType);
+                            const auto newContentAttr =
+                                    Const::ContentAttr::get(mlir::DenseElementsAttr::get(newType, splatAttr));
+                            return rewriter
+                                    .create<Const::DeclareOp>(takeOpLoc(origOp, "splt_cst"), newType, newContentAttr)
+                                    .getResult();
+                        }
+                    }
+
                     return mlir::Value();
                 }
 
@@ -91,7 +110,7 @@ mlir::Value alignConstant(mlir::PatternRewriter& rewriter, mlir::Operation* pare
                 constShape[Dims4D::Act::C.ind()] = parentInputDimC;
 
                 const auto constReshape = rewriter.createOrFold<IE::ReshapeOp>(
-                        takeOpLoc(origOp, "reshape_cst"), constInput, nullptr, false,
+                        takeOpLoc(origOp, "reshape_cst"), constInput,
                         getIntArrayAttr(origOp->getContext(), ArrayRef(constShape)));
 
                 const auto outOrder = DimsOrder::fromValue(constReshape);
@@ -136,8 +155,7 @@ mlir::Value reshapeSingleValueConstant(mlir::PatternRewriter& rewriter, mlir::Lo
     VPUX_THROW_UNLESS(isSingleValueBias(constInput), "Expext single value bias");
     auto ctx = rewriter.getContext();
     auto newConstShape = SmallVector<int64_t>(numDims, 1);
-    auto reshapeConst =
-            rewriter.create<IE::ReshapeOp>(loc, constInput, nullptr, false, getIntArrayAttr(ctx, newConstShape));
+    auto reshapeConst = rewriter.create<IE::ReshapeOp>(loc, constInput, getIntArrayAttr(ctx, newConstShape));
     return reshapeConst;
 }
 
@@ -145,30 +163,85 @@ mlir::Value reshapeSingleValueConstant(mlir::PatternRewriter& rewriter, mlir::Lo
 // SwapWithBias
 //
 
-class SwapWithBias final : public mlir::OpRewritePattern<IE::AddOp> {
+//
+// SwapWithBias
+//
+
+namespace {
+
+mlir::Value getBiasInput(IE::AddOp op) {
+    bool lhsIsActivation = mlir::failed(IE::getConstParentOp(op.getInput1()));
+    return lhsIsActivation ? op.getInput2() : op.getInput1();
+}
+
+mlir::Value getBiasInput(IE::ScaleShiftOp op) {
+    return op.getBiases();
+}
+
+mlir::Value getActivationInput(IE::AddOp op) {
+    bool lhsIsActivation = mlir::failed(IE::getConstParentOp(op.getInput1()));
+    return lhsIsActivation ? op.getInput1() : op.getInput2();
+}
+
+mlir::Value getActivationInput(IE::ScaleShiftOp op) {
+    return op.getInput();
+}
+
+bool isValidBiasOp(IE::AddOp) {
+    return true;
+}
+
+bool isValidBiasOp(IE::ScaleShiftOp op) {
+    return op.getWeights() == nullptr && op.getBiases() != nullptr;
+}
+
+IE::AddOp createNewBiasOp(mlir::PatternRewriter& rewriter, IE::AddOp origOp, mlir::Location loc, mlir::Value activation,
+                          mlir::Value bias) {
+    return rewriter.create<IE::AddOp>(loc, activation, bias, origOp.getAutoBroadcastAttr(), nullptr, nullptr, nullptr,
+                                      nullptr);
+}
+
+IE::ScaleShiftOp createNewBiasOp(mlir::PatternRewriter& rewriter, IE::ScaleShiftOp, mlir::Location loc,
+                                 mlir::Value activation, mlir::Value bias) {
+    return rewriter.create<IE::ScaleShiftOp>(loc, activation, nullptr, bias);
+}
+
+}  // namespace
+
+template <typename ConcreteOp>
+class SwapWithBias final : public mlir::OpRewritePattern<ConcreteOp> {
 public:
     SwapWithBias(mlir::MLIRContext* ctx, Logger log, mlir::PatternBenefit benefit = 1)
-            : mlir::OpRewritePattern<IE::AddOp>(ctx, benefit), _log(log) {
-        setDebugName("SwapWithBias");
+            : mlir::OpRewritePattern<ConcreteOp>(ctx, benefit), _log(log) {
+        this->setDebugName("SwapWithBias");
     }
 
 public:
-    mlir::LogicalResult matchAndRewrite(IE::AddOp origOp, mlir::PatternRewriter& rewriter) const final;
+    mlir::LogicalResult matchAndRewrite(ConcreteOp origOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
     Logger _log;
 };
 
-mlir::LogicalResult SwapWithBias::matchAndRewrite(IE::AddOp origOp, mlir::PatternRewriter& rewriter) const {
-    _log.trace("[{0}] Found Add operation {1}", getDebugName(), origOp);
+template <typename ConcreteOp>
+mlir::LogicalResult SwapWithBias<ConcreteOp>::matchAndRewrite(ConcreteOp origOp,
+                                                              mlir::PatternRewriter& rewriter) const {
+    _log.trace("[{0}] Found operation {1}", this->getDebugName(), origOp);
 
-    bool lhsIsActivation = mlir::failed(IE::getConstParentOp(origOp.getInput1()));
-    auto activationInput = lhsIsActivation ? origOp.getInput1() : origOp.getInput2();
-    auto biasInput = lhsIsActivation ? origOp.getInput2() : origOp.getInput1();
+    if (!isValidBiasOp(origOp)) {
+        return mlir::failure();
+    }
+
+    auto activationInput = getActivationInput(origOp);
+    auto biasInput = getBiasInput(origOp);
+
+    if (activationInput == nullptr || biasInput == nullptr) {
+        return mlir::failure();
+    }
 
     auto isEltwise = mlir::failed(IE::getConstParentOp(biasInput));
     if (isEltwise) {
-        _log.trace("[{0}] Don't swap operations with Eltwise {1}", getDebugName(), origOp);
+        _log.trace("[{0}] Don't swap operations with Eltwise {1}", this->getDebugName(), origOp);
         return mlir::failure();
     }
 
@@ -179,13 +252,13 @@ mlir::LogicalResult SwapWithBias::matchAndRewrite(IE::AddOp origOp, mlir::Patter
     }
 
     if (!mlir::isa<IE::ElemTypeInfoOpInterface>(parentOp)) {
-        _log.trace("[{0}] Swapped operation {1} doesn't implement ElemTypeInfoOpInterface interface", getDebugName(),
-                   *parentOp);
+        _log.trace("[{0}] Swapped operation {1} doesn't implement ElemTypeInfoOpInterface interface",
+                   this->getDebugName(), *parentOp);
         return mlir::failure();
     }
 
     if (!parentOp->hasOneUse()) {
-        _log.trace("[{0}] Swapped operation {1} has more than one use", getDebugName(), *parentOp);
+        _log.trace("[{0}] Swapped operation {1} has more than one use", this->getDebugName(), *parentOp);
         return mlir::failure();
     }
 
@@ -205,16 +278,23 @@ mlir::LogicalResult SwapWithBias::matchAndRewrite(IE::AddOp origOp, mlir::Patter
     // 2.Always be order compatible with parent op
     if (!mlir::isa<IE::AffineReshapeOp, IE::ReshapeOp, IE::TransposeOp>(parentOp)) {
         if (!(mlir::isa<IE::ConcatOp>(parentOp) && singleValueBias)) {
-            _log.trace("[{0}] Only support AffineReshapeOp, ReshapeOp and TransposeOp, but got {1}", getDebugName(),
-                       *parentOp);
+            _log.trace("[{0}] Only support AffineReshapeOp, ReshapeOp and TransposeOp, but got {1}",
+                       this->getDebugName(), *parentOp);
             return mlir::failure();
         }
-        _log.trace("[{0}] Swap single value bias with ConcatOp {1}", getDebugName(), parentOp->getLoc());
+        _log.trace("[{0}] Swap single value bias with ConcatOp {1}", this->getDebugName(), parentOp->getLoc());
+    }
+
+    auto parentInputRank = mlir::cast<vpux::NDTypeInterface>(parentInput.getType()).getRank();
+    if (mlir::isa<IE::ScaleShiftOp>(origOp) && parentInputRank != SUPPORTED_RANK) {
+        _log.trace("[{0}] Swapped operation {1} doesn't have rank {2}", this->getDebugName(), *parentOp,
+                   SUPPORTED_RANK);
+        return mlir::failure();
     }
 
     if (!singleValueBias) {
-        if (mlir::cast<vpux::NDTypeInterface>(parentInput.getType()).getRank() != SUPPORTED_RANK) {
-            _log.trace("[{0}] Swapped operation doesn't have rank {1}", getDebugName(), SUPPORTED_RANK);
+        if (parentInputRank != SUPPORTED_RANK) {
+            _log.trace("[{0}] Swapped operation doesn't have rank {1}", this->getDebugName(), SUPPORTED_RANK);
             return mlir::failure();
         }
 
@@ -238,21 +318,22 @@ mlir::LogicalResult SwapWithBias::matchAndRewrite(IE::AddOp origOp, mlir::Patter
             newConstant = alignConstant(rewriter, parentOp, biasInput);
         }
         if (newConstant == nullptr) {
-            _log.trace("[{0}] Swapped operation {1} fails to align constant", getDebugName(), *parentOp);
+            _log.trace("[{0}] Swapped operation {1} fails to align constant", this->getDebugName(), *parentOp);
             return mlir::failure();
         }
 
-        auto newAddOp = rewriter.create<IE::AddOp>(takeOpLoc(origOp, "add_{0}", operandId), operand.get(), newConstant,
-                                                   origOp.getAutoBroadcast(), nullptr, nullptr, nullptr, nullptr);
+        auto newBiasOp =
+                createNewBiasOp(rewriter, origOp, takeOpLoc(origOp, "add_{0}", operandId), operand.get(), newConstant);
 
         // The new add must have the same output element type as the original one
-        const auto origAddOutputType = mlir::dyn_cast<vpux::NDTypeInterface>(origOp->getResult(0).getType());
-        auto newAddOutputType = mlir::dyn_cast<vpux::NDTypeInterface>(newAddOp->getResult(0).getType());
-        newAddOutputType = newAddOutputType.changeElemType(origAddOutputType.getElementType());
-        newAddOp->getResult(0).setType(newAddOutputType);
-
-        updateOutputOrder(newAddOp->getResult(0), origOrder, parentOrder);
-        newParentOpOperands.push_back(newAddOp->getResult(0));
+        const auto origBiasOpOutputType = mlir::cast<vpux::NDTypeInterface>(origOp->getResult(0).getType());
+        auto newBiasOpOutputType = mlir::cast<vpux::NDTypeInterface>(newBiasOp->getResult(0).getType());
+        newBiasOpOutputType = newBiasOpOutputType.changeElemType(origBiasOpOutputType.getElementType());
+        rewriter.modifyOpInPlace(newBiasOp, [&] {
+            newBiasOp->getResult(0).setType(newBiasOpOutputType);
+            updateOutputOrder(newBiasOp->getResult(0), origOrder, parentOrder);
+        });
+        newParentOpOperands.push_back(newBiasOp->getResult(0));
     }
 
     // Update input of Operation. NewAddOp -> parent Op.
@@ -845,6 +926,13 @@ bool isSafeToSwap(mlir::Operation* producerOp, mlir::Operation* firstUserOp, mli
         return false;
     }
 
+    // If the activation is swapped with tranpose and fused with a prior operation, it leaves transpose with
+    // a possible element type mismatch. Detect such a case and avoid the swap.
+    auto origInputElemType = mlir::cast<vpux::NDTypeInterface>(activationOp->getOperand(0).getType()).getElementType();
+    if (mlir::isa<IE::TransposeOp>(firstUserOp) && (origElemType != origInputElemType)) {
+        return false;
+    }
+
     return true;
 }
 
@@ -854,12 +942,16 @@ bool isBeneficialToSwap(mlir::Operation* op, mlir::Operation* firstUserOp, mlir:
     };
 
     auto producerOp = mlir::dyn_cast_if_present<IE::LayerWithPostOpInterface>(op);
-    bool isSupportedPostOp = producerOp.isSupportedPostOp(candidateOp, logCb);
+
+    bool isSupportedPPE = mlir::isa_and_nonnull<IE::ClampOp>(candidateOp)
+                                  ? producerOp.isSupportedClampOp(candidateOp, logCb)
+                                  : producerOp.isSupportedPostOp(candidateOp, logCb);
+
     // TODO: E#194429 Remove special Add after accuracy regressions are solved
     bool isSpecialCase = mlir::isa_and_present<IE::AddOp>(producerOp) &&
                          mlir::isa_and_present<IE::SigmoidOp, IE::ReLUOp, IE::LeakyReluOp>(candidateOp);
 
-    return (isSupportedPostOp || isSpecialCase) && isSafeToSwap(op, firstUserOp, candidateOp);
+    return (isSupportedPPE || isSpecialCase) && isSafeToSwap(op, firstUserOp, candidateOp);
 }
 
 void swapActivation(mlir::PatternRewriter& rewriter, mlir::Operation* firstUserOp, mlir::Operation* prevOp,
@@ -1021,6 +1113,50 @@ mlir::LogicalResult SwapLeakyReluTranspose::matchAndRewrite(IE::LeakyReluOp orig
     return mlir::success();
 }
 
+/*
+Gather              QuantizeCast
+     |         =>        |
+QuantizeCast          Gather
+*/
+class SwapGatherQuantizeCast final : public mlir::OpRewritePattern<IE::GatherOp> {
+public:
+    SwapGatherQuantizeCast(mlir::MLIRContext* ctx, Logger log, mlir::PatternBenefit benefit = 1)
+            : mlir::OpRewritePattern<IE::GatherOp>(ctx, benefit), _log(log) {
+        setDebugName("SwapGatherQuantizeCast");
+    }
+
+    mlir::LogicalResult matchAndRewrite(IE::GatherOp origOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+mlir::LogicalResult SwapGatherQuantizeCast::matchAndRewrite(IE::GatherOp origOp,
+                                                            mlir::PatternRewriter& rewriter) const {
+    if (!origOp->hasOneUse()) {
+        return mlir::failure();
+    }
+
+    auto quantizeCastOp = mlir::dyn_cast<IE::QuantizeCastOp>(*origOp->getUsers().begin());
+    if (quantizeCastOp == nullptr) {
+        return mlir::failure();
+    }
+
+    if (IE::isPerAxisQuant(quantizeCastOp.getInput()) || IE::isPerAxisQuant(quantizeCastOp.getOutput())) {
+        return matchFailed(_log, rewriter, origOp, "QuantizeCastOp doesn't have valid quantize type");
+    }
+
+    auto outputType = mlir::cast<vpux::NDTypeInterface>(quantizeCastOp.getOutput().getType());
+    auto outElemType = outputType.getElementType();
+    auto newQuantizeCastOp =
+            rewriter.create<IE::QuantizeCastOp>(quantizeCastOp->getLoc(), origOp.getInput(), outElemType);
+    auto newGatherOp = rewriter.create<IE::GatherOp>(origOp.getLoc(), newQuantizeCastOp.getOutput(),
+                                                     origOp.getIndices(), origOp.getAxis(), origOp.getAxisValueAttr(),
+                                                     origOp.getBatchDims(), origOp.getIndicesRankAttr());
+    rewriter.replaceOp(quantizeCastOp, newGatherOp.getOutput());
+    return mlir::success();
+}
+
 //
 // SwapOperationsPass
 //
@@ -1060,11 +1196,13 @@ void SwapOperationsPass::safeRunOnFunc() {
     // TODO: E#194430 Replace Clamp rewriter with new implementation
     patterns.add<SwapWithActivation<IE::ClampOp>>(&ctx, _log.nest(), _seOpsEnabled);
     patterns.add<SwapGeluExpand>(&ctx, _log.nest(), _seOpsEnabled);
-    patterns.add<SwapWithBias>(&ctx, _log.nest());
+    patterns.add<SwapWithBias<IE::AddOp>>(&ctx, _log.nest());
+    patterns.add<SwapWithBias<IE::ScaleShiftOp>>(&ctx, _log.nest());
     // TODO: E#18651 Support ElemTypeInfoOpInterface for Slice
     patterns.add<SwapTanhSlice>(&ctx, _log.nest());
     patterns.add<SwapTanhShapeCast>(&ctx, _log.nest());
     patterns.add<SwapExpandQuantizeCast>(&ctx, _log.nest());
+    patterns.add<SwapGatherQuantizeCast>(&ctx, _log.nest());
     patterns.add<SwapDequantMemPermute>(&ctx, _log.nest());
     patterns.add<SwapBatchedMemPermuteSlice>(&ctx, _log.nest());
     patterns.add<SwapAffineReshapeFakeQuantize>(&ctx, _log.nest());
@@ -1109,11 +1247,15 @@ void vpux::IE::registerSwapOperationsRewriters(RewriterRegistry& registry, Array
         registry.registerRewriter<SwapWithActivation<IE::ClampOp>>("swap-with-activation-clamp", log.nest(),
                                                                    seOpsEnabled, benefitLevels[index]);
         registry.registerRewriter<SwapGeluExpand>("swap-gelu-expand", log.nest(), benefitLevels[index]);
-        registry.registerRewriter<SwapWithBias>("swap-with-bias", log.nest(), benefitLevels[index]);
+        registry.registerRewriter<SwapWithBias<IE::AddOp>>("swap-add-with-bias", log.nest(), benefitLevels[index]);
+        registry.registerRewriter<SwapWithBias<IE::ScaleShiftOp>>("swap-scaleshift-with-bias", log.nest(),
+                                                                  benefitLevels[index]);
         // TODO: E#18651 Support ElemTypeInfoOpInterface for Slice
         registry.registerRewriter<SwapTanhSlice>("swap-tanh-slice", log.nest(), benefitLevels[index]);
         registry.registerRewriter<SwapTanhShapeCast>("swap-tanh-shape-cast", log.nest(), benefitLevels[index]);
         registry.registerRewriter<SwapExpandQuantizeCast>("swap-expand-quantize-cast", log.nest(),
+                                                          benefitLevels[index]);
+        registry.registerRewriter<SwapGatherQuantizeCast>("swap-gather-quantize-cast", log.nest(),
                                                           benefitLevels[index]);
         registry.registerRewriter<SwapDequantMemPermute>("swap-dequant-mem-permute", log.nest(), benefitLevels[index]);
         registry.registerRewriter<SwapBatchedMemPermuteSlice>("swap-batched-mem-permute-slice", log.nest(),

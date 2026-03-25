@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,7 @@
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @FuseSubViewIntoSETableOp
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x1x5x9xi32, #NHWC>)
 func.func @FuseSubViewIntoSETableOp(%arg0 : memref<1x1x5x9xi32, #NHWC>) -> memref<1x1x5x9xi32, #NHWC> {
     %se_table = VPUIP.StorageElementTable {
                     dataElemType = f16,
@@ -43,6 +44,6 @@ func.func @FuseSubViewIntoSETableOp(%arg0 : memref<1x1x5x9xi32, #NHWC>) -> memre
     // CHECK-SAME:                     seSize = [32]}
     // CHECK-SAME:                     -> memref<1x1x5x9xi32, #NHWC>
 
-    // CHECK: [[COPY_RESULT:%.+]] = VPUIP.Copy inputs([[SE_TABLE]] : memref<1x1x5x9xi32, #NHWC>) outputs(%arg0 : memref<1x1x5x9xi32, #NHWC>) -> memref<1x1x5x9xi32, #NHWC>
+    // CHECK: [[COPY_RESULT:%.+]] = VPUIP.Copy inputs([[SE_TABLE]] : memref<1x1x5x9xi32, #NHWC>) outputs([[ARG_0]] : memref<1x1x5x9xi32, #NHWC>) -> memref<1x1x5x9xi32, #NHWC>
     // CHECK: return [[COPY_RESULT]] : memref<1x1x5x9xi32, #NHWC>
 }

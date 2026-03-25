@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2026 Intel Corporation.
+// Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -17,6 +17,7 @@
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUASM/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPUIP/transforms/rewriters.hpp"
 #include "vpux/compiler/dialect/VPUIPDPU/passes.hpp"
 #include "vpux/compiler/dialect/VPUMI37XX/passes.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/passes.hpp"
@@ -24,7 +25,6 @@
 #include "vpux/compiler/dialect/const/passes.hpp"
 #include "vpux/compiler/dialect/core/transforms/passes.hpp"
 #include "vpux/compiler/dynamic_rewriter/passes.hpp"
-#include "vpux/compiler/dynamic_rewriter/rewriters_register.hpp"
 
 // NPU HW-specific components
 #include "vpux/compiler/dialect/VPU/interfaces/singleton_initializer.hpp"
@@ -45,7 +45,8 @@
 namespace vpux {
 void registerAllPassesGlobally() {
     // Rewriter Registration
-    vpux::createRewriterRegistry();
+    auto& registry = RegistryManager::getGlobalRegistry();
+    vpux::VPUIP::registerVPUIPRewriters(registry);
     // Pass Registration
     vpux::Core::registerPasses();
     vpux::locverif::registerPasses();
@@ -96,6 +97,7 @@ void registerAllHwSpecificComponents(mlir::DialectRegistry& registry, vpux::conf
 
     vpux::config::registerConstraints(registry, archKind);
     vpux::IE::registerStrategies(registry, archKind);
-    vpux::VPU::initializeSingletonCache(registry, vpux::VPU::DeviceVersion{std::nullopt, archKind});
+    vpux::VPU::initializeSingletons(registry, vpux::VPU::DeviceVersion{std::nullopt, archKind});
+    vpux::VPUIP::registerStrategies(registry, archKind);
 }
 }  // namespace vpux

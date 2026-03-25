@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2023-2026 Intel Corporation.
+# Copyright (C) 2023-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -17,7 +17,33 @@ if(ENABLE_BLOB_DUMP)
 endif()
 
 if(NOT TARGET gtest)
-    add_subdirectory(${OpenVINO_SOURCE_DIR}/thirdparty/gtest gtest)
+    if(NOT OpenVINO_SOURCE_DIR)
+        # Using OpenVINO prebuilt developer package
+        set(OPENVINO_INSTALL_DEVELOPER_PACKAGE_DIR "${OpenVINODeveloperPackage_DIR}/..")
+        message(STATUS "OpenVINO Developer Package Directory: ${OPENVINO_INSTALL_DEVELOPER_PACKAGE_DIR}")
+
+        add_library(gtest INTERFACE)
+        target_link_libraries(gtest INTERFACE openvino::gtest)
+        get_target_property(GTEST_OV_PKG_INCLUDE_DIR openvino::gtest INTERFACE_INCLUDE_DIRECTORIES)
+        set_target_properties(gtest PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${GTEST_OV_PKG_INCLUDE_DIR}")
+
+        add_library(gtest_main INTERFACE)
+        target_link_libraries(gtest_main INTERFACE openvino::gtest_main)
+        get_target_property(GTEST_MAIN_OV_PKG_INCLUDE_DIR openvino::gtest_main INTERFACE_INCLUDE_DIRECTORIES)
+        set_target_properties(gtest_main PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${GTEST_MAIN_OV_PKG_INCLUDE_DIR}")
+    else()
+        # gtest used by OpenVINO doesn't support CMake4+
+        # OpenVINO enables CMake4+ support by applying minimum CMake policy as below before gtest build
+        # reuse the same work-around just for gtest build to enable CMake4+ support
+        #
+        # note: npuUnitTests don't need this work-around as it links against openvino::commonTestUtils
+        # instead of building gtest by itself; attempt to do the same here fails CiD build due to
+        # openvino::commonTestUtils not being exported in some cases
+        cmake_policy(PUSH)
+        set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+        add_subdirectory(${OpenVINO_SOURCE_DIR}/thirdparty/gtest gtest)
+        cmake_policy(POP)
+    endif()
 endif()
 
 if(WIN32)

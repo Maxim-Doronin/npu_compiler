@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,13 +9,15 @@
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @EltwiseAddAssignedSOHOverlapped
+// CHECK-SAME:  ([[ARG_0:%[^:]+]]: tensor<1x32x112x112xf16, {order = #NHWC}>,
+// CHECK-SAME:  [[ARG_1:%[^:]+]]: tensor<1x32x112x112xf16, {order = #NHWC}>)
 func.func @EltwiseAddAssignedSOHOverlapped(%arg0: tensor<1x32x112x112xf16, {order = #NHWC}>, %arg1: tensor<1x32x112x112xf16, {order = #NHWC}>) -> tensor<1x32x112x112xf16, {order = #NHWC}> {
     %0 = VPU.NCE.Eltwise(%arg0, %arg1) { op_type = #VPU.eltwise_type<ADD>, ppe = #VPU.PPEStub<> } :
          tensor<1x32x112x112xf16, {order = #NHWC}>, tensor<1x32x112x112xf16, {order = #NHWC}>
          -> tensor<1x32x112x112xf16, {order = #NHWC}>
     return %0: tensor<1x32x112x112xf16, {order = #NHWC}>
 
-    //CHECK:        [[VAL0:%.+]] = VPU.NCE.Eltwise(%arg0, %arg1) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>, op_type = #VPU.eltwise_type<ADD>, ppe = #VPU.PPEStub<>} -> tensor<1x32x112x112xf16, {order = #NHWC}>
+    //CHECK:        [[VAL0:%.+]] = VPU.NCE.Eltwise([[ARG_0]], [[ARG_1]]) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>, op_type = #VPU.eltwise_type<ADD>, ppe = #VPU.PPEStub<>} -> tensor<1x32x112x112xf16, {order = #NHWC}>
 
     //CHECK:        return [[VAL0]] : tensor<1x32x112x112xf16, {order = #NHWC}>
 }
@@ -187,6 +189,7 @@ config.Resources 2 of @NCE at 1.300000e+03 MHz {
 }
 
 // CHECK-LABEL: @EltwiseAssignedSOHWithOddWidthAndSmallHeight
+// CHECK-SAME:  ([[ARG_0:%[^:]+]]: tensor<1x16x4x331776xf16, {order = #NHWC}>)
 func.func @EltwiseAssignedSOHWithOddWidthAndSmallHeight(%arg0: tensor<1x16x4x331776xf16, {order = #NHWC}>) -> tensor<1x16x4x16186xf16, {order = #NHWC}> {
     %eltwise1_input2 = const.Declare tensor<1x16x4x8093xf16, {order = #NHWC}> = dense<1.0> : tensor<1x16x4x8093xf16>, [#const.Reorder<#NHWC>]
     %eltwise2_input2 = const.Declare tensor<1x16x4x8093xf16, {order = #NHWC}> = dense<1.0> : tensor<1x16x4x8093xf16>, [#const.Reorder<#NHWC>]
@@ -203,14 +206,14 @@ func.func @EltwiseAssignedSOHWithOddWidthAndSmallHeight(%arg0: tensor<1x16x4x331
     // CHECK-DAG:    [[ELTWISE1_INPUT2:%.+]] = const.Declare tensor<1x16x4x8093xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<1x16x4x8093xf16>, [#const.Reorder<#NHWC>]
     // CHECK-DAG:    [[ELTWISE2_INPUT2:%.+]] = const.Declare tensor<1x16x4x8093xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<1x16x4x8093xf16>, [#const.Reorder<#NHWC>]
 
-    // CHECK:    [[ELTWISE1_INPUT1:%.+]] = VPU.Slice %arg0 [0, 0, 0, 0] [1, 16, 4, 8093] : tensor<1x16x4x331776xf16, {order = #NHWC}> to tensor<1x16x4x8093xf16, {order = #NHWC}>
+    // CHECK:    [[ELTWISE1_INPUT1:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 0, 0] [1, 16, 4, 8093] : tensor<1x16x4x331776xf16, {order = #NHWC}> to tensor<1x16x4x8093xf16, {order = #NHWC}>
     // CHECK:    [[ELTWISE1:%.+]] = VPU.NCE.Eltwise([[ELTWISE1_INPUT1]], [[ELTWISE1_INPUT2]]) {
     // CHECK-SAME:  multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
     // CHECK-SAME:  op_type = #VPU.eltwise_type<ADD>,
     // CHECK-SAME:  ppe = #VPU.PPEStub<>}
     // CHECK-SAME:  -> tensor<1x16x4x8093xf16, {order = #NHWC}>
 
-    // CHECK:    [[ELTWISE2_INPUT1:%.+]] = VPU.Slice %arg0 [0, 0, 0, 8093] [1, 16, 4, 8093] : tensor<1x16x4x331776xf16, {order = #NHWC}> to tensor<1x16x4x8093xf16, {order = #NHWC}>
+    // CHECK:    [[ELTWISE2_INPUT1:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 0, 8093] [1, 16, 4, 8093] : tensor<1x16x4x331776xf16, {order = #NHWC}> to tensor<1x16x4x8093xf16, {order = #NHWC}>
     // CHECK:    [[ELTWISE2:%.+]] = VPU.NCE.Eltwise([[ELTWISE2_INPUT1]], [[ELTWISE2_INPUT2]])
     // CHECK-SAME:  multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
     // CHECK-SAME:  op_type = #VPU.eltwise_type<ADD>,
@@ -529,13 +532,35 @@ func.func @LSTMSequenceBidirectionalAssignedSplitOverKernel(%input: tensor<1x2x3
     %syncBuffer = const.Declare tensor<1x1x1x2xsi32> = dense<0> : tensor<1x1x1x2xsi32>
     %outputHiddenValues, %outputHiddenState, %outputCellState =
         VPU.LSTMSequence(%input, %initialHiddenState, %initialCellState, %reccurrenceWeights, %biases, %syncBuffer)
-        {direction = #IE.rnn_seq_direction<BIDIRECTIONAL>}
+        {direction = #IE.rnn_seq_direction<BIDIRECTIONAL>, operandSegmentSizes = array<i32: 1, 1, 1, 0, 1, 1, 1>}
         : tensor<1x2x35x512xf16>, tensor<1x2x1x128xf16>, tensor<1x2x1x128xf16>,
           tensor<1x4x128x128xf16, {order = #NWHC}>, tensor<1x1x4x128xf16, {order = #NCWH}>, tensor<1x1x1x2xsi32>
         -> tensor<1x2x35x128xf16>, tensor<1x2x1x128xf16>, tensor<1x2x1x128xf16>
 
     return %outputHiddenValues, %outputHiddenState, %outputCellState
         : tensor<1x2x35x128xf16>, tensor<1x2x1x128xf16>, tensor<1x2x1x128xf16>
+
+    // CHECK: VPU.LSTMSequence
+    // CHECK-SAME: multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>
+}
+
+// -----
+
+// CHECK-LABEL: @LSTMSequenceSeqLenParamDirBidirectionalAssignedSplitOverKernel
+func.func @LSTMSequenceSeqLenParamDirBidirectionalAssignedSplitOverKernel(%input: tensor<1x2x160x1024xf16>,
+        %initialHiddenState: tensor<1x2x1x256xf16>, %initialCellState: tensor<1x2x1x256xf16>, %sequenceLengthData: tensor<1x1x1x1xsi32>,
+        %reccurrenceWeights: tensor<2x4x256x256xf16>, %biases: tensor<1x2x4x256xf16>)
+        -> (tensor<1x2x160x256xf16>, tensor<1x2x1x256xf16>, tensor<1x2x1x256xf16>) {
+    %syncBuffer = const.Declare tensor<1x1x2x4736xsi32> = dense<0> : tensor<1x1x2x4736xsi32>
+    %outputHiddenValues, %outputHiddenState, %outputCellState =
+        VPU.LSTMSequence(%input, %initialHiddenState, %initialCellState, %sequenceLengthData, %reccurrenceWeights, %biases, %syncBuffer)
+        {direction = #IE.rnn_seq_direction<BIDIRECTIONAL>, operandSegmentSizes = array<i32: 1, 1, 1, 1, 1, 1, 1>, useDpu = true}
+        : tensor<1x2x160x1024xf16>, tensor<1x2x1x256xf16>, tensor<1x2x1x256xf16>, tensor<1x1x1x1xsi32>,
+          tensor<2x4x256x256xf16>, tensor<1x2x4x256xf16>, tensor<1x1x2x4736xsi32>
+        -> tensor<1x2x160x256xf16>, tensor<1x2x1x256xf16>, tensor<1x2x1x256xf16>
+
+    return %outputHiddenValues, %outputHiddenState, %outputCellState
+        : tensor<1x2x160x256xf16>, tensor<1x2x1x256xf16>, tensor<1x2x1x256xf16>
 
     // CHECK: VPU.LSTMSequence
     // CHECK-SAME: multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>
@@ -557,7 +582,7 @@ func.func @LSTMSequenceForwardNotAssignedSplitOverKernel(%input: tensor<1x2x35x5
     // state of a FORWARD/REVERSE LSTMSequence is 1. So SOK is impossible.
     %outputHiddenValues, %outputHiddenState, %outputCellState =
         VPU.LSTMSequence(%input, %initialHiddenState, %initialCellState, %reccurrenceWeights, %biases, %syncBuffer)
-        {direction = #IE.rnn_seq_direction<FORWARD>}
+        {direction = #IE.rnn_seq_direction<FORWARD>, operandSegmentSizes = array<i32: 1, 1, 1, 0, 1, 1, 1>}
         : tensor<1x2x35x512xf16>, tensor<1x1x1x128xf16>, tensor<1x1x1x128xf16>,
           tensor<1x4x128x128xf16, {order = #NWHC}>, tensor<1x1x4x128xf16, {order = #NCWH}>, tensor<1x1x1x2xsi32>
         -> tensor<1x1x35x128xf16>, tensor<1x1x1x128xf16>, tensor<1x1x1x128xf16>
@@ -585,7 +610,7 @@ func.func @LSTMSequenceReverseNotAssignedSplitOverKernel(%input: tensor<1x2x35x5
     // state of a FORWARD/REVERSE LSTMSequence is 1. So SOK is impossible.
     %outputHiddenValues, %outputHiddenState, %outputCellState =
         VPU.LSTMSequence(%input, %initialHiddenState, %initialCellState, %reccurrenceWeights, %biases, %syncBuffer)
-        {direction = #IE.rnn_seq_direction<REVERSE>}
+        {direction = #IE.rnn_seq_direction<REVERSE>, operandSegmentSizes = array<i32: 1, 1, 1, 0, 1, 1, 1>}
         : tensor<1x2x35x512xf16>, tensor<1x1x1x128xf16>, tensor<1x1x1x128xf16>,
           tensor<1x4x128x128xf16, {order = #NWHC}>, tensor<1x1x4x128xf16, {order = #NCWH}>, tensor<1x1x1x2xsi32>
         -> tensor<1x1x35x128xf16>, tensor<1x1x1x128xf16>, tensor<1x1x1x128xf16>
@@ -910,12 +935,13 @@ func.func @GatherNDAssignedClustering(%arg0: tensor<1x1x1792x16xf16>, %arg1: ten
 // -----
 
 // CHECK-LABEL: @SoftMaxAssignedSplitOverGroup
+// CHECK-SAME:  ([[ARG_0:%[^:]+]]: tensor<8x1x1x512x64xf16>)
 func.func @SoftMaxAssignedSplitOverGroup(%arg0: tensor<8x1x1x512x64xf16>) -> tensor<8x1x1x512x64xf16> {
     %0 = VPU.SoftMax(%arg0) {axisInd = 4 : i64} : tensor<8x1x1x512x64xf16> -> tensor<8x1x1x512x64xf16>
 
     return %0 : tensor<8x1x1x512x64xf16>
 
-    //CHECK:   [[ResultSoftMax:%.+]] = VPU.SoftMax(%arg0) {axisInd = 4 : i64, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverGroup>} : tensor<8x1x1x512x64xf16> -> tensor<8x1x1x512x64xf16>
+    //CHECK:   [[ResultSoftMax:%.+]] = VPU.SoftMax([[ARG_0]]) {axisInd = 4 : i64, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverGroup>} : tensor<8x1x1x512x64xf16> -> tensor<8x1x1x512x64xf16>
     //CHECK:   return [[ResultSoftMax]] : tensor<8x1x1x512x64xf16>
 }
 
@@ -1993,4 +2019,41 @@ func.func @SWScatterElementsUpdateAssignedSOW(%arg0 : tensor<1x1x1024x2048xf16>,
     //CHECK:    [[SCATTER_ELEMENTS:%.+]] = VPU.ScatterElementsUpdate([[INPUT]], [[INDICES]], [[UPDATE]])
     //CHECK-SAME:       {axis = 2 : i64, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverWidth>, reduction = #IE.scatter_elements_update_reduction_type<SUM>, use_init_val = true} : tensor<1x1x1024x2048xf16>, tensor<1x1x32x2048xsi32>, tensor<1x1x32x2048xf16> -> tensor<1x1x1024x2048xf16>
     //CHECK:    return [[SCATTER_ELEMENTS]] : tensor<1x1x1024x2048xf16>
+}
+
+// -----
+
+// Note: this tests the details of SOK validation in strategy assignment
+// for VPU.Dequantize and the following SOK-selected operation.
+
+!qElemType = !quant.uniform<u16:f16, 7.2892294156190474E-6:40989>
+// CHECK: [[QTYPE:!.+]] = !quant.uniform<u16:f16, 7.2892294156190474E-6:40989>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+// CHECK: [[NHWC:#.+]] = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK: func @NonConstDequantizeWithSokConsumer([[IN:%.+]]: tensor<1x640x32x32x[[QTYPE]]>)
+// CHECK-SAME: -> tensor<1x640x32x32xf16, {order = [[NHWC]]}>
+func.func @NonConstDequantizeWithSokConsumer(%nonConstInput: tensor<1x640x32x32x!qElemType>)
+        -> tensor<1x640x32x32xf16, {order = #NHWC}> {
+    // Note: dequantize here cannot have SOK, but nevertheless it must be
+    // correctly tested for the possibility
+    %dequant = VPU.Dequantize(%nonConstInput) {dstElemType = f16}
+        : tensor<1x640x32x32x!qElemType> -> tensor<1x640x32x32xf16>
+    %maybeSokOp = VPU.NCE.Permute(%dequant) {
+        dstElemType = f16,
+        dstOrder = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>,
+        expandedChannels = 640 : i64, ppe = #VPU.PPEInt<mode = <NOOP>,
+        clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64,
+        lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, quant_scale = [5.000000e-01],
+        fp_prelu_alpha = 5.000000e-01 : f64>
+    } -> tensor<1x640x32x32xf16, {order = #NHWC}>
+    return %maybeSokOp : tensor<1x640x32x32xf16, {order = #NHWC}>
+
+  // CHECK: [[DEQUANT:%.+]] = VPU.Dequantize([[IN]])
+  // CHECK-SAME: multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>
+
+  // CHECK: [[SOK_OP:%.+]] = VPU.NCE.Permute([[DEQUANT]])
+  // CHECK-SAME: multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeightOverlapped>
+
+  // CHECK: return [[SOK_OP]]
 }

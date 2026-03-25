@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -84,7 +84,7 @@ DistributionMode vpux::VPU::getSWInputTensorDistributionMode(LSTMSequenceOp lstm
             strategy);
 
     if (strategy == MultiClusterStrategy::SplitOverBatch) {
-        if (operand == lstmSequenceOp.getReccurenceWeights()) {
+        if (operand == lstmSequenceOp.getRecurrenceWeights()) {
             return DistributionMode::DUPLICATED;
         }
 
@@ -94,6 +94,10 @@ DistributionMode vpux::VPU::getSWInputTensorDistributionMode(LSTMSequenceOp lstm
     }
 
     if (operand == lstmSequenceOp.getSyncBuffer()) {
+        return DistributionMode::DUPLICATED;
+    }
+
+    if (operand == lstmSequenceOp.getSequenceLengthData() && strategy != MultiClusterStrategy::SplitOverBatch) {
         return DistributionMode::DUPLICATED;
     }
 
@@ -941,7 +945,7 @@ SmallVector<int64_t> vpux::VPU::getSWInputTensorNumTiles(LSTMSequenceOp lstmSequ
             return {numClusters, 1, 1, 1};
         } else if (strategy == MultiClusterStrategy::SplitOverKernel) {
             const auto numDirections = inputData.getShape()[Dims4D::Act::C];
-            if (operand == lstmSequenceOp.getReccurenceWeights()) {
+            if (operand == lstmSequenceOp.getRecurrenceWeights()) {
                 return {numDirections, 1, 1, 1};
             } else {
                 return {1, numDirections, 1, 1};
@@ -1834,7 +1838,7 @@ bool vpux::VPU::isSWEltwiseAndNeedsAlignment(mlir::Operation* op) {
         const auto outRank = outType.getRank();
         auto innermostDim = outOrder.dimAt(outRank - 1);
 
-        if (in1Type.getShape()[innermostDim] != in2Type.getShape()[innermostDim]) {
+        if (getBoundedShape(in1Type)[innermostDim] != getBoundedShape(in2Type)[innermostDim]) {
             return true;
         }
     }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -617,8 +617,7 @@ bool vpux::VPUIP::isLegalConvertToDMA(mlir::Operation* op, vpux::Logger log, boo
                     return false;
                 }
 
-                auto module = op->getParentOfType<mlir::ModuleOp>();
-                const auto dmaPortNum = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN).getCount();
+                const auto dmaPortNum = config::getNumOfDMAPorts(op);
 
                 if (!VPUIP::getPermuteDMASubInputShapes(arch, inputType, outputType, memPerm, dmaPortNum, log)
                              .has_value()) {
@@ -775,8 +774,7 @@ bool vpux::VPUIP::isLegalAndBeneficialConvertToDMA(mlir::Operation* op, vpux::Lo
         return false;
     }
     const auto arch = config::getArch(op);
-    auto module = op->getParentOfType<mlir::ModuleOp>();
-    const auto dmaPortNum = config::getAvailableExecutor(module, config::ExecutorKind::DMA_NN).getCount();
+    const auto dmaPortNum = config::getNumOfDMAPorts(op);
     VPUX_THROW_WHEN(dmaPortNum <= 0, "Number of ports should be a positive integer, while it is {0}", dmaPortNum);
     if (auto swKernelOp = mlir::dyn_cast<VPUIP::SwKernelOp>(op)) {
         if (VPUIP::isDepthToSpaceSwKernel(swKernelOp)) {

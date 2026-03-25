@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -314,7 +314,8 @@ func.func @fusePermuteQuantizeForMultipleQuantizeCast(%arg0: tensor<1x3x256x256x
   return %4, %5, %6 : tensor<1x4x256x256x!qElemType1, {order = #NHWC}>, tensor<1x16x128x96x!qElemType1, {order = #NHWC}>, tensor<1x16x128x96x!qElemType2, {order = #NHWC}>
 
 // CHECK-LABEL: @fusePermuteQuantizeForMultipleQuantizeCast
-// CHECK:             [[PERM_QUANT:%.+]] = IE.PermuteQuantize(%arg0) {dstElemType = !qElemType, dst_order = #NHWC, mem_perm = #NHWC, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0]} : tensor<1x3x256x256xf16> -> tensor<1x3x256x256x!qElemType, {order = #NHWC}>
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x3x256x256xf16>
+// CHECK:             [[PERM_QUANT:%.+]] = IE.PermuteQuantize([[ARG_0]]) {dstElemType = !qElemType, dst_order = #NHWC, mem_perm = #NHWC, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0]} : tensor<1x3x256x256xf16> -> tensor<1x3x256x256x!qElemType, {order = #NHWC}>
 // CHECK:             [[QUANT_CAST:%.+]] = IE.QuantizeCast([[PERM_QUANT]]) {dstElemType = !qElemType1} : tensor<1x3x256x256x!qElemType, {order = #NHWC}> -> tensor<1x3x256x256x!qElemType1, {order = #NHWC}>
 // CHECK:             [[EXPAND:%.+]] = IE.Expand([[PERM_QUANT]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 1, 0, 0]} : tensor<1x3x256x256x!qElemType, {order = #NHWC}> -> tensor<1x4x256x256x!qElemType, {order = #NHWC}>
 // CHECK:             [[SHAPE_CAST0:%.+]] = IE.ShapeCast {shape = [1, 16, 128, 96]} inputs([[PERM_QUANT]] : tensor<1x3x256x256x!qElemType, {order = #NHWC}>) -> tensor<1x16x128x96x!qElemType, {order = #NHWC}>
@@ -399,6 +400,7 @@ func.func @SkipTrivialReorderForAvgPool(%arg0: tensor<1x1x64x64xf16>) -> tensor<
 
 // TODO: Fix E#200373 to not fuse the following case
 // CHECK-LABEL: @FusePermuteQuantizeForTrivialReorderConvWithOverlappedInput
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x1x64x64xf16>
 func.func @FusePermuteQuantizeForTrivialReorderConvWithOverlappedInput(%arg0: tensor<1x1x64x64xf16>) -> tensor<1x16x32x32xf16, {order = #NHWC}> {
   %cst_weights = const.Declare tensor<16x1x3x3x!qElemType, {order = #NHWC}> = dense<1> : tensor<16x1x3x3xui8>, [#const.CastElemType<!qElemType>, #const.Reorder<#NHWC>]
 
@@ -423,7 +425,7 @@ func.func @FusePermuteQuantizeForTrivialReorderConvWithOverlappedInput(%arg0: te
   return %3 : tensor<1x16x32x32xf16, {order = #NHWC}>
 
   // CHECK-DAG:   [[WEIGHTS:%.+]] = const.Declare tensor<16x1x3x3x!qElemType, {order = #NHWC}>
-  // CHECK:       [[PERM_QUANT:%.+]] = IE.PermuteQuantize(%arg0) {
+  // CHECK:       [[PERM_QUANT:%.+]] = IE.PermuteQuantize([[ARG_0]]) {
   // CHECK-SAME:    dstElemType = !qElemType1,
   // CHECK-SAME:    dst_order = #NHWC,
   // CHECK-SAME:    mem_perm = #NHWC

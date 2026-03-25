@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -68,13 +68,13 @@ module @Test_1 {
 }
 
 // CHECK:    VPUIPDPU.DPUInvariant @DPUInvariant_0 <{input = @DeclareBuffer_ActIn, input_sparsity_map = @DeclareBuffer_SparseIn, input_storage_element_table = @DeclareBuffer_SEIn, nce_task_type = #VPUIP.nce_task_type<ELTWISE>, output = @DeclareBuffer_ActOut, task_index = !VPURegMapped.Index<0:0:0>, task_location = @DeclareTaskBuffer_DPUInvariant_0, weight_table = @DeclareBuffer_WeightTable}> DPUCfg : {
-// CHECK:    ^bb0(%arg0: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg1: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg2: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg3: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg4: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg5: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg6: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg7: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg8: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg9: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg10: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg11: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg12: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, %arg13: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>):
+// CHECK:    ^bb0([[ARG_0:%.+]]: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, [[ARG_1:%.+]]: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, [[ARG_2:%.+]]: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, [[ARG_3:%.+]]: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, [[ARG_4:%.+]]: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, [[ARG_5:%.+]]: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, [[ARG_6:%.+]]: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, [[ARG_7:%.+]]: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, [[ARG_8:%.+]]: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, [[ARG_9:%.+]]: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, [[ARG_10:%.+]]: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, [[ARG_11:%.+]]: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, [[ARG_12:%.+]]: memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>, [[ARG_13:%.+]]: memref<1x16x64x64xf16, #NHWC, [@CMX_NN, 0]>):
 // CHECK:      VPUIPDPU.IDUCfg {
 // CHECK:        VPUIPDPU.IDUStorageElement se_size(32)
 // CHECK:        VPUIPDPU.IDUKernel kernel_x(1) kernel_y(2)
 // CHECK:        VPUIPDPU.IDUStride stride_x(0) stride_y(0)
 // CHECK:        VPUIPDPU.IDUInputLayerCfg sparsity_pattern(7) {input_compressed}
-// CHECK:        VPUIPDPU.IDUInActivations in_activations(%arg0 : memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>)
+// CHECK:        VPUIPDPU.IDUInActivations in_activations([[ARG_0]] : memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>)
 // CHECK:        VPUIPDPU.IDUWorkloadCfg workload_type(CONV)
 // CHECK:        VPUIPDPU.IDUWeights wmode(f16) wt_plt_cfg(NO_PLT)
 // CHECK:        VPUIPDPU.IDUEltWiseMode eltwise_type(ADD)

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -22,6 +22,10 @@ void config::ConstraintsInitializer50XX::initialize(mlir::MLIRContext* context,
     constraints.mappedInferenceFormat = NPUConstraints::MappedInferenceFormat::MappedInference;
     constraints.baseElfAbiVersion = config::Version(2, 0, 0);
     constraints.dynamicStridesMinElfAbiVersion = config::Version(2, 1, 0);
+    if (std::holds_alternative<Platform>(target) && std::get<Platform>(target) == Platform::NPU5020) {
+        constraints.mappedInferenceFormat = NPUConstraints::MappedInferenceFormat::ManagedMappedInference;
+        constraints.baseElfAbiVersion = config::Version(2, 2, 0);
+    }
 
     setNPUConstraints(context, constraints);
 }

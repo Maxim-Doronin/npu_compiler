@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,12 +7,13 @@
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
 // CHECK-LABEL: @Eliminate
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<4x4xf32>
 func.func @Eliminate(%arg0 : tensor<4x4xf32>) -> tensor<4x4xf32> {
     %0 = IE.Squeeze(%arg0) { axes_value = [] } : tensor<4x4xf32> -> tensor<4x4xf32>
     return %0 : tensor<4x4xf32>
 
     // CHECK-NOT: IE.Squeeze
-    // CHECK:     return %arg0
+    // CHECK:     return [[ARG_0]]
 }
 
 // CHECK-LABEL: @ConstFold
@@ -28,22 +29,24 @@ func.func @ConstFold() -> tensor<4x4xf32> {
 }
 
 // CHECK-LABEL: @FuseWithReshape
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<16x1xf32>
 func.func @FuseWithReshape(%arg0: tensor<16x1xf32>) -> tensor<4x4xf32> {
     %0 = IE.Reshape(%arg0) { shape_value = [1, 1, 4, 4] } : tensor<16x1xf32> -> tensor<1x1x4x4xf32>
     %1 = IE.Squeeze(%0) { axes_value = [] } : tensor<1x1x4x4xf32> -> tensor<4x4xf32>
     return %1 : tensor<4x4xf32>
 
-    // CHECK: [[VAL0:%.+]] = IE.Reshape(%arg0) {shape_value = [4, 4]} : tensor<16x1xf32> -> tensor<4x4xf32>
+    // CHECK: [[VAL0:%.+]] = IE.Reshape([[ARG_0]]) {shape_value = [4, 4]} : tensor<16x1xf32> -> tensor<4x4xf32>
     // CHECK: return [[VAL0]] : tensor<4x4xf32>
 }
 
 // CHECK-LABEL: @ConvertConstToAttr
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<1x1x4x4xf32>
 func.func @ConvertConstToAttr(%arg0: tensor<1x1x4x4xf32>) -> tensor<4x4xf32> {
     %0 = const.Declare tensor<2xsi64> = dense<[0, 1]> : tensor<2xsi64>
     %1 = IE.Squeeze(%arg0, %0) : tensor<1x1x4x4xf32>, tensor<2xsi64> -> tensor<4x4xf32>
     return %1 : tensor<4x4xf32>
 
-    // CHECK: [[VAL0:%.+]] = IE.Squeeze(%arg0) {axes_value = [0, 1]} : tensor<1x1x4x4xf32> -> tensor<4x4xf32>
+    // CHECK: [[VAL0:%.+]] = IE.Squeeze([[ARG_0]]) {axes_value = [0, 1]} : tensor<1x1x4x4xf32> -> tensor<4x4xf32>
     // CHECK: return [[VAL0]] : tensor<4x4xf32>
 }
 

@@ -1,11 +1,12 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/dialect/VPUIP/transforms/factories/unroll_per_axis_tile_dma_strategy_getter.hpp"
+#include "vpux/compiler/dialect/VPUIP/interfaces/strategies.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/unroll_dma_analysis.hpp"
+#include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
@@ -44,7 +45,9 @@ void UnrollPerAxisTileDMAPass::safeRunOnFunc() {
     }
 
     mlir::RewritePatternSet patterns(&ctx);
-    auto unrollStrategy = VPUIP::createUnrollPerAxisTileDMAStrategy(func);
+    auto& strategyFactory = VPUIP::getVPUIPStrategyFactory(&ctx);
+    auto dmaPortCount = config::getNumOfDMAPorts(func);
+    auto unrollStrategy = strategyFactory->getUnrollPerAxisTileDMAStrategy(dmaPortCount);
     unrollStrategy->addPatterns(patterns, _log);
 
     if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), vpux::getDefaultGreedyRewriteConfig()))) {

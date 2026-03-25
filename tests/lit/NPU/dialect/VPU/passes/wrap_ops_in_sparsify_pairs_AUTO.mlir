@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,10 @@
 
 #loc0 = loc(unknown)
 module @main {
+    // CHECK-LABEL: @WrapSingleOpWithStats
+    // CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x16x16xf16, {order = #NHWC}>,
+    // CHECK-SAME: [[ARG_1:%[^:]+]]: tensor<16x1x1x4xsi32>,
+    // CHECK-SAME: [[ARG_2:%[^:]+]]: tensor<16x16x1x1xf16, {order = #NHWC}>)
     func.func @WrapSingleOpWithStats(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>, %wt: tensor<16x1x1x4xsi32>, %weights: tensor<16x16x1x1xf16, {order = #NHWC}>) -> tensor<1x16x16x16xf16, {order = #NHWC}> {
         %1 = VPU.NCE.Convolution(%arg0, %weights, %wt) {
                 ppe = #VPU.PPEStub<>,
@@ -19,9 +23,9 @@ module @main {
 
         return %1 : tensor<1x16x16x16xf16, {order = #NHWC}>
 
-        // CHECK:       [[VAL0:%.+]] = VPU.Sparsify(%arg0)
+        // CHECK:       [[VAL0:%.+]] = VPU.Sparsify([[ARG_0]])
         // CHECK-NOT:   VPU.Desparsify
-        // CHECK:       [[VAL1:%.+]] = VPU.NCE.Convolution([[VAL0]], %arg2, %arg1)
+        // CHECK:       [[VAL1:%.+]] = VPU.NCE.Convolution([[VAL0]], [[ARG_2]], [[ARG_1]])
         // CHECK-NOT:       -> !VPU.SparseTensor
         // CHECK-SAME:      -> tensor<1x16x16x16xf16, {order = #NHWC}>
         // CHECK:       [[VAL2:%.+]] = VPU.Sparsify([[VAL1]])
@@ -44,6 +48,10 @@ module @main {
 #loc0 = loc(unknown)
 module @main {
 
+    // CHECK-LABEL: @DoNotWrapSingleOpNotRelatedStats
+    // CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x16x16xf16, {order = #NHWC}>,
+    // CHECK-SAME: [[ARG_1:%[^:]+]]: tensor<16x1x1x4xsi32>,
+    // CHECK-SAME: [[ARG_2:%[^:]+]]: tensor<16x16x1x1xf16, {order = #NHWC}>)
     func.func @DoNotWrapSingleOpNotRelatedStats(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>, %wt: tensor<16x1x1x4xsi32>, %weights: tensor<16x16x1x1xf16, {order = #NHWC}>) -> tensor<1x16x16x16xf16, {order = #NHWC}> {
         %1 = VPU.NCE.Convolution(%arg0, %weights, %wt) {
                 ppe = #VPU.PPEStub<>,
@@ -56,7 +64,7 @@ module @main {
 
         // CHECK-NOT:   VPU.Sparsify
         // CHECK-NOT:   VPU.Desparsify
-        // CHECK:       [[VAL0:%.+]] = VPU.NCE.Convolution(%arg0, %arg2, %arg1)
+        // CHECK:       [[VAL0:%.+]] = VPU.NCE.Convolution([[ARG_0]], [[ARG_2]], [[ARG_1]])
         // CHECK-NOT:       -> !VPU.SparseTensor
         // CHECK-SAME:      -> tensor<1x16x16x16xf16, {order = #NHWC}>
         // CHECK:       [[VAL1:%.+]] = VPU.Sparsify([[VAL0]])
@@ -76,6 +84,10 @@ module @main {
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 module @main {
+    // CHECK-LABEL: @DoNotWrapSingleOpWithoutStats
+    // CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x16x16xf16, {order = #NHWC}>,
+    // CHECK-SAME: [[ARG_1:%[^:]+]]: tensor<16x1x1x4xsi32>,
+    // CHECK-SAME: [[ARG_2:%[^:]+]]: tensor<16x16x1x1xf16, {order = #NHWC}>)
     func.func @DoNotWrapSingleOpWithoutStats(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>, %wt: tensor<16x1x1x4xsi32>, %weights: tensor<16x16x1x1xf16, {order = #NHWC}>) -> tensor<1x16x16x16xf16, {order = #NHWC}> {
         %1 = VPU.NCE.Convolution(%arg0, %weights, %wt) {
                 ppe = #VPU.PPEStub<>,
@@ -88,7 +100,7 @@ module @main {
 
         // CHECK-NOT:   VPU.Sparsify
         // CHECK-NOT:   VPU.Desparsify
-        // CHECK:       [[VAL0:%.+]] = VPU.NCE.Convolution(%arg0, %arg2, %arg1)
+        // CHECK:       [[VAL0:%.+]] = VPU.NCE.Convolution([[ARG_0]], [[ARG_2]], [[ARG_1]])
         // CHECK-NOT:       -> !VPU.SparseTensor
         // CHECK-SAME:      -> tensor<1x16x16x16xf16, {order = #NHWC}>
         // CHECK-NOT:   VPU.Sparsify
@@ -105,6 +117,10 @@ module @main {
 
 #loc0 = loc(unknown)
 module @main {
+    // CHECK-LABEL: @WrapMultipleConsumers
+    // CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x16x16xf16, {order = #NHWC}>,
+    // CHECK-SAME: [[ARG_1:%[^:]+]]: tensor<16x1x1x4xsi32>,
+    // CHECK-SAME: [[ARG_2:%[^:]+]]: tensor<16x16x1x1xf16, {order = #NHWC}>)
     func.func @WrapMultipleConsumers(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>, %wt: tensor<16x1x1x4xsi32>, %weights: tensor<16x16x1x1xf16, {order = #NHWC}>) -> (tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<1x16x16x16xf16, {order = #NHWC}>) {
         %1 = VPU.NCE.Convolution(%arg0, %weights, %wt) {
                 ppe = #VPU.PPEStub<>,
@@ -127,10 +143,10 @@ module @main {
 
         return %2, %3 : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<1x16x16x16xf16, {order = #NHWC}>
 
-        // CHECK:       [[VAL0:%.+]] = VPU.Sparsify(%arg0)
+        // CHECK:       [[VAL0:%.+]] = VPU.Sparsify([[ARG_0]])
         // CHECK-NOT:   VPU.Desparsify
 
-        // CHECK:       [[VAL1:%.+]] = VPU.NCE.Convolution([[VAL0]], %arg2, %arg1)
+        // CHECK:       [[VAL1:%.+]] = VPU.NCE.Convolution([[VAL0]], [[ARG_2]], [[ARG_1]])
         // CHECK-NOT:       -> !VPU.SparseTensor
         // CHECK-SAME:      -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
@@ -140,7 +156,7 @@ module @main {
         // CHECK-NOT:   VPU.Sparsify
         // CHECK-NOT:   VPU.Desparsify
 
-        // CHECK:       [[VAL4:%.+]] = VPU.NCE.Convolution([[VAL3]], %arg2, %arg1)
+        // CHECK:       [[VAL4:%.+]] = VPU.NCE.Convolution([[VAL3]], [[ARG_2]], [[ARG_1]])
         // CHECK-NOT:       -> !VPU.SparseTensor
         // CHECK-SAME:      -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
@@ -150,7 +166,7 @@ module @main {
         // CHECK:       [[VAL7:%.+]] = VPU.Sparsify([[VAL3]])
         // CHECK-NOT:   VPU.Desparsify
 
-        // CHECK:       [[VAL8:%.+]] = VPU.NCE.Convolution([[VAL7]], %arg2, %arg1)
+        // CHECK:       [[VAL8:%.+]] = VPU.NCE.Convolution([[VAL7]], [[ARG_2]], [[ARG_1]])
         // CHECK-NOT:       -> !VPU.SparseTensor
         // CHECK-SAME:      -> tensor<1x16x16x16xf16, {order = #NHWC}>
 
@@ -175,6 +191,10 @@ module @main {
 
 #loc0 = loc(unknown)
 module @main {
+    // CHECK-LABEL: @WrapMultipleMixedConsumers
+    // CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x16x16xf16, {order = #NHWC}>,
+    // CHECK-SAME: [[ARG_1:%[^:]+]]: tensor<16x1x1x4xsi32>,
+    // CHECK-SAME: [[ARG_2:%[^:]+]]: tensor<16x16x1x1xf16, {order = #NHWC}>)
     func.func @WrapMultipleMixedConsumers(%arg0: tensor<1x16x16x16xf16, {order = #NHWC}>, %wt: tensor<16x1x1x4xsi32>, %weights: tensor<16x16x1x1xf16, {order = #NHWC}>) -> (tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<1x16x16x16xf16, {order = #NHWC}>) {
         %1 = VPU.NCE.Convolution(%arg0, %weights, %wt) {
                 ppe = #VPU.PPEStub<>,
@@ -197,10 +217,10 @@ module @main {
 
         return %2, %3 : tensor<1x16x16x16xf16, {order = #NHWC}>, tensor<1x16x16x16xf16, {order = #NHWC}>
 
-        // CHECK:       [[VAL0:%.+]] = VPU.Sparsify(%arg0)
+        // CHECK:       [[VAL0:%.+]] = VPU.Sparsify([[ARG_0]])
         // CHECK-NOT:   VPU.Desparsify
 
-        // CHECK:       [[VAL1:%.+]] = VPU.NCE.Convolution([[VAL0]], %arg2, %arg1)
+        // CHECK:       [[VAL1:%.+]] = VPU.NCE.Convolution([[VAL0]], [[ARG_2]], [[ARG_1]])
         // CHECK-NOT:       -> !VPU.SparseTensor
         // CHECK-SAME:      -> tensor<1x16x16x16xf16, {order = #NHWC}>
 

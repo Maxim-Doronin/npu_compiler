@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -204,7 +204,7 @@ uint32_t NPUReg40XX::NNDMAOp::getShapeValue(size_t shapeIdx, bool isInput) {
         break;
     }
     default:
-        VPUX_THROW("stride index {0} out of bounds", shapeIdx);
+        VPUX_THROW("shape index {0} out of bounds", shapeIdx);
         break;
     }
 

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -586,7 +586,7 @@ func.func @SwapWithSoftmaxAxis2(%arg0: tensor<1x16x16x1xf16, {order = #NWCH}>) -
 
     return %1 : tensor<1x1x16x16xf16, {order = #NWCH}>
 
-    // CHECK:               [[SOFTMAX:%.+]] = IE.SoftMax(%arg0) {axisInd = 2 : i64} : tensor<1x16x16x1xf16, {order = #NWCH}> -> tensor<1x16x16x1xf16, {order = #NWCH}>
+    // CHECK:               [[SOFTMAX:%.+]] = IE.SoftMax([[INPUT]]) {axisInd = 2 : i64} : tensor<1x16x16x1xf16, {order = #NWCH}> -> tensor<1x16x16x1xf16, {order = #NWCH}>
     // CHECK:               [[SHAPE_CAST:%.+]] = IE.ShapeCast {shape = [1, 1, 16, 16]} inputs([[SOFTMAX]] : tensor<1x16x16x1xf16, {order = #NWCH}>) -> tensor<1x1x16x16xf16, {order = #NWCH}>
 
     // CHECK:               return [[SHAPE_CAST]] : tensor<1x1x16x16xf16, {order = #NWCH}>
@@ -652,7 +652,7 @@ func.func @NotSwapWithSoftmaxAxis3(%arg0: tensor<1x17x16x1xf16, {order = #NWCH}>
 
     return %1 : tensor<1x1x17x16xf16, {order = #NWCH}>
 
-    // CHECK:               [[SHAPE_CAST:%.+]] = IE.ShapeCast {shape = [1, 1, 17, 16]} inputs(%arg0 : tensor<1x17x16x1xf16, {order = #NWCH}>) -> tensor<1x1x17x16xf16, {order = #NWCH}>
+    // CHECK:               [[SHAPE_CAST:%.+]] = IE.ShapeCast {shape = [1, 1, 17, 16]} inputs([[INPUT]] : tensor<1x17x16x1xf16, {order = #NWCH}>) -> tensor<1x1x17x16xf16, {order = #NWCH}>
     // CHECK:               [[SOFTMAX:%.+]] = IE.SoftMax([[SHAPE_CAST]]) {axisInd = 2 : i64} : tensor<1x1x17x16xf16, {order = #NWCH}> -> tensor<1x1x17x16xf16, {order = #NWCH}>
 
     // CHECK:               return [[SOFTMAX]] : tensor<1x1x17x16xf16, {order = #NWCH}>

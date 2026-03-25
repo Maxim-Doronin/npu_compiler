@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -51,17 +51,17 @@ module @TestConvolution {
     // Quantization ELTWISE
 
     // CHECK:       VPURT.Task waits([[barrier_1:%.+]] : !VPURT.Barrier) updates([[barrier_2:%.+]] : !VPURT.Barrier)
-    // CHECK:       VPUIP.NCEClusterTask {eltwise_type = #VPU.eltwise_type<ADD>, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}
+    // CHECK:       VPUIP.NCEClusterTask <{eltwise_type = #VPU.eltwise_type<ADD>, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}>
     // CHECK-SAME:          input([[input_0:%.+]] : memref<1x64x10x28xf16, #NHWC, [@CMX_NN, 0]>)
     // CHECK-SAME:          outputs([[output_0:%.+]] : memref<1x64x10x28x!qElemType{{[0-9]*}}, #NHWC, [@CMX_NN, 0]>) -> memref<1x64x10x28x!qElemType{{[0-9]*}}, #NHWC, [@CMX_NN, 0]>
 
     // CHECK:       VPURT.Task waits([[barrier_1:%.+]] : !VPURT.Barrier) updates([[barrier_2:%.+]] : !VPURT.Barrier)
-    // CHECK:       VPUIP.NCEClusterTask {eltwise_type = #VPU.eltwise_type<ADD>, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}
+    // CHECK:       VPUIP.NCEClusterTask <{eltwise_type = #VPU.eltwise_type<ADD>, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}>
     // CHECK:              input([[input_1:%.+]] : memref<1x64x9x28xf16, #NHWC, [@CMX_NN, 1]>)
     // CHECK-SAME:         outputs([[output_1:%.+]] : memref<1x64x9x28x!qElemType{{[0-9]*}}, #NHWC, [@CMX_NN, 1]>) -> memref<1x64x9x28x!qElemType{{[0-9]*}}, #NHWC, [@CMX_NN, 1]>
 
     // CHECK:       VPURT.Task waits([[barrier_1:%.+]] : !VPURT.Barrier) updates([[barrier_2:%.+]] : !VPURT.Barrier)
-    // CHECK:       VPUIP.NCEClusterTask {eltwise_type = #VPU.eltwise_type<ADD>, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}
+    // CHECK:       VPUIP.NCEClusterTask <{eltwise_type = #VPU.eltwise_type<ADD>, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}>
     // CHECK-SAME:          input([[input_2:%.+]] : memref<1x64x9x28xf16, #NHWC, [@CMX_NN, 2]>)
     // CHECK-SAME:          outputs([[output_2:%.+]] : memref<1x64x9x28x!qElemType{{[0-9]*}}, #NHWC, [@CMX_NN, 2]>) -> memref<1x64x9x28x!qElemType{{[0-9]*}}, #NHWC, [@CMX_NN, 2]>
 
@@ -69,17 +69,17 @@ module @TestConvolution {
     // Dequantization ELTWISE
 
     // CHECK:       VPURT.Task waits([[barrier_2:%.+]] : !VPURT.Barrier) updates([[barrier_3:%.+]] : !VPURT.Barrier)
-    // CHECK:       VPUIP.NCEClusterTask {eltwise_type = #VPU.eltwise_type<ADD>, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}
+    // CHECK:       VPUIP.NCEClusterTask <{eltwise_type = #VPU.eltwise_type<ADD>, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}>
     // CHECK-SAME:          input([[input_3:%.+]] : memref<1x64x10x28x!qElemType{{[0-9]*}}, #NHWC, [@CMX_NN, 0]>)
     // CHECK-SAME:          outputs([[output_3:%.+]] : memref<1x64x10x28xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x64x10x28xf16, #NHWC, [@CMX_NN, 0]>
 
     // CHECK:       VPURT.Task waits([[barrier_2:%.+]] : !VPURT.Barrier) updates([[barrier_3:%.+]] : !VPURT.Barrier)
-    // CHECK:       VPUIP.NCEClusterTask {eltwise_type = #VPU.eltwise_type<ADD>, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}
+    // CHECK:       VPUIP.NCEClusterTask <{eltwise_type = #VPU.eltwise_type<ADD>, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}>
     // CHECK:              input([[input_4:%.+]] : memref<1x64x9x28x!qElemType{{[0-9]*}}, #NHWC, [@CMX_NN, 1]>)
     // CHECK-SAME:         outputs([[output_4:%.+]] : memref<1x64x9x28xf16, #NHWC, [@CMX_NN, 1]>) -> memref<1x64x9x28xf16, #NHWC, [@CMX_NN, 1]>
 
     // CHECK:       VPURT.Task waits([[barrier_2:%.+]] : !VPURT.Barrier) updates([[barrier_3:%.+]] : !VPURT.Barrier)
-    // CHECK:       VPUIP.NCEClusterTask {eltwise_type = #VPU.eltwise_type<ADD>, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}
+    // CHECK:       VPUIP.NCEClusterTask <{eltwise_type = #VPU.eltwise_type<ADD>, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}>
     // CHECK-SAME:          input([[input_5:%.+]] : memref<1x64x9x28x!qElemType{{[0-9]*}}, #NHWC, [@CMX_NN, 2]>)
     // CHECK-SAME:          outputs([[output_5:%.+]] : memref<1x64x9x28xf16, #NHWC, [@CMX_NN, 2]>) -> memref<1x64x9x28xf16, #NHWC, [@CMX_NN, 2]>
 
@@ -87,32 +87,32 @@ module @TestConvolution {
     // ReduceMean Op
 
     // CHECK:       VPURT.Task waits([[barrier_3:%.+]] : !VPURT.Barrier) updates([[barrier_4:%.+]] : !VPURT.Barrier)
-    // CHECK:       VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<REDUCEMEAN>}
+    // CHECK:       VPUIP.NCEClusterTask <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<REDUCEMEAN>}>
     // CHECK-SAME:          -> memref<1x16x10x28xf16, #NHWC, [@CMX_NN, 0]>
 
     // CHECK:       VPURT.Task waits([[barrier_3:%.+]] : !VPURT.Barrier) updates([[barrier_4:%.+]] : !VPURT.Barrier)
-    // CHECK:       VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<REDUCEMEAN>}
+    // CHECK:       VPUIP.NCEClusterTask <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<REDUCEMEAN>}>
     // CHECK-SAME:          -> memref<1x16x9x28xf16, #NHWC, [@CMX_NN, 1]>
 
     // CHECK:       VPURT.Task waits([[barrier_3:%.+]] : !VPURT.Barrier) updates([[barrier_4:%.+]] : !VPURT.Barrier)
-    // CHECK:       VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<REDUCEMEAN>}
+    // CHECK:       VPUIP.NCEClusterTask <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<REDUCEMEAN>}>
     // CHECK-SAME:          -> memref<1x16x9x28xf16, #NHWC, [@CMX_NN, 2]>
 
 
     // Quantization ELTWISE
 
     // CHECK:       VPURT.Task waits([[barrier_5:%.+]] : !VPURT.Barrier) updates([[barrier_6:%.+]] : !VPURT.Barrier)
-    // CHECK:       VPUIP.NCEClusterTask {eltwise_type = #VPU.eltwise_type<ADD>, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}
+    // CHECK:       VPUIP.NCEClusterTask <{eltwise_type = #VPU.eltwise_type<ADD>, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}>
     // CHECK:       input([[input_9:%.+]] : memref<1x16x10x28x!qElemType{{[0-9]*}}, #NHWC, [@CMX_NN, 0]>)
     // CHECK:       outputs([[output_9:%.+]] : memref<1x16x10x28xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x16x10x28xf16, #NHWC, [@CMX_NN, 0]>
 
     // CHECK:       VPURT.Task waits([[barrier_5:%.+]] : !VPURT.Barrier) updates([[barrier_6:%.+]] : !VPURT.Barrier)
-    // CHECK:       VPUIP.NCEClusterTask {eltwise_type = #VPU.eltwise_type<ADD>, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}
+    // CHECK:       VPUIP.NCEClusterTask <{eltwise_type = #VPU.eltwise_type<ADD>, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}>
     // CHECK-SAME:      input([[input_10:%.+]] : memref<1x16x9x28x!qElemType{{[0-9]*}}, #NHWC, [@CMX_NN, 1]>)
     // CHECK-SAME:      outputs([[input_10:%.+]] : memref<1x16x9x28xf16, #NHWC, [@CMX_NN, 1]>) -> memref<1x16x9x28xf16, #NHWC, [@CMX_NN, 1]>
 
     // CHECK:       VPURT.Task waits([[barrier_5:%.+]] : !VPURT.Barrier) updates([[barrier_6:%.+]] : !VPURT.Barrier)
-    // CHECK:       VPUIP.NCEClusterTask {eltwise_type = #VPU.eltwise_type<ADD>, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}
+    // CHECK:       VPUIP.NCEClusterTask <{eltwise_type = #VPU.eltwise_type<ADD>, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}>
     // CHECK-SAME:      input([[input_11:%.+]] : memref<1x16x9x28x!qElemType{{[0-9]*}}, #NHWC, [@CMX_NN, 2]>)
     // CHECK-SAME:      outputs([[output_11:%.+]] : memref<1x16x9x28xf16, #NHWC, [@CMX_NN, 2]>) -> memref<1x16x9x28xf16, #NHWC, [@CMX_NN, 2]>
 
@@ -146,10 +146,10 @@ module @BatchedGroupConvWithBroadcast {
     return %0 : tensor<4x1x2x2xf16>
 
     // CHECK: VPURT.Task waits([[BAR_0:%.+]] : !VPURT.Barrier) updates([[BAR_1:%.+]] : !VPURT.Barrier) wlmPage(0) {
-    // CHECK: VPUIP.NCEClusterTask {is_superdense,
+    // CHECK: VPUIP.NCEClusterTask <{is_superdense,
     // CHECK:   kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>
     // CHECK:   kernel_size = [3, 3], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>
-    // CHECK-SAME: task_type = #VPUIP.nce_task_type<DWCONV>
+    // CHECK-SAME: task_type = #VPUIP.nce_task_type<DWCONV>}>
     // CHECK:   input([[INPUT_0:%.+]] : memref<1x16x2x2xf16, #NHWC, [@CMX_NN, 0]>) weights([[WEIGHTS_0:%.+]] : memref<4x16x1x1xf16, #NHWC, [@CMX_NN, 0]>)
     // CHECK:   weight_table([[WT_0:%.+]] : memref<16x1x1x4xsi32, [@CMX_NN, 0]>)
     // CHECK:   parent_input([[INPUT_0:%.+]] : memref<1x16x2x2xf16, #NHWC, [@CMX_NN, 0]>)
@@ -159,11 +159,11 @@ module @BatchedGroupConvWithBroadcast {
     // CHECK:   PPETask {ppe = #VPU.PPEFp<mode = <NOOP>
 
     // CHECK: VPURT.Task waits([[BAR_0:%.+]] : !VPURT.Barrier) updates([[BAR_1:%.+]] : !VPURT.Barrier) wlmPage(0) {
-    // CHECK: VPUIP.NCEClusterTask {
+    // CHECK: VPUIP.NCEClusterTask <{
     // CHECK:   kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>
     // CHECK:   kernel_size = [3, 3], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>
     // CHECK-SAME: task_type = #VPUIP.nce_task_type<DWCONV>
-    // CHECK:   input([[INPUT_1:%.+]] : memref<1x16x2x2xf16, #NHWC, [@CMX_NN, 1]>) weights([[WEIGHTS_1:%.+]] : memref<4x16x1x1xf16, #NHWC, [@CMX_NN, 1]>)
+    // CHECK:   }> input([[INPUT_1:%.+]] : memref<1x16x2x2xf16, #NHWC, [@CMX_NN, 1]>) weights([[WEIGHTS_1:%.+]] : memref<4x16x1x1xf16, #NHWC, [@CMX_NN, 1]>)
     // CHECK:   weight_table([[WT_1:%.+]] : memref<16x1x1x4xsi32, [@CMX_NN, 1]>)
     // CHECK:   parent_input([[INPUT_1:%.+]] : memref<1x16x2x2xf16, #NHWC, [@CMX_NN, 1]>)
     // CHECK:   parent_output([[OUT_1:%.+]] : memref<1x4x2x2xf16, [@CMX_NN, 1]>) outputs([[OUT_1:%.+]] : memref<1x4x2x2xf16, [@CMX_NN, 1]>)
@@ -172,11 +172,11 @@ module @BatchedGroupConvWithBroadcast {
     // CHECK:   PPETask {ppe = #VPU.PPEFp<mode = <NOOP>
 
     // CHECK: VPURT.Task waits([[BAR_0:%.+]] : !VPURT.Barrier) updates([[BAR_1:%.+]] : !VPURT.Barrier) wlmPage(0) {
-    // CHECK: VPUIP.NCEClusterTask {
+    // CHECK: VPUIP.NCEClusterTask <{
     // CHECK:   kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>
     // CHECK:   kernel_size = [3, 3], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>
     // CHECK-SAME: task_type = #VPUIP.nce_task_type<DWCONV>
-    // CHECK:   input([[INPUT_2:%.+]] : memref<1x16x2x2xf16, #NHWC, [@CMX_NN, 2]>) weights([[WEIGHTS_2:%.+]] : memref<4x16x1x1xf16, #NHWC, [@CMX_NN, 2]>)
+    // CHECK:   }> input([[INPUT_2:%.+]] : memref<1x16x2x2xf16, #NHWC, [@CMX_NN, 2]>) weights([[WEIGHTS_2:%.+]] : memref<4x16x1x1xf16, #NHWC, [@CMX_NN, 2]>)
     // CHECK:   weight_table([[WT_2:%.+]] : memref<16x1x1x4xsi32, [@CMX_NN, 2]>)
     // CHECK:   parent_input([[INPUT_2:%.+]] : memref<1x16x2x2xf16, #NHWC, [@CMX_NN, 2]>)
     // CHECK:   parent_output([[OUT_2:%.+]] : memref<1x4x2x2xf16, [@CMX_NN, 2]>) outputs([[OUT_2:%.+]] : memref<1x4x2x2xf16, [@CMX_NN, 2]>)

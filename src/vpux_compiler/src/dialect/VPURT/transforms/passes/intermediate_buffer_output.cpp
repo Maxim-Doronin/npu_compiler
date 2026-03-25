@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,6 +12,7 @@
 #include "vpux/compiler/dialect/VPURT/transforms/passes.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/stl_extras.hpp"
 #include "vpux/compiler/utils/strings.hpp"
@@ -240,8 +241,7 @@ void updateOutputType(mlir::Type newOutType, mlir::func::FuncOp funcOp) {
     }
     const auto newOutTensorType = mlir::RankedTensorType::get(newOutTypeND.getShape(), elementType);
 
-    net::NetworkInfoOp netInfo;
-    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, funcOp);
+    auto netInfo = net::getNetworkInfo(moduleOp);
     auto outputsInfo = to_small_vector(netInfo.getOutputsInfo().getOps<net::DataInfoOp>());
     for (auto p : outputsInfo | indexed) {
         auto outputIdx = p.index();

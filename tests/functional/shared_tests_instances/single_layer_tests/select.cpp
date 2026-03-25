@@ -1,6 +1,7 @@
 //
 // Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
+//
 
 #include "single_op_tests/select.hpp"
 #include "vpu_ov2_layer_test.hpp"
@@ -68,6 +69,10 @@ TEST_P(ShaveCodeGenSelectLayerTestCommon, NPU5010) {
     setReferenceSoftwareMode();
     setPluginCompilerType();
     run(Platform::NPU5010);
+}
+TEST_P(SelectLayerTestCommon, NPU5020_SW) {
+    setReferenceSoftwareMode();
+    run(Platform::NPU5020);
 }
 
 }  // namespace test

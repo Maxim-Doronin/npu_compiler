@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,11 +10,11 @@
 #include "vpux/compiler/dialect/VPU/utils/permute_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/allocate_buffers.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/reshape_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/strides_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
-#include "vpux/compiler/utils/reshape_utils.hpp"
 
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -326,7 +326,7 @@ mlir::LogicalResult MoveViewOpToTheFrontOfCopy::matchAndRewrite(mlir::ViewLikeOp
     if (isInStridedCopy) {
         std::optional<vpux::NDTypeInterface> strideUpdatedOutType;
         if (mlir::isa<VPUIP::GenericReshapeOp, VPUIP::PermuteCastOp>(origOp)) {
-            strideUpdatedOutType = updateStridesForReshape(copyOpInputType, newViewOpOutputType);
+            strideUpdatedOutType = VPUIP::updateStridesForReshape(copyOpInputType, newViewOpOutputType);
         } else if (mlir::isa<VPUIP::ShapeCastOp>(origOp)) {
             auto iface = mlir::dyn_cast<mlir::InferTypeOpInterface>(*origOp);
             VPUX_THROW_WHEN(iface == nullptr, "ShapeCastOp does not inherit InferTypeOpInterface");

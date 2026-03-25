@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -14,7 +14,7 @@ func.func @DecomposeLSTMSequenceToLSTMCells(%arg0: tensor<1x3x64xf32>) -> (tenso
     %cst_2 = const.Declare tensor<2x512x128xf32> = dense<3.000000e+00> : tensor<2x512x128xf32>
     %cst_3 = const.Declare tensor<2x512xf32> = dense<4.000000e+00> : tensor<2x512xf32>
 
-    %outputHiddenValues, %outputHiddenState, %outputCellState = IE.LSTMSequence(%arg0, %cst_0, %cst_0, %cst_1, %cst_2, %cst_3) {direction = #IE.rnn_seq_direction<BIDIRECTIONAL>, sequenceLength = 3 : i64, operandSegmentSizes = array<i32: 1, 1, 1, 1, 1, 1>} : tensor<1x3x64xf32>, tensor<1x2x128xf32>, tensor<1x2x128xf32>, tensor<2x512x64xf32>, tensor<2x512x128xf32>, tensor<2x512xf32> -> tensor<1x2x3x128xf32>, tensor<1x2x128xf32>, tensor<1x2x128xf32>
+    %outputHiddenValues, %outputHiddenState, %outputCellState = IE.LSTMSequence(%arg0, %cst_0, %cst_0, %cst_1, %cst_2, %cst_3) {direction = #IE.rnn_seq_direction<BIDIRECTIONAL>, sequenceLength = 3 : i64, operandSegmentSizes = array<i32: 1, 1, 1, 0, 1, 1, 1>} : tensor<1x3x64xf32>, tensor<1x2x128xf32>, tensor<1x2x128xf32>, tensor<2x512x64xf32>, tensor<2x512x128xf32>, tensor<2x512xf32> -> tensor<1x2x3x128xf32>, tensor<1x2x128xf32>, tensor<1x2x128xf32>
 
     return %outputHiddenValues, %outputHiddenState, %outputCellState : tensor<1x2x3x128xf32>, tensor<1x2x128xf32>, tensor<1x2x128xf32>
 
@@ -81,7 +81,7 @@ func.func @DecomposeLSTMSequenceToOneLSTMCell(%arg0: tensor<1x1x64xf32>) -> (ten
     %cst_2 = const.Declare tensor<1x512x300xf32> = dense<3.000000e+00> : tensor<1x512x300xf32>
     %cst_3 = const.Declare tensor<1x512xf32> = dense<4.000000e+00> : tensor<1x512xf32>
 
-    %outputHiddenValues, %outputHiddenState, %outputCellState = IE.LSTMSequence(%arg0, %cst_0, %cst_0, %cst_1, %cst_2, %cst_3) {direction = #IE.rnn_seq_direction<REVERSE>, sequenceLength = 1 : i64, operandSegmentSizes = array<i32: 1, 1, 1, 1, 1, 1>} : tensor<1x1x64xf32>, tensor<1x1x300xf32>, tensor<1x1x300xf32>, tensor<1x512x64xf32>, tensor<1x512x300xf32>, tensor<1x512xf32> -> tensor<1x1x1x300xf32>, tensor<1x1x300xf32>, tensor<1x1x300xf32>
+    %outputHiddenValues, %outputHiddenState, %outputCellState = IE.LSTMSequence(%arg0, %cst_0, %cst_0, %cst_1, %cst_2, %cst_3) {direction = #IE.rnn_seq_direction<REVERSE>, sequenceLength = 1 : i64, operandSegmentSizes = array<i32: 1, 1, 1, 0, 1, 1, 1>} : tensor<1x1x64xf32>, tensor<1x1x300xf32>, tensor<1x1x300xf32>, tensor<1x512x64xf32>, tensor<1x512x300xf32>, tensor<1x512xf32> -> tensor<1x1x1x300xf32>, tensor<1x1x300xf32>, tensor<1x1x300xf32>
 
     return %outputHiddenValues, %outputHiddenState, %outputCellState : tensor<1x1x1x300xf32>, tensor<1x1x300xf32>, tensor<1x1x300xf32>
 

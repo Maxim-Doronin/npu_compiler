@@ -1,17 +1,17 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/core/attributes/stride_reqs.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/reshape_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/strides_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
-#include "vpux/compiler/utils/reshape_utils.hpp"
 
 using namespace vpux;
 
@@ -108,7 +108,7 @@ std::optional<Strides> inferShapeCastOutputStrides(vpux::NDTypeInterface inType,
     const auto inMemShape = inType.getMemShape();
     const auto outMemShape = outType.getMemShape();
     const auto inStridesMemDim = inStridesMemDims.front();
-    const auto legalOutputStridesDims = vpux::deduceLegalOutputMemDims(inMemShape, outMemShape, inStridesMemDim);
+    const auto legalOutputStridesDims = VPUIP::deduceLegalOutputMemDims(inMemShape, outMemShape, inStridesMemDim);
     if (!legalOutputStridesDims.has_value()) {
         return std::nullopt;
     }

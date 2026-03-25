@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -16,7 +16,6 @@
 #include <chrono>
 #include <cstdio>
 #include <mutex>
-#include <optional>
 
 using namespace vpux;
 
@@ -66,11 +65,6 @@ Logger& vpux::Logger::global() {
 }
 
 vpux::Logger::Logger(StringLiteral name, LogLevel lvl): _name(name), _logLevel(lvl) {
-#if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
-    if (const auto env = std::getenv("IE_NPU_LOG_FILTER")) {
-        _logFilterStr = std::string(env);
-    }
-#endif
 }
 
 Logger vpux::Logger::nest(size_t inc) const {
@@ -80,6 +74,9 @@ Logger vpux::Logger::nest(size_t inc) const {
 Logger vpux::Logger::nest(StringLiteral name, size_t inc) const {
     Logger nested(name, level());
     nested._indentLevel = _indentLevel + inc;
+#if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
+    nested._alternateName = _alternateName;
+#endif
     return nested;
 }
 
@@ -87,6 +84,9 @@ Logger vpux::Logger::unnest(size_t inc) const {
     assert(_indentLevel >= inc);
     Logger unnested(name(), level());
     unnested._indentLevel = _indentLevel - inc;
+#if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
+    unnested._alternateName = _alternateName;
+#endif
     return unnested;
 }
 
@@ -98,23 +98,32 @@ bool vpux::Logger::isActive(LogLevel msgLevel) const {
 #endif
 
 #if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
-    if (static_cast<int32_t>(msgLevel) > static_cast<int32_t>(_logLevel)) {
-        return false;
-    }
-
-    static const auto logFilter = [&]() -> llvm::Regex {
-        if (!_logFilterStr.empty()) {
-            const StringRef filter(_logFilterStr);
-
-            if (!filter.empty()) {
-                return llvm::Regex(filter, llvm::Regex::IgnoreCase);
+    // Global filter - read once from environment, shared by all Logger instances
+    static const auto logFilter = []() -> llvm::Regex {
+        if (const auto env = std::getenv("IE_NPU_LOG_FILTER")) {
+            if (env[0] != '\0') {
+                return llvm::Regex(env, llvm::Regex::IgnoreCase);
             }
         }
         return {};
     }();
 
+    if (static_cast<int32_t>(msgLevel) > static_cast<int32_t>(_logLevel)) {
+        return false;
+    }
+
+    // If filter is set, check if it matches _name or _alternateName
+    // Supports both CamelCase (e.g., "OptimizeCopies") and dash-separated (e.g., "optimize-copies")
     if (logFilter.isValid()) {
-        return logFilter.match(_name);
+        if (logFilter.match(_name)) {
+            return true;
+        }
+        // Check alternate name (e.g., pass name in CamelCase vs dash-separated argument)
+        if (!_alternateName.empty() && logFilter.match(_alternateName)) {
+            return true;
+        }
+        // Filter is set but doesn't match either name - return false
+        return false;
     }
 
     return true;
@@ -124,11 +133,18 @@ bool vpux::Logger::isActive(LogLevel msgLevel) const {
 }
 
 llvm::raw_ostream& vpux::Logger::getBaseStream() {
+    if (_baseStreamOverride) {
+        return *_baseStreamOverride;
+    }
 #ifdef NDEBUG
     return llvm::outs();
 #else
     return llvm::DebugFlag ? llvm::dbgs() : llvm::outs();
 #endif
+}
+
+void vpux::Logger::setBaseStream(llvm::raw_ostream& stream) {
+    _baseStreamOverride = &stream;
 }
 
 namespace {

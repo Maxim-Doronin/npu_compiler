@@ -1,5 +1,7 @@
+#
 # Copyright (C) 2022-2026 Intel Corporation
-# SPDX-License-Identifier: Apache 2.0
+# SPDX-License-Identifier: Apache-2.0
+#
 
 cmake_minimum_required(VERSION 3.20)
 
@@ -10,6 +12,7 @@ option(ENABLE_SHAVE_BINARIES_BUILD "Enable shave binaries build, if disabled, pr
 option(ENABLE_MANAGEMENT_KERNEL_BUILD "Enable management kernel build" OFF)
 option(ENABLE_FIRMWARE_SOURCES_KERNEL_BUILD "Enable firmware.vpu.client sources kernels build" OFF)
 option(ENABLE_SHAVE_BITCODE_BUILD "Embed kernel bitcode into the build (experimental)" OFF)
+set(PLATFORMS_TO_REMOVE "" CACHE STRING "Semicolon-separated list of platform numbers to exclude from build (e.g '3720;4000')")
 
 set(prebuild_binary_dir "${CMAKE_CURRENT_SOURCE_DIR}/prebuild/act_shave_bin")
 set(target_binary_dir "${CMAKE_CURRENT_BINARY_DIR}/act_shave_bin")
@@ -123,6 +126,37 @@ if(ENABLE_MANAGEMENT_KERNEL_BUILD OR ENABLE_FIRMWARE_SOURCES_KERNEL_BUILD)
     set(FIRMWARE_VPU_DIR "$ENV{FIRMWARE_VPU_DIR}")
   endif()
 endif()
+
+# Remove descriptor files and binaries for specified platforms
+if(DEFINED PLATFORMS_TO_REMOVE AND NOT PLATFORMS_TO_REMOVE STREQUAL "")
+  set(VALID_PLATFORMS "3720;4000;5000;6000;7000")
+  
+  foreach(platform IN LISTS PLATFORMS_TO_REMOVE)
+    # Validate platform before processing
+    if(NOT platform IN_LIST VALID_PLATFORMS)
+      message(FATAL_ERROR "Invalid platform '${platform}' in PLATFORMS_TO_REMOVE. Valid platforms: ${VALID_PLATFORMS}")
+    endif()
+    
+    message(STATUS "Removing descriptor files and binaries for platform ${platform}")
+    
+    # Find and remove descriptor files for this platform
+    file(GLOB descrip_files "${kernel_descrip_dir}/*${platform}*.txt")
+    foreach(descrip_file IN LISTS descrip_files)
+      get_filename_component(descrip_name "${descrip_file}" NAME)
+      message(STATUS "  Removing descriptor: ${descrip_name}")
+      file(REMOVE "${descrip_file}")
+    endforeach()
+    
+    # Remove prebuilt binaries for this platform
+    file(GLOB binary_files "${prebuild_binary_dir}/*.${platform}xx*")
+    foreach(binary_file IN LISTS binary_files)
+      get_filename_component(binary_name "${binary_file}" NAME)
+      message(STATUS "  Removing binary: ${binary_name}")
+      file(REMOVE "${binary_file}")
+    endforeach()
+  endforeach()
+endif()
+
 
 # Make list of all kernel descriptors
 if(build_kernels)
@@ -281,7 +315,7 @@ foreach(kernel_descrip IN LISTS kernel_descrip_list)
     OUTPUT "${obj_file}"
     DEPENDS "${kernel_src_path}"
     DEPFILE "${dep_file}"
-    COMMAND "${mv_tools_compile}" -MD ${compile_options} -c "${kernel_src_path}" -o "${obj_file}"
+    COMMAND "${mv_tools_compile}" -MD ${compile_options} -c "${kernel_src_path}" -o "${obj_file}" -fapprox-func -fassociative-math
   )
 
   set(obj_file_list "${obj_file}")
@@ -290,7 +324,7 @@ foreach(kernel_descrip IN LISTS kernel_descrip_list)
     add_custom_command(
       OUTPUT "${bitcode_file}"
       DEPENDS "${kernel_src_file}"
-      COMMAND "${mv_tools_compile}" -MD ${compile_options} -c -emit-llvm "${kernel_src_path}" -o "${bitcode_file}"
+      COMMAND "${mv_tools_compile}" -MD ${compile_options} -c -emit-llvm "${kernel_src_path}" -o "${bitcode_file}" -fapprox-func -fassociative-math
     )
     set(bitcode_file_list "${bitcode_file}")
   endif()
@@ -306,7 +340,7 @@ foreach(kernel_descrip IN LISTS kernel_descrip_list)
       OUTPUT "${obj_file_lsu0_wo}"
       DEPENDS "${kernel_src_path}"
       DEPFILE "${dep_file_lsu0_wo}"
-      COMMAND "${mv_tools_compile}" -MD ${compile_options} ${cppflags_list_lsu0_wo} -c "${kernel_src_path}" -o "${obj_file_lsu0_wo}"
+      COMMAND "${mv_tools_compile}" -MD ${compile_options} ${cppflags_list_lsu0_wo} -c "${kernel_src_path}" -o "${obj_file_lsu0_wo}" -fapprox-func -fassociative-math
     )
 
     set(obj_file_list_lsu0_wo "${obj_file_lsu0_wo}")
@@ -332,7 +366,7 @@ foreach(kernel_descrip IN LISTS kernel_descrip_list)
         OUTPUT "${obj_file}"
         DEPENDS "${kernel_src_path}"
         DEPFILE "${dep_file}"
-        COMMAND "${mv_tools_compile}" -MD ${compile_options} -c "${extra_src_file}" -o "${obj_file}"
+        COMMAND "${mv_tools_compile}" -MD ${compile_options} -c "${extra_src_file}" -o "${obj_file}" -fapprox-func -fassociative-math
       )
 
       list(APPEND obj_file_list "${obj_file}")
@@ -346,7 +380,7 @@ foreach(kernel_descrip IN LISTS kernel_descrip_list)
           OUTPUT "${bitcode_file}"
           DEPENDS "${kernel_src_file}"
           DEPFILE "${dep_file}"
-          COMMAND "${mv_tools_compile}" -MD ${compile_options} -c -emit-llvm "${extra_src_file}" -o "${bitcode_file}"
+          COMMAND "${mv_tools_compile}" -MD ${compile_options} -c -emit-llvm "${extra_src_file}" -o "${bitcode_file}" -fapprox-func -fassociative-math
         )
         list(APPEND bitcode_file_list "${bitcode_file}")
       endif()

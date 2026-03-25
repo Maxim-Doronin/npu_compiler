@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -260,13 +260,6 @@ mlir::LogicalResult vpux::VPUIP::NCEInvariant::verifyChannels(IE::GroupConvoluti
 
     if (OC % channelIface.getOutputChannelAlignment() != 0) {
         log.trace("[{0}] Group Convolution output channels are not aligned", loc);
-        return mlir::failure();
-    }
-
-    const auto padOC =
-            VPU::canAutopadOutput(origOp.getOperation()) ? vpux::VPU::NCEInvariant::VPU_CHANNEL_ALIGNMENT : OC;
-    if (padOC != inputChan) {
-        log.trace("[{0}] Group Convolution has {1} groups, expected {2}", loc, padOC, inputChan);
         return mlir::failure();
     }
 

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -107,6 +107,7 @@ func.func @NotChangeTilingStrategyForVF(%input: tensor<1x32x135x240xf16, {order 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: func.func @NotChangeTilingStrategyForUnevenUnrolling
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<1x48x771x771xf16, {order = #NHWC}>)
 func.func @NotChangeTilingStrategyForUnevenUnrolling(%input: tensor<1x48x771x771xf16, {order = #NHWC}>)
             -> tensor<1x32x769x769xf16, {order = #NHWC}> {
     %weightsData = const.Declare tensor<32x48x3x3xf16, {order = #NHWC}> = dense<1.0> : tensor<32x48x3x3xf16, {order = #NHWC}>, [#const.Sparsify<false>]
@@ -127,7 +128,11 @@ func.func @NotChangeTilingStrategyForUnevenUnrolling(%input: tensor<1x48x771x771
 
     return %conv : tensor<1x32x769x769xf16, {order = #NHWC}>
 
-    // CHECK:       [[OUTPUT:%.+]] = VPU.NCE.Convolution(%arg0, %0, %cst_1) {
+    // CHECK-DAG:   [[WEIGHTS_DATA:%.+]] = const.Declare tensor<32x48x3x3xf16, {order = #NHWC}>
+    // CHECK-DAG:   [[WEIGHTS_SM:%.+]] = const.Declare tensor<32x1x1x512xi1>
+    // CHECK-DAG:   [[FILTER:%.+]] = VPU.GroupSparseTensor([[WEIGHTS_DATA]], [[WEIGHTS_SM]])
+    // CHECK-DAG:   [[WEIGHTS_TABLE:%.+]] = const.Declare tensor<32x1x1x4xsi32>
+    // CHECK:       [[OUTPUT:%.+]] = VPU.NCE.Convolution([[ARG_0]], [[FILTER]], [[WEIGHTS_TABLE]]) {
     // CHECK-SAME:          multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
     // CHECK-SAME:          pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
     // CHECK-SAME:          ppe = #VPU.PPEStub<>,

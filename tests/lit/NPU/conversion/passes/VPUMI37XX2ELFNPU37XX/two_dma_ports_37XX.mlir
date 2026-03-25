@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -14,6 +14,11 @@ module @mainModule {
     DataInfo "output_0" : tensor<1x16x16x16xf16>
     DataInfo "output_1" : tensor<1x16x16x16xf16>
   }
+
+  // CHECK-LABEL: func.func private @race_condition_dma_f16_f16
+  // CHECK-SAME:    [[ARG_0:%[^:]+]]: memref<1x16x16x16xf16, #NHWC, @DDR>
+  // CHECK-SAME:    [[ARG_1:%[^:]+]]: memref<1x16x16x16xf16, #NHWC, @DDR>
+  // CHECK-SAME:    [[ARG_2:%[^:]+]]: memref<1x16x16x16xf16, #NHWC, @DDR>
   func.func private @race_condition_dma_f16_f16(%arg0: memref<1x16x16x16xf16, #NHWC, @DDR>, %arg1: memref<1x16x16x16xf16, #NHWC, @DDR>, %arg2: memref<1x16x16x16xf16, #NHWC, @DDR>) -> (memref<1x16x16x16xf16, #NHWC, @DDR>, memref<1x16x16x16xf16, #NHWC, @DDR>) {
     %0 = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>
     %1 = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 1]>
@@ -51,9 +56,9 @@ module @mainModule {
     // CHECK: [[symDmaSec1:%.+]] = ELFNPU37XX.Symbol [[dmaSec1]] name("sym_dmaSection1") : !ELFNPU37XX.Section
     // CHECK: [[symBarSec:%.+]] = ELFNPU37XX.Symbol [[barSec]] name("sym_barrierSection") : !ELFNPU37XX.Section
 
-    // CHECK: [[symIn0:%.+]] = ELFNPU37XX.Symbol %arg0 name("input_0") size(8192) : memref<1x16x16x16xf16, #NHWC, @DDR>
-    // CHECK: [[symOut0:%.+]] = ELFNPU37XX.Symbol %arg1 name("output_0") size(8192) : memref<1x16x16x16xf16, #NHWC, @DDR>
-    // CHECK: [[symOut1:%.+]] = ELFNPU37XX.Symbol %arg2 name("output_1") size(8192) : memref<1x16x16x16xf16, #NHWC, @DDR>
+    // CHECK: [[symIn0:%.+]] = ELFNPU37XX.Symbol [[ARG_0]] name("input_0") size(8192) : memref<1x16x16x16xf16, #NHWC, @DDR>
+    // CHECK: [[symOut0:%.+]] = ELFNPU37XX.Symbol [[ARG_1]] name("output_0") size(8192) : memref<1x16x16x16xf16, #NHWC, @DDR>
+    // CHECK: [[symOut1:%.+]] = ELFNPU37XX.Symbol [[ARG_2]] name("output_1") size(8192) : memref<1x16x16x16xf16, #NHWC, @DDR>
 
     // CHECK: [[symTabSecIn:%.+]] = ELFNPU37XX.CreateSymbolTableSection secName(".symtab.input") secFlags(VPU_SHF_USERINPUT) -> !ELFNPU37XX.Section {
       // CHECK: ELFNPU37XX.PutOpInSection [[symIn0]] : !ELFNPU37XX.Symbol

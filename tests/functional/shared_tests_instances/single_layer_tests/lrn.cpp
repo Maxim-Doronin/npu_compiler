@@ -47,6 +47,15 @@ TEST_P(LrnLayerTestCommon_FP32, NPU5010_SW) {
     setReferenceSoftwareMode();
     run(Platform::NPU5010);
 }
+TEST_P(LrnLayerTestCommon_FP16, NPU5020_SW) {
+    setReferenceSoftwareMode();
+    run(Platform::NPU5020);
+}
+
+TEST_P(LrnLayerTestCommon_FP32, NPU5020_SW) {
+    setReferenceSoftwareMode();
+    run(Platform::NPU5020);
+}
 
 }  // namespace test
 }  // namespace ov

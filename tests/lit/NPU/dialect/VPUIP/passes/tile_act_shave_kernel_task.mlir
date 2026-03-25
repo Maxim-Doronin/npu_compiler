@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -720,6 +720,8 @@ module @VPU.SW {
     func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
 }
 
+// CHECK-LABEL: @TileCubicInterpolate
+// CHECK-SAME:  ([[ARG_0:%[^:]+]]: memref<1x1x460x620xf16>, [[ARG_1:%[^:]+]]: memref<1x1x800x1000xf16>
 func.func @TileCubicInterpolate(%arg0: memref<1x1x460x620xf16>, %arg1: memref<1x1x800x1000xf16>) -> memref<1x1x800x1000xf16> {
     %0 = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x1x460x620xf16, #NCHW, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, compute_shapes = [[1, 1, 232, 620], [1, 1, 232, 620]], compute_offsets = [[0, 0, 0, 0], [0, 0, 228, 0]], memory_shapes = [[1, 1, 232, 620], [1, 1, 232, 620]], memory_offsets = [[0, 0, 0, 0], [0, 0, 228, 0]]}>
 
@@ -735,7 +737,7 @@ func.func @TileCubicInterpolate(%arg0: memref<1x1x460x620xf16>, %arg1: memref<1x
     %5 = VPUIP.Copy inputs(%4 : memref<1x1x800x1000xf16>) outputs(%arg1 : memref<1x1x800x1000xf16>) -> memref<1x1x800x1000xf16>
     return %5 : memref<1x1x800x1000xf16>
 
-    //CHECK:    [[IN_SUBVIEW0:%.+]] = VPUIP.SubView %arg0 [0, 0, 228, 0] [1, 1, 232, 620] : memref<1x1x460x620xf16> to memref<1x1x232x620xf16, {order = #NCHW, strides = [285200, 285200, 620, 1]}>
+    //CHECK:    [[IN_SUBVIEW0:%.+]] = VPUIP.SubView [[ARG_0]] [0, 0, 228, 0] [1, 1, 232, 620] : memref<1x1x460x620xf16> to memref<1x1x232x620xf16, {order = #NCHW, strides = [285200, 285200, 620, 1]}>
     //CHECK:    [[ALLOCDISTRIBUTED0:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x1x232x620xf16, #NCHW, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64,
     //CHECK-SAME{LITERAL}:  compute_shapes = [[1, 1, 119, 620], [1, 1, 117, 620]], compute_offsets = [[0, 0, 0, 0], [0, 0, 115, 0]], memory_shapes = [[1, 1, 119, 620], [1, 1, 117, 620]], memory_offsets = [[0, 0, 0, 0], [0, 0, 115, 0]]}>
 
@@ -744,7 +746,7 @@ func.func @TileCubicInterpolate(%arg0: memref<1x1x460x620xf16>, %arg1: memref<1x
     //CHECK-SAME{LITERAL}:  -> !VPUIP.DistributedBuffer<1x1x232x620xf16, #NCHW, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, compute_shapes = [[1, 1, 119, 620], [1, 1, 117, 620]],
     //CHECK-SAME{LITERAL}:  compute_offsets = [[0, 0, 0, 0], [0, 0, 115, 0]], memory_shapes = [[1, 1, 119, 620], [1, 1, 117, 620]], memory_offsets = [[0, 0, 0, 0], [0, 0, 115, 0]]}>
 
-    //CHECK:    [[IN_SUBVIEW1:%.+]] = VPUIP.SubView %arg0 [0, 0, 0, 0] [1, 1, 232, 620] : memref<1x1x460x620xf16> to memref<1x1x232x620xf16, {order = #NCHW, strides = [285200, 285200, 620, 1]}>
+    //CHECK:    [[IN_SUBVIEW1:%.+]] = VPUIP.SubView [[ARG_0]] [0, 0, 0, 0] [1, 1, 232, 620] : memref<1x1x460x620xf16> to memref<1x1x232x620xf16, {order = #NCHW, strides = [285200, 285200, 620, 1]}>
     //CHECK:    [[ALLOCDISTRIBUTED1:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x1x232x620xf16, #NCHW, @CMX_NN, {mode = "OVERLAPPED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64,
     //CHECK-SAME{LITERAL}: compute_shapes = [[1, 1, 117, 620], [1, 1, 119, 620]], compute_offsets = [[0, 0, 0, 0], [0, 0, 113, 0]], memory_shapes = [[1, 1, 117, 620], [1, 1, 119, 620]], memory_offsets = [[0, 0, 0, 0], [0, 0, 113, 0]]}>
 
@@ -785,7 +787,7 @@ func.func @TileCubicInterpolate(%arg0: memref<1x1x460x620xf16>, %arg1: memref<1x
     //CHECK:        [[CONCATVIEW:%.+]] = VPUIP.ConcatView inputs([[COPY2]], [[COPY3]] : memref<1x1x400x1000xf16, {order = #NCHW, strides = [800000, 800000, 1000, 1]}>,
     //CHECK-SAME:   memref<1x1x400x1000xf16, {order = #NCHW, strides = [800000, 800000, 1000, 1]}>) outputs([[ALLOC]] : memref<1x1x800x1000xf16>) -> memref<1x1x800x1000xf16>
 
-    //CHECK:    [[COPY:%.+]] = VPUIP.Copy inputs([[CONCATVIEW]] : memref<1x1x800x1000xf16>) outputs(%arg1 : memref<1x1x800x1000xf16>) -> memref<1x1x800x1000xf16>
+    //CHECK:    [[COPY:%.+]] = VPUIP.Copy inputs([[CONCATVIEW]] : memref<1x1x800x1000xf16>) outputs([[ARG_1]] : memref<1x1x800x1000xf16>) -> memref<1x1x800x1000xf16>
     //CHECK:    return [[COPY]] : memref<1x1x800x1000xf16>
 }
 
@@ -1141,6 +1143,7 @@ func.func @TileReduceProdCMXShort(%arg0: memref<1x1024x7x7xf32, [@CMX_NN, 0]>, %
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NWHC = affine_map<(d0, d1, d2, d3) -> (d0, d3, d2, d1)>
+#NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
 
 !DistBuffer0 = !VPUIP.DistributedBuffer<
     1x2x640x512xf16, #NCHW, @CMX_NN, {
@@ -1190,14 +1193,14 @@ func.func @TileReduceProdCMXShort(%arg0: memref<1x1024x7x7xf32, [@CMX_NN, 0]>, %
 }>
 
 !DistBuffer33 = !VPUIP.DistributedBuffer<
-    1x2x1x512xf16, #NCHW, @CMX_NN, {
+    1x2x4x128xf16, #NCWH, @CMX_NN, {
     mode = "SEGMENTED",
     num_tiles = [1, 2, 1, 1],
     num_clusters = 2 : i64,
     uniform_distributed_segments,
-    compute_shapes = [[1, 1, 1, 512], [1, 1, 1, 512]],
+    compute_shapes = [[1, 1, 4, 128], [1, 1, 4, 128]],
     compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]],
-    memory_shapes = [[1, 1, 1, 512], [1, 1, 1, 512]],
+    memory_shapes = [[1, 1, 4, 128], [1, 1, 4, 128]],
     memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]
 }>
 
@@ -1214,7 +1217,7 @@ func.func @TileReduceProdCMXShort(%arg0: memref<1x1024x7x7xf32, [@CMX_NN, 0]>, %
 }>
 
 module @VPU.SW {
-  func.func private @builtin_LSTMSequence(memref<*xf16, @CMX_NN>, memref<*xf16, @CMX_NN>, i64, i64, i64) attributes {VPU.kernel_code = "lstm_sequence.cpp", VPU.kernel_entry = "lstm_sequence"}
+  func.func private @builtin_LSTMSequence(memref<*xf16, @CMX_NN>, memref<*xf16, @CMX_NN>, memref<*xf16, @CMX_NN>, memref<*xf16, @CMX_NN>, memref<*xf16, @CMX_NN>, memref<*xsi32, @CMX_NN>, memref<*xf16, @CMX_NN>, memref<*xf16, @CMX_NN>, memref<*xf16, @CMX_NN>, none, i64, none) attributes {VPU.kernel_code = "lstm_sequence.cpp", VPU.kernel_entry = "lstm_sequence"}
   func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
 }
 
@@ -1238,8 +1241,8 @@ func.func @TileLSTMSequence(%arg0: memref<1x2x640x512xf16>) -> (memref<1x2x640x1
 
     //# -------------------- Kernel --------------------
     %8:3 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 3, 0, 0>} @VPU.SW::@builtin_LSTMSequence inputs(%1 as %arg6: !DistBuffer0, %2 as %arg7: !DistBuffer1, %3 as %arg8: !DistBuffer1, %4 as %arg9: !DistBuffer2, %55 as %arg100: !DistBuffer33, %5 as %arg10: !DistBuffer3) outputs(%6 as %arg11: !DistBuffer4, %7 as %arg12: !DistBuffer1, %12 as %arg13: !DistBuffer1) -> (!DistBuffer4, !DistBuffer1, !DistBuffer1){
-        VPUIP.SW.Kernel.run {attrs = [2, 640]}(%arg6, %arg7, %arg8, %arg9, %arg100, %arg10, %arg11, %arg12, %arg13) : !DistBuffer0, !DistBuffer1, !DistBuffer1, !DistBuffer2, !DistBuffer33, !DistBuffer3, !DistBuffer4, !DistBuffer1, !DistBuffer1
-      }
+        VPUIP.SW.Kernel.run {attrs = [[-9223372036854775808, 1015], 2, [-1, -1]]}(%arg6, %arg7, %arg8, %arg9, %arg100, %arg10, %arg11, %arg12, %arg13) : !DistBuffer0, !DistBuffer1, !DistBuffer1, !DistBuffer2, !DistBuffer33, !DistBuffer3, !DistBuffer4, !DistBuffer1, !DistBuffer1
+    }
 
     //# -------------------- Results --------------------
     %alloc_1 = memref.alloc() : memref<1x2x640x128xf16>
@@ -1250,74 +1253,75 @@ func.func @TileLSTMSequence(%arg0: memref<1x2x640x512xf16>) -> (memref<1x2x640x1
 
     %alloc_3 = memref.alloc() : memref<1x2x1x128xf16>
     %11 = VPUIP.Copy inputs(%8#2: !DistBuffer1) outputs(%alloc_3: memref<1x2x1x128xf16>) -> memref<1x2x1x128xf16>
-
     return %9, %10, %11 : memref<1x2x640x128xf16>, memref<1x2x1x128xf16>, memref<1x2x1x128xf16>
 
-//# -------------------- Input Buffers --------------------
-// CHECK:   [[IN_DATA:%.+]] = VPUIP.Copy
-// CHECK:   [[HIDDEN_STATE:%.+]] = VPURT.AllocDistributed
-// CHECK:   [[CELL_STATE:%.+]] = VPURT.AllocDistributed
-// CHECK:   [[RECCURENCE_WEIGHTS:%.+]] = VPURT.AllocDistributed
-// CHECK:   [[SYNC_BUFF:%.+]] = VPURT.AllocDistributed
-// CHECK:   [[BIASES:%.+]] = VPURT.AllocDistributed
+    //# -------------------- Input Buffers --------------------
+    // CHECK:   [[IN_DATA:%.+]] = VPUIP.Copy
+    // CHECK:   [[HIDDEN_STATE:%.+]] = VPURT.AllocDistributed
+    // CHECK:   [[CELL_STATE:%.+]] = VPURT.AllocDistributed
+    // CHECK:   [[RECCURENCE_WEIGHTS:%.+]] = VPURT.AllocDistributed
+    // CHECK:   [[SYNC_BUFF:%.+]] = VPURT.AllocDistributed
+    // CHECK:   [[BIASES:%.+]] = VPURT.AllocDistributed
 
-//# -------------------- Output Buffers --------------------
-// CHECK:   [[OUT_HIDDEN_VAL:%.+]] = VPURT.AllocDistributed
-// CHECK:   [[OUT_HIDDEN_STATE:%.+]] = VPURT.AllocDistributed
-// CHECK:   [[OUT_CELL_STATE:%.+]] = VPURT.AllocDistributed
+    //# -------------------- Output Buffers --------------------
+    // CHECK:   [[OUT_HIDDEN_VAL:%.+]] = VPURT.AllocDistributed
+    // CHECK:   [[OUT_HIDDEN_STATE:%.+]] = VPURT.AllocDistributed
+    // CHECK:   [[OUT_CELL_STATE:%.+]] = VPURT.AllocDistributed
 
-//# -------------------- Kernel --------------------
-// CHECK:   [[LSTM_SEQUENCE:%.+]]:6 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 6, 0, 0>} @VPU.SW::@builtin_LSTMSequence
-// CHECK-SAME:                inputs([[IN_DATA]] as [[INNER_IN_DATA0:[^:]+]]: !VPUIP.DistributedBuffer<1x2x640x512xf16,
-// CHECK-SAME:                [[HIDDEN_STATE]] as [[INNER_HIDDEN_STATE0:[^:]+]]: !VPUIP.DistributedBuffer<1x2x1x128xf16,
-// CHECK-SAME:                [[CELL_STATE]] as [[INNER_CELL_STATE0:[^:]+]]: !VPUIP.DistributedBuffer<1x2x1x128xf16,
-// CHECK-SAME:                [[RECCURENCE_WEIGHTS]] as [[INNER_RECCURENCE_WEIGHTS0:[^:]+]]: !VPUIP.DistributedBuffer<2x4x128x128xf16,
-// CHECK-SAME:                [[BIASES]] as [[INNER_BIASES0:[^:]+]]: !VPUIP.DistributedBuffer<1x2x1x512xf16,
-// CHECK-SAME:                [[SYNC_BUFF]] as [[INNER_SYNC_BUFF0:[^:]+]]: !VPUIP.DistributedBuffer<1x1x1x2xsi32,
-// CHECK-SAME:                [[IN_DATA]] as [[INNER_IN_DATA1:[^:]+]]: !VPUIP.DistributedBuffer<1x2x640x512xf16,
-// CHECK-SAME:                [[HIDDEN_STATE]] as [[INNER_HIDDEN_STATE1:[^:]+]]: !VPUIP.DistributedBuffer<1x2x1x128xf16,
-// CHECK-SAME:                [[CELL_STATE]] as [[INNER_CELL_STATE1:[^:]+]]: !VPUIP.DistributedBuffer<1x2x1x128xf16,
-// CHECK-SAME:                [[RECCURENCE_WEIGHTS]] as [[INNER_RECCURENCE_WEIGHTS1:[^:]+]]: !VPUIP.DistributedBuffer<2x4x128x128xf16,
-// CHECK-SAME:                [[BIASES]] as [[INNER_BIASES1:[^:]+]]: !VPUIP.DistributedBuffer<1x2x1x512xf16,
-// CHECK-SAME:                [[SYNC_BUFF]] as [[INNER_SYNC_BUFF1:[^:]+]]: !VPUIP.DistributedBuffer<1x1x1x2xsi32,
-// CHECK-SAME:                outputs([[OUT_HIDDEN_VAL]] as [[INNER_OUT_HIDDEN_VAL0:[^:]+]]: !VPUIP.DistributedBuffer<1x2x640x128xf16,
-// CHECK-SAME:                [[OUT_HIDDEN_STATE]] as [[INNER_OUT_HIDDEN_STATE0:[^:]+]]: !VPUIP.DistributedBuffer<1x2x1x128xf16,
-// CHECK-SAME:                [[OUT_CELL_STATE]] as [[INNER_OUT_CELL_STATE0:[^:]+]]: !VPUIP.DistributedBuffer<1x2x1x128xf16,
-// CHECK-SAME:                [[OUT_HIDDEN_VAL]] as [[INNER_OUT_HIDDEN_VAL1:[^:]+]]: !VPUIP.DistributedBuffer<1x2x640x128xf16,
-// CHECK-SAME:                [[OUT_HIDDEN_STATE]] as [[INNER_OUT_HIDDEN_STATE1:[^:]+]]: !VPUIP.DistributedBuffer<1x2x1x128xf16,
-// CHECK-SAME:                [[OUT_CELL_STATE]] as [[INNER_OUT_CELL_STATE1:[^:]+]]: !VPUIP.DistributedBuffer<1x2x1x128xf16,
-// CHECK-SAME{LITERAL}:              -> (!VPUIP.DistributedBuffer<1x2x640x128xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments, compute_shapes = [[1, 1, 640, 128], [1, 1, 640, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]], memory_shapes = [[1, 1, 640, 128], [1, 1, 640, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>, !VPUIP.DistributedBuffer<1x2x1x128xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments, compute_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]], memory_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>, !VPUIP.DistributedBuffer<1x2x1x128xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments, compute_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]], memory_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>, !VPUIP.DistributedBuffer<1x2x640x128xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments, compute_shapes = [[1, 1, 640, 128], [1, 1, 640, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]], memory_shapes = [[1, 1, 640, 128], [1, 1, 640, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>, !VPUIP.DistributedBuffer<1x2x1x128xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments, compute_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]], memory_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>, !VPUIP.DistributedBuffer<1x2x1x128xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments, compute_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]], memory_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>){
-// CHECK:       VPUIP.SW.Kernel.run {attrs = [2, 640]}([[INNER_IN_DATA0]], [[INNER_HIDDEN_STATE0]], [[INNER_CELL_STATE0]], [[INNER_RECCURENCE_WEIGHTS0]], [[INNER_BIASES0]], [[INNER_SYNC_BUFF0]], [[INNER_OUT_HIDDEN_VAL0]], [[INNER_OUT_HIDDEN_STATE0]], [[INNER_OUT_CELL_STATE0]]) :
-// CHECK:       VPUIP.SW.Kernel.run {attrs = [2, 640]}([[INNER_IN_DATA1]], [[INNER_HIDDEN_STATE1]], [[INNER_CELL_STATE1]], [[INNER_RECCURENCE_WEIGHTS1]], [[INNER_BIASES1]], [[INNER_SYNC_BUFF1]], [[INNER_OUT_HIDDEN_VAL1]], [[INNER_OUT_HIDDEN_STATE1]], [[INNER_OUT_CELL_STATE1]]) :
-// CHECK:     }
-// CHECK:   }
+    //# -------------------- Kernel --------------------
+    // CHECK:   [[LSTM_SEQUENCE:%.+]]:6 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 6, 0, 0>} @VPU.SW::@builtin_LSTMSequence
+    // CHECK-SAME:                inputs([[IN_DATA]] as [[INNER_IN_DATA0:[^:]+]]: !VPUIP.DistributedBuffer<1x2x640x512xf16,
+    // CHECK-SAME:                [[HIDDEN_STATE]] as [[INNER_HIDDEN_STATE0:[^:]+]]: !VPUIP.DistributedBuffer<1x2x1x128xf16,
+    // CHECK-SAME:                [[CELL_STATE]] as [[INNER_CELL_STATE0:[^:]+]]: !VPUIP.DistributedBuffer<1x2x1x128xf16,
+    // CHECK-SAME:                [[RECCURENCE_WEIGHTS]] as [[INNER_RECCURENCE_WEIGHTS0:[^:]+]]: !VPUIP.DistributedBuffer<2x4x128x128xf16,
+    // CHECK-SAME:                [[BIASES]] as [[INNER_BIASES0:[^:]+]]: !VPUIP.DistributedBuffer<1x2x4x128xf16,
+    // CHECK-SAME:                [[SYNC_BUFF]] as [[INNER_SYNC_BUFF0:[^:]+]]: !VPUIP.DistributedBuffer<1x1x1x2xsi32,
+    // CHECK-SAME:                [[IN_DATA]] as [[INNER_IN_DATA1:[^:]+]]: !VPUIP.DistributedBuffer<1x2x640x512xf16,
+    // CHECK-SAME:                [[HIDDEN_STATE]] as [[INNER_HIDDEN_STATE1:[^:]+]]: !VPUIP.DistributedBuffer<1x2x1x128xf16,
+    // CHECK-SAME:                [[CELL_STATE]] as [[INNER_CELL_STATE1:[^:]+]]: !VPUIP.DistributedBuffer<1x2x1x128xf16,
+    // CHECK-SAME:                [[RECCURENCE_WEIGHTS]] as [[INNER_RECCURENCE_WEIGHTS1:[^:]+]]: !VPUIP.DistributedBuffer<2x4x128x128xf16,
+    // CHECK-SAME:                [[BIASES]] as [[INNER_BIASES1:[^:]+]]: !VPUIP.DistributedBuffer<1x2x4x128xf16,
+    // CHECK-SAME:                [[SYNC_BUFF]] as [[INNER_SYNC_BUFF1:[^:]+]]: !VPUIP.DistributedBuffer<1x1x1x2xsi32,
+    // CHECK-SAME:                outputs([[OUT_HIDDEN_VAL]] as [[INNER_OUT_HIDDEN_VAL0:[^:]+]]: !VPUIP.DistributedBuffer<1x2x640x128xf16,
+    // CHECK-SAME:                [[OUT_HIDDEN_STATE]] as [[INNER_OUT_HIDDEN_STATE0:[^:]+]]: !VPUIP.DistributedBuffer<1x2x1x128xf16,
+    // CHECK-SAME:                [[OUT_CELL_STATE]] as [[INNER_OUT_CELL_STATE0:[^:]+]]: !VPUIP.DistributedBuffer<1x2x1x128xf16,
+    // CHECK-SAME:                [[OUT_HIDDEN_VAL]] as [[INNER_OUT_HIDDEN_VAL1:[^:]+]]: !VPUIP.DistributedBuffer<1x2x640x128xf16,
+    // CHECK-SAME:                [[OUT_HIDDEN_STATE]] as [[INNER_OUT_HIDDEN_STATE1:[^:]+]]: !VPUIP.DistributedBuffer<1x2x1x128xf16,
+    // CHECK-SAME:                [[OUT_CELL_STATE]] as [[INNER_OUT_CELL_STATE1:[^:]+]]: !VPUIP.DistributedBuffer<1x2x1x128xf16,
+    // CHECK-SAME{LITERAL}:              -> (!VPUIP.DistributedBuffer<1x2x640x128xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments, compute_shapes = [[1, 1, 640, 128], [1, 1, 640, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]], memory_shapes = [[1, 1, 640, 128], [1, 1, 640, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>, !VPUIP.DistributedBuffer<1x2x1x128xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments, compute_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]], memory_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>, !VPUIP.DistributedBuffer<1x2x1x128xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments, compute_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]], memory_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>, !VPUIP.DistributedBuffer<1x2x640x128xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments, compute_shapes = [[1, 1, 640, 128], [1, 1, 640, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]], memory_shapes = [[1, 1, 640, 128], [1, 1, 640, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>, !VPUIP.DistributedBuffer<1x2x1x128xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments, compute_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]], memory_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>, !VPUIP.DistributedBuffer<1x2x1x128xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments, compute_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]], memory_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>){
+    // CHECK{LITERAL}:       VPUIP.SW.Kernel.run {attrs = [[-9223372036854775808, 1015], 2, [-1, -1]]}
+    // CHECK-SAME:                ([[INNER_IN_DATA0]], [[INNER_HIDDEN_STATE0]], [[INNER_CELL_STATE0]], [[INNER_RECCURENCE_WEIGHTS0]], [[INNER_BIASES0]], [[INNER_SYNC_BUFF0]], [[INNER_OUT_HIDDEN_VAL0]], [[INNER_OUT_HIDDEN_STATE0]], [[INNER_OUT_CELL_STATE0]]) :
+    // CHECK{LITERAL}:       VPUIP.SW.Kernel.run {attrs = [[-9223372036854775808, 1015], 2, [-1, -1]]}
+    // CHECK-SAME:                ([[INNER_IN_DATA1]], [[INNER_HIDDEN_STATE1]], [[INNER_CELL_STATE1]], [[INNER_RECCURENCE_WEIGHTS1]], [[INNER_BIASES1]], [[INNER_SYNC_BUFF1]], [[INNER_OUT_HIDDEN_VAL1]], [[INNER_OUT_HIDDEN_STATE1]], [[INNER_OUT_CELL_STATE1]]) :
+    // CHECK:     }
+    // CHECK:   }
 
-//# -------------------- Results --------------------
-// CHECK:       [[CONCAT_HIDDEN_VAL:%.+]] = VPUIP.ConcatView inputs([[LSTM_SEQUENCE]]#0, [[LSTM_SEQUENCE]]#3 :
-// CHECK-SAME{LITERAL}:     !VPUIP.DistributedBuffer<1x2x640x128xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments, compute_shapes = [[1, 1, 640, 128], [1, 1, 640, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]], memory_shapes = [[1, 1, 640, 128], [1, 1, 640, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>, !VPUIP.DistributedBuffer<1x2x640x128xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments, compute_shapes = [[1, 1, 640, 128], [1, 1, 640, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]], memory_shapes = [[1, 1, 640, 128], [1, 1, 640, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>)
-// CHECK-SAME:              outputs([[OUT_HIDDEN_VAL]] :
-// CHECK-SAME{LITERAL}:     !VPUIP.DistributedBuffer<1x2x640x128xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments, compute_shapes = [[1, 1, 640, 128], [1, 1, 640, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]], memory_shapes = [[1, 1, 640, 128], [1, 1, 640, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>) -> !VPUIP.DistributedBuffer<1x2x640x128xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments, compute_shapes = [[1, 1, 640, 128], [1, 1, 640, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]], memory_shapes = [[1, 1, 640, 128], [1, 1, 640, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>
+    //# -------------------- Results --------------------
+    // CHECK:       [[CONCAT_HIDDEN_VAL:%.+]] = VPUIP.ConcatView inputs([[LSTM_SEQUENCE]]#0, [[LSTM_SEQUENCE]]#3 :
+    // CHECK-SAME{LITERAL}:     !VPUIP.DistributedBuffer<1x2x640x128xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments, compute_shapes = [[1, 1, 640, 128], [1, 1, 640, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]], memory_shapes = [[1, 1, 640, 128], [1, 1, 640, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>, !VPUIP.DistributedBuffer<1x2x640x128xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments, compute_shapes = [[1, 1, 640, 128], [1, 1, 640, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]], memory_shapes = [[1, 1, 640, 128], [1, 1, 640, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>)
+    // CHECK-SAME:              outputs([[OUT_HIDDEN_VAL]] :
+    // CHECK-SAME{LITERAL}:     !VPUIP.DistributedBuffer<1x2x640x128xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments, compute_shapes = [[1, 1, 640, 128], [1, 1, 640, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]], memory_shapes = [[1, 1, 640, 128], [1, 1, 640, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>) -> !VPUIP.DistributedBuffer<1x2x640x128xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments, compute_shapes = [[1, 1, 640, 128], [1, 1, 640, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]], memory_shapes = [[1, 1, 640, 128], [1, 1, 640, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>
 
-// CHECK:   [[CONCAT_HIDDEN_STATE:%.+]] = VPUIP.ConcatView inputs([[LSTM_SEQUENCE]]#1, [[LSTM_SEQUENCE]]#4 :
-// CHECK-SAME{LITERAL}:     !VPUIP.DistributedBuffer<1x2x1x128xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments, compute_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]], memory_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>, !VPUIP.DistributedBuffer<1x2x1x128xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments, compute_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]], memory_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>)
-// CHECK-SAME:              outputs([[OUT_HIDDEN_STATE]] :
-// CHECK-SAME{LITERAL}:     !VPUIP.DistributedBuffer<1x2x1x128xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments, compute_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]], memory_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>) -> !VPUIP.DistributedBuffer<1x2x1x128xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments, compute_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]], memory_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>
+    // CHECK:   [[CONCAT_HIDDEN_STATE:%.+]] = VPUIP.ConcatView inputs([[LSTM_SEQUENCE]]#1, [[LSTM_SEQUENCE]]#4 :
+    // CHECK-SAME{LITERAL}:     !VPUIP.DistributedBuffer<1x2x1x128xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments, compute_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]], memory_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>, !VPUIP.DistributedBuffer<1x2x1x128xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments, compute_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]], memory_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>)
+    // CHECK-SAME:              outputs([[OUT_HIDDEN_STATE]] :
+    // CHECK-SAME{LITERAL}:     !VPUIP.DistributedBuffer<1x2x1x128xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments, compute_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]], memory_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>) -> !VPUIP.DistributedBuffer<1x2x1x128xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments, compute_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]], memory_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>
 
-// CHECK:   [[CONCAT_CELL_STATE:%.+]] = VPUIP.ConcatView inputs([[LSTM_SEQUENCE]]#2, [[LSTM_SEQUENCE]]#5 :
-// CHECK-SAME{LITERAL}:     !VPUIP.DistributedBuffer<1x2x1x128xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments, compute_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]], memory_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>, !VPUIP.DistributedBuffer<1x2x1x128xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments, compute_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]], memory_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>)
-// CHECK-SAME:              outputs([[OUT_CELL_STATE]] :
-// CHECK-SAME{LITERAL}:     !VPUIP.DistributedBuffer<1x2x1x128xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments, compute_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]], memory_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>) -> !VPUIP.DistributedBuffer<1x2x1x128xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments, compute_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]], memory_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>
+    // CHECK:   [[CONCAT_CELL_STATE:%.+]] = VPUIP.ConcatView inputs([[LSTM_SEQUENCE]]#2, [[LSTM_SEQUENCE]]#5 :
+    // CHECK-SAME{LITERAL}:     !VPUIP.DistributedBuffer<1x2x1x128xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments, compute_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]], memory_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>, !VPUIP.DistributedBuffer<1x2x1x128xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments, compute_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]], memory_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>)
+    // CHECK-SAME:              outputs([[OUT_CELL_STATE]] :
+    // CHECK-SAME{LITERAL}:     !VPUIP.DistributedBuffer<1x2x1x128xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments, compute_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]], memory_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>) -> !VPUIP.DistributedBuffer<1x2x1x128xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments, compute_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], compute_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]], memory_shapes = [[1, 1, 1, 128], [1, 1, 1, 128]], memory_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]}>
 
-// CHECK:   [[HIDDEN_VAL_DDR_BUFF:%.+]] = memref.alloc() : memref<1x2x640x128xf16>
-// CHECK:   [[HIDDEN_VAL_DDR:%.+]] = VPUIP.Copy inputs([[CONCAT_HIDDEN_VAL]]
-// CHECK-SAME:               outputs([[HIDDEN_VAL_DDR_BUFF]] : memref<1x2x640x128xf16>) -> memref<1x2x640x128xf16>
-// CHECK:   [[HIDDEN_STATE_DDR_BUFF:%.+]] = memref.alloc() : memref<1x2x1x128xf16>
-// CHECK:   [[HIDDEN_STATE_DDR:%.+]] = VPUIP.Copy inputs([[CONCAT_HIDDEN_STATE]]
-// CHECK-SAME:               outputs([[HIDDEN_STATE_DDR_BUFF]] : memref<1x2x1x128xf16>) -> memref<1x2x1x128xf16>
-// CHECK:   [[CELL_STATE_DDR_BUFF:%.+]] = memref.alloc() : memref<1x2x1x128xf16>
-// CHECK:   [[CELL_STATE_DDR:%.+]] = VPUIP.Copy inputs([[CONCAT_CELL_STATE]]
-// CHECK-SAME:               outputs([[CELL_STATE_DDR_BUFF]] : memref<1x2x1x128xf16>) -> memref<1x2x1x128xf16>
-// CHECK:   return [[HIDDEN_VAL_DDR]], [[HIDDEN_STATE_DDR]], [[CELL_STATE_DDR]] : memref<1x2x640x128xf16>, memref<1x2x1x128xf16>, memref<1x2x1x128xf16>
+    // CHECK:   [[HIDDEN_VAL_DDR_BUFF:%.+]] = memref.alloc() : memref<1x2x640x128xf16>
+    // CHECK:   [[HIDDEN_VAL_DDR:%.+]] = VPUIP.Copy inputs([[CONCAT_HIDDEN_VAL]]
+    // CHECK-SAME:               outputs([[HIDDEN_VAL_DDR_BUFF]] : memref<1x2x640x128xf16>) -> memref<1x2x640x128xf16>
+    // CHECK:   [[HIDDEN_STATE_DDR_BUFF:%.+]] = memref.alloc() : memref<1x2x1x128xf16>
+    // CHECK:   [[HIDDEN_STATE_DDR:%.+]] = VPUIP.Copy inputs([[CONCAT_HIDDEN_STATE]]
+    // CHECK-SAME:               outputs([[HIDDEN_STATE_DDR_BUFF]] : memref<1x2x1x128xf16>) -> memref<1x2x1x128xf16>
+    // CHECK:   [[CELL_STATE_DDR_BUFF:%.+]] = memref.alloc() : memref<1x2x1x128xf16>
+    // CHECK:   [[CELL_STATE_DDR:%.+]] = VPUIP.Copy inputs([[CONCAT_CELL_STATE]]
+    // CHECK-SAME:               outputs([[CELL_STATE_DDR_BUFF]] : memref<1x2x1x128xf16>) -> memref<1x2x1x128xf16>
+    // CHECK:   return [[HIDDEN_VAL_DDR]], [[HIDDEN_STATE_DDR]], [[CELL_STATE_DDR]] : memref<1x2x640x128xf16>, memref<1x2x1x128xf16>, memref<1x2x1x128xf16>
 }
 
 // -----
@@ -1541,7 +1545,7 @@ func.func @TileClusterFakeQuantize(%arg0: memref<1x3x384x320xf16>) -> memref<1x3
     // CHECK-SAME:                          outputs([[SUBVIEW_CMX_0]] : !VPUIP.DistributedBuffer<1x3x192x320xf16,
     // CHECK-SAME:                          -> !VPUIP.DistributedBuffer<1x3x192x320xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
 
-    // CHECK: [[SUBVIEW_DDR_1:%.+]] = VPUIP.SubView %arg0 [0, 0, 0, 0] [1, 3, 192, 320] : memref<1x3x384x320xf16> to memref<1x3x192x320xf16, {order = #NCHW, strides = [368640, 122880, 320, 1]}>
+    // CHECK: [[SUBVIEW_DDR_1:%.+]] = VPUIP.SubView [[INPUT_DATA]] [0, 0, 0, 0] [1, 3, 192, 320] : memref<1x3x384x320xf16> to memref<1x3x192x320xf16, {order = #NCHW, strides = [368640, 122880, 320, 1]}>
     // CHECK: [[SUBVIEW_CMX_1:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x3x192x320xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
     // CHECK: [[SUBVIEW_CMX_1_COPY:%.+]] = VPUIP.Copy inputs([[SUBVIEW_DDR_1]] : memref<1x3x192x320xf16, {order = #NCHW, strides = [368640, 122880, 320, 1]}>)
     // CHECK-SAME:                          outputs([[SUBVIEW_CMX_1]] : !VPUIP.DistributedBuffer<1x3x192x320xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)
@@ -2877,12 +2881,12 @@ func.func @TileGridSample(%arg0: memref<1x32x48x720xf16>, %arg1: memref<1x48x720
     // CHECK:     [[SLICE_5:%.+]] = VPUIP.SubView [[ALLOC_1]] [0, 16, 0, 0] [1, 16, 48, 720] : memref<1x32x48x720xf16, [@CMX_NN, 0]> to memref<1x16x48x720xf16, {order = #NCHW, strides = [1105920, 34560, 720, 1]}, [@CMX_NN, 0]>
 
     // CHECK:     [[GRID_SAMPLE:%.+]]:2 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 2, 0, 0>} @VPU.SW::@builtin_GridSample
-    // CHECK-SAME:           inputs([[SLICE_2]] as %arg2: memref<1x16x48x720xf16, {order = #NCHW, strides = [1105920, 34560, 720, 1]}, [@CMX_NN, 0]>, [[COPY_1]] as %arg3: memref<1x48x720x2xf16, [@CMX_NN, 0]>,
-    // CHECK-SAME:                  [[SLICE_4]] as %arg4: memref<1x16x48x720xf16, {order = #NCHW, strides = [1105920, 34560, 720, 1]}, [@CMX_NN, 0]>, [[COPY_1]] as %arg5: memref<1x48x720x2xf16, [@CMX_NN, 0]>)
-    // CHECK-SAME:           outputs([[SLICE_3]] as %arg6: memref<1x16x48x720xf16, {order = #NCHW, strides = [1105920, 34560, 720, 1]}, [@CMX_NN, 0]>, [[SLICE_5]] as %arg7: memref<1x16x48x720xf16, {order = #NCHW, strides = [1105920, 34560, 720, 1]}, [@CMX_NN, 0]>)
+    // CHECK-SAME:           inputs([[SLICE_2]] as [[ARG_2:%[^:]+]]: memref<1x16x48x720xf16, {order = #NCHW, strides = [1105920, 34560, 720, 1]}, [@CMX_NN, 0]>, [[COPY_1]] as [[ARG_3:%[^:]+]]: memref<1x48x720x2xf16, [@CMX_NN, 0]>,
+    // CHECK-SAME:                  [[SLICE_4]] as [[ARG_4:%[^:]+]]: memref<1x16x48x720xf16, {order = #NCHW, strides = [1105920, 34560, 720, 1]}, [@CMX_NN, 0]>, [[COPY_1]] as [[ARG_5:%[^:]+]]: memref<1x48x720x2xf16, [@CMX_NN, 0]>)
+    // CHECK-SAME:           outputs([[SLICE_3]] as [[ARG_6:%[^:]+]]: memref<1x16x48x720xf16, {order = #NCHW, strides = [1105920, 34560, 720, 1]}, [@CMX_NN, 0]>, [[SLICE_5]] as [[ARG_7:%[^:]+]]: memref<1x16x48x720xf16, {order = #NCHW, strides = [1105920, 34560, 720, 1]}, [@CMX_NN, 0]>)
     // CHECK-SAME:                  on tile 0 -> (memref<1x16x48x720xf16, {order = #NCHW, strides = [1105920, 34560, 720, 1]}, [@CMX_NN, 0]>, memref<1x16x48x720xf16, {order = #NCHW, strides = [1105920, 34560, 720, 1]}, [@CMX_NN, 0]>){
-    // CHECK:                             VPUIP.SW.Kernel.run {attrs = [1, 0, 1]}(%arg2, %arg3, %arg6) : memref<1x16x48x720xf16, {order = #NCHW, strides = [1105920, 34560, 720, 1]}, [@CMX_NN, 0]>, memref<1x48x720x2xf16, [@CMX_NN, 0]>, memref<1x16x48x720xf16, {order = #NCHW, strides = [1105920, 34560, 720, 1]}, [@CMX_NN, 0]>
-    // CHECK:                             VPUIP.SW.Kernel.run {attrs = [1, 0, 1]}(%arg4, %arg5, %arg7) : memref<1x16x48x720xf16, {order = #NCHW, strides = [1105920, 34560, 720, 1]}, [@CMX_NN, 0]>, memref<1x48x720x2xf16, [@CMX_NN, 0]>, memref<1x16x48x720xf16, {order = #NCHW, strides = [1105920, 34560, 720, 1]}, [@CMX_NN, 0]>
+    // CHECK:                             VPUIP.SW.Kernel.run {attrs = [1, 0, 1]}([[ARG_2]], [[ARG_3]], [[ARG_6]]) : memref<1x16x48x720xf16, {order = #NCHW, strides = [1105920, 34560, 720, 1]}, [@CMX_NN, 0]>, memref<1x48x720x2xf16, [@CMX_NN, 0]>, memref<1x16x48x720xf16, {order = #NCHW, strides = [1105920, 34560, 720, 1]}, [@CMX_NN, 0]>
+    // CHECK:                             VPUIP.SW.Kernel.run {attrs = [1, 0, 1]}([[ARG_4]], [[ARG_5]], [[ARG_7]]) : memref<1x16x48x720xf16, {order = #NCHW, strides = [1105920, 34560, 720, 1]}, [@CMX_NN, 0]>, memref<1x48x720x2xf16, [@CMX_NN, 0]>, memref<1x16x48x720xf16, {order = #NCHW, strides = [1105920, 34560, 720, 1]}, [@CMX_NN, 0]>
     // CHECK:     }
 
     // CHECK:     [[CONCAT:%.+]] = VPUIP.ConcatView inputs([[GRID_SAMPLE]]#0, [[GRID_SAMPLE]]#1 : memref<1x16x48x720xf16, {order = #NCHW, strides = [1105920, 34560, 720, 1]}, [@CMX_NN, 0]>, memref<1x16x48x720xf16, {order = #NCHW, strides = [1105920, 34560, 720, 1]}, [@CMX_NN, 0]>) outputs([[ALLOC_1]] : memref<1x32x48x720xf16, [@CMX_NN, 0]>) -> memref<1x32x48x720xf16, [@CMX_NN, 0]>

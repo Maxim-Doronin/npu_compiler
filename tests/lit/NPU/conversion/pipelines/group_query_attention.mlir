@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,6 +10,7 @@
 // CHECK:   DataInfo "Q" : tensor<1x32x12x96xf32>
 // CHECK:   DataInfo "K" : tensor<1x32x12x96xf32>
 // CHECK:   DataInfo "V" : tensor<1x32x12x96xf32>
+// CHECK:   DataInfo "total_sequence_len" : tensor<1x1xsi32>
 // CHECK:   DataInfo "past_key_values.0.key" : tensor<1x32x1024x96xf32>
 // CHECK:   DataInfo "past_key_values.0.value" : tensor<1x32x1024x96xf32>
 // CHECK:   DataInfo "sequence" : tensor<1x1xsi32>
@@ -25,6 +26,7 @@
 // CHECK-SAME: [[QIN:%[^:]+]]: tensor<1x32x12x96xf32>,
 // CHECK-SAME: [[KIN:%[^:]+]]: tensor<1x32x12x96xf32>,
 // CHECK-SAME: [[VIN:%[^:]+]]: tensor<1x32x12x96xf32>,
+// CHECK-SAME: [[TSL:%[^:]+]]: tensor<1x1xsi32>,
 // CHECK-SAME: [[PK:%[^:]+]]: tensor<1x32x1024x96xf32>,
 // CHECK-SAME: [[PV:%[^:]+]]: tensor<1x32x1024x96xf32>,
 // CHECK-SAME: [[SEQ:%[^:]+]]: tensor<1x1xsi32>,
@@ -47,7 +49,7 @@
 // CHECK: [[SEQ_I64:%.+]] = IE.Convert([[SEQ]]) {dstElemType = si64}
 // CHECK: [[CST7:%.+]] = const.Declare tensor<1xsi64> = dense<1> : tensor<1xsi64>
 // CHECK: [[SEQ_REAL:%.+]] = IE.Add([[SEQ_I64]], [[CST7]])
-// CHECK: [[SEQ_RESHAPE:%.+]] = IE.Reshape([[SEQ_REAL]], [[CST7]])
+// CHECK: [[SEQ_RESHAPE:%.+]] = IE.Reshape([[SEQ_REAL]]) {shape_value = [1]}
 // CHECK: [[CST8:%.+]] = const.Declare tensor<1xsi64> = dense<12> : tensor<1xsi64>
 // CHECK: [[SEQSUB:%.+]] = IE.Subtract([[SEQ_RESHAPE]], [[CST8]])
 // CHECK: [[IDX:%.+]] = IE.Add([[CST6]], [[SEQSUB]])
@@ -89,6 +91,5 @@
 // CHECK: [[MATMUL2:%.+]] = IE.MatMul([[SOFTMAX]], [[PRESENT_VALUE]])
 // CHECK: [[CST18:%.+]] = const.Declare tensor<4xsi64> = dense<{{\[}}0, 2, 1, 3{{\]}}> : tensor<4xsi64>
 // CHECK: [[TRANSPOSEO:%.+]] = IE.Transpose([[MATMUL2]], [[CST18]])
-// CHECK: [[CST19:%.+]] = const.Declare tensor<3xsi32> = dense<{{\[}}0, 0, -1{{\]}}> : tensor<3xsi32>
-// CHECK: [[RESULT:%.+]] = IE.Reshape([[TRANSPOSEO]], [[CST19]]) {special_zero}
+// CHECK: [[RESULT:%.+]] = IE.Reshape([[TRANSPOSEO]]) {shape_value = [1, 12, 3072]}
 // CHECK: return [[RESULT]], [[PRESENT_KEY]], [[PRESENT_VALUE]]

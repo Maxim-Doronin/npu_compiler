@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -521,13 +521,13 @@ def RewriteSelu :
 def createReshapeOp :
         NativeCodeCall<[{
             $_builder.create<vpux::VPU::ReshapeOp>(
-                $_loc, $0, $1, $2, $3)
+                $_loc, $0, $1)
         }]>;
 
 def RewriteReshape :
         Pat<
-            (IE_ReshapeOp $input, $shape, $special_zero, $shape_value),
-            (createReshapeOp $input, $shape, $special_zero, $shape_value)
+            (IE_ReshapeOp $input, $shape_value),
+            (createReshapeOp $input, $shape_value)
         >;
 
 //
@@ -1846,6 +1846,22 @@ def RewriteSoftPlus :
         >;
 
 //
+// IE.SoftSign -> VPU.SoftSign
+//
+
+def createSoftSignOp :
+        NativeCodeCall<[{
+            $_builder.create<vpux::VPU::SoftSignOp>($_loc, $0)
+        }]>;
+
+def RewriteSoftSign :
+        Pat<
+            (IE_SoftSignOp $input),
+            (createSoftSignOp $input)
+        >;
+
+
+//
 // IE.Ceiling -> VPU.Ceiling
 //
 
@@ -2176,19 +2192,19 @@ def RewriteNonZero :
             (createNonZeroOp $input)
         >;
 //
-// IE.ReduceMeanSquareOp -> VPU.ReduceMeanSquareOp
+// IE.ReduceSquareOp -> VPU.ReduceSquareOp
 //
 
-def createReduceMeanSquareOp :
+def createReduceSquareOp :
         NativeCodeCall<[{
-            $_builder.create<vpux::VPU::ReduceMeanSquareOp>($_loc, $0, $1, $2, $3)
+            $_builder.create<vpux::VPU::ReduceSquareOp>($_loc, $0, $1, $2, $3, $4)
         }]>;
 
 
-def RewriteReduceMeanSquare :
+def RewriteReduceSquare :
         Pat<
-            (IE_ReduceMeanSquareOp $input, $axes, $epsilon, $axes_value, $keep_dims),
-            (createReduceMeanSquareOp $input, $axes_value, $keep_dims, $epsilon)
+            (IE_ReduceSquareOp $input, $axes, $epsilon, $axes_value, $keep_dims, $scale),
+            (createReduceSquareOp $input, $axes_value, $keep_dims, $epsilon, $scale)
         >;
 
 

@@ -1,10 +1,11 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/utils/function_outlining_splitter.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 #include "vpux/compiler/utils/async_dialect_utils.hpp"
 
 using namespace vpux;
@@ -52,9 +53,7 @@ void vpux::printOutliningInstances(ArrayRef<OutliningInstance> outliningInstance
 }
 
 void OutlinerBase::outline(mlir::ModuleOp moduleOp, StringRef functionSuffix) {
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp netFunc;
-    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, netFunc);
+    auto netFunc = net::getMainFunc(moduleOp);
 
     auto outlinedTargets = getOutliningTargets(netFunc);
     if (outlinedTargets.empty()) {

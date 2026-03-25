@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/VPUMI37XX/ops.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 #include "vpux/compiler/utils/passes.hpp"
 
 namespace vpux::ELFNPU37XX {
@@ -49,9 +50,7 @@ private:
     void safeRunOnModule() final {
         mlir::ModuleOp moduleOp = getOperation();
 
-        net::NetworkInfoOp netInfo;
-        mlir::func::FuncOp funcOp;
-        net::NetworkInfoOp::getFromModule(moduleOp, netInfo, funcOp);
+        auto funcOp = net::getMainFunc(moduleOp);
 
         runOnSectionOps<ELFNPU37XX::CreateSectionOp>(funcOp);
         runOnSectionOps<ELFNPU37XX::CreateLogicalSectionOp>(funcOp);

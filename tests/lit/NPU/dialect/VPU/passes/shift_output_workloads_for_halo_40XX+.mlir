@@ -1,7 +1,8 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
+
 // RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --shift-dpu-workloads-start %s | FileCheck %s
 // REQUIRES: arch-NPU40XX || arch-NPU50XX
 
@@ -67,10 +68,10 @@ func.func @ConvSOHOverlapped(%arg0: !Input_DDR) -> !Output_DDR {
                 rawFilterShape = [16, 16, 1, 1],
                 strides = [1, 1]
             } : !InputDistributed, !WeightsDistributed -> !OutputDistributed {
-                VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 8, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 0 : i64}
-                VPU.DPU.Workload outOffsets [0, 0, 8, 0] outSizes [1, 16, 8, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 1 : i64}
-                VPU.DPU.Workload outOffsets [0, 0, 16, 0] outSizes [1, 16, 7, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 2 : i64}
-                VPU.DPU.Workload outOffsets [0, 0, 23, 0] outSizes [1, 16, 7, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 3 : i64}
+                VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 8, 33] pad [0, 0, 0, 0] #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 0 : i64}
+                VPU.DPU.Workload outOffsets [0, 0, 8, 0] outSizes [1, 16, 8, 33] pad [0, 0, 0, 0] #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 1 : i64}
+                VPU.DPU.Workload outOffsets [0, 0, 16, 0] outSizes [1, 16, 7, 33] pad [0, 0, 0, 0] #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 2 : i64}
+                VPU.DPU.Workload outOffsets [0, 0, 23, 0] outSizes [1, 16, 7, 33] pad [0, 0, 0, 0] #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 3 : i64}
             }
 
     %output = VPU.Copy(%output_cmx) { out_mem_space = @DDR } : !OutputDistributed -> !Output_DDR
@@ -90,10 +91,10 @@ func.func @ConvSOHOverlapped(%arg0: !Input_DDR) -> !Output_DDR {
     // CHECK-SAME:          strides = [1, 1],
     // CHECK-SAME:          num_clusters = 4 : i64,
     // CHECK-SAME:          uniform_distributed_segments}>
-    // CHECK:           DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 8, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-    // CHECK:           DPU.Workload outOffsets [0, 0, 1, 0] outSizes [1, 16, 8, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
-    // CHECK:           DPU.Workload outOffsets [0, 0, 1, 0] outSizes [1, 16, 7, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16> attributes {cluster_id = 2 : i64}
-    // CHECK:           DPU.Workload outOffsets [0, 0, 1, 0] outSizes [1, 16, 7, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16> attributes {cluster_id = 3 : i64}
+    // CHECK:           DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 8, 33] pad [0, 0, 0, 0] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+    // CHECK:           DPU.Workload outOffsets [0, 0, 1, 0] outSizes [1, 16, 8, 33] pad [0, 0, 0, 0] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+    // CHECK:           DPU.Workload outOffsets [0, 0, 1, 0] outSizes [1, 16, 7, 33] pad [0, 0, 0, 0] <CUBOID_16x16> attributes {cluster_id = 2 : i64}
+    // CHECK:           DPU.Workload outOffsets [0, 0, 1, 0] outSizes [1, 16, 7, 33] pad [0, 0, 0, 0] <CUBOID_16x16> attributes {cluster_id = 3 : i64}
 
 }
 
@@ -194,10 +195,10 @@ func.func @SparseConvSOHOverlapped(%arg0: !InputDataDistributed, %arg1: !InputSM
                 rawFilterShape = [16, 16, 1, 1],
                 strides = [1, 1]
             } : !Input_CMX, !WeightsDistributed -> !Output_CMX {
-                VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 8, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 0 : i64}
-                VPU.DPU.Workload outOffsets [0, 0, 8, 0] outSizes [1, 16, 8, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 1 : i64}
-                VPU.DPU.Workload outOffsets [0, 0, 16, 0] outSizes [1, 16, 7, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 2 : i64}
-                VPU.DPU.Workload outOffsets [0, 0, 23, 0] outSizes [1, 16, 7, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 3 : i64}
+                VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 8, 33] pad [0, 0, 0, 0] #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 0 : i64}
+                VPU.DPU.Workload outOffsets [0, 0, 8, 0] outSizes [1, 16, 8, 33] pad [0, 0, 0, 0] #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 1 : i64}
+                VPU.DPU.Workload outOffsets [0, 0, 16, 0] outSizes [1, 16, 7, 33] pad [0, 0, 0, 0] #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 2 : i64}
+                VPU.DPU.Workload outOffsets [0, 0, 23, 0] outSizes [1, 16, 7, 33] pad [0, 0, 0, 0] #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 3 : i64}
             }
 
     return %output_cmx: !Output_CMX
@@ -214,10 +215,10 @@ func.func @SparseConvSOHOverlapped(%arg0: !InputDataDistributed, %arg1: !InputSM
     // CHECK-SAME:            pads = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
     // CHECK-SAME:            strides = [1, 1], num_clusters = 4 : i64, uniform_distributed_segments}>>
 
-    // CHECK:           DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 8, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-    // CHECK:           DPU.Workload outOffsets [0, 0, 1, 0] outSizes [1, 16, 8, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
-    // CHECK:           DPU.Workload outOffsets [0, 0, 1, 0] outSizes [1, 16, 7, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16> attributes {cluster_id = 2 : i64}
-    // CHECK:           DPU.Workload outOffsets [0, 0, 1, 0] outSizes [1, 16, 7, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16> attributes {cluster_id = 3 : i64}
+    // CHECK:           DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 8, 33] pad [0, 0, 0, 0] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+    // CHECK:           DPU.Workload outOffsets [0, 0, 1, 0] outSizes [1, 16, 8, 33] pad [0, 0, 0, 0] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+    // CHECK:           DPU.Workload outOffsets [0, 0, 1, 0] outSizes [1, 16, 7, 33] pad [0, 0, 0, 0] <CUBOID_16x16> attributes {cluster_id = 2 : i64}
+    // CHECK:           DPU.Workload outOffsets [0, 0, 1, 0] outSizes [1, 16, 7, 33] pad [0, 0, 0, 0] <CUBOID_16x16> attributes {cluster_id = 3 : i64}
 
 }
 
@@ -285,10 +286,10 @@ func.func @ConvSOHOverlappedMultipleWorkloads(%arg0: !Input_DDR) -> !Output_DDR 
                 rawFilterShape = [16, 16, 1, 1],
                 strides = [1, 1]
             } : !InputDistributed, !WeightsDistributed -> !OutputDistributed {
-                VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 8, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 0 : i64}
-                VPU.DPU.Workload outOffsets [0, 0, 8, 0] outSizes [1, 16, 7, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 0 : i64}
-                VPU.DPU.Workload outOffsets [0, 0, 15, 0] outSizes [1, 16, 8, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 1 : i64}
-                VPU.DPU.Workload outOffsets [0, 0, 23, 0] outSizes [1, 16, 7, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 1 : i64}
+                VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 8, 33] pad [0, 0, 0, 0] #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 0 : i64}
+                VPU.DPU.Workload outOffsets [0, 0, 8, 0] outSizes [1, 16, 7, 33] pad [0, 0, 0, 0] #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 0 : i64}
+                VPU.DPU.Workload outOffsets [0, 0, 15, 0] outSizes [1, 16, 8, 33] pad [0, 0, 0, 0] #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 1 : i64}
+                VPU.DPU.Workload outOffsets [0, 0, 23, 0] outSizes [1, 16, 7, 33] pad [0, 0, 0, 0] #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 1 : i64}
             }
 
     %output = VPU.Copy(%output_cmx) { out_mem_space = @DDR } : !OutputDistributed -> !Output_DDR
@@ -307,10 +308,10 @@ func.func @ConvSOHOverlappedMultipleWorkloads(%arg0: !Input_DDR) -> !Output_DDR 
     // CHECK-SAME:     strides = [1, 1],
     // CHECK-SAME:     num_clusters = 2 : i64,
     // CHECK-SAME:     uniform_distributed_segments}>
-    // CHECK:          DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 8, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-    // CHECK:          DPU.Workload outOffsets [0, 0, 8, 0] outSizes [1, 16, 7, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-    // CHECK:          DPU.Workload outOffsets [0, 0, 1, 0] outSizes [1, 16, 8, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
-    // CHECK:          DPU.Workload outOffsets [0, 0, 9, 0] outSizes [1, 16, 7, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+    // CHECK:          DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 8, 33] pad [0, 0, 0, 0] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+    // CHECK:          DPU.Workload outOffsets [0, 0, 8, 0] outSizes [1, 16, 7, 33] pad [0, 0, 0, 0] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+    // CHECK:          DPU.Workload outOffsets [0, 0, 1, 0] outSizes [1, 16, 8, 33] pad [0, 0, 0, 0] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+    // CHECK:          DPU.Workload outOffsets [0, 0, 9, 0] outSizes [1, 16, 7, 33] pad [0, 0, 0, 0] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
 
 }
 
@@ -378,9 +379,9 @@ func.func @ConvSOHOverlappedNoOverlapAtStart(%arg0: !Input_DDR) -> !Output_DDR {
                 rawFilterShape = [16, 16, 3, 3],
                 strides = [1, 1]
             } : !InputDistributed, !WeightsDistributed -> !OutputDistributed {
-                VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 11, 33] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 0 : i64}
-                VPU.DPU.Workload outOffsets [0, 0, 11, 0] outSizes [1, 16, 11, 33] <left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 1 : i64}
-                VPU.DPU.Workload outOffsets [0, 0, 22, 0] outSizes [1, 16, 11, 33] <left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 1 : i64> #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 2 : i64}
+                VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 11, 33]pad [1, 1, 1, 0] #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 0 : i64}
+                VPU.DPU.Workload outOffsets [0, 0, 11, 0] outSizes [1, 16, 11, 33] pad [1, 1, 0, 0] #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 1 : i64}
+                VPU.DPU.Workload outOffsets [0, 0, 22, 0] outSizes [1, 16, 11, 33] pad [1, 1, 0, 1] #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 2 : i64}
             }
 
     %output = VPU.Copy(%output_cmx) { out_mem_space = @DDR } : !OutputDistributed -> !Output_DDR
@@ -400,9 +401,9 @@ func.func @ConvSOHOverlappedNoOverlapAtStart(%arg0: !Input_DDR) -> !Output_DDR {
     // CHECK-SAME:        strides = [2, 2],
     // CHECK-SAME:        num_clusters = 3 : i64,
     // CHECK-SAME:        uniform_distributed_segments}>
-    // CHECK:          DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 11, 33] <left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 0 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-    // CHECK:          DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 11, 33] <left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
-    // CHECK:          DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 11, 33] <left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 1 : i64> <CUBOID_16x16> attributes {cluster_id = 2 : i64}
+    // CHECK:          DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 11, 33] pad [1, 1, 1, 0] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+    // CHECK:          DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 11, 33] pad [1, 1, 0, 0] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+    // CHECK:          DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 11, 33] pad [1, 1, 0, 1] <CUBOID_16x16> attributes {cluster_id = 2 : i64}
 }
 
 // -----
@@ -464,8 +465,8 @@ func.func @ConvSOKNoChange(%arg0: !Input_DDR) -> !Output_DDR {
                 rawFilterShape = [32, 16, 1, 1],
                 strides = [1, 1]
             } : !InputDistributed, !WeightsDistributed -> !OutputDistributed {
-                VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 30, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 0 : i64}
-                VPU.DPU.Workload outOffsets [0, 16, 0, 0] outSizes [1, 16, 30, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> #VPU.mpe_mode<CUBOID_16x16> attributes {cluster_id = 1 : i64}
+                VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 30, 33] pad [0, 0, 0, 0] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+                VPU.DPU.Workload outOffsets [0, 16, 0, 0] outSizes [1, 16, 30, 33] pad [0, 0, 0, 0] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
             }
     %output = VPU.Copy(%output_cmx) { out_mem_space = @DDR } : !OutputDistributed -> !Output_DDR
 
@@ -481,8 +482,8 @@ func.func @ConvSOKNoChange(%arg0: !Input_DDR) -> !Output_DDR {
     // CHECK-SAME:         num_tiles = [1, 2, 1, 1],
     // CHECK-SAME:         num_clusters = 2 : i64,
     // CHECK-SAME:         uniform_distributed_segments}>
-    // CHECK:          DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 30, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-    // CHECK:          DPU.Workload outOffsets [0, 16, 0, 0] outSizes [1, 16, 30, 33] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+    // CHECK:          DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 16, 30, 33] pad [0, 0, 0, 0] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+    // CHECK:          DPU.Workload outOffsets [0, 16, 0, 0] outSizes [1, 16, 30, 33] pad [0, 0, 0, 0] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
 
 }
 
@@ -534,10 +535,10 @@ func.func @NCEPermuteSOK(%arg0: !Input_DDR) -> !Output_DDR {
                 minimumHardwareExecutionCost = 5442 : i64,
                 ppe = #VPU.PPEStub<>
             } -> !OutputDistributed {
-                VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 32, 32, 64] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-                VPU.DPU.Workload outOffsets [0, 32, 0, 0] outSizes [1, 32, 32, 64] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
-                VPU.DPU.Workload outOffsets [0, 64, 0, 0] outSizes [1, 32, 32, 64] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16> attributes {cluster_id = 2 : i64}
-                VPU.DPU.Workload outOffsets [0, 96, 0, 0] outSizes [1, 32, 32, 64] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16> attributes {cluster_id = 3 : i64}
+                VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 32, 32, 64] pad [0, 0, 0, 0] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+                VPU.DPU.Workload outOffsets [0, 32, 0, 0] outSizes [1, 32, 32, 64] pad [0, 0, 0, 0] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+                VPU.DPU.Workload outOffsets [0, 64, 0, 0] outSizes [1, 32, 32, 64] pad [0, 0, 0, 0] <CUBOID_16x16> attributes {cluster_id = 2 : i64}
+                VPU.DPU.Workload outOffsets [0, 96, 0, 0] outSizes [1, 32, 32, 64] pad [0, 0, 0, 0] <CUBOID_16x16> attributes {cluster_id = 3 : i64}
             }
 
     %output = VPU.Copy(%output_cmx) { out_mem_space = @DDR } : !OutputDistributed -> !Output_DDR
@@ -556,8 +557,8 @@ func.func @NCEPermuteSOK(%arg0: !Input_DDR) -> !Output_DDR {
     // CHECK-SAME{LITERAL}: compute_offsets = [[0, 0, 0, 0], [0, 32, 0, 0], [0, 64, 0, 0], [0, 96, 0, 0]],
     // CHECK-SAME{LITERAL}: memory_shapes = [[1, 32, 32, 64], [1, 32, 32, 64], [1, 32, 32, 64], [1, 32, 32, 64]],
     // CHECK-SAME{LITERAL}: memory_offsets = [[0, 0, 0, 0], [0, 32, 0, 0], [0, 64, 0, 0], [0, 96, 0, 0]]}>
-    // CHECK:          VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 32, 32, 64] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16> attributes {cluster_id = 0 : i64}
-    // CHECK:          VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 32, 32, 64] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16> attributes {cluster_id = 1 : i64}
-    // CHECK:          VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 32, 32, 64] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16> attributes {cluster_id = 2 : i64}
-    // CHECK:          VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 32, 32, 64] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16> attributes {cluster_id = 3 : i64}
+    // CHECK:          VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 32, 32, 64] pad [0, 0, 0, 0] <CUBOID_16x16> attributes {cluster_id = 0 : i64}
+    // CHECK:          VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 32, 32, 64] pad [0, 0, 0, 0] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+    // CHECK:          VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 32, 32, 64] pad [0, 0, 0, 0] <CUBOID_16x16> attributes {cluster_id = 2 : i64}
+    // CHECK:          VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 32, 32, 64] pad [0, 0, 0, 0] <CUBOID_16x16> attributes {cluster_id = 3 : i64}
 }

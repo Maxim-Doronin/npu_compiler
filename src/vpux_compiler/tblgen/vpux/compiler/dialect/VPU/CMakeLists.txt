@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2023-2025 Intel Corporation.
+# Copyright (C) 2023-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -17,7 +17,6 @@ add_vpux_ops_granular(VPU GENERIC ops/ eltwise)
 add_vpux_ops_granular(VPU GENERIC ops/ image)
 add_vpux_ops_granular(VPU GENERIC ops/ internal)
 add_vpux_ops_granular(VPU GENERIC ops/ logical)
-add_vpux_ops_granular(VPU GENERIC ops/ m2i)
 add_vpux_ops_granular(VPU GENERIC ops/ normalization)
 add_vpux_ops_granular(VPU GENERIC ops/ pooling)
 add_vpux_ops_granular(VPU GENERIC ops/ recurrent)

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -73,12 +73,12 @@ func.func @ExceedingVariantCount(%arg0: memref<1x16x32x32xf16, #NHWC>, %arg1: me
     // DPU task
 
     VPURT.Task waits(%bar0, %bar1: !VPURT.Barrier, !VPURT.Barrier) updates(%bar2: !VPURT.Barrier) {
-        VPUIP.NCEClusterTask {
+        VPUIP.NCEClusterTask <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
                 task_type = #VPUIP.nce_task_type<CONV>
-            }
+            }>
             input(%buf10: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>)
             weights(%buf14: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>)
             parent_input(%buf10: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>)
@@ -144,12 +144,12 @@ func.func @ExceedingVariantCount(%arg0: memref<1x16x32x32xf16, #NHWC>, %arg1: me
     // DPU task
 
     VPURT.Task waits(%bar2: !VPURT.Barrier) updates(%bar3: !VPURT.Barrier) {
-        VPUIP.NCEClusterTask {
+        VPUIP.NCEClusterTask <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
                 task_type = #VPUIP.nce_task_type<CONV>
-            }
+            }>
             input(%buf12: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>)
             weights(%buf14: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>)
             parent_input(%buf12: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>)

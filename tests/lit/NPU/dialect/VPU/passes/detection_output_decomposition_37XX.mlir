@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -74,6 +74,7 @@ func.func @FaceDetectionAdas(%in_box_logits: tensor<1x40448xf16>, %in_class_pred
 // -----
 
 // CHECK-LABEL: func.func @NotNormalizedEncodedVariance
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x40448xf16>, [[ARG_1:%[^:]+]]: tensor<1x20224xf16>, [[ARG_2:%[^:]+]]: tensor<1x1x50560xf16>)
 func.func @NotNormalizedEncodedVariance(%arg0: tensor<1x40448xf16>, %arg1: tensor<1x20224xf16>, %arg2: tensor<1x1x50560xf16>) -> tensor<1x1x200x7xf16> {
   %9 = VPU.DetectionOutput(%arg0, %arg1, %arg2) {
     attr = #IE.DetectionOutput<background_label_id = 0 : i64,
@@ -95,7 +96,7 @@ func.func @NotNormalizedEncodedVariance(%arg0: tensor<1x40448xf16>, %arg1: tenso
     >, operandSegmentSizes = array<i32: 1, 1, 1, 0, 0>} : tensor<1x40448xf16>, tensor<1x20224xf16>, tensor<1x1x50560xf16> -> tensor<1x1x200x7xf16>
   return %9 : tensor<1x1x200x7xf16>
 
-// CHECK:       [[NON_NORMALIZED:%.+]] = VPU.Reshape(%arg2)
+// CHECK:       [[NON_NORMALIZED:%.+]] = VPU.Reshape([[ARG_2]])
 // CHECK-SAME:      shape_value = [1, 1, 10112, 5]
 // CHECK:       [[NORM_PRIORS:%.+]] = VPU.DetectionOutputNormalize([[NON_NORMALIZED]])
 // CHECK-SAME:      tensor<1x1x10112x5xf16> ->

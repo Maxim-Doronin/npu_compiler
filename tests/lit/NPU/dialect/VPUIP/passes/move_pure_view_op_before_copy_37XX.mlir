@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -15,6 +15,8 @@
     num_clusters = 2
 }>
 
+// CHECK-LABEL: @MoveShapeCastWithAlignmentBeforeTilingCopySegmented
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: !VPUIP.DistributedBuffer<1x16x239x18xf16, #NHWC, @CMX_NN
 func.func @MoveShapeCastWithAlignmentBeforeTilingCopySegmented(%arg0: !InputDistributed) -> memref<1x16x478x9xf16, #NHWC, @DDR> {
     %out = memref.alloc() : memref<1x16x239x18xf16, #NHWC, @DDR>
     %0 = VPUIP.Copy
@@ -23,7 +25,7 @@ func.func @MoveShapeCastWithAlignmentBeforeTilingCopySegmented(%arg0: !InputDist
     %1 = VPUIP.ShapeCast {shape = [1, 16, 478, 9]} inputs(%0 : memref<1x16x239x18xf16, #NHWC, @DDR>) -> memref<1x16x478x9xf16, #NHWC, @DDR>
 
     return %1 : memref<1x16x478x9xf16, #NHWC, @DDR>
-    // CHECK:    [[SHAPECAST:%.+]] = VPUIP.ShapeCast {shape = [1, 16, 478, 9]} inputs(%arg0 : !VPUIP.DistributedBuffer<1x16x239x18xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>) -> !VPUIP.DistributedBuffer<1x16x478x9xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, alignment = [1, 1, 2, 1]}>
+    // CHECK:    [[SHAPECAST:%.+]] = VPUIP.ShapeCast {shape = [1, 16, 478, 9]} inputs([[ARG_0]] : !VPUIP.DistributedBuffer<1x16x239x18xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>) -> !VPUIP.DistributedBuffer<1x16x478x9xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, alignment = [1, 1, 2, 1]}>
     // CHECK:    [[OUTBUFF:%.+]] = memref.alloc() : memref<1x16x478x9xf16, #NHWC, @DDR>
     // CHECK:    [[COPY:%.+]] = VPUIP.Copy
     // CHECK-SAME:     inputs([[SHAPECAST]] : !VPUIP.DistributedBuffer<1x16x478x9xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, alignment = [1, 1, 2, 1]}>)
@@ -43,6 +45,8 @@ func.func @MoveShapeCastWithAlignmentBeforeTilingCopySegmented(%arg0: !InputDist
     }
 >
 
+// CHECK-LABEL: @DoNotMoveShapeCastBeforeTilingCopySegmentedDueToAlignment
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: !VPUIP.DistributedBuffer<1x16x16x8xf16, #NHWC, @CMX_NN,
 func.func @DoNotMoveShapeCastBeforeTilingCopySegmentedDueToAlignment(%arg0: !InputDistributed) -> memref<1x1024x2x1xf16, #NHWC, @DDR> {
     %out = memref.alloc() : memref<1x16x16x8xf16, #NHWC, @DDR>
     %0 = VPUIP.Copy
@@ -53,7 +57,7 @@ func.func @DoNotMoveShapeCastBeforeTilingCopySegmentedDueToAlignment(%arg0: !Inp
     return %1 : memref<1x1024x2x1xf16, #NHWC, @DDR>
     // CHECK:    [[OUTBUFF:%.+]] = memref.alloc() : memref<1x16x16x8xf16, #NHWC, @DDR>
     // CHECK:    [[COPY:%.+]] = VPUIP.Copy
-    // CHECK-SAME:     inputs(%arg0
+    // CHECK-SAME:     inputs([[ARG_0]]
     // CHECK-SAME:     outputs([[OUTBUFF]] : memref<1x16x16x8xf16, #NHWC, @DDR>)  ->  memref<1x16x16x8xf16, #NHWC, @DDR>
     // CHECK:    [[SHAPECAST:%.+]] = VPUIP.ShapeCast {shape = [1, 1024, 2, 1]} inputs([[COPY]] : memref<1x16x16x8xf16, #NHWC, @DDR>) -> memref<1x1024x2x1xf16, #NHWC, @DDR>
     // CHECK:    return [[SHAPECAST]] : memref<1x1024x2x1xf16, #NHWC, @DDR>
@@ -79,7 +83,7 @@ func.func @ChangeForStridedCopy(
     %2 = VPUIP.GenericReshape inputs(%1 : memref<1x16x4xui8, @DDR>) -> memref<1x1x16x4xui8, @DDR>
 
     %3 = VPUIP.QuantizeCast inputs(%2 : memref<1x1x16x4xui8, @DDR>) -> memref<1x1x16x4x!qElemType, @DDR>
-    
+
     %4 = VPUIP.ShapeCast {shape = [1, 1, 8, 8]} inputs(%3 : memref<1x1x16x4x!qElemType, @DDR>) -> memref<1x1x8x8x!qElemType, @DDR>
 
     %5 = VPUIP.PermuteCast {dst_order = #NHWC, mem_perm = #NHWC}

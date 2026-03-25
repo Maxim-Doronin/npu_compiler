@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -224,7 +224,7 @@ module @HaloCMXPartitioningForReorderingTest {
         %145546 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
         %145547 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
         VPURT.Task waits(%145546 : !VPURT.Barrier) updates(%145547 : !VPURT.Barrier) {
-          %254514 = VPUIP.NCEClusterTask {is_superdense, task_type = #VPUIP.nce_task_type<ELTWISE>} input(%145552 : memref<1x64x4x16xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, [@CMX_NN, 0]>) weights(%145548 :
+          %254514 = VPUIP.NCEClusterTask <{is_superdense, task_type = #VPUIP.nce_task_type<ELTWISE>}> input(%145552 : memref<1x64x4x16xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, [@CMX_NN, 0]>) weights(%145548 :
      memref<1x64x4x16xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, [@CMX_NN, 0]>) parent_input(%145552 : memref<1x64x4x16xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, [@CMX_NN, 0]>) parent_output(%8 : !VPUIP.ITIBuffer<
               1x64x4x17xf16, {order = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>}, [@CMX_NN, 0],
               inwardHaloRegions = [
@@ -341,7 +341,7 @@ func.func @cmx_iti_buffer_main(%arg0: tensor<2x3x64x64xf16>, %arg1: tensor<2x3x6
         // CHECK:      [[SLICE_0_VAR_2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <39936> -> memref<1x64x4x16xf16, #NHWC, [@CMX_NN, 0]>
         // CHECK:      [[SLICE_0_VAR_3:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <39936> -> memref<1x64x4x16xf16, #NHWC, [@CMX_NN, 0]>
         // CHECK:  VPURT.Task waits([[UNKN_BARRIER:%.+]] : !VPURT.Barrier) updates([[UNKN_BARRIER:%.+]] : !VPURT.Barrier) {
-        // CHECK:         [[UNKN_VAR:%.+]] = VPUIP.NCEClusterTask {[[NOT_IMPORTANT_MATCH:.+]]} input([[SLICE_0_VAR_2]] : memref<1x64x4x16xf16, #NHWC, [@CMX_NN, 0]>) weights([[SLICE_0_VAR_3]] : memref<1x64x4x16xf16, #NHWC, [@CMX_NN, 0]>) parent_input([[SLICE_0_VAR_2]] : memref<1x64x4x16xf16, #NHWC, [@CMX_NN, 0]>) parent_output([[SLICE_0_VAR_0]] : !VPUIP.ITIBuffer<
+        // CHECK:         [[UNKN_VAR:%.+]] = VPUIP.NCEClusterTask <{[[NOT_IMPORTANT_MATCH:.+]]}> input([[SLICE_0_VAR_2]] : memref<1x64x4x16xf16, #NHWC, [@CMX_NN, 0]>) weights([[SLICE_0_VAR_3]] : memref<1x64x4x16xf16, #NHWC, [@CMX_NN, 0]>) parent_input([[SLICE_0_VAR_2]] : memref<1x64x4x16xf16, #NHWC, [@CMX_NN, 0]>) parent_output([[SLICE_0_VAR_0]] : !VPUIP.ITIBuffer<
         // CHECK:      1x64x4x17xf16, {order = #NWCH}, [@CMX_NN, 0],
         // CHECK:      inwardHaloRegions = [
         // CHECK:          #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 0 : i64>
@@ -414,7 +414,7 @@ func.func @cmx_iti_buffer_main(%arg0: tensor<2x3x64x64xf16>, %arg1: tensor<2x3x6
         // CHECK:  [[SLICE_1_VAR_2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [3] <39936> -> memref<1x64x4x16xf16, #NHWC, [@CMX_NN, 3]>
         // CHECK:  [[SLICE_1_VAR_3:%.+]] = VPURT.DeclareBuffer <CMX_NN> [3] <39936> -> memref<1x64x4x16xf16, #NHWC, [@CMX_NN, 3]>
         // CHECK:  VPURT.Task waits([[UNKN_VAR:%.+]]: !VPURT.Barrier) updates([[UNKN_VAR:%.+]] : !VPURT.Barrier) {
-        // CHECK:  [[UNKN_VAR:%.+]] = VPUIP.NCEClusterTask {[[NOT_IMPORTANT_MATCH:.+]]} input([[SLICE_1_VAR_2]] : memref<1x64x4x16xf16, #NHWC, [@CMX_NN, 3]>) weights([[SLICE_1_VAR_3]] : memref<1x64x4x16xf16, #NHWC, [@CMX_NN, 3]>) parent_input([[SLICE_1_VAR_2]] : memref<1x64x4x16xf16, #NHWC, [@CMX_NN, 3]>) parent_output([[SLICE_1_VAR_0]] : !VPUIP.ITIBuffer<
+        // CHECK:  [[UNKN_VAR:%.+]] = VPUIP.NCEClusterTask <{[[NOT_IMPORTANT_MATCH:.+]]}> input([[SLICE_1_VAR_2]] : memref<1x64x4x16xf16, #NHWC, [@CMX_NN, 3]>) weights([[SLICE_1_VAR_3]] : memref<1x64x4x16xf16, #NHWC, [@CMX_NN, 3]>) parent_input([[SLICE_1_VAR_2]] : memref<1x64x4x16xf16, #NHWC, [@CMX_NN, 3]>) parent_output([[SLICE_1_VAR_0]] : !VPUIP.ITIBuffer<
         // CHECK:      1x64x4x17xf16, {order = #NWCH}, [@CMX_NN, 3],
         // CHECK:      inwardHaloRegions = [
         // CHECK:          #VPUIP.HaloRegionAttr<[[NOT_IMPORTANT_MATCH:.+]], cluster_id = 3 : i64>

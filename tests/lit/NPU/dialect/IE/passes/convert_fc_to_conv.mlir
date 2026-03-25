@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,6 +7,7 @@
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
 // CHECK-LABEL: @ConvertFullyConnectedToConvolution
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x16xf32>)
 func.func @ConvertFullyConnectedToConvolution(%arg0: tensor<1x16xf32>) -> tensor<1x64xf32> {
     %weights = const.Declare tensor<64x16xf32> = dense<1.0> : tensor<64x16xf32>
     %bias = const.Declare tensor<1x64xf32> = dense<1.0> : tensor<1x64xf32>
@@ -17,7 +18,7 @@ func.func @ConvertFullyConnectedToConvolution(%arg0: tensor<1x16xf32>) -> tensor
     // CHECK-NOT:   IE.FullyConnected
     // CHECK-DAG:       [[WEIGHTS:%.+]] = const.Declare tensor<64x16xf32> = dense<1.000000e+00> : tensor<64x16xf32>
     // CHECK-DAG:       [[BIAS:%.+]] = const.Declare tensor<1x64xf32> = dense<1.000000e+00> : tensor<1x64xf32>
-    // CHECK:       [[VAL0:%.+]] = IE.Reshape(%arg0) {shape_value = [1, 16, 1, 1]} : tensor<1x16xf32> -> tensor<1x16x1x1xf32>
+    // CHECK:       [[VAL0:%.+]] = IE.Reshape([[ARG_0]]) {shape_value = [1, 16, 1, 1]} : tensor<1x16xf32> -> tensor<1x16x1x1xf32>
     // CHECK:       [[VAL1:%.+]] = IE.Reshape([[WEIGHTS]]) {shape_value = [64, 16, 1, 1]} : tensor<64x16xf32> -> tensor<64x16x1x1xf32>
     // CHECK:       [[VAL2:%.+]] = IE.Reshape([[BIAS]]) {shape_value = [1, 64, 1, 1]} : tensor<1x64xf32> -> tensor<1x64x1x1xf32>
     // CHECK:       [[CONV:%.+]] = IE.Convolution([[VAL0]], [[VAL1]], [[VAL2]])

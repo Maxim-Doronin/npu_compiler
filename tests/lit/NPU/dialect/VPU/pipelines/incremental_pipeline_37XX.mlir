@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,12 +7,14 @@
 // REQUIRES: arch-NPU37XX
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+// CHECK-LABEL: @MaxpoolIncrementalPipelineCheck
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x1x4xf16, {order = #NHWC}>)
 func.func @MaxpoolIncrementalPipelineCheck(%arg0: tensor<1x16x1x4xf16, {order = #NHWC}>) -> tensor<1x16x1x4xf16, {order = #NHWC}> {
     %0 = VPU.NCE.MaxPool(%arg0) { kernel_size = [1, 1], pad =  #VPU.Padding<bottom = 0, left = 0, right = 0, top = 0>, ppe = #VPU.PPEStub<>, strides = [1, 1]} -> tensor<1x16x1x4xf16, {order = #NHWC}>
     return %0 : tensor<1x16x1x4xf16, {order = #NHWC}>
 }
 
-    //CHECK: [[OP0:%.+]] = VPU.Copy(%arg0) {out_mem_space = @CMX_NN}
+    //CHECK: [[OP0:%.+]] = VPU.Copy([[ARG_0]]) {out_mem_space = @CMX_NN}
     //CHECK-SAME:         -> !VPU.DistributedTensor<1x16x1x4xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
     //CHECK: [[OP1:%.+]] = VPU.NCE.MaxPool([[OP0]]) {kernel_size = [1, 1], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>, strides = [1, 1]}
     //CHECK-SAME:         -> !VPU.DistributedTensor<1x16x1x4xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
@@ -28,6 +30,8 @@ func.func @MaxpoolIncrementalPipelineCheck(%arg0: tensor<1x16x1x4xf16, {order = 
 
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+// CHECK-LABEL: @ConvIncrementalPipeline
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x64x28x28xf16, {order = #NHWC}>)
 func.func @ConvIncrementalPipeline(%arg0: tensor<1x64x28x28xf16, {order = #NHWC}>) -> tensor<1x80x28x28xf16, {order = #NHWC}> {
     %cst = const.Declare tensor<80x1x1x4xsi32> = dense<10> : tensor<80x1x1x4xsi32>
     %cst_0 = const.Declare tensor<80x64x3x3xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<80x64x3x3xf16>, [#const.Reorder<#NHWC>]
@@ -38,7 +42,7 @@ func.func @ConvIncrementalPipeline(%arg0: tensor<1x64x28x28xf16, {order = #NHWC}
     //CHECK: [[CONST:%.+]] = const.Declare tensor<80x1x1x4xsi32> = dense<10> : tensor<80x1x1x4xsi32>
     //CHECK: [[CONST_0:%.+]] =  const.Declare tensor<80x64x3x3xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<80x64x3x3xf16>, [#const.Reorder<#NHWC>]
 
-    //CHECK: [[OP0:%.+]] = VPU.Copy(%arg0) {out_mem_space = @CMX_NN}
+    //CHECK: [[OP0:%.+]] = VPU.Copy([[ARG_0]]) {out_mem_space = @CMX_NN}
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x64x28x28xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
 
     //CHECK: [[OP1:%.+]] = VPU.Copy([[CONST_0]]) {out_mem_space = @CMX_NN}
@@ -62,12 +66,14 @@ func.func @ConvIncrementalPipeline(%arg0: tensor<1x64x28x28xf16, {order = #NHWC}
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: @TanHIncrementalPipeline
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x1x16x4xf16, {order = #NHWC}>)
 func.func @TanHIncrementalPipeline(%arg0: tensor<1x1x16x4xf16, {order = #NHWC}>) -> tensor<1x1x16x4xf16, {order = #NHWC}> {
     %1 = VPU.Tanh(%arg0) : tensor<1x1x16x4xf16, {order = #NHWC}> -> tensor<1x1x16x4xf16, {order = #NHWC}>
     return %1 : tensor<1x1x16x4xf16, {order = #NHWC}>
 }
 
-    //CHECK: [[OP0:%.+]] = VPU.Copy(%arg0) {out_mem_space = @CMX_NN}
+    //CHECK: [[OP0:%.+]] = VPU.Copy([[ARG_0]]) {out_mem_space = @CMX_NN}
     //CHECK-SAME:   -> !VPU.DistributedTensor<1x1x16x4xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
 
     //CHECK: [[OP1:%.+]] = VPU.Tanh([[OP0]])
@@ -144,6 +150,9 @@ func.func @NCEPermuteIncrementalPipeline(%arg0: tensor<1x3x64x64xf16>) -> tensor
 // -----
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @ConvTanHIncrementalPipeline
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x64x28x28xf16, {order = #NHWC}>)
 func.func @ConvTanHIncrementalPipeline(%arg0: tensor<1x64x28x28xf16, {order = #NHWC}>) -> tensor<1x80x28x28xf16, {order = #NHWC}> {
     %cst = const.Declare tensor<80x1x1x4xsi32> = dense<10> : tensor<80x1x1x4xsi32>
     %cst_0 = const.Declare tensor<80x64x3x3xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<80x64x3x3xf16>, [#const.Reorder<#NHWC>]
@@ -154,7 +163,7 @@ func.func @ConvTanHIncrementalPipeline(%arg0: tensor<1x64x28x28xf16, {order = #N
     //CHECK: [[CONST:%.+]] = const.Declare tensor<80x1x1x4xsi32> = dense<10> : tensor<80x1x1x4xsi32>
     //CHECK: [[CONST_0:%.+]] = const.Declare tensor<80x64x3x3xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<80x64x3x3xf16>, [#const.Reorder<#NHWC>]
 
-    //CHECK: [[OP0:%.+]] = VPU.Copy(%arg0) {out_mem_space = @CMX_NN}
+    //CHECK: [[OP0:%.+]] = VPU.Copy([[ARG_0]]) {out_mem_space = @CMX_NN}
     //CHECK-SAME:       -> !VPU.DistributedTensor<1x64x28x28xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
 
     //CHECK: [[OP1:%.+]] = VPU.Copy([[CONST_0]]) {out_mem_space = @CMX_NN}

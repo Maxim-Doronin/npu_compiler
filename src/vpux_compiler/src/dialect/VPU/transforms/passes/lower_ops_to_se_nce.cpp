@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -130,11 +130,13 @@ mlir::Value convertOpToConv(mlir::Operation* origOp, mlir::Value weights, mlir::
                             config::ArchKind arch, mlir::PatternRewriter& rewriter) {
     const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp->getResult(0).getType());
     const auto OC = outputType.getShape()[Dims4D::Act::C];
-    const auto ppeAttr = VPU::PpeVersionConfig::retrievePPEAttribute(origOp);
+    auto* ctx = origOp->getContext();
+    const auto& ppeConfig = VPU::getPpeConfig(ctx);
+    const auto ppeAttr = ppeConfig.retrievePPEAttribute(origOp);
     const auto mpeEngineAttr = VPU::MPEEngineConfig::retrieveMPEEngineAttribute(origOp);
 
     const auto adaptedOutElemType =
-            VPU::PpeVersionConfig::getFactoryAs<VPU::IPpeAdapterFpPreluAlpha>().adaptTypeForPreluAlphaScaling(
+            ppeConfig.getFactoryAs<VPU::IPpeAdapterFpPreluAlpha>().adaptTypeForPreluAlphaScaling(
                     ppeAttr, outputType.getElementType());
 
     const auto isNewWeightTableFormat = VPU::MPEEngineConfig::useNewWeightTableFormat(origOp, false);
@@ -142,8 +144,8 @@ mlir::Value convertOpToConv(mlir::Operation* origOp, mlir::Value weights, mlir::
     const auto ppeConverter = VPU::NCESparsity::getPPEConverterCb(arch, isNewWeightTableFormat);
     const auto biasConverter = VPU::NCESparsity::getBiasConverterCb(arch, isNewWeightTableFormat);
 
-    const auto stridesAttr = getIntArrayAttr(origOp->getContext(), SmallVector<int64_t>{1, 1});
-    const auto padAttr = VPU::getPaddingAttr(origOp->getContext(), PadInfo(0, 0, 0, 0));
+    const auto stridesAttr = getIntArrayAttr(ctx, SmallVector<int64_t>{1, 1});
+    const auto padAttr = VPU::getPaddingAttr(ctx, PadInfo(0, 0, 0, 0));
     const auto rawFilterShape = getIntArrayAttr(rewriter, getShape(weights));
 
     auto inputPaddingAttr = origOp->hasAttr(VPU::INPUT_PADDING_ATTR_NAME)
@@ -315,9 +317,11 @@ mlir::LogicalResult InterpolateToNCE::matchAndRewrite(VPU::InterpolateOp origOp,
 
     const auto OC = outputType.getShape()[Dims4D::Act::C];
 
-    const auto origPpeAttr = VPU::PpeVersionConfig::retrievePPEAttribute(origOp);
+    auto ctx = rewriter.getContext();
+    const auto& ppeConfig = VPU::getPpeConfig(ctx);
+    const auto origPpeAttr = ppeConfig.retrievePPEAttribute(origOp);
     const auto adaptedOutElemType =
-            VPU::PpeVersionConfig::getFactoryAs<VPU::IPpeAdapterFpPreluAlpha>().adaptTypeForPreluAlphaScaling(
+            ppeConfig.getFactoryAs<VPU::IPpeAdapterFpPreluAlpha>().adaptTypeForPreluAlphaScaling(
                     origPpeAttr, outputType.getElementType());
 
     const auto isNewWeightTableFormat = VPU::MPEEngineConfig::useNewWeightTableFormat(origOp, false);
@@ -339,7 +343,6 @@ mlir::LogicalResult InterpolateToNCE::matchAndRewrite(VPU::InterpolateOp origOp,
     const auto strides = VPU::getNCEInterpolateStrides(scales, modeAttr, origOp.getAttr().getCoordMode());
     auto stridesAttr = getIntArrayAttr(rewriter, strides);
 
-    auto ctx = rewriter.getContext();
     const auto rawFilterShape = getIntArrayAttr(rewriter, weightsShape);
     auto interp = rewriter.create<VPU::NCEInterpolateOp>(
             origOp->getLoc(), outputType, sparseInput, weights, weightsTable, newWeightsTableTensors.dataPointerTensor,
@@ -350,7 +353,7 @@ mlir::LogicalResult InterpolateToNCE::matchAndRewrite(VPU::InterpolateOp origOp,
     // The "artificial" weights quantization scale must be taken into account when computing the PPE attribute. This
     // info is not present in the original InterpolateOp, thus the PPE attribute is post-generated based on the new
     // NCEInterpolateOp and assigned to it.
-    interp.setPpeAttr(VPU::PpeVersionConfig::retrievePPEAttribute(interp));
+    interp.setPpeAttr(ppeConfig.retrievePPEAttribute(interp));
 
     rewriter.replaceOp(origOp, interp->getResult(0));
     return mlir::success();
@@ -495,11 +498,13 @@ mlir::LogicalResult TransposedConvolutionToNCE::matchAndRewrite(VPU::TransposedC
         return matchFailed(rewriter, origOp, "Unable to create sparse input");
     }
 
+    auto* ctx = origOp.getContext();
+
     const auto weights = origOp.getFilter();
     const auto weightsShape = getBoundedShape(weights.getType());
     const auto rawFilterShape = getIntArrayAttr(rewriter, weightsShape);
 
-    const auto stridesAttr = getIntArrayAttr(origOp.getContext(), SmallVector<int64_t>{1, 1});
+    const auto stridesAttr = getIntArrayAttr(ctx, SmallVector<int64_t>{1, 1});
     const auto padAttr = VPU::getPaddingAttr(getContext(), PadInfo(0, 0, 0, 0));
 
     auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
@@ -531,7 +536,8 @@ mlir::LogicalResult TransposedConvolutionToNCE::matchAndRewrite(VPU::TransposedC
         bias = biasConstOp.getContentAttr();
     }
 
-    const auto ppeAttr = VPU::PpeVersionConfig::retrievePPEAttribute(origOp);
+    const auto& ppeConfig = VPU::getPpeConfig(ctx);
+    const auto ppeAttr = ppeConfig.retrievePPEAttribute(origOp);
     const auto mpeEngineAttr = VPU::MPEEngineConfig::retrieveMPEEngineAttribute(origOp);
 
     const auto isNewWeightTableFormat = VPU::MPEEngineConfig::useNewWeightTableFormat(origOp, false);
@@ -540,7 +546,7 @@ mlir::LogicalResult TransposedConvolutionToNCE::matchAndRewrite(VPU::TransposedC
     const auto biasConverter = VPU::NCESparsity::getBiasConverterCb(_arch, isNewWeightTableFormat);
 
     const auto adaptedOutElemType =
-            VPU::PpeVersionConfig::getFactoryAs<VPU::IPpeAdapterFpPreluAlpha>().adaptTypeForPreluAlphaScaling(
+            ppeConfig.getFactoryAs<VPU::IPpeAdapterFpPreluAlpha>().adaptTypeForPreluAlphaScaling(
                     ppeAttr, outputType.getElementType());
 
     auto getCorrectConvFormat = [&](bool isNewWTFormat) {
@@ -765,12 +771,13 @@ mlir::LogicalResult DilatedConvolutionToNCE::matchAndRewrite(VPU::GroupConvoluti
         bias = biasConstOp.getContentAttr();
     }
 
-    const auto ppeAttr = VPU::PpeVersionConfig::retrievePPEAttribute(origOp);
+    const auto& ppeConfig = VPU::getPpeConfig(ctx);
+    const auto ppeAttr = ppeConfig.retrievePPEAttribute(origOp);
 
     auto alignedWeights = VPU::alignDepthWiseWeightsTensor(rewriter, origOp.getLoc(), filter);
 
     const auto adaptedOutElemType =
-            VPU::PpeVersionConfig::getFactoryAs<VPU::IPpeAdapterFpPreluAlpha>().adaptTypeForPreluAlphaScaling(
+            ppeConfig.getFactoryAs<VPU::IPpeAdapterFpPreluAlpha>().adaptTypeForPreluAlphaScaling(
                     ppeAttr, outputType.getElementType());
 
     const auto isNewWeightTableFormat = VPU::MPEEngineConfig::useNewWeightTableFormat(origOp, false);
@@ -1107,37 +1114,15 @@ mlir::LogicalResult RollToNCE::matchAndRewrite(VPU::RollOp origOp, mlir::Pattern
 
 class LowerOpsToSENCEPass final : public VPU::impl::LowerOpsToSENCEBase<LowerOpsToSENCEPass> {
 public:
-    explicit LowerOpsToSENCEPass(const bool seOpsEnabled, const bool seExperimentalOpsEnabled, Logger log)
-            : _seOpsEnabled(seOpsEnabled), _seExperimentalOpsEnabled(seExperimentalOpsEnabled) {
+    explicit LowerOpsToSENCEPass(Logger log) {
         Base::initLogger(log, Base::getArgumentName());
     }
-
-    mlir::LogicalResult initialize(mlir::MLIRContext* ctx) final;
 
 private:
     void safeRunOnFunc() final;
 
 private:
-    bool _seOpsEnabled;
-    bool _seExperimentalOpsEnabled;
 };
-
-mlir::LogicalResult LowerOpsToSENCEPass::initialize(mlir::MLIRContext* ctx) {
-    if (mlir::failed(Base::initialize(ctx))) {
-        return mlir::failure();
-    }
-
-    // When this parameter has a value, it probably comes from LIT test.
-    // Override the default
-    if (seOpsEnabled.hasValue()) {
-        _seOpsEnabled = seOpsEnabled.getValue();
-    }
-    if (seExperimentalOpsEnabled.hasValue()) {
-        _seExperimentalOpsEnabled = seExperimentalOpsEnabled.getValue();
-    }
-
-    return mlir::success();
-}
 
 void LowerOpsToSENCEPass::safeRunOnFunc() {
     auto& ctx = getContext();
@@ -1145,30 +1130,33 @@ void LowerOpsToSENCEPass::safeRunOnFunc() {
     auto module = func->getParentOfType<mlir::ModuleOp>();
     const auto arch = config::getArch(module);
 
+    const auto seOpsEnabled = config::hasEnableSEPtrsOperations(module);
+    const auto seExperimentalOpsEnabled = config::hasEnableExperimentalSEPtrsOperations(module);
+
     const auto logCb = [&](const formatv_object_base& msg) {
         _log.trace("{0}", msg.str());
     };
 
     mlir::ConversionTarget target(ctx);
     target.addDynamicallyLegalOp<VPU::InterpolateOp>([&](VPU::InterpolateOp op) {
-        return !(_seOpsEnabled &&
+        return !(seOpsEnabled &&
                  VPU::NCEInterpolateOp::isSupported(op, logCb, /*checkLayout=*/true, /*checkChannelAlignment=*/true,
                                                     /*checkBatch=*/true));
     });
     target.addDynamicallyLegalOp<VPU::TransposedConvolutionOp>([&](VPU::TransposedConvolutionOp op) {
-        return !(_seOpsEnabled && VPU::isSupportedSEPTransposedConv(op, logCb, /*checkLayout=*/false,
-                                                                    /*checkChannelAlignment=*/false));
+        return !(seOpsEnabled && VPU::isSupportedSEPTransposedConv(op, logCb, /*checkLayout=*/false,
+                                                                   /*checkChannelAlignment=*/false));
     });
     target.addDynamicallyLegalOp<VPU::RollOp>([&](VPU::RollOp op) {
-        return !(_seOpsEnabled && VPU::isSupportedSEPRoll(op, logCb, /*checkLayout=*/true,
-                                                          /*checkChannelAlignment=*/true));
+        return !(seOpsEnabled && VPU::isSupportedSEPRoll(op, logCb, /*checkLayout=*/true,
+                                                         /*checkChannelAlignment=*/true));
     });
     target.addDynamicallyLegalOp<VPU::PadOp>([&](VPU::PadOp op) {
-        return !(_seOpsEnabled && VPU::isSupportedSEPPadOp(op, logCb, /*checkLayout=*/true,
-                                                           /*checkChannelAlignment=*/true));
+        return !(seOpsEnabled && VPU::isSupportedSEPPadOp(op, logCb, /*checkLayout=*/true,
+                                                          /*checkChannelAlignment=*/true));
     });
     target.addDynamicallyLegalOp<VPU::GroupConvolutionOp>([&](VPU::GroupConvolutionOp op) {
-        return !(_seExperimentalOpsEnabled &&
+        return !(seExperimentalOpsEnabled &&
                  VPU::isSupportedSEPDilatedConv(op, logCb, /*checkLayout=*/true,
                                                 /*checkChannelAlignment=*/true) &&
                  VPU::isDilatedGroupConv(op));
@@ -1184,14 +1172,14 @@ void LowerOpsToSENCEPass::safeRunOnFunc() {
 
     mlir::RewritePatternSet patterns(&ctx);
 
-    if (_seOpsEnabled) {
+    if (seOpsEnabled) {
         patterns.add<InterpolateToNCE>(&ctx, arch, _log);
         patterns.add<TransposedConvolutionToNCE>(&ctx, arch, _log);
         patterns.add<RollToNCE>(&ctx, arch, _log);
         patterns.add<PadToNCE>(&ctx, arch, _log);
     }
 
-    if (_seExperimentalOpsEnabled) {
+    if (seExperimentalOpsEnabled) {
         patterns.add<DilatedConvolutionToNCE>(&ctx, arch, _log);
     }
 
@@ -1206,7 +1194,6 @@ void LowerOpsToSENCEPass::safeRunOnFunc() {
 // createLowerOpsToSENCEPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::VPU::createLowerOpsToSENCEPass(const bool seOpsEnabled,
-                                                                 const bool seExperimentalOpsEnabled, Logger log) {
-    return std::make_unique<LowerOpsToSENCEPass>(seOpsEnabled, seExperimentalOpsEnabled, log);
+std::unique_ptr<mlir::Pass> vpux::VPU::createLowerOpsToSENCEPass(Logger log) {
+    return std::make_unique<LowerOpsToSENCEPass>(log);
 }

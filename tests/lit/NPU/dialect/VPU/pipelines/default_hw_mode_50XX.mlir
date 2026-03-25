@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -53,7 +53,7 @@ module @Convolution attributes {config.arch = #config.arch_kind<NPU50XX>, config
         // CHECK-SAME:           {dstElemType = f16, dstOrder = #NHWC, expandedChannels = 16 : i64, minimumHardwareExecutionCost = 4294967195 : i64, ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = -3.4028234663852886E+38 : f64, clamp_high = 3.4028234663852886E+38 : f64, prelu_alpha = [1.000000e-01], adder = 0.000000e+00 : f64>}
         // CHECK-SAME:           -> tensor<1x16x62x64xf16, {mem_space = [@CMX_NN, 0], order = #NHWC}> {
         // CHECK:                   VPU.DPU.Workload
-        // CHECK-SAME:              inOffsets [0, 0, 0, 0] inSizes [1, 3, 62, 64] outOffsets [0, 0, 0, 0] outSizes [1, 3, 62, 64] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64> <CUBOID_16x16>
+        // CHECK-SAME:              inOffsets [0, 0, 0, 0] inSizes [1, 3, 62, 64] outOffsets [0, 0, 0, 0] outSizes [1, 3, 62, 64] pad [0, 0, 0, 0] <CUBOID_16x16>
         // CHECK:                 }
 
         // CHECK:       [[COPY1:%.+]] = VPU.Copy([[PERM]]) : tensor<1x16x62x64xf16, {mem_space = [@CMX_NN, 0], order = #NHWC}> -> tensor<1x16x62x64xf16, {order = #NHWC}>
@@ -69,7 +69,7 @@ module @Convolution attributes {config.arch = #config.arch_kind<NPU50XX>, config
 
 
 
-        // CHECK:       [[COPY3:%.+]] = VPU.Copy(%cst) {out_mem_space = [@CMX_NN, 0]} : tensor<48x1x1x4xsi32> -> tensor<48x1x1x4xsi32, {mem_space = [@CMX_NN, 0], order = #NCHW}>
+        // CHECK:       [[COPY3:%.+]] = VPU.Copy([[CST0]]) {out_mem_space = [@CMX_NN, 0]} : tensor<48x1x1x4xsi32> -> tensor<48x1x1x4xsi32, {mem_space = [@CMX_NN, 0], order = #NCHW}>
 
         // CHECK:       [[CONV:%.+]] = VPU.NCE.Convolution([[COPY2]], [[COPY1]], [[COPY3]]) {minimumHardwareExecutionCost = 42679 : i64,
         // CHECK-SAME:      pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
@@ -77,7 +77,7 @@ module @Convolution attributes {config.arch = #config.arch_kind<NPU50XX>, config
         // CHECK-SAME:      rawFilterShape = [48, 16, 3, 3], strides = [1, 1]}
         // CHECK-SAME:      -> tensor<1x48x60x60xf16, {mem_space = [@CMX_NN, 0], order = #NCHW}> {
         // CHECK:               VPU.DPU.Workload
-        // CHECK-SAME:          inOffsets [0, 0, 0, 0] inSizes [1, 16, 62, 62] outOffsets [0, 0, 0, 0] outSizes [1, 48, 60, 60] <left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>
+        // CHECK-SAME:          inOffsets [0, 0, 0, 0] inSizes [1, 16, 62, 62] outOffsets [0, 0, 0, 0] outSizes [1, 48, 60, 60] pad [0, 0, 0, 0]
         // CHECK-SAME:          <CUBOID_8x16>
         // CHECK-NEXT:          }
 
@@ -736,6 +736,8 @@ module @AdjustMemorySpaceAndOptimizeSharedInputCopyForConcat2T {
   } outputsInfo : {
     DataInfo "output" friendlyName = "output" : tensor<1x32x128x128xf32>
   }
+// CHECK-LABEL:   func.func @main
+// CHECK-SAME       [[ARG0:%.+]]: tensor<1x3x128x128xf32>
   func.func @main(%arg0: tensor<1x3x128x128xf32>) -> tensor<1x32x128x128xf32> {
     %cst = const.Declare tensor<1024x48x3x3xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<1024x144x1x3xf16, {order = #NHWC}>, [#const.Reshape<[1024, 48, 3, 3]>]
     %cst_0 = const.Declare tensor<1x1024x1x1xf16> = dense<1.000000e+00> : tensor<1x64x1x1xf32>, [#const.CastElemType<f16>, #const.Broadcast<1 : i64, 1024 : i64>, #const.Reshape<[1, 1024, 1, 1]>]
@@ -761,7 +763,6 @@ module @AdjustMemorySpaceAndOptimizeSharedInputCopyForConcat2T {
     %10 = VPU.Convert(%9) {dstElemType = f32} : tensor<1x32x128x128xf16> -> tensor<1x32x128x128xf32>
     return %10 : tensor<1x32x128x128xf32>
 
-    // CHECK:   func.func @main([[ARG0:%.+]]: tensor<1x3x128x128xf32>) -> tensor<1x32x128x128xf32> {
         // CHECK:       [[SHAPECAST1:%.+]] = VPU.ShapeCast {shape = [1, 64, 128, 128]} inputs({{%.+}} : tensor<1x1024x128x8xf16, {order = #NHWC}>) -> tensor<1x64x128x128xf16, {order = #NHWC}>
         // CHECK:       [[CONCAT1:%.+]] = VPU.Concat({{%.+}}, {{%.+}}, {{%.+}}) {static_offsets =
         // CHECK-SAME{LITERAL}:  [[0, 0, 0, 0], [0, 0, 0, 43], [0, 0, 0, 86]]} : tensor<1x32x128x43xf16, {order = #NHWC}>, tensor<1x32x128x43xf16, {order = #NHWC}>, tensor<1x32x128x42xf16, {order = #NHWC}> -> tensor<1x32x128x128xf16, {order = #NHWC}>
@@ -835,6 +836,8 @@ module @EnableWeightDeqauntEnsuranceBeforeStrategy {
   } outputsInfo : {
     DataInfo "output" friendlyName = "output" : tensor<1x10240x64x4xf16>
   }
+    // CHECK-LABEL: func.func @main
+    // CHECK-SAME:        [[ARG_0:%[^:]+]]: tensor<1x128x256x1xf16, {order = #NHWC}>
     func.func @main(%arg0: tensor<1x128x256x1xf16, {order = #NHWC}>) -> tensor<1x10240x64x4xf16, {order = #NHWC}> {
     %cst = const.Declare tensor<10240x128x1x1x!qElemType, {order = #NHWC}> = dense<10> : tensor<128x10240xui8>, [#const.Reshape<[1, 1, 128, 10240]>, #const.CastElemType<f16>, #const.CastElemType<!qElemType>, #const.AffineReshape<[[0], [0], [1, 2], [3]], [1, 128, 1, 10240]>, #const.Transpose<#NWHC>, #const.AffineReshape<[[0], [0], [0], [1, 2, 3]], [10240, 128, 1, 1]>, #const.MemPermute<#NHWC, #NHWC>]
     %cst_0 = const.Declare tensor<10240x1x1x4xsi32> = dense<10> : tensor<10240x1x1x4xsi32>
@@ -862,7 +865,7 @@ module @EnableWeightDeqauntEnsuranceBeforeStrategy {
     // CHECK: [[DEQ1:%.+]] = VPU.Dequantize([[COPY2]]) {dstElemType = f16, tiling_loop_index = 0 : i64}
     // CHECK: [[COPY3:%.+]] = VPU.Copy([[DEQ1]])
 
-    // CHECK: [[RESHAPE:%.+]] = VPU.AffineReshape(%arg0)
+    // CHECK: [[RESHAPE:%.+]] = VPU.AffineReshape([[ARG_0]])
     // CHECK-SAME{LITERAL}:         {dim_mapping = [[0], [1], [2, 3], [3]], shape_value = [1, 128, 64, 4]}
     // CHECK: [[SLICE0:%.+]] = VPU.Slice [[COPY3]] [0, 0, 0, 0] [1280, 128, 1, 1]
     // CHECK: [[COPY4:%.+]] = VPU.Copy([[RESHAPE]]) {out_mem_space = @CMX_NN}

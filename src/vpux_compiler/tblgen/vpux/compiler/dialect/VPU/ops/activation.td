@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -468,6 +468,25 @@ def VPU_SoftPlusOp :
     ];
 
     let elemComparisonModes = [IE_TypeComparisonMode_ALLOW_DISTRIBUTED_OUTPUT];
+}
+
+def VPU_SoftSignOp :
+        VPU_LayerOp<
+            "SoftSign",
+            [
+                VPU_EltwiseOp
+            ]
+        > {
+    let summary = "SoftSign VPU layer";
+
+    let arguments = (ins
+        RankedTensorOf<[F16, F32]>:$input
+    );
+
+
+    let results = (outs
+        RankedTensorOf<[F16, F32]>:$output
+    );
 }
 
 def VPU_SwishOp :

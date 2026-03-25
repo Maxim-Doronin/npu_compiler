@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -118,7 +118,7 @@ mlir::LogicalResult MaxPoolConverter::matchAndRewrite(IE::MaxPoolOp origOp, mlir
     auto transposeInResult = rewriter.createOrFold<IE::TransposeOp>(appendLoc(origOp->getLoc(), "transpose_in"),
                                                                     origOp.getInput(), nullptr, orderAttr);
     auto reshapeInResult = rewriter.createOrFold<IE::ReshapeOp>(appendLoc(origOp->getLoc(), "reshape_in"),
-                                                                transposeInResult, nullptr, false, inputShapeAttr);
+                                                                transposeInResult, inputShapeAttr);
 
     const auto newKernel = getIntArrayAttr(ctx, SmallVector<int64_t>{kernel[1], kernel[0]});
     const auto newStrides = getIntArrayAttr(ctx, SmallVector<int64_t>{strides[1], strides[0]});
@@ -134,8 +134,8 @@ mlir::LogicalResult MaxPoolConverter::matchAndRewrite(IE::MaxPoolOp origOp, mlir
             outShape[Dims4D::Act::H],
     };
     const auto outputShapeAttr = getIntArrayAttr(ctx, newOutputShape);
-    auto reshapeOutResult = rewriter.createOrFold<IE::ReshapeOp>(
-            appendLoc(origOp->getLoc(), "reshape_out"), maxpool->getResult(0), nullptr, false, outputShapeAttr);
+    auto reshapeOutResult = rewriter.createOrFold<IE::ReshapeOp>(appendLoc(origOp->getLoc(), "reshape_out"),
+                                                                 maxpool->getResult(0), outputShapeAttr);
 
     auto transposeOutResult = rewriter.createOrFold<IE::TransposeOp>(appendLoc(origOp->getLoc(), "transpose_out"),
                                                                      reshapeOutResult, nullptr, orderAttr);

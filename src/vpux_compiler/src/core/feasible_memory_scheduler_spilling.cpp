@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
+#include "vpux/compiler/utils/async_dialect_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include "vpux/compiler/utils/dma.hpp"
@@ -87,15 +88,30 @@ void FeasibleMemorySchedulerSpilling::removeComputeOpRelocationSpills(
         VPUX_THROW("No schedule index for op index '{0}'", opIndex);
     };
 
-    SmallVector<size_t> operationIndexesToRemove;
+    // find compute spill write operations and the number of corresponding spill reads
+    std::map<size_t, std::vector<size_t>> computeSpillWriteMap;
+    std::unordered_map<size_t, size_t> spillReadCount;
     for (size_t opIndex = 0; opIndex < scheduledOps.size(); opIndex++) {
-        if (scheduledOps[opIndex].isSpillWrite() && !scheduledOps[opIndex].isDataOp()) {
+        const auto& schedOp = scheduledOps[opIndex];
+        if (schedOp.isSpillWrite() && !schedOp.isDataOp()) {
             // Check if related computeOp has single output. If not
             // then skip this optimization
-            if (_depsInfo.getExecuteOpAtIndex(scheduledOps[opIndex].op_).getBodyResults().size() > 1) {
+            if (_depsInfo.getExecuteOpAtIndex(schedOp.op_).getBodyResults().size() > 1) {
                 continue;
             }
+            computeSpillWriteMap[schedOp.op_].push_back(opIndex);
+        } else if (schedOp.isSpillRead() && computeSpillWriteMap.count(schedOp.op_)) {
+            spillReadCount[schedOp.op_]++;
+        }
+    }
 
+    SmallVector<size_t> operationIndexesToRemove;
+    for (const auto& [spillOpIdx, spillWriteIndices] : computeSpillWriteMap) {
+        if (!spillReadCount.count(spillOpIdx) || spillReadCount[spillOpIdx] > 1) {
+            // Skip optimization if no matching SPILL_READ or multiple SPILL_READs exist
+            continue;
+        }
+        for (const auto& opIndex : spillWriteIndices) {
             // Located SPILL_WRITE for compute op
             size_t spillWriteIndex = opIndex;
             std::optional<size_t> origOpIndex;
@@ -408,6 +424,7 @@ void FeasibleMemorySchedulerSpilling::removeComputeOpRelocationSpills(
                 }
             }
             VPUX_THROW_UNLESS(foundMatchingBuffer, "Matching buffer not found for relocation spilling optimization");
+            origOp.modifiedMemoryRange_ = true;
 
             if (removeSpillOps) {
                 // SPILL_WRITE and SPILL_READ operations can be removed
@@ -545,20 +562,94 @@ llvm::DenseSet<size_t> FeasibleMemorySchedulerSpilling::identifyDataOpsWithInput
     return illegalDataOpsWithInputResources;
 }
 
+// Check if the execute operation contains a SubViewOp with strided layout
+// Returns true if a strided SubViewOp is found, false otherwise
+bool hasStridedSubView(mlir::async::ExecuteOp execOp) {
+    auto* bodyBlock = execOp.getBody();
+
+    for (auto& op : bodyBlock->getOperations()) {
+        auto subViewOp = mlir::dyn_cast<VPUIP::SubViewOp>(&op);
+        if (!subViewOp) {
+            continue;
+        }
+
+        // Get the output type and check if it has a layout
+        auto outputType = subViewOp.getResult().getType();
+        auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(outputType);
+        if (!ndType) {
+            continue;
+        }
+
+        auto dimsOrder = ndType.getDimsOrder();
+        if (dimsOrder.numDims() == 0) {
+            continue;
+        }
+
+        // Get the source type to determine which dimensions are being split
+        auto sourceType = subViewOp.getSource().getType();
+        auto sourceNdType = mlir::dyn_cast<vpux::NDTypeInterface>(sourceType);
+        if (!sourceNdType) {
+            continue;
+        }
+
+        auto staticOffsets = parseIntArrayAttr<int64_t>(subViewOp.getStaticOffsetsAttr());
+        auto staticSizes = parseIntArrayAttr<int64_t>(subViewOp.getStaticSizesAttr());
+        auto sourceShape = sourceNdType.getShape();
+
+        // Find the highest (outermost) memory dimension that has actual data (size > 1)
+        MemDim highestMemDimWithData = MemDim(0);
+        for (size_t memDimIdx = 0; memDimIdx < dimsOrder.numDims(); ++memDimIdx) {
+            auto logicalDim = dimsOrder.toDim(MemDim(memDimIdx));
+            if (sourceShape[logicalDim] > 1) {
+                highestMemDimWithData = MemDim(memDimIdx);
+                break;
+            }
+        }
+
+        // Find which dimensions are split (offset != 0 or size < source size)
+        for (size_t dim = 0; dim < staticOffsets.size(); ++dim) {
+            bool isSplit = (staticOffsets[dim] != 0) || (staticSizes[dim] != sourceShape[Dim(dim)]);
+            if (!isSplit) {
+                continue;
+            }
+
+            // Get the memory dimension for this logical dimension
+            auto memDim = dimsOrder.toMemDim(Dim(dim));
+
+            // Check if this is NOT the highest dimension with data in memory layout
+            // If we split on any dimension other than the highest with data, we get non-contiguous strides
+            if (memDim != highestMemDimWithData) {
+                // This dimension is split but not the highest in memory layout
+                // which means the SubView creates a strided result
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 // Optimize spilling of dataOps. This function will check scheduledOps list and analyze spilling sequence of dataOps.
-// Example sequence:
-//  1. ORIGINAL (dataOp)
-//  ...
-//  2. SPILL_WRITE
-//  ...
-//  3. SPILL_READ
-//
+// Case 1) Unused spilling buffer.
 // If between ORIGINAL and SPILL_WRITE buffer is not used (e.g. such scenario can happen during prefetching) then
 // both 1. and 2. can be removed and SPILL_READ (3.) will be changed to ORIGINAL type.
+// Example sequence:
+//  %0 = original DATA_IN DMA                [removed original]
+//  ...                                      ...
+//  %1 = spill_write(%0)             ->      [removed spill_write]
+//  ...                                      ...
+//  %2 = spill_read(%1)                      %0 = ORIGINAL (changed from %2 spill_read)
 // If ORIGINAL has active input resources skip optimization verify no memory overlap.
-// TODO:
+// Case 2) Re-read.
 // If between ORIGINAL and SPILL_WRITE buffer is used only as an input then SPILL_WRITE (2.) can be removed
-// and SPILL_READ (3.) turned into equivalent ORIGINAL dataOp
+// and SPILL_READ (3.) read from the ORIGINAL(1.) ops input buffer (re-read optimization).
+// Example sequence:
+// %0 = original DATA_IN DMA                %0 = original DATA_IN DMA
+// %1 = NCE task using %0 as input    ->    %1 = NCE task using %0 as input
+// %2 = spill_write(%0)                     [removed spill_write]
+// %3 = spill_read(%2)                      %2 = re-read(%0) (changed from %3 spill_read)
+// ....                                     ...
+// %4 = SomeOp(%3)                          %3 = SomeOp(%2)
 void FeasibleMemorySchedulerSpilling::optimizeDataOpsSpills(FeasibleMemoryScheduler::ScheduledOpInfoVec& scheduledOps) {
     _log.trace("Optimize data ops spills");
     // Find data ops which can not be optimized due to possible memory override:
@@ -646,7 +737,10 @@ void FeasibleMemorySchedulerSpilling::optimizeDataOpsSpills(FeasibleMemorySchedu
 
             bool isBufferUsedAsArgument = false;
             bool isBufferUsedAsResult = false;
+            bool isBufferSubset = false;
             auto buffer = scheduledOps[origOrSpillReadOpIndex].getOutputBuffer(0);
+            const auto bufferType = mlir::cast<NDTypeInterface>(buffer.getType());
+            const auto bufferSize = bufferType.getTotalAllocSize();
             for (size_t schedOpIdx = origOrSpillReadOpIndex + 1; schedOpIdx < nextSpillWriteOpIndex; schedOpIdx++) {
                 // TODO: Maybe it would make sense to create a geenric utility function
                 // to check if a given buffer is used as a operation input or output
@@ -658,8 +752,10 @@ void FeasibleMemorySchedulerSpilling::optimizeDataOpsSpills(FeasibleMemorySchedu
                         if (type == nullptr || type.getMemoryKind() != _memKind) {
                             continue;
                         }
-
                         if (_aliasInfo.getRoot(operand) == buffer) {
+                            if (bufferSize != type.getTotalAllocSize()) {
+                                isBufferSubset = true;
+                            }
                             isBufferUsedAsArgument = true;
                             break;
                         }
@@ -721,15 +817,46 @@ void FeasibleMemorySchedulerSpilling::optimizeDataOpsSpills(FeasibleMemorySchedu
                         }
                     }
                 }
-            } else if (isBufferUsedAsArgument && !isBufferUsedAsResult) {
-                // If buffer was used just as an argument then next spillWrite can be removed
-                // as buffer state has not changed. Following spillRead needs to be turned
-                // to OrigOp
-                _log.nest(2).trace("Buffer used as input between spillRead/OrigOp '{0}' and next spillWrite op '{1}'",
-                                   origOrSpillReadOpIndex, nextSpillWriteOpIndex);
-                // TODO:
-                // Besides removing spillWrite need to update next spillRead
-                // operationIndexesToRemove.push_back(nextSpillWriteOpIndex);
+            } else if (isBufferUsedAsArgument && !isBufferUsedAsResult && !isBufferSubset) {
+                // Don't optimize when the buffer is a subview of the total buffer
+                // as in this case the dataOp may write to other parts of the buffer
+                const auto spillOpIdx = scheduledOps[origOrSpillReadOpIndex].op_;
+                auto opThatWasSpilled = _depsInfo.getExecuteOpAtIndex(spillOpIdx);
+                // Check if spill op is strided
+                // If the original DMA task is strided (read non-consistent memory from DDR)
+                // then don't do re-read optimization because the cost of strided-re-read is not always lower than
+                // spill_write + consistent spill_read
+                // This limitation could be removed once the DMA cost is accurate
+                if (hasStridedSubView(opThatWasSpilled)) {
+                    _log.nest(2).trace(
+                            "Skip re-read optimization for spill op '{0}' as it has strided subview in its body",
+                            spillOpIdx);
+                    continue;
+                }
+                _log.trace("Re-read of operation {0} {1}", spillOpIdx,
+                           scheduledOps[origOrSpillReadOpIndex].opTypeName());
+                // For ReRead spillBuffer, won't call SpillWrite insertion
+                // so needs to correct the original address here
+                // The first index in the dataOpSpillTree is the original op
+                // The address is the correct address of the root buffer
+                // Other addresses in the spill tree may be incorrect because the addresses are for spilled buffers
+                // which are not inserted yet For example: Operation - '12'
+                //     ['13']: op = '12'        type = 'ORIGINAL_PREFETCHED'    address = '71858'
+                //     ['18']: op = '12'        type = 'IMPLICIT_SPILL_WRITE'   address = --
+                //     ['25']: op = '12'        type = 'IMPLICIT_SPILL_READ'    address = '165889'
+                //     ['47']: op = '12'        type = 'IMPLICIT_SPILL_WRITE'   address = --
+                //     ['57']: op = '12'        type = 'IMPLICIT_SPILL_READ'    address = '485688'
+                // The correct buffer should be '71858'
+                // But the "ORIGINAL_PREFETCHED" op could be optimized when no use before the first spill write
+                // So track the allocated buffer with set
+                if (!_spillOptRootBufferAllocated.contains(buffer)) {
+                    _scan.handler().setAddress(
+                            buffer, scheduledOps[origOrSpillReadOpIndex].outputResourceInfo_.begin()->begin_);
+                    _spillOptRootBufferAllocated.insert(buffer);
+                }
+
+                operationIndexesToRemove.push_back(nextSpillWriteOpIndex);
+                _reReadDataInRoot.insert(spillOpIdx);
             }
         }
     }
@@ -747,51 +874,130 @@ void FeasibleMemorySchedulerSpilling::optimizeDataOpsSpills(FeasibleMemorySchedu
 // This function tries to eliminate redundant spill write operations if exactly the same
 // buffer was already spilled before and resides in DDR. In such case subsequent
 // spill write can be removed leaving just the needed spill read that will refer
-// to first DDR location of spilled buffer
+// to first DDR location of spilled buffer. Also remove spill write ops if there is no
+// corresponding spill read
 void FeasibleMemorySchedulerSpilling::removeRedundantSpillWrites(
         FeasibleMemoryScheduler::ScheduledOpInfoVec& scheduledOps) {
     _log.trace("Remove redundant Spill Writes");
 
-    SmallVector<size_t> spillWriteIndexes;
-    SmallVector<bool> isSpillWriteDuplicate(scheduledOps.size(), false);
+    mlir::DenseSet<size_t> redundantSpillWriteIndexes;
     size_t numSpillWritesToRemove = 0;
+
+    struct SpillKey {
+        mlir::Value buffer;
+        size_t op;
+    };
+
+    struct SpillKeyCustomHash {
+        static SpillKey getEmptyKey() {
+            return SpillKey{llvm::DenseMapInfo<mlir::Value>::getEmptyKey(), 0};
+        }
+
+        static SpillKey getTombstoneKey() {
+            return SpillKey{llvm::DenseMapInfo<mlir::Value>::getTombstoneKey(), std::numeric_limits<size_t>::max()};
+        }
+
+        static unsigned getHashValue(const SpillKey& val) {
+            auto h1 = llvm::DenseMapInfo<mlir::Value>::getHashValue(val.buffer);
+            auto h2 = llvm::hash_value(val.op);
+
+            return static_cast<unsigned>(hash_combine(h1, h2));
+        }
+
+        static bool isEqual(const SpillKey& lhs, const SpillKey& rhs) {
+            return lhs.buffer == rhs.buffer && lhs.op == rhs.op;
+        }
+    };
+
+    struct SpillBufferInfo {
+        size_t spillWriteOpIndex;
+        size_t numOfSpillReads;
+    };
+
+    DenseMap<SpillKey, SpillBufferInfo, SpillKeyCustomHash> spillBufferMap;
 
     // Traverse whole scheduled ops structure and check each spill write/read op
     for (size_t index = 0; index < scheduledOps.size(); index++) {
         auto& op = scheduledOps[index];
         if (op.isSpillWrite()) {
             _log.trace("SPILL WRITE for op '{0}', idx - '{1}'", op.op_, index);
-            // For each spill write op check if this is a duplicate by comparing op number and buffer of each
-            // previously encountered spill writes
-            for (auto spillWriteIndexIt = spillWriteIndexes.rbegin(); spillWriteIndexIt != spillWriteIndexes.rend();
-                 spillWriteIndexIt++) {
-                if (scheduledOps[*spillWriteIndexIt].op_ == op.op_ &&
-                    scheduledOps[*spillWriteIndexIt].getInputBuffer(0) == op.getInputBuffer(0)) {
-                    // If op and buffer match then duplicate was detected
-                    isSpillWriteDuplicate[index] = true;
-                    numSpillWritesToRemove++;
-                    _log.nest().trace(
-                            "Duplicate spill for op '{0}': SPILL WRITE idx - '{1}', previous SPILL WRITE idx - '{2}'",
-                            op.op_, index, *spillWriteIndexIt);
-                    break;
+            auto spillBuffer = op.getInputBuffer(0);
+            auto spillKey = SpillKey{spillBuffer, op.op_};
+
+            // Check if such buffer was spilled before
+            auto previousSpillOfSameBufferIt = spillBufferMap.find(spillKey);
+            if (previousSpillOfSameBufferIt == spillBufferMap.end()) {
+                // First time this buffer is spilled. Initialize number of reads after spill to 0
+                spillBufferMap[spillKey] = {index, 0};
+            } else {
+                // Such SpillWrite was already encountered before
+                // Check if there was already any SpillRead.
+                // If yes that would mean same buffer is spilled again and it can be removed
+                // If no then previous SpillWrite was redundant
+                redundantSpillWriteIndexes.insert(index);
+                numSpillWritesToRemove++;
+                if (previousSpillOfSameBufferIt->second.numOfSpillReads > 0) {
+                    _log.nest().trace("Duplicate spill for op '{0}': SPILL WRITE at idx - '{1}', previous SPILL WRITE "
+                                      "at idx - '{2}'",
+                                      op.op_, index, previousSpillOfSameBufferIt->second.spillWriteOpIndex);
+                } else {
+                    _log.nest().trace("Redundant Spill for op '{0}': SPILL WRITE at idx - '{1}', previous SPILL WRITE "
+                                      "at idx - '{2}'",
+                                      op.op_, index, previousSpillOfSameBufferIt->second.spillWriteOpIndex);
                 }
             }
-            // Store information about position of each spill write for reference
-            spillWriteIndexes.push_back(index);
+        } else if (op.isSpillRead()) {
+            _log.trace("SPILL READ for op '{0}', idx - '{1}'", op.op_, index);
+            auto spillBuffer = op.getOutputBuffer(0);
+            auto spillKey = SpillKey{spillBuffer, op.op_};
+            // Check if such buffer was spilled before
+            auto previousSpillOfSameBufferIt = spillBufferMap.find(spillKey);
+            // Because of data ops spilling optimization (optimizeDataOpsSpills) there can be cases
+            // where spill-read is still present in schedule without corresponding spill-write.
+            if (previousSpillOfSameBufferIt != spillBufferMap.end()) {
+                // Increase number of reads after last spill write
+                previousSpillOfSameBufferIt->second.numOfSpillReads++;
+            }
         }
     }
 
-    _log.trace("Spills detected - '{0}', spill writes to remove - '{1}'", spillWriteIndexes.size(),
-               numSpillWritesToRemove);
-
-    // Copy operations without spill write duplicates.
-    FeasibleMemoryScheduler::ScheduledOpInfoVec scheduledOpsOptimized;
-    for (auto op : scheduledOps | indexed) {
-        if (!isSpillWriteDuplicate[op.index()]) {
-            scheduledOpsOptimized.push_back(op.value());
+    // Check Spill buffer data if there are any SpillWrites without SpillRead
+    // TODO: Such SpillWrite should not be added by FeasibleMemoryScheduler
+    // in the first place - E#199324
+    for (auto& spillBufferData : spillBufferMap) {
+        if (spillBufferData.second.numOfSpillReads > 0) {
+            continue;
         }
+        _log.trace(
+                "Redundant Spill Write found for buffer without any Spill Read, op '{0}', SPILL WRITE at idx - '{1}'",
+                scheduledOps[spillBufferData.second.spillWriteOpIndex].op_, spillBufferData.second.spillWriteOpIndex);
+        redundantSpillWriteIndexes.insert(spillBufferData.second.spillWriteOpIndex);
+        numSpillWritesToRemove++;
+
+        // When SpillWrite is inserted address of related buffer is cleared (deallocate) from LinearScan
+        // buffer data base. If such SpillWrite is removed from schedule below code needs to restore address
+        // for this buffer
+        auto& spillWriteOp = scheduledOps[spillBufferData.second.spillWriteOpIndex];
+        auto spillBuffer = spillWriteOp.getInputBuffer(0);
+        auto allocatedAddress = spillWriteOp.beginInputResource(0);
+
+        _scan.handler().setAddress(spillBuffer, allocatedAddress);
     }
-    scheduledOps = std::move(scheduledOpsOptimized);
+
+    if (numSpillWritesToRemove == 0) {
+        _log.trace("No redundant spill writes identified");
+        return;
+    }
+
+    _log.trace("Spill writes to remove - '{0}'", numSpillWritesToRemove);
+
+    auto redundantSpillWriteIndexesVec = to_small_vector(redundantSpillWriteIndexes);
+    std::sort(redundantSpillWriteIndexesVec.begin(), redundantSpillWriteIndexesVec.end());
+
+    // Remove in reverse order to have indexes valid after erasing entries in scheduledOps
+    for (auto opIt = redundantSpillWriteIndexesVec.rbegin(); opIt != redundantSpillWriteIndexesVec.rend(); opIt++) {
+        scheduledOps.erase(scheduledOps.begin() + *opIt);
+    }
 }
 
 SmallVector<mlir::Value> FeasibleMemorySchedulerSpilling::getAsyncResultsForBuffer(
@@ -821,6 +1027,105 @@ SmallVector<mlir::Value> FeasibleMemorySchedulerSpilling::getAsyncResultsForBuff
                     opThatWasSpilled);
 
     return asyncResults;
+}
+
+// Find and map the actual output buffer used in opThatWasSpilled's body
+// This is important for chained reread operations where bufferToSpill might not match
+// the buffer actually used in the body
+// e.g., reread of a DATA_IN DMA op
+// async.execute [] ...
+//      %100 = VPUIP.NNDMA inputs(%cst...) outputs (%buf0)
+// "%buf0" should be replaced by newBufferResult when cloning this op
+void FeasibleMemorySchedulerSpilling::setupBufferMapping(mlir::IRMapping& valueMapper, mlir::Value bufferToSpill,
+                                                         mlir::Value actualOutputBufferInBody,
+                                                         mlir::Value newBufferResult) {
+    if (actualOutputBufferInBody && actualOutputBufferInBody != bufferToSpill) {
+        valueMapper.map(actualOutputBufferInBody, newBufferResult);
+    }
+    if (bufferToSpill) {
+        valueMapper.map(bufferToSpill, newBufferResult);
+    }
+}
+
+// Clone all operations from the original body block, mapping the spilled buffer to the new buffer
+SmallVector<mlir::Operation*> FeasibleMemorySchedulerSpilling::cloneBodyOperations(mlir::OpBuilder& builder,
+                                                                                   mlir::Block* originalBodyBlock,
+                                                                                   mlir::IRMapping& valueMapper,
+                                                                                   mlir::Value bufferToSpill,
+                                                                                   mlir::Value newBufferResult) {
+    SmallVector<mlir::Operation*> clonedBodyOps;
+
+    for (auto& innerOp : originalBodyBlock->getOperations()) {
+        if (mlir::isa<mlir::async::YieldOp>(&innerOp)) {
+            continue;
+        }
+
+        // Map external operands
+        for (auto operand : innerOp.getOperands()) {
+            if (mlir::isa<mlir::BlockArgument>(operand)) {
+                continue;
+            }
+
+            auto definingOp = operand.getDefiningOp();
+            if (definingOp && definingOp->getParentRegion() == innerOp.getParentRegion()) {
+                continue;
+            }
+
+            if (operand == bufferToSpill) {
+                valueMapper.map(operand, newBufferResult);
+            }
+        }
+
+        mlir::Operation* clonedOp = builder.clone(innerOp, valueMapper);
+
+        for (size_t i = 0; i < clonedOp->getNumResults(); ++i) {
+            valueMapper.map(innerOp.getResult(i), clonedOp->getResult(i));
+        }
+
+        clonedBodyOps.push_back(clonedOp);
+    }
+
+    return clonedBodyOps;
+}
+
+void FeasibleMemorySchedulerSpilling::registerReReadAliases(mlir::Value newBufferResult,
+                                                            const SmallVector<mlir::Operation*>& clonedBodyOps,
+                                                            mlir::async::ExecuteOp newExec) {
+    for (auto* clonedOp : clonedBodyOps) {
+        if (!mlir::isa<VPUIP::NNDMAOp>(clonedOp)) {
+            continue;
+        }
+        for (auto result : clonedOp->getResults()) {
+            _aliasInfo.addAlias(newBufferResult, result);
+        }
+    }
+
+    _aliasInfo.addAlias(newBufferResult, newExec.getBodyResults()[0]);
+}
+
+void FeasibleMemorySchedulerSpilling::copyExecuteOpAttributes(mlir::async::ExecuteOp sourceOp,
+                                                              mlir::async::ExecuteOp targetOp) {
+    if (auto executorAttr = sourceOp->getAttr("VPUIP.executor")) {
+        targetOp->setAttr("VPUIP.executor", executorAttr);
+    }
+    if (auto cycleCostAttr = sourceOp->getAttr("cycleCost")) {
+        targetOp->setAttr("cycleCost", cycleCostAttr);
+    }
+}
+
+void FeasibleMemorySchedulerSpilling::updateBufferReplacementMap(mlir::Value bufferToSpill,
+                                                                 mlir::Value newBufferResult) {
+    bool replacementPairFound = false;
+    for (auto& replacementPairs : _bufferReplacementAfterSpillRead) {
+        if (replacementPairs.second == bufferToSpill) {
+            replacementPairs.second = newBufferResult;
+            replacementPairFound = true;
+            break;
+        }
+    }
+    if (!replacementPairFound) {
+        _bufferReplacementAfterSpillRead.insert({bufferToSpill, newBufferResult});
+    }
 }
 
 mlir::Value FeasibleMemorySchedulerSpilling::getBufferFromAsyncResult(mlir::Value asyncResult) {
@@ -914,6 +1219,108 @@ mlir::async::ExecuteOp FeasibleMemorySchedulerSpilling::insertSpillWriteDmaOp(ml
     return spillWriteExecOp;
 }
 
+// Creates a deep copy of a spilled async.execute operation when no matching spill-write exists.
+// Clones the entire operation including all body operations (e.g., ConcatView, NNDMA) with new output buffers.
+// Used to re-execute the computation instead of reading from a spill buffer.
+mlir::async::ExecuteOp FeasibleMemorySchedulerSpilling::insertReReadDmaOp(mlir::async::ExecuteOp opThatWasSpilled,
+                                                                          mlir::Value bufferToSpill,
+                                                                          mlir::async::ExecuteOp insertAfterExecOp,
+                                                                          size_t allocatedAddress) {
+    auto spillReadNameLoc = appendLoc(opThatWasSpilled->getLoc(), "{0}{1}", SPILL_READ_OP_NAME_SUFFIX,
+                                      _depsInfo.getIndex(opThatWasSpilled));
+    _log.trace("Insert ReRead DMAOp - '{0}'", spillReadNameLoc);
+
+    mlir::OpBuilder builder(_allocOpInsertionPoint);
+
+    // Step 1: Allocate new output buffer for the cloned operation
+    builder.setInsertionPoint(_allocOpInsertionPoint);
+    mlir::Value newBufferResult = vpux::allocateSpillReadBuffer(builder, spillReadNameLoc, bufferToSpill);
+
+    // Register the new buffer in alias info and set its address
+    _aliasInfo.addAlias(newBufferResult, newBufferResult);
+    _scan.handler().setAddress(newBufferResult, allocatedAddress);
+
+    // Step 2: Prepare async.execute operation parameters
+    builder.setInsertionPointAfter(insertAfterExecOp);
+
+    SmallVector<mlir::Value> newDependencies;
+    for (auto dependency : opThatWasSpilled.getDependencies()) {
+        newDependencies.push_back(dependency);
+    }
+
+    SmallVector<mlir::Value> newBodyOperands;
+    for (auto bodyOperand : opThatWasSpilled.getBodyOperands()) {
+        newBodyOperands.push_back(bodyOperand);
+    }
+
+    SmallVector<mlir::Type> bodyResultTypes;
+    for (auto bodyResult : opThatWasSpilled.getBodyResults()) {
+        auto asyncValueType = mlir::cast<mlir::async::ValueType>(bodyResult.getType());
+        bodyResultTypes.push_back(asyncValueType.getValueType());
+    }
+
+    auto newExec =
+            builder.create<mlir::async::ExecuteOp>(spillReadNameLoc, bodyResultTypes, newDependencies, newBodyOperands);
+
+    // Step 3: Clone the body operations
+    auto* originalBodyBlock = opThatWasSpilled.getBody();
+    auto* newBodyBlock = newExec.getBody();
+
+    // Map the body block arguments from original to cloned
+    mlir::IRMapping valueMapper;
+    for (auto [origArg, newArg] : llvm::zip(originalBodyBlock->getArguments(), newBodyBlock->getArguments())) {
+        valueMapper.map(origArg, newArg);
+    }
+
+    builder.setInsertionPointToStart(newBodyBlock);
+
+    // Find and map the actual output buffer used in the body
+    mlir::Value actualOutputBufferInBody = nullptr;
+    for (auto& innerOp : originalBodyBlock->getOperations()) {
+        if (auto dmaOp = mlir::dyn_cast<VPUIP::NNDMAOp>(&innerOp)) {
+            // Get the output operand (not the result) - this is the buffer being written to
+            actualOutputBufferInBody = dmaOp.getOutputBuff();
+            break;
+        }
+    }
+
+    setupBufferMapping(valueMapper, bufferToSpill, actualOutputBufferInBody, newBufferResult);
+
+    // Clone all body operations
+    SmallVector<mlir::Operation*> clonedBodyOps =
+            cloneBodyOperations(builder, originalBodyBlock, valueMapper, bufferToSpill, newBufferResult);
+
+    // Step 4: Create the async.yield operation
+    SmallVector<mlir::Value> yieldOperands;
+    if (!clonedBodyOps.empty()) {
+        auto* lastOp = clonedBodyOps.back();
+        for (auto result : lastOp->getResults()) {
+            yieldOperands.push_back(result);
+        }
+    }
+
+    VPUX_THROW_UNLESS(!yieldOperands.empty() && yieldOperands.size() == opThatWasSpilled.getBodyResults().size(),
+                      "Mismatch in body results: expected {0}, got {1}", opThatWasSpilled.getBodyResults().size(),
+                      yieldOperands.size());
+
+    builder.create<mlir::async::YieldOp>(spillReadNameLoc, yieldOperands);
+
+    // Step 5: Register aliases for the new operation's results
+    registerReReadAliases(newBufferResult, clonedBodyOps, newExec);
+
+    // Step 6: Copy attributes from original operation
+    copyExecuteOpAttributes(opThatWasSpilled, newExec);
+
+    // Step 7: Update buffer replacement map
+    updateBufferReplacementMap(bufferToSpill, newBufferResult);
+
+    // Step 8: Update dependency graph
+    _depsInfo.insertNewExecOpToDepsMap(newExec);
+    _depsInfo.addDependency(opThatWasSpilled, newExec);
+
+    return newExec;
+}
+
 mlir::async::ExecuteOp FeasibleMemorySchedulerSpilling::insertSpillReadDmaOp(mlir::async::ExecuteOp opThatWasSpilled,
                                                                              mlir::Value bufferToSpill,
                                                                              mlir::async::ExecuteOp spillWriteExecOp,
@@ -930,20 +1337,8 @@ mlir::async::ExecuteOp FeasibleMemorySchedulerSpilling::insertSpillReadDmaOp(mli
     // Create buffer in first level memory to bring back spilled buffer
     mlir::OpBuilder builder(_allocOpInsertionPoint);
     builder.setInsertionPoint(_allocOpInsertionPoint);
-    mlir::Operation* newBufferOp;
-    if (auto distAllocOp = bufferToSpill.getDefiningOp<VPURT::AllocDistributed>()) {
-        newBufferOp = builder.create<VPURT::AllocDistributed>(spillReadNameLoc, bufferToSpill.getType(),
-                                                              distAllocOp.getAlignmentAttr(),
-                                                              distAllocOp.getSwizzlingKeyAttr());
-    } else if (auto allocOp = bufferToSpill.getDefiningOp<VPURT::Alloc>()) {
-        // In case original spilled buffer had swizzling attribute, populate it to newly allocated buffer
-        newBufferOp = builder.create<VPURT::Alloc>(spillReadNameLoc, bufferToSpill.getType(),
-                                                   allocOp.getAlignmentAttr(), allocOp.getSwizzlingKeyAttr());
-    } else {
-        newBufferOp = builder.create<mlir::memref::AllocOp>(spillReadNameLoc,
-                                                            mlir::cast<mlir::MemRefType>(bufferToSpill.getType()));
-    }
-    auto newBufferResult = newBufferOp->getResult(0);
+
+    auto newBufferResult = vpux::allocateSpillReadBuffer(builder, spillReadNameLoc, bufferToSpill);
 
     // Update aliases info for newly created root buffer
     _aliasInfo.addAlias(newBufferResult, newBufferResult);
@@ -969,7 +1364,7 @@ mlir::async::ExecuteOp FeasibleMemorySchedulerSpilling::insertSpillReadDmaOp(mli
 
     // Create new AsyncExecOp in correct place
     builder.setInsertionPointAfter(insertAfterExecOp);
-    auto spillReadExecOp = builder.create<mlir::async::ExecuteOp>(spillReadNameLoc, newBufferOp->getResultTypes(),
+    auto spillReadExecOp = builder.create<mlir::async::ExecuteOp>(spillReadNameLoc, newBufferResult.getType(),
                                                                   std::nullopt, std::nullopt);
 
     // Update operands of new AsyncExecOp to contain result of AsyncExecOp of spillWrite
@@ -1231,11 +1626,7 @@ void FeasibleMemorySchedulerSpilling::SpillUsersUpdate::resolveSpillBufferUsage(
 // This function will update operands of users of spilled buffer
 // and make proper connections
 void FeasibleMemorySchedulerSpilling::updateSpillWriteReadUsers(mlir::Value bufferToSpill,
-                                                                mlir::async::ExecuteOp spillWriteExecOp,
                                                                 mlir::async::ExecuteOp spillReadExecOp) {
-    _log.trace("Update users of Spill Write-Read pair: '{0}' -> '{1}'", spillWriteExecOp->getLoc(),
-               spillReadExecOp->getLoc());
-
     // Find asyncExecOps which have result corresponding to buffer that got spilled
     SmallVector<mlir::async::ExecuteOp> opsThatWereSpilled;
     for (auto bufferAlias : _aliasInfo.getAllAliases(bufferToSpill)) {
@@ -1254,7 +1645,6 @@ void FeasibleMemorySchedulerSpilling::updateSpillWriteReadUsers(mlir::Value buff
               });
 
     for (auto& opThatWasSpilled : opsThatWereSpilled) {
-        _log.trace("Resolve users of operation: '{0}'", opThatWasSpilled->getLoc());
         SpillUsersUpdate spillUsersUpdateHandler(*this, opThatWasSpilled, spillReadExecOp, bufferToSpill);
         spillUsersUpdateHandler.resolveSpillBufferUsage();
     }
@@ -1317,11 +1707,16 @@ void FeasibleMemorySchedulerSpilling::createSpillRead(FeasibleMemoryScheduler::S
             std::find_if(_spillWriteInfoVec.rbegin(), _spillWriteInfoVec.rend(), [&](SpillWriteInfo info) {
                 return (info.spilledBuffer == schedOpBuffer);
             });
-    VPUX_THROW_UNLESS(spillWriteInfo != _spillWriteInfoVec.rend(),
+    auto reRead = _reReadDataInRoot.find(schedOp.op_);
+    const auto opIsReRead = (reRead != _reReadDataInRoot.end());
+    VPUX_THROW_UNLESS(opIsReRead || spillWriteInfo != _spillWriteInfoVec.rend(),
                       "No matching spill write operation identified for a given Spill Read (opIdx '{0}')", schedOp.op_);
 
-    _log.trace("Create Spill Read for buffer - '{0}', spillId - '{1}'", schedOpBuffer, spillWriteInfo->spillId);
-    auto spillWriteExecOp = spillWriteInfo->execOp;
+    mlir::async::ExecuteOp spillWriteExecOp = nullptr;
+    if (spillWriteInfo != _spillWriteInfoVec.rend()) {
+        _log.trace("Create Spill Read for buffer - '{0}', spillId - '{1}'", schedOpBuffer, spillWriteInfo->spillId);
+        spillWriteExecOp = spillWriteInfo->execOp;
+    }
 
     // Get the insertion point. Pick first non-implicit previous op
     // SpillRead operation will be inserted just after it
@@ -1345,12 +1740,23 @@ void FeasibleMemorySchedulerSpilling::createSpillRead(FeasibleMemoryScheduler::S
         spillBuffer = _bufferReplacementAfterSpillRead[schedOpBuffer];
         _log.trace("Actual buffer for Spill Read - '{0}'", spillBuffer);
     }
-    auto spillReadExecOp =
-            insertSpillReadDmaOp(opThatWasSpilled, spillBuffer, spillWriteExecOp, spillReadInsertionPoint,
-                                 schedOp.beginOutputResource(0), spillWriteInfo->spillId);
+
+    mlir::async::ExecuteOp spillReadExecOp = nullptr;
+    if (spillWriteInfo != _spillWriteInfoVec.rend()) {
+        spillReadExecOp = insertSpillReadDmaOp(opThatWasSpilled, spillBuffer, spillWriteExecOp, spillReadInsertionPoint,
+                                               schedOp.beginOutputResource(0), spillWriteInfo->spillId);
+        _log.trace("Update users of Spill Write-Read pair: '{0}' -> '{1}'", spillWriteExecOp->getLoc(),
+                   spillReadExecOp->getLoc());
+    } else {
+        // Insert spill_read without matching spill_write
+        // Triggered when the spill_write is optimized by spilling optimization
+        spillReadExecOp = insertReReadDmaOp(opThatWasSpilled, spillBuffer, spillReadInsertionPoint,
+                                            schedOp.beginOutputResource(0));
+        _log.trace("Update users of Re Read: '{0}'", spillReadExecOp->getLoc());
+    }
 
     // After both SpillWrite and SpillRead are inserted update connections
-    updateSpillWriteReadUsers(spillBuffer, spillWriteExecOp, spillReadExecOp);
+    updateSpillWriteReadUsers(spillBuffer, spillReadExecOp);
 
     size_t spillReadIndex = _depsInfo.getIndex(spillReadExecOp);
     _log.trace("Spill Read new opId - '{0}'", spillReadIndex);
@@ -1369,6 +1775,10 @@ void FeasibleMemorySchedulerSpilling::createSpillRead(FeasibleMemoryScheduler::S
     // scheduled ops structure
     schedOp.opType_ = FeasibleMemoryScheduler::EOpType::ORIGINAL_SPILL_READ_OP;
     schedOp.op_ = spillReadIndex;
+    if (opIsReRead) {
+        // update the new reRead mapping to point to the new spillRead op
+        _reReadDataInRoot.insert(spillReadIndex);
+    }
     _log = _log.unnest();
 }
 

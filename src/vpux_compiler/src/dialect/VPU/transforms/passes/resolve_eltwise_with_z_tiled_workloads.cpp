@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -54,8 +54,8 @@ void validateClusterWorkloads(WorkloadSplits& clusterWorkloads) {
     bool channelsStartsFromZero = false;
     auto firstClusterWorkloads = clusterWorkloads.front();
     for (auto wl : firstClusterWorkloads) {
-        auto wlChannelOffset = parseIntArrayAttr<int64_t>(wl.getOutOffsets())[Dims4D::Act::C.ind()];
-        auto wlChannelSize = parseIntArrayAttr<int64_t>(wl.getOutSizes())[Dims4D::Act::C.ind()];
+        auto wlChannelOffset = wl.getConstOutputOffsets()[Dims4D::Act::C.ind()];
+        auto wlChannelSize = wl.getConstOutputSizes()[Dims4D::Act::C.ind()];
         channelOffsets.push_back(wlChannelOffset);
         channelSizes.push_back(wlChannelSize);
         if (wlChannelOffset == 0) {
@@ -71,8 +71,8 @@ void validateClusterWorkloads(WorkloadSplits& clusterWorkloads) {
                           "workloads, while first cluster has {2} workloads",
                           i, workloads.size(), firstClusterWorkloads.size());
         for (auto wl : workloads | indexed) {
-            auto wlChannelOffset = parseIntArrayAttr<int64_t>(wl.value().getOutOffsets())[Dims4D::Act::C.ind()];
-            auto wlChannelSize = parseIntArrayAttr<int64_t>(wl.value().getOutSizes())[Dims4D::Act::C.ind()];
+            auto wlChannelOffset = wl.value().getConstOutputOffsets()[Dims4D::Act::C.ind()];
+            auto wlChannelSize = wl.value().getConstOutputSizes()[Dims4D::Act::C.ind()];
             VPUX_THROW_UNLESS(
                     wlChannelOffset == channelOffsets[wl.index()] && wlChannelSize == channelSizes[wl.index()],
                     "Expected channels '{0}-{1}' for workload {2}, got '{3}-{4}'", channelOffsets[wl.index()],
@@ -85,8 +85,8 @@ void validateClusterWorkloads(WorkloadSplits& clusterWorkloads) {
 void sortClusterWorkloads(WorkloadSplits& clusterWorkloads) {
     for (auto& workloads : clusterWorkloads) {
         llvm::sort(workloads, [](VPU::DPUWorkloadOp lhs, VPU::DPUWorkloadOp rhs) {
-            auto lhsOffsets = parseIntArrayAttr<int64_t>(lhs.getOutOffsets());
-            auto rhsOffsets = parseIntArrayAttr<int64_t>(rhs.getOutOffsets());
+            auto lhsOffsets = lhs.getConstOutputOffsets();
+            auto rhsOffsets = rhs.getConstOutputOffsets();
             return lhsOffsets[Dims4D::Act::C.ind()] < rhsOffsets[Dims4D::Act::C.ind()];
         });
     }
@@ -112,7 +112,7 @@ WorkloadSplits getWorkloadSplits(const WorkloadSplits& sortedClusterWorkloads) {
         size_t index = 0;
         std::optional<int64_t> channelOffset;
         for (auto wl : clusterWorkloads) {
-            const auto offsets = parseIntArrayAttr<int64_t>(wl.getOutOffsets());
+            const auto offsets = wl.getConstOutputOffsets();
             const auto wlChannelOffset = offsets[Dims4D::Act::C.ind()];
             if (!channelOffset.has_value()) {
                 channelOffset = wlChannelOffset;
@@ -131,16 +131,14 @@ WorkloadSplits getWorkloadSplits(const WorkloadSplits& sortedClusterWorkloads) {
 
     for (auto& workloadSplit : workloadSplits) {
         const auto sameChannelSubset =
-                std::adjacent_find(
-                        workloadSplit.begin(), workloadSplit.end(), [](VPU::DPUWorkloadOp lhs, VPU::DPUWorkloadOp rhs) {
-                            const auto lhsOffsetC =
-                                    parseIntArrayAttr<int64_t>(lhs.getOutOffsets())[Dims4D::Act::C.ind()];
-                            const auto rhsOffsetC =
-                                    parseIntArrayAttr<int64_t>(rhs.getOutOffsets())[Dims4D::Act::C.ind()];
-                            const auto lhsSizesC = parseIntArrayAttr<int64_t>(lhs.getOutSizes())[Dims4D::Act::C.ind()];
-                            const auto rhsSizesC = parseIntArrayAttr<int64_t>(rhs.getOutSizes())[Dims4D::Act::C.ind()];
-                            return lhsOffsetC != rhsOffsetC || lhsSizesC != rhsSizesC;
-                        }) == workloadSplit.end();
+                std::adjacent_find(workloadSplit.begin(), workloadSplit.end(),
+                                   [](VPU::DPUWorkloadOp lhs, VPU::DPUWorkloadOp rhs) {
+                                       const auto lhsOffsetC = lhs.getConstOutputOffsets()[Dims4D::Act::C.ind()];
+                                       const auto rhsOffsetC = rhs.getConstOutputOffsets()[Dims4D::Act::C.ind()];
+                                       const auto lhsSizesC = lhs.getConstOutputSizes()[Dims4D::Act::C.ind()];
+                                       const auto rhsSizesC = rhs.getConstOutputSizes()[Dims4D::Act::C.ind()];
+                                       return lhsOffsetC != rhsOffsetC || lhsSizesC != rhsSizesC;
+                                   }) == workloadSplit.end();
         VPUX_THROW_UNLESS(sameChannelSubset, "Not all workloads in split have the same channel subset");
     }
 
@@ -184,8 +182,8 @@ std::pair<Shape, Shape> extractSplitInformation(ArrayRef<VPU::DPUWorkloadOp> wor
     SmallVector<int64_t> end(workloadNumDims, 0);
 
     for (auto wl : workloads) {
-        const auto wlOffsets = parseIntArrayAttr<int64_t>(wl.getOutOffsets());
-        const auto wlSizes = parseIntArrayAttr<int64_t>(wl.getOutSizes());
+        const auto wlOffsets = wl.getConstOutputOffsets();
+        const auto wlSizes = wl.getConstOutputSizes();
 
         VPUX_THROW_UNLESS(wlOffsets.size() == workloadNumDims && wlSizes.size() == workloadNumDims,
                           "Expected 4D workload sizes, got offsets of {0} dims and sizes of {1} dims", wlOffsets.size(),
@@ -233,12 +231,11 @@ mlir::Value createEltwiseSlice(mlir::OpBuilder& builder, VPU::NCEEltwiseOp eltwi
 
     mlir::OpBuilder workloadBuilder(newEltwiseOp.getWorkloads());
     for (auto wl : workloads) {
-        auto offsets = parseIntArrayAttr<int64_t>(wl.getOutOffsets());
+        auto offsets = wl.getConstOutputOffsets();
         offsets[Dims4D::Act::C.ind()] = 0;
-        auto offsetsAttr = getIntArrayAttr(wl.getContext(), offsets);
-        workloadBuilder.create<VPU::DPUWorkloadOp>(wl.getLoc(), offsetsAttr, wl.getOutSizesAttr(),
-                                                   wl.getInOffsetsAttr(), wl.getInSizesAttr(), wl.getPadAttr(),
-                                                   wl.getMpeModeAttr(), wl.getClusterIdAttr());
+        auto offsetsAttr = mlir::DenseI64ArrayAttr::get(wl.getContext(), offsets);
+        workloadBuilder.create<VPU::DPUWorkloadOp>(wl.getLoc(), offsetsAttr, wl.getStaticOutSizesAttr(),
+                                                   wl.getPadAttribute(), wl.getMpeModeAttr(), wl.getClusterIdAttr());
     }
 
     return newEltwiseOp.getOutput();
@@ -446,8 +443,8 @@ void ResolveEltwiseWithZTiledWorkloads::safeRunOnFunc() {
         const auto variantsSplitOverC =
                 std::adjacent_find(firstClusterWorkloads.begin(), firstClusterWorkloads.end(),
                                    [](VPU::DPUWorkloadOp lhs, VPU::DPUWorkloadOp rhs) {
-                                       const auto lhsOffsets = parseIntArrayAttr<int64_t>(lhs.getOutOffsets());
-                                       const auto rhsOffsets = parseIntArrayAttr<int64_t>(rhs.getOutOffsets());
+                                       const auto lhsOffsets = lhs.getConstOutputOffsets();
+                                       const auto rhsOffsets = rhs.getConstOutputOffsets();
                                        return lhsOffsets[Dims4D::Act::C.ind()] != rhsOffsets[Dims4D::Act::C.ind()];
                                    }) != firstClusterWorkloads.end();
         if (!variantsSplitOverC) {

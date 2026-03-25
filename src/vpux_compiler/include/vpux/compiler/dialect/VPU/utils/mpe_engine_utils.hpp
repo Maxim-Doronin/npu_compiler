@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -32,7 +32,8 @@ public:
 
     template <typename ConcreteOp>
     static MPEEngineAttr retrieveMPEEngineAttribute(ConcreteOp operation, bool) {
-        static_assert(std::is_same_v<ConcreteOp, IE::ConvolutionOp>, "Invalid operation, expected IE::ConvolutionOp");
+        static_assert(std::is_same_v<ConcreteOp, IE::ConvolutionOp> || std::is_same_v<ConcreteOp, IE::MatMulOp>,
+                      "Invalid operation, expected IE::ConvolutionOp or IE::MatMulOp");
 
         return retrieveMPEEngineAttribute(operation);
     }

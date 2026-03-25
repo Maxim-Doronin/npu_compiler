@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -33,7 +33,7 @@ module @Module0 {
     }
 
     VPURT.Task waits(%bar0 : !VPURT.Barrier) updates(%bar1 : !VPURT.Barrier) {
-      %dpu = VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 1 : i64, bottom = 1 : i64>, kernel_size = [2, 2], kernel_strides = [2, 2], task_type = #VPUIP.nce_task_type<MAXPOOL>} input(%dpu_in : memref<1x64x16x16xf16, #NHWC, [@CMX_NN, 0]>) weight_table(%dpu_wt : memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>) parent_input(%dpu_par_in : memref<1x64x16x16xf16, #NHWC, [@CMX_NN, 0]>) parent_output(%dpu_par_out : memref<1x64x9x8xf16, #NHWC, [@CMX_NN, 0]>) outputs(%dpu_out : memref<1x64x9x8xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x64x9x8xf16, #NHWC, [@CMX_NN, 0]> variants : {
+      %dpu = VPUIP.NCEClusterTask <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 1 : i64, bottom = 1 : i64>, kernel_size = [2, 2], kernel_strides = [2, 2], task_type = #VPUIP.nce_task_type<MAXPOOL>}> input(%dpu_in : memref<1x64x16x16xf16, #NHWC, [@CMX_NN, 0]>) weight_table(%dpu_wt : memref<64x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>) parent_input(%dpu_par_in : memref<1x64x16x16xf16, #NHWC, [@CMX_NN, 0]>) parent_output(%dpu_par_out : memref<1x64x9x8xf16, #NHWC, [@CMX_NN, 0]>) outputs(%dpu_out : memref<1x64x9x8xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x64x9x8xf16, #NHWC, [@CMX_NN, 0]> variants : {
         DPUTask {inStart = [0, 0, 0], inEnd = [15, 15, 15], outEnd = [7, 8, 63], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 1 : i64, bottom = 1 : i64>, outStart = [0, 0, 0]}
       } PPE : {
         PPETask {ppe = #VPU.PPEStub<>}

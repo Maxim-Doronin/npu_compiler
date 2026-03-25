@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -93,11 +93,13 @@ func.func @PerAxisQuantSameAxisOffsets(%arg0: tensor<1x2x3x4x!qElemType>, %arg1:
 // -----
 
 // CHECK-LABEL: @ConvertPerAxisToOffsets
+// CHECK-SAME:    [[ARG_0:%[^:]+]]: tensor<1x2x3x4xf32>
+// CHECK-SAME:    [[ARG_1:%[^:]+]]: tensor<1x2x3x4xf32>
 func.func @ConvertPerAxisToOffsets(%arg0: tensor<1x2x3x4xf32>, %arg1: tensor<1x2x3x4xf32>) -> tensor<1x4x3x4xf32> {
     %0 = IE.Concat(%arg0, %arg1) {per_axis = #IE.Concat<axis = 1>} : tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32> -> tensor<1x4x3x4xf32>
     return %0: tensor<1x4x3x4xf32>
 
-    // CHECK:     [[VAL_0:%.+]] = IE.Concat(%arg0, %arg1)
+    // CHECK:     [[VAL_0:%.+]] = IE.Concat([[ARG_0]], [[ARG_1]])
     // CHECK-SAME{LITERAL}:     {static_offsets = [[0, 0, 0, 0], [0, 2, 0, 0]]}
     // CHECK-SAME:     tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32> -> tensor<1x4x3x4xf32>
     // CHECK:     return [[VAL_0]] : tensor<1x4x3x4xf32>
@@ -106,6 +108,11 @@ func.func @ConvertPerAxisToOffsets(%arg0: tensor<1x2x3x4xf32>, %arg1: tensor<1x2
 // -----
 
 // CHECK-LABEL: @FuseConcatWithOffsetsAndOtherOp
+// CHECK-SAME:    [[ARG_0:%[^:]+]]: tensor<1x2x3x4xf32>
+// CHECK-SAME:    [[ARG_1:%[^:]+]]: tensor<1x2x3x4xf32>
+// CHECK-SAME:    [[ARG_2:%[^:]+]]: tensor<1x2x3x4xf32>
+// CHECK-SAME:    [[ARG_3:%[^:]+]]: tensor<1x2x3x4xf32>
+// CHECK-SAME:    [[ARG_4:%[^:]+]]: tensor<1x2x4x3xf32>
 func.func @FuseConcatWithOffsetsAndOtherOp(%arg0: tensor<1x2x3x4xf32>, %arg1: tensor<1x2x3x4xf32>,
                                       %arg2: tensor<1x2x3x4xf32>, %arg3: tensor<1x2x3x4xf32>,
                                       %arg4: tensor<1x2x4x3xf32>) -> tensor<1x10x3x4xf32> {
@@ -119,8 +126,8 @@ func.func @FuseConcatWithOffsetsAndOtherOp(%arg0: tensor<1x2x3x4xf32>, %arg1: te
     } : tensor<1x4x3x4xf32>, tensor<1x4x3x4xf32>, tensor<1x2x3x4xf32> -> tensor<1x10x3x4xf32>
     return %3: tensor<1x10x3x4xf32>
 
-    // CHECK-DAG:     [[RES_0:%.+]] = IE.Reshape(%arg4) {shape_value = [1, 2, 3, 4]} : tensor<1x2x4x3xf32> -> tensor<1x2x3x4xf32>
-    // CHECK:     [[VAL_0:%.+]] = IE.Concat(%arg0, %arg1, %arg2, %arg3, [[RES_0]])
+    // CHECK-DAG:     [[RES_0:%.+]] = IE.Reshape([[ARG_4]]) {shape_value = [1, 2, 3, 4]} : tensor<1x2x4x3xf32> -> tensor<1x2x3x4xf32>
+    // CHECK:     [[VAL_0:%.+]] = IE.Concat([[ARG_0]], [[ARG_1]], [[ARG_2]], [[ARG_3]], [[RES_0]])
     // CHECK-SAME{LITERAL}:     {static_offsets = [[0, 0, 0, 0], [0, 2, 0, 0], [0, 4, 0, 0], [0, 6, 0, 0], [0, 8, 0, 0]]}
     // CHECK-SAME:     tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32> -> tensor<1x10x3x4xf32>
     // CHECK:     return [[VAL_0]] : tensor<1x10x3x4xf32>
@@ -129,6 +136,11 @@ func.func @FuseConcatWithOffsetsAndOtherOp(%arg0: tensor<1x2x3x4xf32>, %arg1: te
 // -----
 
 // CHECK-LABEL: @FuseConcatWithPerAxis
+// CHECK-SAME:    [[ARG_0:%[^:]+]]: tensor<1x2x3x4xf32>
+// CHECK-SAME:    [[ARG_1:%[^:]+]]: tensor<1x2x3x4xf32>
+// CHECK-SAME:    [[ARG_2:%[^:]+]]: tensor<1x2x3x4xf32>
+// CHECK-SAME:    [[ARG_3:%[^:]+]]: tensor<1x2x3x4xf32>
+// CHECK-SAME:    [[ARG_4:%[^:]+]]: tensor<1x2x4x3xf32>
 func.func @FuseConcatWithPerAxis(%arg0: tensor<1x2x3x4xf32>, %arg1: tensor<1x2x3x4xf32>,
                             %arg2: tensor<1x2x3x4xf32>, %arg3: tensor<1x2x3x4xf32>,
                             %arg4: tensor<1x2x4x3xf32>) -> tensor<1x10x3x4xf32> {
@@ -140,8 +152,8 @@ func.func @FuseConcatWithPerAxis(%arg0: tensor<1x2x3x4xf32>, %arg1: tensor<1x2x3
     %3 = IE.Concat(%0, %1, %2) {per_axis = #IE.Concat<axis = 1>} : tensor<1x4x3x4xf32>, tensor<1x4x3x4xf32>, tensor<1x2x3x4xf32> -> tensor<1x10x3x4xf32>
     return %3 : tensor<1x10x3x4xf32>
 
-    // CHECK-DAG:     [[RES_0:%.+]] = IE.Reshape(%arg4) {shape_value = [1, 2, 3, 4]} : tensor<1x2x4x3xf32> -> tensor<1x2x3x4xf32>
-    // CHECK:     [[VAL_0:%.+]] = IE.Concat(%arg0, %arg1, %arg2, %arg3, [[RES_0]])
+    // CHECK-DAG:     [[RES_0:%.+]] = IE.Reshape([[ARG_4]]) {shape_value = [1, 2, 3, 4]} : tensor<1x2x4x3xf32> -> tensor<1x2x3x4xf32>
+    // CHECK:     [[VAL_0:%.+]] = IE.Concat([[ARG_0]], [[ARG_1]], [[ARG_2]], [[ARG_3]], [[RES_0]])
     // CHECK-SAME{LITERAL}:     {static_offsets = [[0, 0, 0, 0], [0, 2, 0, 0], [0, 4, 0, 0], [0, 6, 0, 0], [0, 8, 0, 0]]}
     // CHECK-SAME:     tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32> -> tensor<1x10x3x4xf32>
     // CHECK:     return [[VAL_0]] : tensor<1x10x3x4xf32>
@@ -150,12 +162,13 @@ func.func @FuseConcatWithPerAxis(%arg0: tensor<1x2x3x4xf32>, %arg1: tensor<1x2x3
 // -----
 
 // CHECK-LABEL: @OneInputFold
+// CHECK-SAME:    [[ARG_0:%[^:]+]]: tensor<4x4xf32>
 func.func @OneInputFold(%arg0 : tensor<4x4xf32>) -> tensor<4x4xf32> {
     %0 = IE.Concat(%arg0) {per_axis = #IE.Concat<axis = 1>} : tensor<4x4xf32> -> tensor<4x4xf32>
     return %0 : tensor<4x4xf32>
 
     // CHECK-NOT: IE.Concat
-    // CHECK:     return %arg0
+    // CHECK:     return [[ARG_0]]
 }
 
 // -----
@@ -379,6 +392,7 @@ func.func @ConcatWithConstInputsFoldForQuantize() -> tensor<16x12x2x1x!qElemType
 // -----
 
 // CHECK-LABEL: @foldSliceConcat
+// CHECK-SAME:    [[ARG_0:%[^:]+]]: tensor<1x128x96x64xf16>
 func.func @foldSliceConcat(%arg0: tensor<1x128x96x64xf16>) -> tensor<1x128x96x64xf16> {
   %slice_0 = IE.Slice %arg0 [0, 0, 0, 0] [1, 64, 96, 64] : tensor<1x128x96x64xf16> to tensor<1x64x96x64xf16>
   %slice_1 = IE.Slice %arg0 [0, 64, 0, 0] [1, 64, 96, 64] : tensor<1x128x96x64xf16> to tensor<1x64x96x64xf16>
@@ -388,19 +402,21 @@ func.func @foldSliceConcat(%arg0: tensor<1x128x96x64xf16>) -> tensor<1x128x96x64
   // CHECK-NOT:     IE.Slice
   // CHECK-NOT:     IE.Slice
   // CHECK-NOT:     IE.Concat
-  // CHECK:     return %arg0
+  // CHECK:     return [[ARG_0]]
 }
 
 // -----
 
 // CHECK-LABEL: @foldSliceConcatWithMultInputs
+// CHECK-SAME:    [[ARG_0:%[^:]+]]: tensor<1x128x96x64xf16>
+// CHECK-SAME:    [[ARG_1:%[^:]+]]: tensor<1x64x96x64xf16>
 func.func @foldSliceConcatWithMultInputs(%arg0: tensor<1x128x96x64xf16>, %arg1: tensor<1x64x96x64xf16>) -> tensor<1x192x96x64xf16> {
   %slice_0 = IE.Slice %arg0 [0, 0, 0, 0] [1, 64, 96, 64] : tensor<1x128x96x64xf16> to tensor<1x64x96x64xf16>
   %slice_1 = IE.Slice %arg0 [0, 64, 0, 0] [1, 64, 96, 64] : tensor<1x128x96x64xf16> to tensor<1x64x96x64xf16>
   %ret = IE.Concat(%slice_0, %slice_1, %arg1) {static_offsets = [[0, 0, 0, 0], [0, 64, 0, 0], [0, 128, 0, 0]]} : tensor<1x64x96x64xf16>, tensor<1x64x96x64xf16>, tensor<1x64x96x64xf16> -> tensor<1x192x96x64xf16>
   return %ret : tensor<1x192x96x64xf16>
 
-  // CHECK:                 [[CONCAT_RET:%.+]] = IE.Concat(%arg0, %arg1)
+  // CHECK:                 [[CONCAT_RET:%.+]] = IE.Concat([[ARG_0]], [[ARG_1]])
   // CHECK-SAME{LITERAL}:       {static_offsets = [[0, 0, 0, 0], [0, 128, 0, 0]]} : tensor<1x128x96x64xf16>, tensor<1x64x96x64xf16> -> tensor<1x192x96x64xf16>
   // CHECK:                 return [[CONCAT_RET]]
 }
@@ -408,6 +424,8 @@ func.func @foldSliceConcatWithMultInputs(%arg0: tensor<1x128x96x64xf16>, %arg1: 
 // -----
 
 // CHECK-LABEL: @foldSliceConcatWhenSliceHasDifferentParent
+// CHECK-SAME:    [[ARG_0:%[^:]+]]: tensor<1x128x96x64xf16>
+// CHECK-SAME:    [[ARG_1:%[^:]+]]: tensor<1x128x96x64xf16>
 func.func @foldSliceConcatWhenSliceHasDifferentParent(%arg0: tensor<1x128x96x64xf16>, %arg1: tensor<1x128x96x64xf16>) -> tensor<1x256x96x64xf16> {
   %slice_0 = IE.Slice %arg0 [0, 0, 0, 0] [1, 64, 96, 64] : tensor<1x128x96x64xf16> to tensor<1x64x96x64xf16>
   %slice_1 = IE.Slice %arg0 [0, 64, 0, 0] [1, 64, 96, 64] : tensor<1x128x96x64xf16> to tensor<1x64x96x64xf16>
@@ -416,7 +434,7 @@ func.func @foldSliceConcatWhenSliceHasDifferentParent(%arg0: tensor<1x128x96x64x
   %ret = IE.Concat(%slice_0, %slice_1, %slice_2, %slice_3) {static_offsets = [[0, 0, 0, 0], [0, 64, 0, 0], [0, 128, 0, 0], [0, 192, 0, 0]]} : tensor<1x64x96x64xf16>, tensor<1x64x96x64xf16>, tensor<1x64x96x64xf16>, tensor<1x64x96x64xf16> -> tensor<1x256x96x64xf16>
   return %ret : tensor<1x256x96x64xf16>
 
-  // CHECK:                 [[CONCAT_RET:%.+]] = IE.Concat(%arg0, %arg1)
+  // CHECK:                 [[CONCAT_RET:%.+]] = IE.Concat([[ARG_0]], [[ARG_1]])
   // CHECK-SAME{LITERAL}:       {static_offsets = [[0, 0, 0, 0], [0, 128, 0, 0]]} : tensor<1x128x96x64xf16>, tensor<1x128x96x64xf16> -> tensor<1x256x96x64xf16>
   // CHECK:                 return [[CONCAT_RET]]
 }
@@ -424,6 +442,9 @@ func.func @foldSliceConcatWhenSliceHasDifferentParent(%arg0: tensor<1x128x96x64x
 // -----
 
 // CHECK-LABEL: @foldSliceConcatWhenSliceHasDifferentParentAndBreaked
+// CHECK-SAME:    [[ARG_0:%[^:]+]]: tensor<1x128x96x64xf16>
+// CHECK-SAME:    [[ARG_1:%[^:]+]]: tensor<1x64x96x64xf16>
+// CHECK-SAME:    [[ARG_2:%[^:]+]]: tensor<1x128x96x64xf16>
 func.func @foldSliceConcatWhenSliceHasDifferentParentAndBreaked(%arg0: tensor<1x128x96x64xf16>, %arg1: tensor<1x64x96x64xf16>, %arg2: tensor<1x128x96x64xf16>) -> tensor<1x320x96x64xf16> {
   %slice_0 = IE.Slice %arg0 [0, 0, 0, 0] [1, 64, 96, 64] : tensor<1x128x96x64xf16> to tensor<1x64x96x64xf16>
   %slice_1 = IE.Slice %arg0 [0, 64, 0, 0] [1, 64, 96, 64] : tensor<1x128x96x64xf16> to tensor<1x64x96x64xf16>
@@ -432,7 +453,7 @@ func.func @foldSliceConcatWhenSliceHasDifferentParentAndBreaked(%arg0: tensor<1x
   %ret = IE.Concat(%slice_0, %slice_1, %arg1, %slice_2, %slice_3) {static_offsets = [[0, 0, 0, 0], [0, 64, 0, 0], [0, 128, 0, 0], [0, 192, 0, 0], [0, 256, 0, 0]]} : tensor<1x64x96x64xf16>, tensor<1x64x96x64xf16>, tensor<1x64x96x64xf16>, tensor<1x64x96x64xf16>, tensor<1x64x96x64xf16> -> tensor<1x320x96x64xf16>
   return %ret : tensor<1x320x96x64xf16>
 
-  // CHECK:                 [[CONCAT_RET:%.+]] = IE.Concat(%arg0, %arg1, %arg2)
+  // CHECK:                 [[CONCAT_RET:%.+]] = IE.Concat([[ARG_0]], [[ARG_1]], [[ARG_2]])
   // CHECK-SAME{LITERAL}:       {static_offsets = [[0, 0, 0, 0], [0, 128, 0, 0], [0, 192, 0, 0]]} : tensor<1x128x96x64xf16>, tensor<1x64x96x64xf16>, tensor<1x128x96x64xf16> -> tensor<1x320x96x64xf16>
   // CHECK:                 return [[CONCAT_RET]]
 }

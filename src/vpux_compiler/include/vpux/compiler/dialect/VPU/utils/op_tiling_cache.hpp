@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -79,6 +79,8 @@ public:
 
     std::optional<uint32_t> getVPUNNLayerCost(llvm::hash_code layerHash);
 
+    std::optional<size_t> getDPUWorkloadCost(llvm::hash_code opHash);
+
     std::optional<SmallVector<DimArr>> getValidPermutations(llvm::hash_code opHash);
 
     std::optional<DimArr> getDimOrder(llvm::hash_code opHash);
@@ -94,6 +96,8 @@ public:
     void updateValidPermutations(llvm::hash_code opHash, const SmallVector<DimArr>& validPermutations);
 
     void updateDimOrder(llvm::hash_code opHash, const DimArr& validDimOrder);
+
+    void updateDPUWorkloadCost(llvm::hash_code opHash, size_t cost);
 
     bool isCacheSupported();
 
@@ -112,6 +116,7 @@ private:
     ThreadSafeHashMap<llvm::hash_code, PerClusterShapeCacheItem> _perClusterShapeCache;
     ThreadSafeHashMap<llvm::hash_code, SmallVector<DimArr>> _validPermutationsCache;
     ThreadSafeHashMap<llvm::hash_code, DimArr> _dimOrderCache;
+    ThreadSafeHashMap<llvm::hash_code, size_t> _dpuTaskOpCostCache;
 
     bool _enableCache{false};
 
@@ -132,6 +137,9 @@ private:
 
     std::atomic<uint64_t> _dimOrderHitCount{0};
     std::atomic<uint64_t> _dimOrderAccessCount{0};
+
+    std::atomic<uint64_t> _dpuTaskOpCostHitCount{0};
+    std::atomic<uint64_t> _dpuTaskOpCostAccessCount{0};
 };
 
 // Global instance accessor

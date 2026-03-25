@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -87,7 +87,7 @@ void vpux::VPU::WorkloadSplitter::correctInvalidWorkload(const VPU::SparsityCons
             // We can't skip the last workload if there are multiple NCE operations as producer because we don't know
             // which NCE operation provides the last workload
             if ((producerNCEOps.size() == 1) && isInvalidSparsity && !isInvalidDepthwise && !isInvalidNCEPermuteOp) {
-                const auto lastWorkloadSizes = parseIntArrayAttr<int64_t>(workloads.back().getOutSizes());
+                const auto lastWorkloadSizes = workloads.back().getConstOutputSizes();
                 const auto lastChannel = lastWorkloadSizes[Dims4D::Act::C.ind()];
                 auto canSkipTheLastWorkload = llvm::any_of(supportedChannels, [&](int64_t channel) -> bool {
                     return lastChannel < channel;
@@ -111,7 +111,7 @@ void vpux::VPU::WorkloadSplitter::correctInvalidWorkload(const VPU::SparsityCons
             }
 
             for (auto workloadOp : llvm::make_early_inc_range(workloads)) {
-                const auto wlSizes = parseIntArrayAttr<int64_t>(workloadOp.getOutSizes());
+                const auto wlSizes = workloadOp.getConstOutputSizes();
                 auto wlChannels = wlSizes[Dims4D::Act::C.ind()];
                 if (llvm::find(supportedChannels, wlChannels) != supportedChannels.end()) {
                     continue;
@@ -159,11 +159,11 @@ mlir::DenseSet<int64_t> vpux::VPU::WorkloadSplitter::getWorkloadsChannels(
             allWorkloads.pop_back();
         }
 
-        auto channels = to_container<mlir::DenseSet<int64_t>>(
-                allWorkloads | transformed([](VPU::DPUWorkloadOp workload) -> int64_t {
-                    const auto wlSizes = parseIntArrayAttr<int64_t>(workload.getOutSizes());
-                    return wlSizes[Dims4D::Act::C.ind()];
-                }));
+        auto channels = to_container<mlir::DenseSet<int64_t>>(allWorkloads |
+                                                              transformed([](VPU::DPUWorkloadOp workload) -> int64_t {
+                                                                  const auto wlSizes = workload.getConstOutputSizes();
+                                                                  return wlSizes[Dims4D::Act::C.ind()];
+                                                              }));
         workloadsChannels.insert(channels.begin(), channels.end());
     } else {
         for (auto op : nceOps) {
@@ -357,11 +357,14 @@ mlir::DenseSet<mlir::Operation*> vpux::VPU::WorkloadSplitter::findInvalidNCEPerm
             const auto origInChannels =
                     mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType()).getShape()[Dims4D::Act::C];
             const auto zeroPadding = expandChannels == origInChannels;
-            const auto wlOffsets = parseIntArrayAttr<int64_t>(workload.getOutOffsetsAttr());
+            const auto wlOffsets = mlir::getConstantIntValues(workload.getMixedOutputOffsets());
+            if (!wlOffsets.has_value()) {
+                return true;
+            }
             const auto isZeroPredicate = [](const int64_t value) -> bool {
                 return value == 0;
             };
-            const bool zeroOffsets = std::all_of(wlOffsets.begin(), wlOffsets.end(), isZeroPredicate);
+            const bool zeroOffsets = std::all_of(wlOffsets.value().begin(), wlOffsets.value().end(), isZeroPredicate);
             return !zeroPadding || !zeroOffsets;
         });
         if (nonZeroPadding) {
@@ -438,7 +441,7 @@ SmallVector<int64_t> vpux::VPU::WorkloadSplitter::getSupportedChannels(
             auto workloads = to_small_vector(nceOp.getWorkloads().getOps<VPU::DPUWorkloadOp>());
 
             if (!workloads.empty()) {
-                const auto lastWorkloadSizes = parseIntArrayAttr<int64_t>(workloads.back().getOutSizes());
+                const auto lastWorkloadSizes = workloads.back().getConstOutputSizes();
                 lastChannel = lastWorkloadSizes[Dims4D::Act::C.ind()];
 
             } else {
@@ -512,7 +515,7 @@ SmallVector<int64_t> vpux::VPU::WorkloadSplitter::getSupportedChannels(
         if (!workloads.empty()) {  // Already owns workloads
             workloadsChannels = to_container<SmallVector<int64_t>>(
                     workloads | transformed([](VPU::DPUWorkloadOp workload) -> int64_t {
-                        const auto wlSizes = parseIntArrayAttr<int64_t>(workload.getOutSizes());
+                        const auto wlSizes = workload.getConstOutputSizes();
                         return wlSizes[Dims4D::Act::C.ind()];
                     }));
         } else {  // No workloads split
@@ -560,13 +563,13 @@ SmallVector<int64_t> vpux::VPU::WorkloadSplitter::getSupportedChannels(
 void vpux::VPU::WorkloadSplitter::splitWorkload(VPU::DPUWorkloadOp dpuWorkloadOp, ArrayRef<int64_t> supportedChannels,
                                                 const bool isInvalidNCEPermuteOp, int64_t channelPadding,
                                                 bool isNCEPermuteOffsetsCorrectionNeeded, Logger log) {
-    auto wlSizes = parseIntArrayAttr<int64_t>(dpuWorkloadOp.getOutSizesAttr());
-    auto wlOffsets = parseIntArrayAttr<int64_t>(dpuWorkloadOp.getOutOffsetsAttr());
-    auto padsAttr = dpuWorkloadOp.getPad();
+    auto wlSizes = dpuWorkloadOp.getConstOutputSizes();
+    auto wlOffsets = dpuWorkloadOp.getConstOutputOffsets();
+    auto padsAttr = dpuWorkloadOp.getPadAttribute();
 
     mlir::OpBuilder builder(dpuWorkloadOp);
     if (isInvalidNCEPermuteOp) {
-        const auto pads = dpuWorkloadOp.getPad();
+        const auto pads = dpuWorkloadOp.getPadAttribute();
         const auto top = pads.getTop().getInt();
         const auto bottom = pads.getBottom().getInt();
         const auto left = pads.getLeft().getInt();
@@ -603,8 +606,8 @@ void vpux::VPU::WorkloadSplitter::splitWorkload(VPU::DPUWorkloadOp dpuWorkloadOp
         offsets[Dims4D::Act::C.ind()] = channelOffset;
         channelOffset += channelSize;
 
-        const auto offsetsAttr = getIntArrayAttr(builder.getContext(), offsets);
-        const auto sizesAttr = getIntArrayAttr(builder.getContext(), sizes);
+        const auto offsetsAttr = mlir::DenseI64ArrayAttr::get(builder.getContext(), offsets);
+        const auto sizesAttr = mlir::DenseI64ArrayAttr::get(builder.getContext(), sizes);
 
         builder.create<VPU::DPUWorkloadOp>(dpuWorkloadOp.getLoc(), offsetsAttr, sizesAttr, padsAttr,
                                            dpuWorkloadOp.getMpeModeAttr(), dpuWorkloadOp.getClusterIdAttr());

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/dialect/core/IR/ops.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 
 #include <mlir/Dialect/MemRef/IR/MemRef.h>
@@ -61,9 +62,7 @@ mlir::LogicalResult AddBuffersForNetResults::initializeOptions(
 
 void AddBuffersForNetResults::safeRunOnModule() {
     auto module = getOperation();
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp entryPointFuncOp;
-    net::NetworkInfoOp::getFromModule(module, netInfo, entryPointFuncOp);
+    auto entryPointFuncOp = net::getMainFunc(module);
 
     mlir::DenseSet<mlir::CallOpInterface> callOps;
     module.walk([&](mlir::CallOpInterface callOp) {

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -137,10 +137,10 @@ module @TestSwKernel attributes {config.arch = #config.arch_kind<NPU37XX>, confi
                                                 !VPUIP.BoundedBuffer<data=memref<2x4x20x20xf16, [@CMX_NN, 0]>, dynamic_shape=memref<4xsi32, [@CMX_NN, 0]>>
         }
     // CHECK: [[KERNEL_OUT:%.+]], [[OUTPUT_DIMS:%.+]] = VPUIP.SW.Kernel {dynamicInputShapesMap = array<i32: 0>, dynamicOutputShapesMap = array<i32: 0>, resultSegmentSizes = array<i32: 1, 1, 0>} @VPU.SW::@builtin_ReLU
-    // CHECK-SAME: inputs([[ALLOC0]] as %arg4
-    // CHECK-SAME: outputs([[ALLOC2]] as %arg5
+    // CHECK-SAME: inputs([[ALLOC0]] as [[ARG_4:%[^:]+]]
+    // CHECK-SAME: outputs([[ALLOC2]] as [[ARG_5:%[^:]+]]
     // CHECK-SAME: -> (memref<2x4x20x20xf16, [@CMX_NN, 0]>, memref<4xsi32, [@CMX_NN, 0]>){
-    // CHECK:   VPUIP.SW.Kernel.run(%arg4, %arg5) : memref<2x4x20x20xf16, [@CMX_NN, 0]>, memref<2x4x20x20xf16, [@CMX_NN, 0]>
+    // CHECK:   VPUIP.SW.Kernel.run([[ARG_4]], [[ARG_5]]) : memref<2x4x20x20xf16, [@CMX_NN, 0]>, memref<2x4x20x20xf16, [@CMX_NN, 0]>
     // CHECK: }
 
     %ALLOC4 = memref.alloc() : memref<2x4x20x20xf16>

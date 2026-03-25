@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -129,13 +129,13 @@ mlir::LogicalResult ConvertDepth2SpaceLayerPass::Depth2SpaceLayerConverter::matc
             outShape.size() == shapeEnd.size() && std::equal(shapeEnd.begin(), shapeEnd.end(), outShape.begin()),
             "Replacing failed: output shape mismatched");
 
-    auto reshapeBegin = rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_in"), origOp.getInput(), nullptr,
-                                                       false, getIntArrayAttr(ctx, shapeBegin));
+    auto reshapeBegin = rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_in"), origOp.getInput(),
+                                                       getIntArrayAttr(ctx, shapeBegin));
     auto transpose =
             rewriter.create<IE::TransposeOp>(takeOpLoc(origOp, "transpose_in"), reshapeBegin.getOutput(), nullptr,
                                              mlir::AffineMapAttr::get(mlir::AffineMap::getPermutationMap(order, ctx)));
-    auto reshapeEnd = rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_out"), transpose.getOutput(), nullptr,
-                                                     false, getIntArrayAttr(ctx, shapeEnd));
+    auto reshapeEnd = rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_out"), transpose.getOutput(),
+                                                     getIntArrayAttr(ctx, shapeEnd));
     rewriter.replaceOp(origOp, reshapeEnd.getOutput());
 
     return mlir::success();

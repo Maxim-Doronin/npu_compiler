@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -13,6 +13,7 @@
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/VPU/utils/tile_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/dma_utils.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/reshape_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/swizzling_utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
@@ -26,7 +27,6 @@
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/dma_limits.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
-#include "vpux/compiler/utils/reshape_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/types.hpp"
 
@@ -112,36 +112,26 @@ int64_t vpux::VPUIP::getNumTilesUsed(mlir::ModuleOp module) {
     return tileOp.getCount();
 }
 
-int64_t getMaxBarriersPerInference(config::ArchKind arch) {
-    // TODO: E#78647 refactor to use api/vpu_cmx_info_{arch}.h
+int64_t getMaxBarriersPerTile(config::ArchKind arch) {
+    // Returns the HW limit on number of barriers per tile/cluster
     switch (arch) {
     case config::ArchKind::NPU37XX:
-        return 64;
+        return 32;
     case config::ArchKind::NPU40XX:
-        return 96;
     case config::ArchKind::NPU50XX:
-        return 48;
+        return 16;
     default:
-        VPUX_THROW("Unable to get MaxBarriersPerInference for arch {0}", arch);
+        VPUX_THROW("Unable to get MaxBarriersPerTile for arch {0}", arch);
     }
 }
 
 int64_t vpux::VPUIP::getNumAvailableBarriers(mlir::Operation* parentOp) {
     const auto arch = config::getArch(parentOp);
-
     auto module = getModuleOp(parentOp);
-
     const auto tileCount = VPUIP::getNumTilesUsed(module);
+    const auto barriersPerTile = getMaxBarriersPerTile(arch);
 
-    const auto maxNumClustersForArch = VPU::getMaxArchDPUClusterNum(module);
-    VPUX_THROW_UNLESS(maxNumClustersForArch != 0, "Failed to get maxNumClustersForArch");
-
-    const auto maxBarriersPerInference = getMaxBarriersPerInference(arch);
-
-    const auto barriersPerCluster = maxBarriersPerInference / maxNumClustersForArch;
-    const auto maxNumBarriers = std::min(maxBarriersPerInference, barriersPerCluster * tileCount);
-
-    return maxNumBarriers;
+    return barriersPerTile * tileCount;
 }
 
 // We distinguish the two runtime barrier constraints:
@@ -1564,7 +1554,7 @@ mlir::FailureOr<int64_t> vpux::VPUIP::getDistributedOutTilingAxisAfterShapeChang
     const auto outMemShape = outputOrder.toMemoryOrder(outputShape);
     const auto inMemDim = inputOrder.toMemDim(Dim(inAxis));
 
-    const auto outMemDimsOpt = vpux::deduceLegalOutputMemDims(inMemShape, outMemShape, inMemDim);
+    const auto outMemDimsOpt = VPUIP::deduceLegalOutputMemDims(inMemShape, outMemShape, inMemDim);
     if (!outMemDimsOpt.has_value()) {
         return mlir::failure();
     }
@@ -1888,7 +1878,7 @@ bool vpux::VPUIP::canWeightsBeCompressed(VPUIP::NCEClusterTaskOp op) {
         return false;
     }
     // Avoid compressing weights that are previously compressed in VPU dialect alongside input compression
-    if (op.getInputChannelsCompressionAttr() != nullptr && op.getCmSpPatternAttr() != nullptr) {
+    if (op.getInputChannelsCompression() && op.getCmSpPatternAttr() != nullptr) {
         return false;
     }
 
@@ -1930,7 +1920,7 @@ bool vpux::VPUIP::canTilingWeightsBeCompressed(VPUIP::NCEClusterTaskOp nceOp) {
         return false;
     }
     // Avoid compressing weights that are previously compressed in VPU dialect alongside input compression
-    if (nceOp.getInputChannelsCompressionAttr() != nullptr && nceOp.getCmSpPatternAttr() != nullptr) {
+    if (nceOp.getInputChannelsCompression() && nceOp.getCmSpPatternAttr() != nullptr) {
         return false;
     }
 
@@ -2134,15 +2124,14 @@ std::optional<vpux::Dim> vpux::VPUIP::getCopyDMATilingDim(mlir::Operation* op) {
     const auto inputShape = getShape(op->getOperand(0));
     const auto inOrder = DimsOrder::fromValue(op->getOperand(0));
 
-    size_t index = 0;
-    while (inputShape[inOrder.toDim(MemDim(index))] <= 1) {
-        if (index >= inputShape.size()) {
-            return std::nullopt;
+    for (size_t index = 0; index < inputShape.size(); ++index) {
+        const auto dim = inOrder.toDim(MemDim(index));
+        if (inputShape[dim] > 1) {
+            return dim;
         }
-        index++;
     }
 
-    return inOrder.toDim(MemDim(index));
+    return std::nullopt;
 }
 
 int64_t giveFirstNonOneDimIndex(DimsOrder order, ShapeRef shape, int64_t firstStridingDim) {
@@ -3038,4 +3027,40 @@ bool vpux::VPUIP::isSubViewCompatibleWithDistributedBuffer(VPUIP::SubViewOp subV
 mlir::Value vpux::VPUIP::getRootBuffer(mlir::Value buffer) {
     vpux::ValueSourceInfo aliasInfo(buffer);
     return aliasInfo.getRoot(buffer);
+}
+
+mlir::SmallVector<mlir::Value> vpux::VPUIP::getInputsSanitized(VPUIP::LayerOpInterface layerOp) {
+    auto inputs = vpux::to_small_vector(layerOp.getInputs());
+
+    // handle dynamic input shapes which are not part of getInputs()
+    if (auto swOp = mlir::dyn_cast<VPUIP::SwKernelOp>(layerOp.getOperation())) {
+        auto dynamicInputs = swOp.getDynamicInputShapes();
+        std::move(dynamicInputs.begin(), dynamicInputs.end(), std::back_inserter(inputs));
+    }
+
+    // handle parent input / output buffer duplication
+    if (auto nceTaskOp = mlir::dyn_cast<VPUIP::NCEClusterTaskOp>(layerOp.getOperation())) {
+        // in case of NCEClusterTaskOp we need to remove parent outputs from inputs
+        // in order to make dependency calculation work correctly
+        auto parentOutput = nceTaskOp.getParentOutput();
+        auto parentOutputSparsityMap = nceTaskOp.getParentOutputSparsityMap();
+        auto input = nceTaskOp.getInput();
+        auto inputSparsityMap = nceTaskOp.getInputSparsityMap();
+        auto weights = nceTaskOp.getWeights();
+        auto weightsSparsityMap = nceTaskOp.getWeightsSparsityMap();
+        llvm::SmallVector<mlir::Value> inputsToSanitize{};
+        inputsToSanitize.swap(inputs);
+        std::copy_if(inputsToSanitize.begin(), inputsToSanitize.end(), std::back_inserter(inputs),
+                     [&](mlir::Value value) {
+                         // For in-place eltwise op it might happen that parentOutput == input.
+                         // Check those first to make sure they don't get removed.
+                         if (value == input || value == inputSparsityMap || value == weights ||
+                             value == weightsSparsityMap) {
+                             return true;
+                         }
+                         return (value != parentOutput) && (value != parentOutputSparsityMap);
+                     });
+    }
+
+    return inputs;
 }

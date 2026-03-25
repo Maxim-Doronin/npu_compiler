@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,6 +10,8 @@
 #include "vpux/compiler/dialect/VPUIP/IR/attributes.hpp"
 #include "vpux/compiler/dialect/core/IR/dynamic_attrs.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
+#include "vpux/compiler/utils/hw_settings.hpp"
+#include "vpux/compiler/utils/partitioner.hpp"
 #include "vpux/utils/core/enums.hpp"
 #include "vpux/utils/core/mem_size.hpp"
 #include "vpux/utils/logger/logger.hpp"
@@ -95,6 +97,9 @@ std::optional<int32_t> getQuantizedAxis(int32_t axis, ShapeRef prevShape, ShapeR
 /// @brief Returns the expected buffer size that is described by the given type.
 /// This also supports sub-byte types.
 Byte getExpectedBufferSize(mlir::Type type);
+
+// Get alignment requirement for a given value
+AddressType getAlignment(mlir::Value val, AddressType defaultAlignment = vpux::DEFAULT_CMX_ALIGNMENT);
 
 //
 // MemRefType utilities

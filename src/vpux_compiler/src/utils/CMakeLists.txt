@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2023-2026 Intel Corporation.
+# Copyright (C) 2023-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -25,7 +25,6 @@ add_npu_library(${TARGET_NAME}
         # to avoid circular dependencies, except for the net dialect.
 		# net dialect does not depends on other dialects, so it's safe to use it here
 		npu_compiler_dialect_net
-        npu_compiler_dialect_vpu
       PUBLIC
         npu_elf  # symbolization.hpp
     DEPENDS

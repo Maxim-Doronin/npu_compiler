@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -237,9 +237,7 @@ void ConcatInitResults::safeRunOnModule() {
         _log = _log.unnest();
     };
 
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp entryPointFunc;
-    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, entryPointFunc);
+    auto [netInfo, entryPointFunc] = net::getFromModule(moduleOp);
 
     DerivedWeightsSeparationInfo info = [&]() {
         auto infoOpt = getCachedAnalysis<VPU::WeightsSeparationInfo>();

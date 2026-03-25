@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -232,7 +232,7 @@ mlir::LogicalResult ConvertToQuantizedOpsPass::ConvertToQuantize::matchAndRewrit
     int64_t zeroPoint = 0;
 
     if (auto groupConv = mlir::dyn_cast_or_null<IE::GroupConvolutionOp>(patternInput.getDefiningOp())) {
-        if (groupConv.getPostOpAttr() == nullptr && IE::isEltwiseGroupConv(groupConv, /*isConstFilter=*/true)) {
+        if (!IE::hasPPE(groupConv) && IE::isEltwiseGroupConv(groupConv, /*isConstFilter=*/true)) {
             const auto filterValue = Const::getSplatValue<double>(groupConv.getFilter()).value();
             if (!isDoubleEqual(filterValue, 0.0)) {
                 scale = 1 / filterValue;

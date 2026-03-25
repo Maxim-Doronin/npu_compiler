@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -282,8 +282,7 @@ mlir::LogicalResult CollapseMutualTransposes::matchAndRewrite(IE::TransposeOp tr
     const auto shape = mlir::cast<NDTypeInterface>(transposeOp.getOutput().getType()).getShape();
     const auto newShape = to_small_vector(shape);
     const auto newShapeAttr = getIntArrayAttr(rewriter.getContext(), newShape);
-    auto newOp =
-            rewriter.replaceOpWithNewOp<IE::ReshapeOp>(transposeOp, firstTransposeIn, nullptr, false, newShapeAttr);
+    auto newOp = rewriter.replaceOpWithNewOp<IE::ReshapeOp>(transposeOp, firstTransposeIn, newShapeAttr);
     extendOpLoc(newOp, "as_reshape");
 
     return mlir::success();
@@ -318,8 +317,7 @@ mlir::LogicalResult ConvertTrivialTransposeToReshape::matchAndRewrite(IE::Transp
 
     const auto outputShape = mlir::cast<mlir::ShapedType>(transposeOp.getOutput().getType()).getShape();
     const auto outputShapeAttr = getIntArrayAttr(getContext(), outputShape);
-    auto newOp = rewriter.replaceOpWithNewOp<IE::ReshapeOp>(transposeOp, transposeOp.getInput(), nullptr, false,
-                                                            outputShapeAttr);
+    auto newOp = rewriter.replaceOpWithNewOp<IE::ReshapeOp>(transposeOp, transposeOp.getInput(), outputShapeAttr);
     extendOpLoc(newOp, "as_reshape");
 
     return mlir::success();

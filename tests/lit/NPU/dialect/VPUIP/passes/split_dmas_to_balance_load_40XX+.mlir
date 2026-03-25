@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -550,6 +550,105 @@ func.func @DoNotSplitWhenSplitCreatesEmptyPart(%arg0: !DummyT) -> !DummyT {
     // CHECK-SAME:      inputs({{%.+}} : memref<1x1x3x1xui4, @DDR>)
     // CHECK-SAME:      outputs({{%.+}} : memref<1x1x3x1xui4, [@CMX_NN, 2]>)
     // CHECK-NOT:   VPUIP.NNDMA <{port = 1 : i64}>
+
+    return %arg0 : !DummyT
+}
+
+//
+// -----
+//
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @DoNotSplitIndivisibleBuffer
+func.func @DoNotSplitIndivisibleBuffer(%arg0: memref<1x1x1x1xf16, {order = #NHWC, strides = [1, 1, 1, 1]}, @DDR>) -> memref<1x1x1x1xf16, {order = #NHWC, strides = [1, 1, 1, 1]}, @DDR> {
+    %0 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    %1 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+
+    %in = VPURT.DeclareBuffer <DDR> <0> -> memref<1x1x1x1xf16, {order = #NHWC, strides = [1, 1, 1, 1]}, @DDR>
+    %out = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x1x1x1xf16, {order = #NHWC, strides = [1, 1, 1, 1]}, [@CMX_NN, 0]>
+
+    VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier) {
+      %2 = VPUIP.NNDMA <{port = 0 : i64, split_candidate}> inputs(%in : memref<1x1x1x1xf16, {order = #NHWC, strides = [1, 1, 1, 1]}, @DDR>) outputs(%out : memref<1x1x1x1xf16, {order = #NHWC, strides = [1, 1, 1, 1]}, [@CMX_NN, 0]>) -> memref<1x1x1x1xf16, {order = #NHWC, strides = [1, 1, 1, 1]}, [@CMX_NN, 0]>
+    }
+
+    // The buffer shape is 1x1x1x1, which cannot be divided further.
+    // Verify that the DMA is NOT split.
+    // CHECK:       [[IN_BUF:%.+]] = VPURT.DeclareBuffer <DDR> <0>
+    // CHECK:       VPUIP.NNDMA <{port = 0 : i64, split_candidate}> inputs([[IN_BUF]] : memref<1x1x1x1xf16, {order = #NHWC, strides = [1, 1, 1, 1]}, @DDR>)
+    // CHECK-NOT:   VPUIP.NNDMA <{port = 1 : i64}>
+
+    return %in : memref<1x1x1x1xf16, {order = #NHWC, strides = [1, 1, 1, 1]}, @DDR>
+}
+
+
+// -----
+
+
+!qElemType = !quant.quantile<u4:f16:f16, {0.000000e+00,1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00,5.000000e+00,6.000000e+00,7.000000e+00,-8.000000e+00,-7.000000e+00,-6.000000e+00,-5.000000e+00,-4.000000e+00,-3.000000e+00,-2.000000e+00,-1.000000e+00}:1.000000e+00>
+!DummyT = memref<1x3x224x224xf16, @DDR>
+
+// CHECK-LABEL: @SplitGatherDMA
+func.func @SplitGatherDMA(%arg0: !DummyT) -> !DummyT {
+    %0 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    %1 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    %2 = VPURT.DeclareBuffer <NetworkInput> [2] <0> -> memref<184320x2880x1x1x!qElemType, @DDR>
+    %3 = VPURT.DeclareBuffer <CMX_NN> [0] <115392> -> memref<320x1x1x1xi64, [@CMX_NN, 0]>
+    %4 = VPURT.DeclareBuffer <CMX_NN> [0] <164032> -> memref<320x2880x1x1x!qElemType, [@CMX_NN, 0]>
+
+    VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier)  {
+      VPUIP.GatherDMA <{elementSize = 0 : i64, padding = 0 : i64, port = 0 : i64, split_candidate}> inputs(%2 : memref<184320x2880x1x1x!qElemType, @DDR>) indices(%3 : memref<320x1x1x1xi64, [@CMX_NN, 0]>) outputs(%4 : memref<320x2880x1x1x!qElemType, [@CMX_NN, 0]>) -> memref<320x2880x1x1x!qElemType, [@CMX_NN, 0]>
+    }
+
+    // CHECK:       VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    // CHECK:       VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    // CHECK:       [[BUFFER_DDR:%.+]] = VPURT.DeclareBuffer <NetworkInput> [2] <0> -> memref<184320x2880x1x1x!qElemType, @DDR>
+    // CHECK:       [[INDICES_0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <115392> -> memref<160x1x1x1xi64, [@CMX_NN, 0]>
+    // CHECK:       [[INDICES_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <116672> -> memref<160x1x1x1xi64, [@CMX_NN, 0]>
+    // CHECK:       [[OUTPUT_0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <164032> -> memref<160x2880x1x1x!qElemType, [@CMX_NN, 0]>
+    // CHECK:       [[OUTPUT_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <394432> -> memref<160x2880x1x1x!qElemType, [@CMX_NN, 0]>
+
+    // CHECK:       VPUIP.GatherDMA <{elementSize = 0 : i64, padding = 0 : i64, port = 0 : i64}>
+    // CHECK-SAME:      inputs([[BUFFER_DDR:%.+]] : memref<184320x2880x1x1x!qElemType, @DDR>)
+    // CHECK-SAME:      indices([[INDICES_0:%.+]] : memref<160x1x1x1xi64, [@CMX_NN, 0]>)
+    // CHECK-SAME:      outputs([[OUTPUT_0:%.+]] : memref<160x2880x1x1x!qElemType, [@CMX_NN, 0]>)
+
+    // CHECK:       VPUIP.GatherDMA <{elementSize = 0 : i64, padding = 0 : i64, port = 1 : i64}>
+    // CHECK-SAME:      inputs([[BUFFER_DDR]] : memref<184320x2880x1x1x!qElemType, @DDR>)
+    // CHECK-SAME:      indices([[INDICES_1:%.+]] : memref<160x1x1x1xi64, [@CMX_NN, 0]>)
+    // CHECK-SAME:      outputs([[OUTPUT_1:%.+]] : memref<160x2880x1x1x!qElemType, [@CMX_NN, 0]>)
+
+    return %arg0 : !DummyT
+}
+
+
+
+// -----
+
+!qElemType = !quant.quantile<u4:f16:f16, {0.000000e+00,1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00,5.000000e+00,6.000000e+00,7.000000e+00,-8.000000e+00,-7.000000e+00,-6.000000e+00,-5.000000e+00,-4.000000e+00,-3.000000e+00,-2.000000e+00,-1.000000e+00}:1.000000e+00>
+!DummyT = memref<1x3x224x224xf16, @DDR>
+
+// CHECK-LABEL: @NotSplitGatherDMAForUnalignedIndices
+func.func @NotSplitGatherDMAForUnalignedIndices(%arg0: !DummyT) -> !DummyT {
+    %0 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    %1 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    %2 = VPURT.DeclareBuffer <NetworkInput> [2] <0> -> memref<184320x2880x1x1x!qElemType, @DDR>
+    %3 = VPURT.DeclareBuffer <CMX_NN> [0] <115392> -> memref<10x1x1x1xi64, [@CMX_NN, 0]>
+    %4 = VPURT.DeclareBuffer <CMX_NN> [0] <164032> -> memref<10x2880x1x1x!qElemType, [@CMX_NN, 0]>
+
+    VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier)  {
+      VPUIP.GatherDMA <{elementSize = 0 : i64, padding = 0 : i64, port = 0 : i64, split_candidate}> inputs(%2 : memref<184320x2880x1x1x!qElemType, @DDR>) indices(%3 : memref<10x1x1x1xi64, [@CMX_NN, 0]>) outputs(%4 : memref<10x2880x1x1x!qElemType, [@CMX_NN, 0]>) -> memref<10x2880x1x1x!qElemType, [@CMX_NN, 0]>
+    }
+
+    // CHECK:       VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    // CHECK:       VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+    // CHECK:       [[BUFFER_DDR:%.+]] = VPURT.DeclareBuffer <NetworkInput> [2] <0> -> memref<184320x2880x1x1x!qElemType, @DDR>
+    // CHECK:       [[INDICES:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <115392> -> memref<10x1x1x1xi64, [@CMX_NN, 0]>
+    // CHECK:       [[OUTPUT:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <164032> -> memref<10x2880x1x1x!qElemType, [@CMX_NN, 0]>
+    // CHECK:       VPUIP.GatherDMA <{elementSize = 0 : i64, padding = 0 : i64, port = 0 : i64, split_candidate}>
+    // CHECK-SAME:      inputs([[BUFFER_DDR]] : memref<184320x2880x1x1x!qElemType, @DDR>)
+    // CHECK-SAME:      indices([[INDICES]] : memref<10x1x1x1xi64, [@CMX_NN, 0]>)
+    // CHECK-SAME:      outputs([[OUTPUT]] : memref<10x2880x1x1x!qElemType, [@CMX_NN, 0]>)
 
     return %arg0 : !DummyT
 }

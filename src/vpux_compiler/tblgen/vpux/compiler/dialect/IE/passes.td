@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -90,14 +90,6 @@ def MapBilinearInterpolateOnDPU : PassBase<"map-bilinear-interpolate-on-dpu", "v
 
     let dependentDialects = [
         "vpux::IE::IEDialect"
-    ];
-
-    let options = [
-        Option<
-            "interpolateAsSEOp", "interpolate-as-se-op",
-            "bool", "false",
-            "Flag which identifies whether an Interpolate operation can be executed using the Storage Element hardware feature"
-        >
     ];
 }
 
@@ -511,7 +503,7 @@ def FuseLogSoftmaxVariants : PassBase<"fuse-logsoftmax-variants", "vpux::Functio
               | ---> TopK -> output1
 
               or
-            
+
             input -> LogSoftmax -> Gather -> output0
               |                      ^
               | ---> TopK -----------|
@@ -534,6 +526,30 @@ def FuseSDPAExtended : PassBase<"fuse-sdpa-extended", "vpux::FunctionPass"> {
         - Shave control for DPU execution
     }];
     let constructor = "vpux::IE::createFuseSDPAExtendedPass()";
+    let dependentDialects = [
+        "vpux::IE::IEDialect"
+    ];
+}
+
+//
+// DecomposeSDPAExtended
+//
+def DecomposeSDPAExtended : PassBase<"decompose-sdpa-extended", "vpux::FunctionPass"> {
+    let summary = "Decompose SDPAExtended operations into primitive IE operations";
+    let description = [{
+        This pass decomposes SDPAExtended operations into a sequence of IE operations
+        following the scaled dot-product attention formula:
+            Attention(Q, K, V) = softmax((Q * K^T) / sqrt(d_k) + mask + bias) * V
+
+        The decomposition follows this pipeline:
+        1. Q*K^T: Apply IE.MatMul to compute query-key dot products
+        2. Scale: Apply IE.Multiply to scale by 1/sqrt(d_k) or provided scale
+        3. Add Mask: Apply IE.Add to add attention mask if provided
+        4. Add Bias: Apply IE.Add to add bias if provided
+        5. Softmax: Apply IE.SoftMax on the last dimension
+        6. Output: Apply IE.MatMul to compute final attention output with values
+    }];
+    let constructor = "vpux::IE::createDecomposeSDPAExtendedPass()";
     let dependentDialects = [
         "vpux::IE::IEDialect"
     ];
@@ -592,14 +608,14 @@ def FuseDynamicQuantize : PassBase<"fuse-dynamic-quantize", "vpux::FunctionPass"
 }
 
 //
-// FuseReduceMeanSquare
+// FuseReduceSquare
 //
-def FuseReduceMeanSquare : PassBase<"fuse-reduce-mean-square", "vpux::FunctionPass"> {
-    let summary = "Fuse Power-ReduceMean-Sqrt to ReduceMeanSquare";
+def FuseReduceSquare : PassBase<"fuse-reduce-square", "vpux::FunctionPass"> {
+    let summary = "Fuse Power-ReduceMean-Sqrt to ReduceSquare";
     let description = [{
-        fuse a sequence of ops to one ReduceMeanSquare.
+        fuse a sequence of ops to one ReduceSquare.
     }];
-    let constructor = "vpux::IE::createFuseReduceMeanSquarePass()";
+    let constructor = "vpux::IE::createFuseReduceSquarePass()";
     let dependentDialects = [
         "vpux::IE::IEDialect"
     ];
@@ -614,6 +630,48 @@ def OptimizeParallelLayers : PassBase<"optimize-parallel-layers", "vpux::Functio
         This pass consolidates parallel branches of computational layers to achieve better hardware utilization.
     }];
     let constructor = "vpux::IE::createOptimizeParallelLayersPass()";
+    let dependentDialects = [
+        "vpux::IE::IEDialect"
+    ];
+}
+
+//
+// EliminateSliceInSoftmaxMatMulPass
+//
+
+def EliminateSliceInSoftmaxMatMul : PassBase<"eliminate-slice-in-softmax-matmul", "vpux::FunctionPass"> {
+    let summary = "Eliminate Slice operation between Softmax and MatMul by dimension alignment padding";
+
+    let description = [{
+        This pass optimizes the pattern: Softmax -> Slice -> MatMul by:
+        1. Padding Softmax input to alignment (e.g., 1025 -> 1040) using -inf padding
+        2. Removing the Slice operation
+        3. Padding MatMul RHS input with zeros to match the aligned dimension
+
+        Example transformation:
+        Before:
+            Input (1x64x1024x1025) -> Softmax -> (1x64x1024x1025) -> Slice [0:1024] -> (1x64x1024x1024)
+                                                                                             |
+            RHS (1x64x64x1024) --------------------------------------------------------> MatMul -> (1x64x1024x64)
+
+        After:
+            Input (1x64x1024x1025) -> Concat [-inf x15] -> (1x64x1024x1040) -> Softmax -> (1x64x1024x1040)
+                                                                                                |
+            RHS (1x64x64x1024) -> Concat [0 x16] -> (1x64x64x1040) --------------------------> MatMul -> (1x64x1024x64)
+
+        Mathematical equivalence:
+        * Softmax with -inf padding: exp(-inf) = 0, padded positions contribute 0 to output
+        * MatMul with zero-padded RHS: extra dimensions contribute 0 to the result
+        * Therefore: Softmax(x)[0:n] @ W == Softmax_padded(x) @ W_padded
+
+        Benefits:
+        * Removes Slice operation overhead
+        * Aligns dimensions to power-of-2 for better SW layer performance
+        * Maintains mathematical correctness
+    }];
+
+    let constructor = "vpux::IE::createEliminateSliceInSoftmaxMatMulPass()";
+
     let dependentDialects = [
         "vpux::IE::IEDialect"
     ];
@@ -812,12 +870,7 @@ def ConvertToSpatialOp : PassBase<"convert-to-spatial-op", "vpux::FunctionPass">
             "m2iEnabled", "m2i-enabled",
             "bool", "false",
             "Flag which identifies whether M2I is enabled. If no, the conversion can be applied to Interpolate"
-        >,
-        Option<
-            "seOpsEnabled", "se-ops-enabled",
-            "bool", "false",
-            "Flag to identify whether operations that can be executed using the Storage Element hardware feature are enabled"
-        >,
+        >
     ];
 }
 
@@ -842,31 +895,23 @@ def ConvertNearestToStridedConcat : PassBase<"convert-nearest-to-broadcast-or-st
     let dependentDialects = [
         "vpux::IE::IEDialect"
     ];
-
-    let options = [
-        Option<
-            "interpolateAsSEOp", "interpolate-as-se-op",
-            "bool", "false",
-            "Flag which identifies whether an Interpolate operation can be executed using the Storage Element hardware feature"
-        >
-    ];
 }
 
 //
-// SplitBilinerIntoHAndW
+// SplitBilinearIntoHAndW
 //
 
-def SplitBilinerIntoHAndW : PassBase<"split-bilinear-into-H-and-W", "vpux::FunctionPass"> {
+def SplitBilinearIntoHAndW : PassBase<"split-bilinear-into-H-and-W", "vpux::FunctionPass"> {
     let summary = "Convert bilinear interpolate on H and W to slice, concat, convolution and interpolate on H";
 
     let description = [{
         This pass convert `Bilinear Interpolate` operations to interpolate on H and interpolate on W, and
         the interpolate on W will convert to slice, concat and convolution.
 
-        This pass is enabled when both `interpolateAsSEOp` and `SplitBilinerIntoHAndW` options are set to true.
+        This pass is enabled when both `interpolateAsSEOp` and `SplitBilinearIntoHAndW` options are set to true.
     }];
 
-    let constructor = "vpux::IE::createSplitBilinerIntoHAndWPass()";
+    let constructor = "vpux::IE::createSplitBilinearIntoHAndWPass()";
 
     let dependentDialects = [
         "vpux::IE::IEDialect"
@@ -914,14 +959,6 @@ def ConvertBilinearToStridedConcatAndConv : PassBase<"convert-bilinear-to-stride
 
     let dependentDialects = [
         "vpux::IE::IEDialect"
-    ];
-
-    let options = [
-        Option<
-            "interpolateAsSEOp", "interpolate-as-se-op",
-            "bool", "false",
-            "Flag which identifies whether an Interpolate operation can be executed using the Storage Element hardware feature"
-        >
     ];
 }
 
@@ -1064,14 +1101,6 @@ def ConvertDepth2SpaceToTransposedConv : PassBase<"convert-d2s-to-transposed-con
     let dependentDialects = [
         "vpux::IE::IEDialect"
     ];
-
-    let options = [
-        Option<
-            "seOpsEnabled", "se-ops-enabled",
-            "bool", "false",
-            "Flag to identify whether operations that can be executed using the Storage Element hardware feature are enabled"
-        >
-    ];
 }
 
 //
@@ -1133,19 +1162,19 @@ def ConvertDeformableConvToConv : PassBase<"convert-deformable-conv-to-conv", "v
 }
 
 //
-// ConvertGatherToSlice
+// ConvertGather
 //
 
-def ConvertGatherToSlice : PassBase<"convert-gather-to-slice", "vpux::FunctionPass"> {
-    let summary = "Convert Gather operation to Slice operation";
+def ConvertGather : PassBase<"convert-gather", "vpux::FunctionPass"> {
+    let summary = "Convert Gather operation to Slice or Reverse operation";
 
     let description = [{
         The pass is a part of `AdjustForVPU` pipeline.
 
-        This pass replaces legal `Gather` operations with `Slice` operations.
+        This pass replaces legal `Gather` operations with `Slice` or `Reverse` operations.
     }];
 
-    let constructor = "vpux::IE::createConvertGatherToSlicePass()";
+    let constructor = "vpux::IE::createConvertGatherPass()";
 
     let dependentDialects = [
         "vpux::IE::IEDialect"
@@ -1256,35 +1285,6 @@ def ConvertFCToConv : PassBase<"convert-fc-to-conv", "vpux::FunctionPass"> {
 }
 
 //
-// MatMulInputsTo2d
-//
-
-def MatMulInputsTo2d : PassBase<"matmul-inputs-to-2d", "vpux::FunctionPass"> {
-    let summary = "Convert MatMul inputs to 2d";
-
-    let description = [{
-        This pass converts `MatMul` inputs to 2d.
-
-        For example, `MatMul` input with 4x1x64 geometry will be split to four inputs with 1x64 dimensions.
-        Resulting inputs with filters go to `MatMul` operations and the outputs are concatenated.
-    }];
-
-    let constructor = "vpux::IE::createMatMulInputsTo2dPass()";
-
-    let dependentDialects = [
-        "vpux::IE::IEDialect"
-    ];
-
-    let options = [
-        Option<
-            "enableGroupedMatMul", "enable-grouped-matmul",
-            "bool", "false",
-            "Flag to enable or disable grouped MatMul execution"
-        >
-    ];
-}
-
-//
 // DecomposeConcatMatMul
 //
 
@@ -1360,14 +1360,6 @@ def ConvertNonConstantPadToSliceAndConcat : PassBase<"convert-non-constant-pad-t
 
     let dependentDialects = [
         "vpux::IE::IEDialect"
-    ];
-
-    let options = [
-        Option<
-            "enableSEPPad", "enable-sep-pad",
-            "bool", "false",
-            "Flag which identifies whether an Pad operation can be executed using the Storage Element hardware feature"
-        >
     ];
 }
 
@@ -1943,16 +1935,6 @@ def FusePermuteQuantize : PassBase<"fuse-permute-quantize", "vpux::FunctionPass"
             "dpuOnly", "dpu-only",
             "bool", "false",
             "[Optional] Set to true when target platform does not have software PermuteQuantize layer"
-        >,
-        Option<
-            "seOpsEnabled", "se-ops-enabled",
-            "bool", "false",
-            "Flag to identify whether operations that can be executed using the Storage Element hardware feature are enabled"
-        >,
-        Option<
-            "seExperimentalOpsEnabled", "se-experimental-ops-enabled",
-            "bool", "false",
-            "This flag identifies operations that are still a work in progress and can be executed using the Storage Element hardware feature."
         >
     ];
 }
@@ -1975,14 +1957,6 @@ def LegalizeDilatedConvolution : PassBase<"legalize-dilated-conv", "vpux::Functi
 
     let dependentDialects = [
         "vpux::IE::IEDialect"
-    ];
-
-    let options = [
-        Option<
-            "enableSEPDilatedGroupConv", "enable-sep-dilated-group-conv",
-            "bool", "false",
-            "Flag which identifies whether an GroupConvolution operation can be executed using the Storage Element hardware feature"
-        >
     ];
 }
 
@@ -2436,14 +2410,6 @@ def ConvertTransposedConv2DToConv2D : PassBase<"convert-transposed-conv-to-conv"
 
     let constructor = "vpux::IE::createConvertTransposedConv2DToConv2DPass()";
 
-    let options = [
-        Option<
-            "enableSEPTransposedConv", "enable-sep-transposed-conv",
-            "bool", "false",
-            "Flag which identifies whether Transposed Convolutions operation can be executed using the Storage Element hardware feature"
-        >
-    ];
-
     let dependentDialects = [
         "vpux::IE::IEDialect"
     ];
@@ -2461,14 +2427,6 @@ def ConvertGroupTransposedConvToGroupConv : PassBase<"convert-group-transposed-c
     }];
 
     let constructor = "vpux::IE::createConvertGroupTransposedConvToGroupConvPass()";
-
-    let options = [
-        Option<
-            "enableSEPTransposedConv", "enable-sep-transposed-conv",
-            "bool", "false",
-            "Flag which identifies whether Transposed Convolutions operation can be executed using the Storage Element hardware feature"
-        >
-    ];
 
     let dependentDialects = [
         "vpux::IE::IEDialect"
@@ -2488,14 +2446,6 @@ def ConvertGroupTransposedConvToTransposedConv : PassBase<"convert-group-transpo
     }];
 
     let constructor = "vpux::IE::createConvertGroupTransposedConvToTransposedConvPass()";
-
-    let options = [
-        Option<
-            "enableSEPTransposedConv", "enable-sep-transposed-conv",
-            "bool", "false",
-            "Flag which identifies whether Transposed Convolutions operation can be executed using the Storage Element hardware feature"
-        >
-    ];
 
     let dependentDialects = [
         "vpux::IE::IEDialect"
@@ -2672,14 +2622,6 @@ def PropagateAndFuseQuantizeDequantize : PassBase<"propagate-and-fuse-quantize-d
         "vpux::IE::IEDialect",
         "mlir::quant::QuantDialect"
     ];
-
-    let options = [
-        Option<
-            "seOpsEnabled", "se-ops-enabled",
-            "bool", "false",
-            "Flag which identifies whether an operation can be executed using the Storage Element hardware feature"
-        >
-    ];
 }
 
 //
@@ -2723,35 +2665,88 @@ def AdjustFakeQdqParams : PassBase<"adjust-fake-qdq-params", "vpux::FunctionPass
 }
 
 //
-// FuseFQAndMul
+// FuseQuantizationMultiply
 //
 
-def FuseFQAndMul : PassBase<"fuse-fq-and-mul", "vpux::FunctionPass"> {
-    let summary = "Fuse Mul into FakeQuantize if it's a const weight";
+def FuseQuantizationMultiply : PassBase<"fuse-fq-and-mul", "vpux::FunctionPass"> {
+    let summary = "Fuse Mul into FakeQuantize or Dequantize";
 
     let description = [{
-        The pass is a part of `InitialTransformations` pipeline.
+    The pass is a part of `InitialTransformations` pipeline.
 
-             data  in_L in_H out_L out_H
-               |    |    |     |     |
-               |    |    |     |     |                data  in_L  in_H  out_L * C  out_H * C
-               v    v    v     v     v                  |    |     |        |          |
-             +-------------------------+                |    |     |        |          |
-             |       FakeQuantize      |                v    v     v        v          v
-             +-------------------------+             +------------------------------------+
-                          |                =====>    |            FakeQuantize            |
-                          v                          +------------------------------------+
-                     +----------+                                      |
-                     | Multiply | <--- C                               v
-                     +----+-----+
-                          |
-                          v
 
-        Fuse Mul into FakeQuantize when the fused FakeQuantize is per-tensor or per-channel
-        regardless of whether the input of FakeQuantize is constant or not
+    FakeQuantize + Multiply
+
+         data  in_L in_H out_L out_H
+           |    |    |     |     |
+           |    |    |     |     |                data  in_L  in_H  out_L * C  out_H * C
+           v    v    v     v     v                  |    |     |        |          |
+         +-------------------------+                |    |     |        |          |
+         |       FakeQuantize      |                v    v     v        v          v
+         +-------------------------+             +------------------------------------+
+                      |                =====>    |            FakeQuantize            |
+                      v                          +------------------------------------+
+                 +----------+                                      |
+                 | Multiply | <--- C                               v
+                 +----+-----+
+                      |
+                      v
+
+    Fuse Multiply into FakeQuantize when the fused FakeQuantize is per-tensor or
+    per-channel, regardless of whether the input of FakeQuantize is constant or not.
+
+    Dequantize + Multiply
+
+    Constant Weights
+
+         Quantized Weights (Const)
+         (scale = S, zp = Z)
+                  |
+                  v
+         +----------------+                       Quantized Weights (Const)
+         |   Dequantize   |                        (scale = S * C, zp = Z)
+         +----------------+                                  |
+                  |                                          v
+                  v                  =====>          +----------------+
+            +----------+                             |   Dequantize   |
+            | Multiply | <--- C                      +----------------+
+            +----------+                                     |
+                  |                                          v
+                  v
+
+    Block Arguments
+
+
+       Quantized Weights                            Quantized Weights
+        (scale = S, zp = Z)                          (scale = S, zp = Z)
+                |                                              |
+                v                                              v
+        +----------------+                           +------------------+
+        |   Dequantize   |                           |  QuantizeCast    |
+        +----------------+                           | (scale = S*C)    |
+                |                                    +------------------+
+                v                                              |
+          +----------+              =====>                     v
+          | Multiply | ← C                            +----------------+
+          +----------+                                |   Dequantize   |
+                |                                     +----------------+
+                v                                              |
+                                                               v
+
+    Fuse Multiply into Dequantize by updating the quantization scale:
+    - For constant weights: Updates the constant declaration with new quantization
+      parameters (scale = original_scale * multiply_factor)
+    - For block arguments: Inserts a QuantizeCast operation to
+      requantize with the updated scale at runtime
+
+     Supported Quantization Types:
+    - UniformQuantizedType (per-tensor): Single scale and zero point
+    - UniformPerAxisQuantizedType (per-channel): Per-channel scales along axis 0
+
     }];
 
-    let constructor = "vpux::IE::createFuseFQAndMulPass()";
+
+    let constructor = "vpux::IE::createFuseQuantizationMultiplyPass()";
 
     let dependentDialects = [
         "vpux::IE::IEDialect"
@@ -2832,27 +2827,6 @@ def SwapPadLayer : PassBase<"swap-pad-layer", "vpux::FunctionPass"> {
         }];
 
 let constructor = "vpux::IE::createSwapPadLayerPass()";
-
-let dependentDialects = [
-        "vpux::IE::IEDialect"
-        ];
-}
-
-//
-// PropagateOpThroughBatchConcat
-//
-
-def PropagateOpThroughBatchConcat : PassBase<"propagate-op-through-batch-concat", "vpux::FunctionPass"> {
-    let summary = "Propagate SW ops after batch unrolled matmul to enable vertical fusion";
-
-        let description = [{
-
-        Move ops after concat to place after each batch unrolled matmul.
-        Currently only softmax is enabled.
-
-        }];
-
-let constructor = "vpux::IE::createPropagateOpThroughBatchConcatPass()";
 
 let dependentDialects = [
         "vpux::IE::IEDialect"
@@ -4162,6 +4136,24 @@ def PropagateMemPermuteThroughSoftMax : PassBase<"propagate-mem-permute-through-
 }
 
 //
+// OptimizeReduceOpsWithMemPermute
+//
+def OptimizeReduceOpsWithMemPermute : PassBase<"optimize-reduce-ops-with-mem-permute", "vpux::FunctionPass"> {
+    let summary = "Optimize IE.ReduceSum / IE.ReduceMean / IE.ReduceMin / IE.ReduceMax with IE.MemPermute";
+
+    let description = [{
+        This pass inserts MemPermuteOp before and after Reduce ops if the axis are not on inner most memory dim.
+        Then it will be more efficient to execute on SW.Kernel.
+    }];
+
+    let constructor = "vpux::IE::createOptimizeReduceOpsWithMemPermutePass()";
+
+    let dependentDialects = [
+        "vpux::IE::IEDialect"
+    ];
+}
+
+//
 // OptimizeIdentityPool
 //
 
@@ -4541,27 +4533,6 @@ def UnrollFullyConnected : PassBase<"unroll-fully-connected", "vpux::FunctionPas
     }];
 
     let constructor = "vpux::IE::createUnrollFullyConnectedPass()";
-
-    let dependentDialects = [
-        "vpux::IE::IEDialect"
-    ];
-}
-
-//
-// M2IBatchNormFusion
-//
-
-def M2IBatchNormFusion : PassBase<"m2i-batchnorm-fusion", "vpux::FunctionPass"> {
-    let summary = "Fuse a Mult + Add operation that follows or precedes an interpolate/CSC operation mappable to m2i into a IE.BatchNormInferenceOp operation, to be also mapped on m2i";
-
-    let description = [{
-        BatchNormInferenceOp is always decomposed into a Mult + Add operations by prepostprocessing API and later mapped to either DPU or Shave.
-        Since M2I is able to compute an fp16 normalisation operation, in case the Mult + Add pair are preceded or followed by another m2i-mappable operation such as Interpolate or CSC,
-        the two operations get fused back into a BatchNormInferenceOp, which is then mapped to m2i and lowered to VPU::M2INormOp.
-        This then allows to fuse CSC/Interp/Permute/Norm patterns into a single M2ITask operation
-    }];
-
-    let constructor = "vpux::IE::createM2IBatchNormFusionPass()";
 
     let dependentDialects = [
         "vpux::IE::IEDialect"
@@ -5752,11 +5723,12 @@ def FuseOutstandingDequant: PassBase<"fuse-outstanding-dequant", "vpux::Function
 
         Pass walks through quant-agnostic ops and removes dequantize after
         NCE task with quantized output.
+        Allowed operations are defined by isAllowedElemTypeOp. These are ops that do not affect data values.
 
         Converts :
-        `u8_Convolution_u8 -> u8_ElemTypeInfoOp_u8 -> ... -> u8_Dequantize_f16 -> f16_SWKernel_f16`
+        `u8_Convolution_u8 -> u8_AllowedElemTypeOp_u8 -> ... -> u8_Dequantize_f16 -> f16_SWKernel_f16`
         To :
-        `u8_Convolution_f16 -> f16_ElemTypeInfoOp_f16 -> ... -> f16_SWKernel_f16`
+        `u8_Convolution_f16 -> f16_AllowedElemTypeOp_f16 -> ... -> f16_SWKernel_f16`
     }];
 
     let constructor = "vpux::IE::createFuseOutstandingDequant()";
@@ -5896,19 +5868,33 @@ def InsertIdentityPoolBeforeOp : PassBase<"insert-identity-pool-before-op", "vpu
 }
 
 //
-// WeightsQuantFusedIntoTaskPass
+// LoggingWeightsQuantFusedIntoTaskPass
 //
 
-def WeightsQuantFusedIntoTask: PassBase<"weights-quant-fused-into-task", "vpux::FunctionPass"> {
+def LoggingWeightsQuantFusedIntoTask: PassBase<"logging-weights-quant-fused-into-task", "vpux::FunctionPass"> {
     let summary = "Flag that weights quant is fused into task";
 
     let description = [{
-        The pass is a part of `LowPrecision` pipeline.
+        The pass is a part of the `LowPrecision` pipeline and is used for debugging purposes only.
 
-        Pass walks through weights constants and flag if it's fused into task
+        This pass logs diagnostic information about weight quantization fusion into tasks. It walks through
+        weight constants and block arguments for operations like Convolution, MatMul, and GroupConvolution,
+        and logs whether the weights have quantized element types (int8/int4), indicating that weight
+        quantization has been fused into the task.
+
+        The pass generates trace-level logs for two scenarios:
+        - "WAC" (Weights As Constant): When weights are provided as quantized constants
+        - "WAI" (Weights As Input): When weights are block arguments with quantized types
+
+        This pass does not modify the IR and is purely for debugging analysis. It can be enabled
+        via NPU_COMPILATION_MODE_PARAMS with:
+        "NPU_COMPILATION_MODE_PARAMS": "enable-log-dynamic-quant=true"
+
+        Note: This option is separate from the public NPU_COMPILER_DYNAMIC_QUANTIZATION configuration and
+        is only available through NPU_COMPILATION_MODE_PARAMS for advanced debugging.
     }];
 
-    let constructor = "vpux::IE::createWeightsQuantFusedIntoTaskPass()";
+    let constructor = "vpux::IE::createLoggingWeightsQuantFusedIntoTaskPass()";
 
     let dependentDialects = [
         "vpux::IE::IEDialect"
@@ -6115,10 +6101,40 @@ def InitialLowPrecisionTransformationsPipelineRewriterExecutor : PassBase<"run-i
             "rewriterName", "rewriter",
             "std::string", "",
             "Name of the rewriter to run"
+        >,
+         Option<
+            "enableDynamicQuantizationForStaticCase", "enable-dynamic-quantization-for-static-case",
+            "bool", "false",
+            "[Optional] Enable dynamic quantization for static case"
         >
     ];
 
     let constructor = "vpux::IE::createInitialLowPrecisionTransformationsPipelineRewriterExecutorPass()";
+}
+
+// BatchOpProcessingPipelineRewriterExecutor
+//
+
+def BatchOpProcessingPipelineRewriterExecutor : PassBase<"run-batch-op-processing-rewriters", "vpux::FunctionPass"> {
+    let summary = "Build batch op processing pipeline rewriter collection";
+    let description = [{
+        This pass runs a set of rewriters that perform batch op processing for pipeline.
+    }];
+
+    let options = [
+        Option<
+            "rewriterName", "rewriter",
+            "std::string", "",
+            "Name of the rewriter to run"
+        >,
+        Option<
+            "enableGroupedMatMul", "enable-grouped-matmul",
+            "bool", "false",
+            "Flag to enable or disable grouped MatMul execution"
+        >
+    ];
+
+    let constructor = "vpux::IE::createBatchOpProcessingPipelineRewriterExecutorPass()";
 }
 
 #endif

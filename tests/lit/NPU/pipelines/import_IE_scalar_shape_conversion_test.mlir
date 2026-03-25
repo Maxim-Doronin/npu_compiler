@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -21,6 +21,6 @@
 // CHECK: DataInfo "scalar_add" friendlyName = "Result" : tensor<f32>
 
 // Verify that internal MLIR operations use the converted [1] shape
-// CHECK: func.func @main(%arg0: tensor<1xf32>) -> tensor<1xf32>
+// CHECK: func.func @main([[ARG_0:%.+]]: tensor<1xf32>) -> tensor<1xf32>
 // CHECK: const.Declare tensor<f32> = dense<2.500000e+00> : tensor<f32>
-// CHECK: IE.Add(%arg0, %cst) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1xf32>, tensor<f32> -> tensor<1xf32>
+// CHECK: IE.Add([[ARG_0]], %cst) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1xf32>, tensor<f32> -> tensor<1xf32>

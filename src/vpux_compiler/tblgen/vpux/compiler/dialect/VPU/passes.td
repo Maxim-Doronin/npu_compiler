@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -1204,19 +1204,6 @@ def SplitSEOps : PassBase<"split-se-ops", "vpux::FunctionPass"> {
     let dependentDialects = [
         "vpux::VPU::VPUDialect"
     ];
-
-    let options = [
-        Option<
-            "seOpsEnabled", "se-ops-enabled",
-            "bool", "false",
-            "Flag to identify whether operations that can be executed using the Storage Element hardware feature are enabled"
-        >,
-        Option<
-            "seExperimentalOpsEnabled", "se-experimental-ops-enabled",
-            "bool", "false",
-            "This flag identifies operations that are still a work in progress and can be executed using the Storage Element hardware feature."
-        >
-    ];
 }
 
 //
@@ -1252,19 +1239,6 @@ def LowerOpsToSENCE : PassBase<"lower-ops-to-se-nce", "vpux::FunctionPass"> {
 
     let dependentDialects = [
         "vpux::VPU::VPUDialect"
-    ];
-
-    let options = [
-        Option<
-            "seOpsEnabled", "se-ops-enabled",
-            "bool", "false",
-            "Flag to identify whether operations that can be executed using the Storage Element hardware feature are enabled"
-        >,
-        Option<
-            "seExperimentalOpsEnabled", "se-experimental-ops-enabled",
-            "bool", "false",
-            "This flag identifies operations that are still a work in progress and can be executed using the Storage Element hardware feature."
-        >
     ];
 }
 
@@ -1744,11 +1718,6 @@ def SetupPipelineOptions : PassBase<"setup-pipeline-options", "vpux::ModulePass"
             "allowCustomValues", "allow-custom-values",
             "bool", "",
             "[Optional] Allows keep predefined values in IR"
-        >,
-        Option<
-            "ppeVersionOpt", "ppe-version",
-            "std::string", [{"Auto"}],
-            "Specifies the compiler's target PPE hardware version ['Auto', 'IntPPE', 'FpPPE']. When set to 'Auto', the latest PPE version available on the target architecture is picked."
         >
     ];
 
@@ -1787,11 +1756,6 @@ def SetupNpuConstraint : PassBase<"setup-npu-constraint", "vpux::ModulePass"> {
             "allowCustomValues", "allow-custom-values",
             "bool", "",
             "[Optional] Allows keep predefined values in IR"
-        >,
-        Option<
-            "wlmRollback", "wlm-rollback",
-            "bool", "false",
-            "[Optional] Indicates that compilation might rollback to wlm-disabled pipeline"
         >,
         Option<
             "enableSwKernelFifoPerShaveEngine", "enable-sw-kernel-fifo-per-shave-engine",
@@ -1919,6 +1883,11 @@ def SetTargetIndependentPassOptions : PassBase<"set-target-independent-options",
             "enableDCIM", "enable-dcim",
             "bool", "false",
             "[Optional] Set EnableDCIM for NCE to true/false"
+        >,
+        Option<
+            "powerOptimized", "power-optimized",
+            "bool", "false",
+            "[Optional] Set PowerConfig for NCE to true/false"
         >,
         Option<
             "allowCustomValues", "allow-custom-values",
@@ -2531,6 +2500,8 @@ def FinalizeComputeFunctionBoundaries : PassBase<"finalize-compute-function-boun
         3. Tensor types are transformed to be compatible with upstream MLIR components
         4. Necessary bridging operations (like Core.ReinterpretCast) are inserted at
            function boundaries
+        5. Quantized types are handled by preserving quantization parameters while
+           transforming the underlying storage tensor types
 
         Important contract established by this pass:
         - NPU-specific information (layout, bounds) is preserved INSIDE compute functions
@@ -2747,34 +2718,6 @@ def ApplyTilingMVN1Sum : PassBase<"apply-tiling-mvn1sum", "vpux::FunctionPass"> 
             "std::string", [{"PREFETCH"}],
             "[Optional] Set tiling mode as `ISOLATED` or `PREFETCH`"
         >
-    ];
-}
-
-//
-// FuseM2IOps
-//
-
-def FuseM2IOps : PassBase<"fuse-m2i-ops", "vpux::FunctionPass"> {
-    let summary = "Fuse M2I ops to VPU::M2ITask";
-
-    let constructor = "vpux::VPU::createFuseM2IOpsPass()";
-
-    let dependentDialects = [
-       "vpux::VPU::VPUDialect"
-    ];
-}
-
-//
-// ConvertM2IOps
-//
-
-def ConvertM2IOps : PassBase<"convert-m2i-ops", "vpux::FunctionPass"> {
-    let summary = "Convert individual M2I ops to VPU::M2ITask";
-
-    let constructor = "vpux::VPU::createConvertM2IOpsPass()";
-
-    let dependentDialects = [
-       "vpux::VPU::VPUDialect"
     ];
 }
 

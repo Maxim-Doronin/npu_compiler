@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 #include <mlir/IR/BuiltinTypes.h>
@@ -762,15 +762,29 @@ unsigned int SetupVariant_SOH(vpux::VPUMI37XX::DPUInvariantOp fb_invariant, vpux
         unsigned int lines_per_cluster = SOH_LinesPerCluster(parent_out_tensor->dimensions()->Get(Y),
                                                              out_tensor->dimensions()->Get(Y), clusters);
 
-        output_start_y %= lines_per_cluster;
-        output_end_y %= lines_per_cluster;
-        variant.registers_.te_beg0.te_beg0_bf.te_beg_y = output_start_y;
-        variant.registers_.te_end0.te_end0_bf.te_end_y = output_end_y;
+        auto isOutputBuffer16Baligned = [&]() {
+            auto bufferOp = fb_invariant.getOutputBuffs()[0].getDefiningOp<VPURT::DeclareBufferOp>();
+            return (bufferOp.getByteOffset() % 16) == 0;
+        };
+        auto isOutput16Baligned = isOutputBuffer16Baligned();
 
-        if (((unsigned)output_start_y > out_tensor->dimensions()->Get(Y)) ||
-            ((unsigned)output_end_y > out_tensor->dimensions()->Get(Y))) {
-            VPUX_THROW("SOH workload still too big: {0}-{1}, tensor dim_y {2}", output_start_y, output_end_y,
-                       out_tensor->dimensions()->Get(Y));
+        if (isOutput16Baligned) {
+            // In case the outputs buffers of an unrolled operation is 16B-aligned, the ODU_TE_BEG/END fields may need
+            // to be adjusted as the beginning of the output data buffer for given variant is already defined by the
+            // base address (NCE_DPU_ODU_AC_BASE_OFFSET) which may be different for each variant. If the output buffer
+            // is not 16B-aligned, during relocations we use the address of the parent output as basis for
+            // NCE_DPU_ODU_AC_BASE_OFFSET for every workload, the ODU_TE_BEG/END fields are already set according to
+            // outStart/End attribute values and there's no need for further changes here.
+            output_start_y %= lines_per_cluster;
+            output_end_y %= lines_per_cluster;
+            variant.registers_.te_beg0.te_beg0_bf.te_beg_y = output_start_y;
+            variant.registers_.te_end0.te_end0_bf.te_end_y = output_end_y;
+
+            if (((unsigned)output_start_y > out_tensor->dimensions()->Get(Y)) ||
+                ((unsigned)output_end_y > out_tensor->dimensions()->Get(Y))) {
+                VPUX_THROW("SOH workload still too big: {0}-{1}, tensor dim_y {2}", output_start_y, output_end_y,
+                           out_tensor->dimensions()->Get(Y));
+            }
         }
 
         // Workload start needs adjustment if SOH was not set in invariant
@@ -798,6 +812,13 @@ unsigned int SetupVariant_SOH(vpux::VPUMI37XX::DPUInvariantOp fb_invariant, vpux
                     (output_start_y * stride_h) - global_PT + local_PT;
         }
 
+        if (!isOutput16Baligned) {
+            // If the output buffer is not 16B-aligned, which currently happens only for some workloads with
+            // SEGMENTED|MULTICASTED output buffers, then no start offset is needed for the workload start field because
+            // in such a case each tile has its own copy of the data. This solution may not capture all scenarios with
+            // misaligned buffers and is to be revisited in #E205712
+            variant.registers_.workload_start0.workload_start0_bf.workload_start_y = 0;
+        }
         // bool is_out_dense = fb_invariant->output_data()->data()->sparsity_index() == DEFAULT_INDEX;
         // if (!is_out_dense)
         //     variant.output_sparsity_offset_ |= fb_invariant->output_data()->locale_index()->Get(0) << 1;

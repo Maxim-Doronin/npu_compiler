@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -64,22 +64,21 @@ mlir::LogicalResult ConvertFCToConvPass::FullyConnectedOpConverter::matchAndRewr
     const auto inputShape = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType()).getShape().raw();
     const std::array<int64_t, 4> newInShape = {inputShape[0], inputShape[1], 1, 1};
     const auto inputShapeAttr = getIntArrayAttr(getContext(), newInShape);
-    auto newInput = rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "input_reshape"), origOp.getInput(), nullptr,
-                                                   false, inputShapeAttr);
+    auto newInput =
+            rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "input_reshape"), origOp.getInput(), inputShapeAttr);
 
     const auto weightsShape = mlir::cast<vpux::NDTypeInterface>(origOp.getWeights().getType()).getShape().raw();
     const std::array<int64_t, 4> newWeightsShape = {weightsShape[0], weightsShape[1], 1, 1};
     const auto filterShapeAttr = getIntArrayAttr(getContext(), newWeightsShape);
-    auto newFilter = rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "filter_reshape"), origOp.getWeights(), nullptr,
-                                                    false, filterShapeAttr);
+    auto newFilter =
+            rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "filter_reshape"), origOp.getWeights(), filterShapeAttr);
 
     mlir::Value newBias;
     if (origOp.getBias() != nullptr) {
         const auto biasShape = mlir::cast<vpux::NDTypeInterface>(origOp.getBias().getType()).getShape().raw();
         const std::array<int64_t, 4> newBiasShape = {biasShape[0], biasShape[1], 1, 1};
         const auto biasShapeAttr = getIntArrayAttr(getContext(), newBiasShape);
-        newBias = rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "bias_reshape"), origOp.getBias(), nullptr, false,
-                                                 biasShapeAttr);
+        newBias = rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "bias_reshape"), origOp.getBias(), biasShapeAttr);
     }
 
     auto newStrides = getIntArrayAttr(getContext(), ov::Strides{1, 1});
@@ -92,8 +91,7 @@ mlir::LogicalResult ConvertFCToConvPass::FullyConnectedOpConverter::matchAndRewr
     const auto convShape = mlir::cast<vpux::NDTypeInterface>(convOp.getOutput().getType()).getShape().raw();
     const std::array<int64_t, 2> outputShape = {convShape[0], convShape[1]};
     const auto outputShapeAttr = getIntArrayAttr(getContext(), outputShape);
-    auto newOp =
-            rewriter.replaceOpWithNewOp<IE::ReshapeOp>(origOp, convOp.getOutput(), nullptr, false, outputShapeAttr);
+    auto newOp = rewriter.replaceOpWithNewOp<IE::ReshapeOp>(origOp, convOp.getOutput(), outputShapeAttr);
     extendOpLoc(newOp, "output_reshape");
 
     return mlir::success();

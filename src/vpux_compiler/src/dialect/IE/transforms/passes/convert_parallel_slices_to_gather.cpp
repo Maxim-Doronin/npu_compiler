@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -189,7 +189,7 @@ mlir::Value ConvertToGather::convertSliceGroupToGather(SmallVector<IE::SliceOp> 
     newInputShapeVec[0] = sourceShape.totalSize() / elementSize;
     newInputShapeVec[1] = elementSize;
     const auto newType = mlir::cast<NDTypeInterface>(source.getType()).changeShape(ShapeRef(newInputShapeVec));
-    auto newInput = rewriter.create<IE::ReshapeOp>(source.getLoc(), newType, source, nullptr, false,
+    auto newInput = rewriter.create<IE::ReshapeOp>(source.getLoc(), newType, source,
                                                    getIntArrayAttr(rewriter.getContext(), ShapeRef(newInputShapeVec)));
 
     const auto numOfSliceOps = groupedSliceOps.size();
@@ -228,7 +228,7 @@ mlir::Value ConvertToGather::reshape3DGatherTo2D(mlir::Value gather, mlir::Patte
     auto newGatherShape = ShapeRef(newShapeVec);
     _log.debug("Reshape Gather shape from {0} to {1}", origGatherShape, newGatherShape);
     auto newType = mlir::cast<NDTypeInterface>(gather.getType()).changeShape(newGatherShape);
-    auto reshape = rewriter.create<IE::ReshapeOp>(gather.getLoc(), newType, gather, nullptr, false,
+    auto reshape = rewriter.create<IE::ReshapeOp>(gather.getLoc(), newType, gather,
                                                   getIntArrayAttr(rewriter.getContext(), newGatherShape));
 
     _log.trace("Created Reshape {0}", reshape);

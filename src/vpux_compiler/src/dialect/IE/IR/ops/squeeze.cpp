@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -170,8 +170,7 @@ mlir::LogicalResult FuseWithReshape::matchAndRewrite(IE::SqueezeOp origOp, mlir:
     }
     const auto outputShape = origOp.getType().getShape();
     const auto outputShapeAttr = getIntArrayAttr(getContext(), outputShape);
-    auto reshapeOp =
-            rewriter.create<IE::ReshapeOp>(origOp->getLoc(), prevOp->getOperand(0), nullptr, false, outputShapeAttr);
+    auto reshapeOp = rewriter.create<IE::ReshapeOp>(origOp->getLoc(), prevOp->getOperand(0), outputShapeAttr);
     auto outLink = reshapeOp.getOutput();
     auto currentOutType = mlir::dyn_cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     auto newOutType = mlir::dyn_cast<vpux::NDTypeInterface>(reshapeOp.getOutput().getType());

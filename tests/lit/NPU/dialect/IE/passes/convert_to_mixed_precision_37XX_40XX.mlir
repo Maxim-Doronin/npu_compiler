@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,7 @@
 !qElemType = !quant.uniform<u8:f16, 0.0025215686274509803>
 
 // CHECK-LABEL: @Conv2dLeakyReluWithQuantize
+// CHECK-SAME:     [[ARG_0:%[^:]+]]: tensor<1x16x3x3xf16>
 func.func @Conv2dLeakyReluWithQuantize(%arg0: tensor<1x16x3x3xf16>) -> tensor<1x3x3x3x!qElemType> {
     %cst = const.Declare tensor<3x16x1x1xf16> = dense<2.000000e+00> : tensor<3x16x1x1xf16>
 
@@ -29,7 +30,7 @@ func.func @Conv2dLeakyReluWithQuantize(%arg0: tensor<1x16x3x3xf16>) -> tensor<1x
     // CHECK:   [[CST:%.+]] = const.Declare tensor<3x16x1x1xf16> = dense<2.000000e+00> :
     // CHECK-SAME:  tensor<3x16x1x1xf16>
 
-    // CHECK:   [[VAL0:%.+]] = IE.Convolution(%arg0, [[CST]]) {
+    // CHECK:   [[VAL0:%.+]] = IE.Convolution([[ARG_0]], [[CST]]) {
     // CHECK-SAME:      dilations = [1, 1],
     // CHECK-SAME:      pads_begin = [0, 0],
     // CHECK-SAME:      pads_end = [0, 0],

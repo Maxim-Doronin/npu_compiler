@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -24,11 +24,11 @@
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/allocate_buffers.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/reshape_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
-#include "vpux/compiler/utils/reshape_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 namespace vpux::VPUIP {
@@ -347,7 +347,7 @@ void recursivelyInferReturnTypes(mlir::Value value) {
         } else if (mlir::isa_and_nonnull<VPUIP::GenericReshapeOp, VPUIP::PermuteCastOp, VPUIP::QuantizeCastOp>(child)) {
             const auto inType = mlir::cast<vpux::NDTypeInterface>(child->getOperand(0).getType());
             const auto outType = mlir::cast<vpux::NDTypeInterface>(child->getResult(0).getType());
-            const auto strideUpdatedOutType = updateStridesForReshape(inType, outType);
+            const auto strideUpdatedOutType = VPUIP::updateStridesForReshape(inType, outType);
             VPUX_THROW_WHEN(mlir::failed(strideUpdatedOutType),
                             "Failed to update strides for input '{0}' and output '{1}'", inType, outType);
             child->getResult(0).setType(strideUpdatedOutType.value());
@@ -666,6 +666,36 @@ mlir::LogicalResult FuseConcatView::fuseTwoConcatViewInputs(VPUIP::ConcatViewOp 
         return mlir::failure();
     }
 
+    if (!hasMultiUsers) {
+        for (auto user : firstConcatMemAlloc->getResult(0).getUsers()) {
+            // Allow the ConcatView itself to use the buffer
+            if (user == concatViewOp.getOperation()) {
+                continue;
+            }
+
+            auto subView = mlir::dyn_cast<VPUIP::SubViewOp>(user);
+            if (subView == nullptr) {
+                log.nest().trace("Alloc has non-SubView user, cannot fuse");
+                return mlir::failure();
+            }
+
+            bool feedsIntoConcat = false;
+            for (auto svUser : subView->getResult(0).getUsers()) {
+                if (auto copyOp = mlir::dyn_cast<VPUIP::CopyOp>(svUser)) {
+                    if (llvm::is_contained(concatViewOp.getInputs(), copyOp.getOutput())) {
+                        feedsIntoConcat = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!feedsIntoConcat) {
+                log.nest().trace("Alloc has SubView not feeding into concat, cannot fuse");
+                return mlir::failure();
+            }
+        }
+    }
+
     VPUX_THROW_UNLESS(_userCopyOp != nullptr, "Cannot get DDR to DDR Copy Op after '{0}'", concatViewOp->getLoc());
     auto outCopySubView = _userCopyOp.getOutputBuff().getDefiningOp<VPUIP::SubViewOp>();
 
@@ -882,7 +912,7 @@ bool ReuseConcatViewAsInput::isIdentityPool(VPUIP::NCEClusterTaskOp avgPoolOp) c
         return false;
     }
 
-    const auto ppeOpaqueAttr = VPU::PpeVersionConfig::retrievePPEAttribute(avgPoolOp);
+    const auto ppeOpaqueAttr = VPU::getPpeConfig(avgPoolOp.getContext()).retrievePPEAttribute(avgPoolOp);
     const auto intPpeAttr = mlir::dyn_cast<vpux::VPU::PPEIntAttr>(ppeOpaqueAttr);
     if (intPpeAttr != nullptr && intPpeAttr.getMode().getValue() != VPU::PPEMode::NOOP) {
         return false;
@@ -917,8 +947,8 @@ bool ReuseConcatViewAsInput::isLegalConcatViewInputPattern(VPUIP::ConcatViewOp c
 
     auto userOp = concatUserOp->getResult(0).getUsers().begin();
     auto copyOp = mlir::dyn_cast<VPUIP::CopyOp>(*userOp);
-    if (copyOp == nullptr) {
-        log.nest().nest().trace("Consumer of concatViewOp has no copyOp user");
+    if (copyOp == nullptr || copyOp.use_empty()) {
+        log.nest().nest().trace("Consumer of concatViewOp has no copyOp user or copyOp has no user");
         return false;
     }
 
@@ -2914,7 +2944,7 @@ protected:
         const auto inReqs = StrideReqs::compact(inputType.getRank());
         const bool hasNonCompactStrides = !inReqs.checkStrides(inputType);
         if (hasNonCompactStrides) {
-            const auto strideUpdatedOutType = updateStridesForReshape(inputType, afterReshapeType);
+            const auto strideUpdatedOutType = VPUIP::updateStridesForReshape(inputType, afterReshapeType);
             VPUX_THROW_WHEN(mlir::failed(strideUpdatedOutType),
                             "Failed to update strides for input '{0}' and output '{1}'", inputType, afterReshapeType);
             afterReshapeType = strideUpdatedOutType.value();

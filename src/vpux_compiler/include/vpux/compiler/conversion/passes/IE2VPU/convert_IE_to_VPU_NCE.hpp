@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -140,7 +140,7 @@ mlir::LogicalResult EltwiseToNCE<ConcreteOp>::matchAndRewrite(ConcreteOp origOp,
                                                               mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got '{1}' at '{2}'", this->getDebugName(), origOp->getName(), origOp->getLoc());
 
-    auto ppeAttr = VPU::PpeVersionConfig::retrievePPEAttribute(origOp);
+    auto ppeAttr = VPU::getPpeConfig(origOp->getContext()).retrievePPEAttribute(origOp);
 
     auto nceOp = rewriter.create<VPU::NCEEltwiseOp>(
             origOp->getLoc(), origOp.getType(), origOp.getInput1(), origOp.getInput2(),

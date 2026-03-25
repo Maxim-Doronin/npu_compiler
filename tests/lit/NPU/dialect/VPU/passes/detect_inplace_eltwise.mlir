@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -88,6 +88,8 @@ func.func @inplaceQuantEltwise (%arg0: tensor<1x256x56x56x!qElemType, {order = #
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: @fp16EltwiseBlockArg
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x256x56x56xf16, {order = #NHWC}>, [[ARG_1:%[^:]+]]: tensor<1x256x56x56xf16, {order = #NHWC}>)
 func.func @fp16EltwiseBlockArg (%arg0: tensor<1x256x56x56xf16, {order = #NHWC}>,
                            %arg1: tensor<1x256x56x56xf16, {order = #NHWC}>)
                            -> tensor<1x256x56x56xf16, {order = #NHWC}> {
@@ -99,7 +101,7 @@ func.func @fp16EltwiseBlockArg (%arg0: tensor<1x256x56x56xf16, {order = #NHWC}>,
 
     return %0 : tensor<1x256x56x56xf16, {order = #NHWC}>
 
-    //CHECK:        [[ELTWISE:%.+]] = VPU.NCE.Eltwise(%arg0, %arg1) {
+    //CHECK:        [[ELTWISE:%.+]] = VPU.NCE.Eltwise([[ARG_0]], [[ARG_1]]) {
     //CHECK-NOT:           is_inplace = true,
     //CHECK-SAME:           op_type = #VPU.eltwise_type<ADD>,
     //CHECK-SAME:           ppe = #VPU.PPEStub<>

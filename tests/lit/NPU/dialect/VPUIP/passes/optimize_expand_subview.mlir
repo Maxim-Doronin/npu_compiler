@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -249,7 +249,7 @@ func.func @NotOptimizeExpandSubviewWithDiffDim(%arg0: memref<9986x3584x1x1xf16, 
     // CHECK:       [[ALLOC:%.+]] = memref.alloc() : memref<10000x3584x1x1xf16, #NHWC>
 
     // CHECK:       [[EXPAND:%.+]] = VPUIP.Expand {pads_begin = [0, 0, 0, 0], pads_end = [14, 0, 0, 0]}
-    // CHECK-SAME:      inputs(%arg0 : memref<9986x3584x1x1xf16, #NHWC>)
+    // CHECK-SAME:      inputs([[INPUT]] : memref<9986x3584x1x1xf16, #NHWC>)
     // CHECK-SAME:      outputs([[ALLOC]] : memref<10000x3584x1x1xf16, #NHWC>) -> memref<10000x3584x1x1xf16, #NHWC>
 
     // CHECK:       [[SUBVIEW1:%.+]] = VPUIP.SubView [[EXPAND]] [0, 0, 0, 0] [10000, 1195, 1, 1]

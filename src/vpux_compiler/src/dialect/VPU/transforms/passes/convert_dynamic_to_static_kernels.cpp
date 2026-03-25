@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/VPU/utils/scf/scf_analysis_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/scf/scf_utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include <mlir/Dialect/Affine/IR/AffineOps.h>
@@ -122,7 +123,6 @@ mlir::func::CallOp ConvertDynamicToStaticKernelsPass::rewriteCallOpWithStaticTyp
         newFuncOp = moduleOp.lookupSymbol<mlir::func::FuncOp>(staticFuncOpName);
     } else {
         newFuncOp = createStaticFuncOp(funcOp, staticOperands, moduleOp);
-
         setDynamicShapeAttributes(builder, funcOp, newFuncOp);
     }
     assert(newFuncOp != nullptr && "Expected to find or create a static function");
@@ -261,9 +261,7 @@ mlir::func::CallOp ConvertDynamicToStaticKernelsPass::handleCallOp(
 
 void ConvertDynamicToStaticKernelsPass::safeRunOnModule() {
     auto moduleOp = getOperation();
-    net::NetworkInfoOp netInfoOp;
-    mlir::func::FuncOp mainFuncOp;
-    net::NetworkInfoOp::getFromModule(moduleOp, netInfoOp, mainFuncOp);
+    auto mainFuncOp = net::getMainFunc(moduleOp);
     mlir::OpBuilder builder(moduleOp.getContext());
 
     auto forOps = mainFuncOp.getOps<mlir::scf::ForOp>();

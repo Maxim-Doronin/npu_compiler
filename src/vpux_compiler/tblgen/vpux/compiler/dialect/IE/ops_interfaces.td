@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -89,17 +89,45 @@ def IE_LayerWithPostOpInterface : OpInterface<"LayerWithPostOpInterface"> {
         >,
 
         InterfaceMethod<
-            "Clears the post-processing operation attribute",
-            "void", "clearPostOp", (ins),
+            "Clears the post-processing (post-op and clamp) attributes",
+            "void", "clearPPE", (ins),
             [{}],
             [{
                 $_op.removePostOpAttr();
+                $_op.removeClampAttr();
             }]
         >,
 
         InterfaceMethod<
             "Checks if the operation supports a given post-processing operation",
             "bool", "isSupportedPostOp", (ins "mlir::Operation*":$postOp, "const FuncRef<void(const formatv_object_base&)>&":$logCb)
+        >,
+
+        InterfaceMethod<
+            "Returns the clamp operation attribute",
+            "mlir::DictionaryAttr", "getClampAttr", (ins),
+            [{}],
+            [{
+                return $_op.getClamp().value_or(nullptr);
+            }]
+        >,
+
+        InterfaceMethod<
+            "Set clamp operation attribute",
+            "void", "setClampAttr", (ins "mlir::DictionaryAttr":$clampAttr),
+            [{}],
+            [{
+                $_op.setClampAttr(clampAttr);
+            }]
+        >,
+
+        InterfaceMethod<
+            "Checks if the operation has a post_op or a clamp",
+            "bool", "hasPPE", (ins),
+            [{}],
+            [{
+                return $_op.getPostOpAttr() != nullptr || $_op.getClamp().has_value();
+            }]
         >,
 
         InterfaceMethod<
@@ -149,6 +177,27 @@ def IE_AlignedChannelsOpInterface : OpInterface<"AlignedChannelsOpInterface"> {
         InterfaceMethod<
             "Get output channels alignment factor in elements",
             "int64_t", "getOutputChannelAlignment", (ins)
+        >
+    ];
+}
+
+//
+// QuantizedLayerOpInterface
+//
+
+def IE_QuantizedLayerOpInterface : OpInterface<"QuantizedLayerOpInterface"> {
+    let description = "Interface for quantized operations that can be potentially lowered to NCE operations";
+
+    let cppNamespace = "vpux::IE";
+
+    let methods = [
+        InterfaceMethod<
+            "Check if mixed precision is supported for this operation",
+            "bool", "isMixPrecisionSupported", (ins "bool":$isPReLUSupported)
+        >,
+        InterfaceMethod<
+            "Check if a post operation is supported",
+            "bool", "checkPostOp", (ins "bool":$isPerAxisQuantizedOutput, "bool":$isFloatInput)
         >
     ];
 }

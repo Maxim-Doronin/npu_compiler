@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/allocate_buffers.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -62,8 +63,7 @@ std::function<std::optional<mlir::Location>(mlir::OpOperand&)> getResultLocation
     }
 
     net::NetworkInfoOp netInfo = netInfoOps.front();
-    mlir::func::FuncOp entryPointFuncOp;
-    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, entryPointFuncOp);
+    auto entryPointFuncOp = net::getMainFunc(moduleOp);
 
     if (func == entryPointFuncOp) {
         auto outputsInfo = to_small_vector(netInfo.getOutputsInfo().getOps<net::DataInfoOp>());

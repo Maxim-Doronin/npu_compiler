@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -166,7 +166,7 @@ mlir::LogicalResult ISTFTOpConverter::matchAndRewrite(IE::ISTFTOp origOp, mlir::
         const auto frameWithAxisShapeAttr = getIntArrayAttr(ctx, frameWithAxisShape);
 
         auto frameReshapeOp = rewriter.create<IE::ReshapeOp>(appendLoc(loc, "frame_reshape"), frameWithAxisType, frame,
-                                                             nullptr, false, frameWithAxisShapeAttr);
+                                                             frameWithAxisShapeAttr);
         reshapedFrames.push_back(frameReshapeOp.getOutput());
     }
 

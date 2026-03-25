@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/transposed_convolution_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/conv_utils.hpp"
+#include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
@@ -121,14 +122,14 @@ mlir::LogicalResult GroupTransposedConvConverter::matchAndRewrite(IE::GroupTrans
                 const auto newFqInputShapeSqueezed = Shape(newFqInputShape.begin() + 1, newFqInputShape.end());
                 const auto newFqInputShapeSqueezedAttr = getIntArrayAttr(getContext(), newFqInputShapeSqueezed);
                 return rewriter.createOrFold<IE::ReshapeOp>(
-                        takeOpLoc(fqOp, "reshape_weights_{0}_{1}", locSuffix, sliceIdx), fqInput, nullptr, false,
+                        takeOpLoc(fqOp, "reshape_weights_{0}_{1}", locSuffix, sliceIdx), fqInput,
                         newFqInputShapeSqueezedAttr);
             };
 
             auto newInput = rewriter.createOrFold<IE::SliceOp>(takeOpLoc(fqOp, "slice_in_{0}", sliceIdx),
                                                                fqOp.getInput(), weightsOffsetsAttr, weightsShapeAttr);
             newInput = rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(fqOp, "reshape_in_{0}", sliceIdx), newInput,
-                                                            nullptr, false, newWeightsShapeSqueezedAttr);
+                                                            newWeightsShapeSqueezedAttr);
             auto inputLow = sliceFqConstInput(fqOp.getInputLow(), "in_low");
             auto inputHigh = sliceFqConstInput(fqOp.getInputHigh(), "in_high");
             auto outputLow = sliceFqConstInput(fqOp.getOutputLow(), "out_low");
@@ -141,9 +142,8 @@ mlir::LogicalResult GroupTransposedConvConverter::matchAndRewrite(IE::GroupTrans
                                                               weightsOffsetsAttr, weightsShapeAttr);
             weightsSlice = rewriter.createOrFold<IE::SliceOp>(takeOpLoc(origOp, "slice_in_{0}", sliceIdx), weights,
                                                               weightsOffsetsAttr, weightsShapeAttr);
-            weightsSlice =
-                    rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_in_{0}", sliceIdx), weightsSlice,
-                                                         nullptr, false, newWeightsShapeSqueezedAttr);
+            weightsSlice = rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_in_{0}", sliceIdx),
+                                                                weightsSlice, newWeightsShapeSqueezedAttr);
         }
 
         _log.nest().trace("Creating TransposedConvolution op for group {0} with channels [{1}-{2})", sliceIdx,
@@ -273,13 +273,13 @@ mlir::LogicalResult DepthwiseGroupTransposedConvConverter::matchAndRewrite(IE::G
                                                      fqParamShape[IE::GROUP_TRANSPOSED_CONV_KX_DIM_INDEX]});
         const auto newFQParamShapeSqueezedAttr = getIntArrayAttr(getContext(), newFQParamShapeSqueezed);
         inputLow = mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(rewriter.createOrFold<IE::ReshapeOp>(
-                takeOpLoc(origOp, "weights_in_low_resh"), inputLow, nullptr, false, newFQParamShapeSqueezedAttr));
+                takeOpLoc(origOp, "weights_in_low_resh"), inputLow, newFQParamShapeSqueezedAttr));
         outputLow = mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(rewriter.createOrFold<IE::ReshapeOp>(
-                takeOpLoc(origOp, "weights_in_high_resh"), outputLow, nullptr, false, newFQParamShapeSqueezedAttr));
+                takeOpLoc(origOp, "weights_in_high_resh"), outputLow, newFQParamShapeSqueezedAttr));
         inputHigh = mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(rewriter.createOrFold<IE::ReshapeOp>(
-                takeOpLoc(origOp, "weights_out_low_resh"), inputHigh, nullptr, false, newFQParamShapeSqueezedAttr));
+                takeOpLoc(origOp, "weights_out_low_resh"), inputHigh, newFQParamShapeSqueezedAttr));
         outputHigh = mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(rewriter.createOrFold<IE::ReshapeOp>(
-                takeOpLoc(origOp, "weights_out_high_resh"), outputHigh, nullptr, false, newFQParamShapeSqueezedAttr));
+                takeOpLoc(origOp, "weights_out_high_resh"), outputHigh, newFQParamShapeSqueezedAttr));
 
         newWeights = rewriter.create<IE::FakeQuantizeOp>(takeOpLoc(origOp, "weights_fq"), newWeights, inputLow,
                                                          inputHigh, outputLow, outputHigh, fqOp.getLevelsAttr(),
@@ -303,32 +303,19 @@ class ConvertGroupTransposedConvToTransposedConvPass final :
         public IE::impl::ConvertGroupTransposedConvToTransposedConvBase<
                 ConvertGroupTransposedConvToTransposedConvPass> {
 public:
-    explicit ConvertGroupTransposedConvToTransposedConvPass(const bool enableSEPTransposedConv, Logger log)
-            : _enableSEPTransposedConv(enableSEPTransposedConv) {
+    explicit ConvertGroupTransposedConvToTransposedConvPass(Logger log) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
-    mlir::LogicalResult initialize(mlir::MLIRContext* ctx) final;
-
 private:
     void safeRunOnFunc() final;
-    bool _enableSEPTransposedConv;
 };
-
-mlir::LogicalResult ConvertGroupTransposedConvToTransposedConvPass::initialize(mlir::MLIRContext* ctx) {
-    if (mlir::failed(Base::initialize(ctx))) {
-        return mlir::failure();
-    }
-
-    if (enableSEPTransposedConv.hasValue()) {
-        _enableSEPTransposedConv = enableSEPTransposedConv.getValue();
-    }
-
-    return mlir::success();
-}
 
 void ConvertGroupTransposedConvToTransposedConvPass::safeRunOnFunc() {
     auto& ctx = getContext();
+    const auto func = getOperation();
+    const auto moduleOp = getModuleOp(func);
+    const auto enableSEPtrsOps = config::hasEnableSEPtrsOperations(moduleOp);
 
     const auto logCb = [&](const formatv_object_base& msg) {
         _log.trace("{0}", msg.str());
@@ -336,7 +323,7 @@ void ConvertGroupTransposedConvToTransposedConvPass::safeRunOnFunc() {
 
     const auto isLegalGroupTransposedConv = [&](IE::GroupTransposedConvolutionOp groupTransposedConv) {
         _log.trace("Got '{0}' at '{1}'", groupTransposedConv->getName(), groupTransposedConv->getLoc());
-        if (!_enableSEPTransposedConv) {
+        if (!enableSEPtrsOps) {
             _log.nest().trace("SEP disabled for TransposedConvolutions");
             return true;
         }
@@ -361,7 +348,6 @@ void ConvertGroupTransposedConvToTransposedConvPass::safeRunOnFunc() {
     patterns.add<GroupTransposedConvConverter>(&ctx, _log);
     patterns.add<DepthwiseGroupTransposedConvConverter>(&ctx, _log);
 
-    auto func = getOperation();
     if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
         signalPassFailure();
     }
@@ -373,7 +359,6 @@ void ConvertGroupTransposedConvToTransposedConvPass::safeRunOnFunc() {
 // createConvertGroupTransposedConvToTransposedConvPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::IE::createConvertGroupTransposedConvToTransposedConvPass(
-        const bool enableSEPTransposedConv, Logger log) {
-    return std::make_unique<ConvertGroupTransposedConvToTransposedConvPass>(enableSEPTransposedConv, log);
+std::unique_ptr<mlir::Pass> vpux::IE::createConvertGroupTransposedConvToTransposedConvPass(Logger log) {
+    return std::make_unique<ConvertGroupTransposedConvToTransposedConvPass>(log);
 }

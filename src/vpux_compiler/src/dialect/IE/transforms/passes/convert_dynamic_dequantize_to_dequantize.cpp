@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -340,8 +340,8 @@ mlir::LogicalResult ConvertDynamicDequantizeToDequantize::matchAndRewrite(IE::Dy
     const auto scaleSize = getShape(origOp.getScale()).totalSize();
     const SmallVector<int64_t> outShape{1, scaleSize == 1 ? 1 : fcOutShape.back()};
     const auto outShapeAttr = getIntArrayAttr(origOp->getContext(), outShape);
-    auto scale = rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_scale"), origOp.getScale(), nullptr,
-                                                      false, outShapeAttr);
+    auto scale =
+            rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_scale"), origOp.getScale(), outShapeAttr);
     auto isNF4Quantized = [](mlir::Type type) -> bool {
         const auto qType = mlir::cast<mlir::quant::QuantizedType>(type);
         const auto bitWidth = qType.getStorageTypeIntegralWidth();

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,6 +7,7 @@
 // REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
 
 // CHECK-LABEL: @ReLUFakeQuantizeFolded
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x3x30x30xf16>
 func.func @ReLUFakeQuantizeFolded(%arg0: tensor<1x3x30x30xf16>) -> tensor<1x3x30x30xf16> {
     %val_low = const.Declare tensor<1x1x1x1xf16> = dense<1.0> : tensor<1x1x1x1xf16>
     %val_high = const.Declare tensor<1x1x1x1xf16> = dense<255.0> : tensor<1x1x1x1xf16>
@@ -21,7 +22,7 @@ func.func @ReLUFakeQuantizeFolded(%arg0: tensor<1x3x30x30xf16>) -> tensor<1x3x30
     // CHECK-NOT:   IE.ReLU
     // CHECK:       [[VAL_LOW:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<1.000000e+00> : tensor<1x1x1x1xf16>
     // CHECK:       [[VAL_HIGH:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<2.550000e+02> : tensor<1x1x1x1xf16>
-    // CHECK:       [[FQ:%.+]] = IE.FakeQuantize(%arg0, [[VAL_LOW]], [[VAL_HIGH]], [[VAL_LOW]], [[VAL_HIGH]])
+    // CHECK:       [[FQ:%.+]] = IE.FakeQuantize([[ARG_0]], [[VAL_LOW]], [[VAL_HIGH]], [[VAL_LOW]], [[VAL_HIGH]])
     // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64}
     // CHECK:       tensor<1x3x30x30xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x3x30x30xf16>
     // CHECK:       return [[FQ]]
@@ -31,6 +32,7 @@ func.func @ReLUFakeQuantizeFolded(%arg0: tensor<1x3x30x30xf16>) -> tensor<1x3x30
 // -----
 
 // CHECK-LABEL: @ReLUFakeQuantizeU16NotFolded
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x3x30x30xf16>
 func.func @ReLUFakeQuantizeU16NotFolded(%arg0: tensor<1x3x30x30xf16>) -> tensor<1x3x30x30xf16> {
     %val_low = const.Declare tensor<1x1x1x1xf16> = dense<1.0> : tensor<1x1x1x1xf16>
     %val_high = const.Declare tensor<1x1x1x1xf16> = dense<255.0> : tensor<1x1x1x1xf16>
@@ -44,7 +46,7 @@ func.func @ReLUFakeQuantizeU16NotFolded(%arg0: tensor<1x3x30x30xf16>) -> tensor<
 
     // CHECK:       [[VAL_LOW:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<1.000000e+00> : tensor<1x1x1x1xf16>
     // CHECK:       [[VAL_HIGH:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<2.550000e+02> : tensor<1x1x1x1xf16>
-    // CHECK:       [[ReLU:%.+]] = IE.ReLU(%arg0) : tensor<1x3x30x30xf16> -> tensor<1x3x30x30xf16>
+    // CHECK:       [[ReLU:%.+]] = IE.ReLU([[ARG_0]]) : tensor<1x3x30x30xf16> -> tensor<1x3x30x30xf16>
     // CHECK:       [[FQ:%.+]] = IE.FakeQuantize([[ReLU]], [[VAL_LOW]], [[VAL_HIGH]], [[VAL_LOW]], [[VAL_HIGH]])
     // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 65536 : i64}
     // CHECK:       tensor<1x3x30x30xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x3x30x30xf16>
@@ -54,6 +56,7 @@ func.func @ReLUFakeQuantizeU16NotFolded(%arg0: tensor<1x3x30x30xf16>) -> tensor<
 // -----
 
 // CHECK-LABEL: @ReLUFakeQuantizeNotFolded
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x3x30x30xf16>
 func.func @ReLUFakeQuantizeNotFolded(%arg0: tensor<1x3x30x30xf16>) -> tensor<1x3x30x30xf16> {
     %val_low = const.Declare tensor<1x1x1x1xf16> = dense<-4.0> : tensor<1x1x1x1xf16>
     %val_high = const.Declare tensor<1x1x1x1xf16> = dense<255.0> : tensor<1x1x1x1xf16>
@@ -67,7 +70,7 @@ func.func @ReLUFakeQuantizeNotFolded(%arg0: tensor<1x3x30x30xf16>) -> tensor<1x3
 
     // CHECK:       [[VAL_LOW:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<-4.000000e+00> : tensor<1x1x1x1xf16>
     // CHECK:       [[VAL_HIGH:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<2.550000e+02> : tensor<1x1x1x1xf16>
-    // CHECK:       [[ReLU:%.+]] = IE.ReLU(%arg0) : tensor<1x3x30x30xf16> -> tensor<1x3x30x30xf16>
+    // CHECK:       [[ReLU:%.+]] = IE.ReLU([[ARG_0]]) : tensor<1x3x30x30xf16> -> tensor<1x3x30x30xf16>
     // CHECK:       [[FQ:%.+]] = IE.FakeQuantize([[ReLU]], [[VAL_LOW]], [[VAL_HIGH]], [[VAL_LOW]], [[VAL_HIGH]])
     // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64}
     // CHECK:       tensor<1x3x30x30xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x3x30x30xf16>
@@ -77,6 +80,7 @@ func.func @ReLUFakeQuantizeNotFolded(%arg0: tensor<1x3x30x30xf16>) -> tensor<1x3
 // -----
 
 // CHECK-LABEL: @ReLUMultipleOutputsFakeQuantizeNotFolded
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x3x30x30xf16>
 func.func @ReLUMultipleOutputsFakeQuantizeNotFolded(%arg0: tensor<1x3x30x30xf16>) -> tensor<1x3x30x90xf16> {
     %val_low = const.Declare tensor<1x1x1x1xf16> = dense<4.0> : tensor<1x1x1x1xf16>
     %val_high = const.Declare tensor<1x1x1x1xf16> = dense<255.0> : tensor<1x1x1x1xf16>
@@ -99,7 +103,7 @@ func.func @ReLUMultipleOutputsFakeQuantizeNotFolded(%arg0: tensor<1x3x30x30xf16>
 
     // CHECK:       [[VAL_LOW:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<4.000000e+00> : tensor<1x1x1x1xf16>
     // CHECK:       [[VAL_HIGH:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<2.550000e+02> : tensor<1x1x1x1xf16>
-    // CHECK:       [[RELU:%.+]] = IE.ReLU(%arg0) : tensor<1x3x30x30xf16> -> tensor<1x3x30x30xf16>
+    // CHECK:       [[RELU:%.+]] = IE.ReLU([[ARG_0]]) : tensor<1x3x30x30xf16> -> tensor<1x3x30x30xf16>
     // CHECK:       [[FQ_1:%.+]] = IE.FakeQuantize([[RELU]], [[VAL_LOW]], [[VAL_HIGH]], [[VAL_LOW]], [[VAL_HIGH]])
     // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64}
     // CHECK:       tensor<1x3x30x30xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x3x30x30xf16>
@@ -116,6 +120,7 @@ func.func @ReLUMultipleOutputsFakeQuantizeNotFolded(%arg0: tensor<1x3x30x30xf16>
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
 // CHECK-LABEL: @ReLUMultipleOutputsFakeQuantizeFolded
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x3x30x30xf16>
 func.func @ReLUMultipleOutputsFakeQuantizeFolded(%arg0: tensor<1x3x30x30xf16>) -> tensor<1x3x30x30xf16> {
     %val_low_pos = const.Declare tensor<1x1x1x1xf16> = dense<4.0> : tensor<1x1x1x1xf16>
     %val_low_neg = const.Declare tensor<1x1x1x1xf16> = dense<-4.0> : tensor<1x1x1x1xf16>
@@ -140,7 +145,7 @@ func.func @ReLUMultipleOutputsFakeQuantizeFolded(%arg0: tensor<1x3x30x30xf16>) -
     // CHECK:       [[VAL_LOW_POS:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<4.000000e+00> : tensor<1x1x1x1xf16>
     // CHECK:       [[VAL_LOW_NEG:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<-4.000000e+00> : tensor<1x1x1x1xf16>
     // CHECK:       [[VAL_HIGH:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<2.550000e+02> : tensor<1x1x1x1xf16>
-    // CHECK:       [[FQ_1:%.+]] = IE.FakeQuantize(%arg0, [[VAL_LOW_POS]], [[VAL_HIGH]], [[VAL_LOW_POS]], [[VAL_HIGH]])
+    // CHECK:       [[FQ_1:%.+]] = IE.FakeQuantize([[ARG_0]], [[VAL_LOW_POS]], [[VAL_HIGH]], [[VAL_LOW_POS]], [[VAL_HIGH]])
     // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64}
     // CHECK:       tensor<1x3x30x30xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x3x30x30xf16>
     // CHECK:       [[REORDER:%.+]] = IE.Reorder([[FQ_1]]) {dstOrder = #NCHW} : tensor<1x3x30x30xf16> -> tensor<1x3x30x30xf16, {order = #NCHW}>
@@ -154,6 +159,7 @@ func.func @ReLUMultipleOutputsFakeQuantizeFolded(%arg0: tensor<1x3x30x30xf16>) -
 // -----
 
 // CHECK-LABEL: @ReLUMultipleOutFakeQuantizeFolded
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x3x30x30xf16>
 func.func @ReLUMultipleOutFakeQuantizeFolded(%arg0: tensor<1x3x30x30xf16>) -> tensor<1x3x30x30xf16> {
     %val_low = const.Declare tensor<1x1x1x1xf16> = dense<4.0> : tensor<1x1x1x1xf16>
     %val_high = const.Declare tensor<1x1x1x1xf16> = dense<255.0> : tensor<1x1x1x1xf16>
@@ -175,10 +181,10 @@ func.func @ReLUMultipleOutFakeQuantizeFolded(%arg0: tensor<1x3x30x30xf16>) -> te
 
     // CHECK:       [[VAL_LOW:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<4.000000e+00> : tensor<1x1x1x1xf16>
     // CHECK:       [[VAL_HIGH:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<2.550000e+02> : tensor<1x1x1x1xf16>
-    // CHECK:       [[FQ_1:%.+]] = IE.FakeQuantize(%arg0, [[VAL_LOW]], [[VAL_HIGH]], [[VAL_LOW]], [[VAL_HIGH]])
+    // CHECK:       [[FQ_1:%.+]] = IE.FakeQuantize([[ARG_0]], [[VAL_LOW]], [[VAL_HIGH]], [[VAL_LOW]], [[VAL_HIGH]])
     // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64}
     // CHECK:       tensor<1x3x30x30xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x3x30x30xf16>
-    // CHECK:       [[FQ_2:%.+]] = IE.FakeQuantize(%arg0, [[VAL_LOW]], [[VAL_HIGH]], [[VAL_LOW]], [[VAL_HIGH]])
+    // CHECK:       [[FQ_2:%.+]] = IE.FakeQuantize([[ARG_0]], [[VAL_LOW]], [[VAL_HIGH]], [[VAL_LOW]], [[VAL_HIGH]])
     // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64}
     // CHECK:       tensor<1x3x30x30xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x3x30x30xf16>
     // CHECK:       [[ADD:%.+]] = IE.Add([[FQ_1]], [[FQ_2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3x30x30xf16>, tensor<1x3x30x30xf16> -> tensor<1x3x30x30xf16>
@@ -188,6 +194,7 @@ func.func @ReLUMultipleOutFakeQuantizeFolded(%arg0: tensor<1x3x30x30xf16>) -> te
 // -----
 
 // CHECK-LABEL: @ReLUMultipleOutFakeQuantizeNotFolded
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x3x30x30xf16>
 func.func @ReLUMultipleOutFakeQuantizeNotFolded(%arg0: tensor<1x3x30x30xf16>) -> tensor<1x3x30x30xf16> {
     %val_low_pos = const.Declare tensor<1x1x1x1xf16> = dense<4.0> : tensor<1x1x1x1xf16>
     %val_low_neg = const.Declare tensor<1x1x1x1xf16> = dense<-4.0> : tensor<1x1x1x1xf16>
@@ -211,7 +218,7 @@ func.func @ReLUMultipleOutFakeQuantizeNotFolded(%arg0: tensor<1x3x30x30xf16>) ->
     // CHECK:       [[VAL_LOW_POS:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<4.000000e+00> : tensor<1x1x1x1xf16>
     // CHECK:       [[VAL_LOW_NEG:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<-4.000000e+00> : tensor<1x1x1x1xf16>
     // CHECK:       [[VAL_HIGH:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<2.550000e+02> : tensor<1x1x1x1xf16>
-    // CHECK:       [[RELU:%.+]] = IE.ReLU(%arg0) : tensor<1x3x30x30xf16> -> tensor<1x3x30x30xf16>
+    // CHECK:       [[RELU:%.+]] = IE.ReLU([[ARG_0]]) : tensor<1x3x30x30xf16> -> tensor<1x3x30x30xf16>
     // CHECK:       [[FQ_1:%.+]] = IE.FakeQuantize([[RELU]], [[VAL_LOW_POS]], [[VAL_HIGH]], [[VAL_LOW_POS]], [[VAL_HIGH]])
     // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64}
     // CHECK:       tensor<1x3x30x30xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x3x30x30xf16>

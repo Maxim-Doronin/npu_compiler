@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -11,6 +11,19 @@
 
 using namespace vpux::VPURegMapped;
 using namespace npu40xx;
+
+// Helper trait to detect if Type_Fields has Field_ppe_sb_dtype member
+template <typename T, typename = void>
+struct has_Field_ppe_sb_dtypeType : std::false_type {};
+template <typename T>
+struct has_Field_ppe_sb_dtypeType<T, std::void_t<typename T::Field_ppe_sb_dtypeType>> : std::true_type {};
+
+// Helper trait to detect if Type_Fields has Field_ppe_fp_prelu_en member
+template <typename T, typename = void>
+struct has_Field_ppe_fp_prelu_enType : std::false_type {};
+
+template <typename T>
+struct has_Field_ppe_fp_prelu_enType<T, std::void_t<typename T::Field_ppe_fp_prelu_enType>> : std::true_type {};
 
 // Implementations of the lowering function that do not change between architectures:
 namespace vpux::VPUIPDPU {
@@ -303,7 +316,9 @@ struct FieldsPPEFpSprLUTModeOp {
 template <typename Type_Fields, typename DpuInvariantDescriptorType>
 void lowerToRegPPEFpSprLUTModeOp(VPUIPDPU::PPEFpSprLUTModeOp op, DpuInvariantDescriptorType& descriptor) {
     descriptor.template write<typename Type_Fields::Field_ppe_modeType>(op.getSprlutMode());
-    descriptor.template write<typename Type_Fields::Field_ppe_sb_dtypeType>(2);
+    if constexpr (has_Field_ppe_sb_dtypeType<Type_Fields>::value) {
+        descriptor.template write<typename Type_Fields::Field_ppe_sb_dtypeType>(2);
+    }
     descriptor.template write<typename Type_Fields::Field_ppe_lut_ptr_forceType>(op.getSprlutMode() ==
                                                                                  PPEsprLUTMode::ON);
 }
@@ -316,7 +331,9 @@ struct FieldsPPEFpPreluMultOp {
 
 template <typename Type_Fields, typename DpuInvariantDescriptorType>
 void lowerToRegPPEFpPreluMultOp(VPUIPDPU::PPEFpPreluMultOp op, DpuInvariantDescriptorType& descriptor) {
-    descriptor.template write<typename Type_Fields::Field_ppe_fp_prelu_enType>(1);
+    if constexpr (has_Field_ppe_fp_prelu_enType<Type_Fields>::value) {
+        descriptor.template write<typename Type_Fields::Field_ppe_fp_prelu_enType>(1);
+    }
     descriptor.template write<typename Type_Fields::Field_ppe_fp_preluType>(op.getPreluAlpha().convertToFloat());
 }
 

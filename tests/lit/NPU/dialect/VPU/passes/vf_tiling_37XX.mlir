@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,8 @@
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: @VfTilingDepthConvAndConv
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x576x65x65xf16, {order = #NHWC}>)
 func.func @VfTilingDepthConvAndConv(%arg0: tensor<1x576x65x65xf16, {order = #NHWC}>) -> tensor<1x160x65x65xf16, {order = #NHWC}>   {
     %cst_0 = const.Declare tensor<576x32x1x1xf16, {order = #NHWC}> = dense<1.0> : tensor<576x32x1x1xf16>, [#const.Reorder<#NHWC>]
     %cst_1 = const.Declare tensor<576x1x1x4xsi32> = dense<1> : tensor<576x1x1x4xsi32>
@@ -36,37 +38,37 @@ func.func @VfTilingDepthConvAndConv(%arg0: tensor<1x576x65x65xf16, {order = #NHW
     // CHECK-DAG:  [[W_CONV:%.+]] = const.Declare tensor<160x576x1x1xf16, {order = #NHWC}>
     // CHECK-DAG:  [[WT_CONV:%.+]] = const.Declare tensor<160x1x1x4xsi32>
 
-    // CHECK: [[SLICEARG0TILE0:%.+]] = VPU.Slice %arg0 [0, 0, 0, 0] [1, 576, 13, 65]
+    // CHECK: [[SLICEARG0TILE0:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 0, 0] [1, 576, 13, 65]
     // CHECK: [[DEPTHCONVTILE0:%.+]] = VPU.NCE.DepthConvolution([[SLICEARG0TILE0]], [[W_DWCONV]], [[WT_DWCONV]])
     // CHECK-SAME: {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>, pad = #VPU.Padding<left = 2 : i64, right = 2 : i64, top = 2 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>, rawFilterShape = [576, 1, 5, 5], strides = [1, 1], vf_loop_index = 0 : i64, vf_loop_layer_index = 0 : i64} -> tensor<1x576x11x65xf16, {order = #NHWC}>
     // CHECK: [[CONVTILE0:%.+]] = VPU.NCE.Convolution([[DEPTHCONVTILE0]], [[W_CONV]], [[WT_CONV]])
     // CHECK-SAME: {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>,  rawFilterShape = [160, 576, 1, 1], strides = [1, 1], vf_loop_index = 0 : i64, vf_loop_layer_index = 0 : i64}
     // CHECK-SAME: -> tensor<1x160x11x65xf16, {order = #NHWC}>
-    // CHECK: [[SLICEARG0TILE1:%.+]] = VPU.Slice %arg0 [0, 0, 9, 0] [1, 576, 15, 65]
+    // CHECK: [[SLICEARG0TILE1:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 9, 0] [1, 576, 15, 65]
     // CHECK: [[DEPTHCONVTILE1:%.+]] = VPU.NCE.DepthConvolution([[SLICEARG0TILE1]], [[W_DWCONV]], [[WT_DWCONV]])
     // CHECK-SAME: {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>, pad = #VPU.Padding<left = 2 : i64, right = 2 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>,  rawFilterShape = [576, 1, 5, 5], strides = [1, 1], vf_loop_index = 0 : i64, vf_loop_layer_index = 1 : i64} -> tensor<1x576x11x65xf16, {order = #NHWC}>
     // CHECK: [[CONVTILE1:%.+]] = VPU.NCE.Convolution([[DEPTHCONVTILE1]], [[W_CONV]], [[WT_CONV]])
     // CHECK-SAME: {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>,  rawFilterShape = [160, 576, 1, 1], strides = [1, 1], vf_loop_index = 0 : i64, vf_loop_layer_index = 1 : i64}
     // CHECK-SAME: -> tensor<1x160x11x65xf16, {order = #NHWC}>
-    // CHECK: [[SLICEARG0TILE2:%.+]] = VPU.Slice %arg0 [0, 0, 20, 0] [1, 576, 15, 65]
+    // CHECK: [[SLICEARG0TILE2:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 20, 0] [1, 576, 15, 65]
     // CHECK: [[DEPTHCONVTILE2:%.+]] = VPU.NCE.DepthConvolution([[SLICEARG0TILE2]], [[W_DWCONV]], [[WT_DWCONV]])
     // CHECK-SAME: {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>, pad = #VPU.Padding<left = 2 : i64, right = 2 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>,  rawFilterShape = [576, 1, 5, 5], strides = [1, 1], vf_loop_index = 0 : i64, vf_loop_layer_index = 2 : i64} -> tensor<1x576x11x65xf16, {order = #NHWC}>
     // CHECK: [[CONVTILE2:%.+]] = VPU.NCE.Convolution([[DEPTHCONVTILE2]], [[W_CONV]], [[WT_CONV]])
     // CHECK-SAME: {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>,  rawFilterShape = [160, 576, 1, 1], strides = [1, 1], vf_loop_index = 0 : i64, vf_loop_layer_index = 2 : i64}
     // CHECK-SAME: -> tensor<1x160x11x65xf16, {order = #NHWC}>
-    // CHECK: [[SLICEARG0TILE3:%.+]] = VPU.Slice %arg0 [0, 0, 31, 0] [1, 576, 15, 65]
+    // CHECK: [[SLICEARG0TILE3:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 31, 0] [1, 576, 15, 65]
     // CHECK: [[DEPTHCONVTILE3:%.+]] = VPU.NCE.DepthConvolution([[SLICEARG0TILE3]], [[W_DWCONV]], [[WT_DWCONV]])
     // CHECK-SAME: {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>, pad = #VPU.Padding<left = 2 : i64, right = 2 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>,  rawFilterShape = [576, 1, 5, 5], strides = [1, 1], vf_loop_index = 0 : i64, vf_loop_layer_index = 3 : i64} -> tensor<1x576x11x65xf16, {order = #NHWC}>
     // CHECK: [[CONVTILE3:%.+]] = VPU.NCE.Convolution([[DEPTHCONVTILE3]], [[W_CONV]], [[WT_CONV]])
     // CHECK-SAME: {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>,  rawFilterShape = [160, 576, 1, 1], strides = [1, 1], vf_loop_index = 0 : i64, vf_loop_layer_index = 3 : i64}
     // CHECK-SAME: -> tensor<1x160x11x65xf16, {order = #NHWC}>
-    // CHECK: [[SLICEARG0TILE4:%.+]] = VPU.Slice %arg0 [0, 0, 42, 0] [1, 576, 15, 65]
+    // CHECK: [[SLICEARG0TILE4:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 42, 0] [1, 576, 15, 65]
     // CHECK: [[DEPTHCONVTILE4:%.+]] = VPU.NCE.DepthConvolution([[SLICEARG0TILE4]], [[W_DWCONV]], [[WT_DWCONV]])
     // CHECK-SAME: {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>, pad = #VPU.Padding<left = 2 : i64, right = 2 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>,  rawFilterShape = [576, 1, 5, 5], strides = [1, 1], vf_loop_index = 0 : i64, vf_loop_layer_index = 4 : i64} -> tensor<1x576x11x65xf16, {order = #NHWC}>
     // CHECK: [[CONVTILE4:%.+]] = VPU.NCE.Convolution([[DEPTHCONVTILE4]], [[W_CONV]], [[WT_CONV]])
     // CHECK-SAME: {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>,  rawFilterShape = [160, 576, 1, 1], strides = [1, 1], vf_loop_index = 0 : i64, vf_loop_layer_index = 4 : i64}
     // CHECK-SAME: -> tensor<1x160x11x65xf16, {order = #NHWC}>
-    // CHECK: [[SLICEARG0TILE5:%.+]] = VPU.Slice %arg0 [0, 0, 53, 0] [1, 576, 12, 65]
+    // CHECK: [[SLICEARG0TILE5:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 53, 0] [1, 576, 12, 65]
     // CHECK: [[DEPTHCONVTILE5:%.+]] = VPU.NCE.DepthConvolution([[SLICEARG0TILE5]], [[W_DWCONV]], [[WT_DWCONV]])
     // CHECK-SAME: {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>, pad = #VPU.Padding<left = 2 : i64, right = 2 : i64, top = 0 : i64, bottom = 2 : i64>, ppe = #VPU.PPEStub<>, rawFilterShape = [576, 1, 5, 5], strides = [1, 1], vf_loop_index = 0 : i64, vf_loop_layer_index = 5 : i64} -> tensor<1x576x10x65xf16, {order = #NHWC}>
     // CHECK: [[CONVTILE5:%.+]] = VPU.NCE.Convolution([[DEPTHCONVTILE5]], [[W_CONV]], [[WT_CONV]])
@@ -80,6 +82,8 @@ func.func @VfTilingDepthConvAndConv(%arg0: tensor<1x576x65x65xf16, {order = #NHW
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
+// CHECK-LABEL: @VfTilingBetweenEltwise
+// CHECK-SAME: [[ARG_3:%[^:]+]]: tensor<1x256x256x256xf16, {order = #NHWC}>
 func.func @VfTilingBetweenEltwise(%input: tensor<1x64x256x256xf16, {order = #NHWC}>, %cst_1: tensor<256x64x1x1xf16, {order = #NHWC}>, %cst_2: tensor<256x1x1x4xsi32>, %cst_3: tensor<1x256x256x256xf16, {order = #NHWC}>, %cst_4: tensor<64x256x1x1xf16, {order = #NHWC}>, %cst_5: tensor<64x1x1x4xsi32>, %cst_6: tensor<64x64x3x3xf16, {order = #NHWC}>, %cst_7: tensor<64x1x1x4xsi32>, %cst_8: tensor<256x64x1x1xf16, {order = #NHWC}>, %cst_9: tensor<256x1x1x4xsi32>) -> tensor<1x256x256x256xf16>  {
 
   %0 = VPU.VerticalFusion (%input as %arg1: tensor<1x64x256x256xf16, {order = #NHWC}>, %cst_1 as %arg2: tensor<256x64x1x1xf16, {order = #NHWC}>, %cst_2 as %arg3: tensor<256x1x1x4xsi32>, %cst_3 as %arg4: tensor<1x256x256x256xf16, {order = #NHWC}>) attributes {tilingStrategy = [1, 1, 32, 1], vf_loop_index = 0} -> tensor<1x256x256x256xf16, {order = #NHWC}> {
@@ -119,22 +123,22 @@ func.func @VfTilingBetweenEltwise(%input: tensor<1x64x256x256xf16, {order = #NHW
   }
   return %1 : tensor<1x256x256x256xf16>
 
-    // CHECK: [[VF1_ELT_SLICE:%.+]] = VPU.Slice %arg3 [0, 0, 0, 0] [1, 256, 8, 256] :
+    // CHECK: [[VF1_ELT_SLICE:%.+]] = VPU.Slice [[ARG_3]] [0, 0, 0, 0] [1, 256, 8, 256] :
     // CHECK:                  tensor<1x256x256x256xf16, {order = #NHWC}> to tensor<1x256x8x256xf16, {order = #NHWC}>
     // CHECK: [[VF1_ELT:%.+]] = VPU.NCE.Eltwise
     // CHECK:                   -> tensor<1x256x8x256xf16, {order = #NHWC}>
 
-    // CHECK: [[VF1_ELT_SLICE:%.+]] = VPU.Slice %arg3 [0, 0, 8, 0] [1, 256, 8, 256] :
+    // CHECK: [[VF1_ELT_SLICE:%.+]] = VPU.Slice [[ARG_3]] [0, 0, 8, 0] [1, 256, 8, 256] :
     // CHECK:                   tensor<1x256x256x256xf16, {order = #NHWC}> to tensor<1x256x8x256xf16, {order = #NHWC}>
     // CHECK: [[VF1_ELT:%.+]] = VPU.NCE.Eltwise
     // CHECK:                   -> tensor<1x256x8x256xf16, {order = #NHWC}>
     // ...
-    // CHECK: [[VF1_ELT_SLICE:%.+]] = VPU.Slice %arg3 [0, 0, 240, 0] [1, 256, 8, 256] :
+    // CHECK: [[VF1_ELT_SLICE:%.+]] = VPU.Slice [[ARG_3]] [0, 0, 240, 0] [1, 256, 8, 256] :
     // CHECK:                  tensor<1x256x256x256xf16, {order = #NHWC}> to tensor<1x256x8x256xf16, {order = #NHWC}>
     // CHECK: [[VF1_ELT:%.+]] = VPU.NCE.Eltwise
     // CHECK:                   -> tensor<1x256x8x256xf16, {order = #NHWC}>
 
-    // CHECK: [[VF1_ELT_SLICE:%.+]] = VPU.Slice %arg3 [0, 0, 248, 0] [1, 256, 8, 256] :
+    // CHECK: [[VF1_ELT_SLICE:%.+]] = VPU.Slice [[ARG_3]] [0, 0, 248, 0] [1, 256, 8, 256] :
     // CHECK:                   tensor<1x256x256x256xf16, {order = #NHWC}> to tensor<1x256x8x256xf16, {order = #NHWC}>
     // CHECK: [[VF1_ELT:%.+]] = VPU.NCE.Eltwise
     // CHECK:                   -> tensor<1x256x8x256xf16, {order = #NHWC}>

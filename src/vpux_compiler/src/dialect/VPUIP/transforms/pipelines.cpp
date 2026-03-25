@@ -1,11 +1,8 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/NPU37XX/dialect/VPUIP/transforms/passes.hpp"
-#include "vpux/compiler/ShaveCodeGen/passes.hpp"
-#include "vpux/compiler/conversion.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/core/transforms/passes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -64,22 +61,6 @@ void vpux::VPUIP::buildDMAUnrollingPipeline(mlir::OpPassManager& pm, Logger log)
 }
 
 //
-// ShaveCodeGen
-//
-
-void vpux::VPUIP::buildShaveCodeGenPipeline(mlir::OpPassManager& pm) {
-    pm.addPass(
-            mlir::createConvertLinalgToAffineLoopsPass());  // E#154403 Analyze the pros/cons & replace Affine with SCF
-    pm.addPass(mlir::createSCFToControlFlowPass());
-    pm.addPass(mlir::memref::createExpandStridedMetadataPass());
-    pm.addPass(ShaveCodeGen::createExpandLayersPass());
-    pm.addPass(ShaveCodeGen::createLowerMathToShaveIntrinsicsPass());
-    pm.addPass(ShaveCodeGen::createConvertAffine2LLVMPass());
-    pm.addPass(mlir::createCanonicalizerPass());
-    pm.addPass(ShaveCodeGen::createAdaptLLVMFuncsForShavePass());
-}
-
-//
 // OptimizeCopies
 //
 
@@ -108,10 +89,6 @@ void VPUIP::registerVPUIPPipelines() {
 
     mlir::PassPipelineRegistration<>("hardware-adaptation", "Hardware Adaptation", [](mlir::OpPassManager& pm) {
         VPUIP::buildHardwareAdaptationPipeline(pm);
-    });
-
-    mlir::PassPipelineRegistration<>("shavecodegen-vpuip", "ShaveCodeGen specific passes", [](mlir::OpPassManager& pm) {
-        VPUIP::buildShaveCodeGenPipeline(pm);
     });
 
     mlir::PassPipelineRegistration<VPUIP::OptimizeCopiesOptionsBase>(

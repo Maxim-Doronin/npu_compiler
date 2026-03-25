@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -14,6 +14,7 @@
 #include "vpux/compiler/dialect/IE/utils/elem_type_info_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/pooling_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
+#include "vpux/compiler/dialect/IE/utils/reshape_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/error.hpp"
@@ -116,23 +117,40 @@ mlir::LogicalResult MoveThroughLayer<ConcreteOp>::matchAndRewrite(ConcreteOp ori
 // MoveThroughTranspose
 //
 
-class MoveThroughTranspose final : public MoveThroughLayer<IE::TransposeOp> {
+class MoveThroughTranspose final : public mlir::OpRewritePattern<IE::TransposeOp> {
 public:
-    MoveThroughTranspose(mlir::MLIRContext* ctx, Logger log): MoveThroughLayer<IE::TransposeOp>(ctx, log) {
+    MoveThroughTranspose(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<IE::TransposeOp>(ctx), _log(log) {
+        this->setDebugName("MoveThroughTranspose");
     }
 
 private:
-    mlir::DenseSet<int64_t> getModifiedAxis(IE::TransposeOp origOp) const override;
-    SmallVector<mlir::Attribute> getNewAttrs(IE::TransposeOp origOp, IE::AffineReshapeOp affineReshape) const override;
-    void updateAttrs(mlir::Operation* origOp, ArrayRef<mlir::Attribute> newAttrs) const override;
+    mlir::LogicalResult matchAndRewrite(IE::TransposeOp origOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
 };
 
-mlir::DenseSet<int64_t> MoveThroughTranspose::getModifiedAxis(IE::TransposeOp origOp) const {
+mlir::LogicalResult MoveThroughTranspose::matchAndRewrite(IE::TransposeOp origOp,
+                                                          mlir::PatternRewriter& rewriter) const {
+    auto maybeAffineReshape = origOp.getInput().getDefiningOp<IE::AffineReshapeOp>();
+    if (maybeAffineReshape == nullptr || !maybeAffineReshape->hasOneUse()) {
+        return mlir::failure();
+    }
+
+    _log.trace("Got '{0}' at '{1}'", origOp->getName(), origOp->getLoc());
+
+    const auto affineInShape = getShape(maybeAffineReshape.getInput());
+    const auto affineOutShape = getShape(maybeAffineReshape.getOutput());
+    const auto dimMapping = parseIntArrayOfArrayAttr<int64_t>(maybeAffineReshape.getDimMapping());
+
     const auto originPerm = DimsOrder::fromAffineMap(origOp.getOrderValue().value());
     const auto order = to_small_vector(irange(originPerm.numDims()) | transformed([&](uint64_t idx) {
                                            return checked_cast<uint64_t>(originPerm.dimAt(idx).ind());
                                        }));
 
+    const auto finalShape = getShape(origOp.getOutput());
+
+    // Find which axes are modified by the Transpose
     mlir::DenseSet<int64_t> modifiedAxes;
     for (size_t i = 0; i < order.size(); i++) {
         if (order[i] != i) {
@@ -140,51 +158,130 @@ mlir::DenseSet<int64_t> MoveThroughTranspose::getModifiedAxis(IE::TransposeOp or
         }
     }
 
-    return modifiedAxes;
-}
+    // Fast path: If modified axes are not split or merged, we can simply permute the input dimensions
+    if (!IE::areModifiedAxesSplitOrMerged(dimMapping, affineInShape, affineOutShape, modifiedAxes, false, _log)) {
+        const auto invertedDimMapping =
+                IE::invertDimMappingWithAxesNotSplitOrMerged(dimMapping, affineInShape, affineOutShape);
 
-SmallVector<mlir::Attribute> MoveThroughTranspose::getNewAttrs(IE::TransposeOp origOp,
-                                                               IE::AffineReshapeOp affineReshape) const {
-    const auto affineInShape = getShape(affineReshape.getInput());
-    const auto affineOutShape = getShape(affineReshape.getOutput());
-    const auto dimMapping = parseIntArrayOfArrayAttr<int64_t>(affineReshape.getDimMapping());
-    const auto invertedDimMapping =
-            IE::invertDimMappingWithAxesNotSplitOrMerged(dimMapping, affineInShape, affineOutShape);
+        SmallVector<unsigned> newPerm(affineInShape.size());
+        std::iota(newPerm.begin(), newPerm.end(), 0);
 
-    SmallVector<unsigned> newPerm(affineInShape.size(), 0);
-    const auto originPerm = DimsOrder::fromAffineMap(origOp.getOrderValue().value());
-    const auto order = to_small_vector(irange(originPerm.numDims()) | transformed([&](uint64_t idx) {
-                                           return checked_cast<uint64_t>(originPerm.dimAt(idx).ind());
-                                       }));
+        for (size_t outDim = 0; outDim < order.size(); outDim++) {
+            if (order[outDim] != outDim) {
+                newPerm[invertedDimMapping[outDim]] = invertedDimMapping[order[outDim]];
+            }
+        }
 
-    for (size_t i = 0; i < newPerm.size(); i++) {
-        newPerm[i] = i;
+        // Validate permutation
+        SmallVector<bool> used(affineInShape.size(), false);
+        for (auto p : newPerm) {
+            if (p >= affineInShape.size() || used[p]) {
+                return mlir::failure();
+            }
+            used[p] = true;
+        }
+
+        const auto orderAttr =
+                mlir::AffineMapAttr::get(mlir::AffineMap::getPermutationMap(newPerm, origOp->getContext()));
+
+        auto newTranspose =
+                rewriter.create<IE::TransposeOp>(origOp.getLoc(), maybeAffineReshape.getInput(), nullptr, orderAttr);
+        auto outShapeAttr = getIntArrayAttr(rewriter.getContext(), finalShape);
+        rewriter.replaceOpWithNewOp<IE::AffineReshapeOp>(origOp, newTranspose.getOutput(),
+                                                         maybeAffineReshape.getDimMappingAttr(), outShapeAttr);
+
+        _log.trace("Successfully moved Transpose through AffineReshape (Fast Path)");
+        return mlir::success();
     }
 
-    for (size_t outDim = 0; outDim < order.size(); outDim++) {
-        if (order[outDim] != outDim) {
-            auto inDimIdx = invertedDimMapping[outDim];
-            if (newPerm[inDimIdx] == inDimIdx) {
-                newPerm[inDimIdx] = invertedDimMapping[order[outDim]];
+    if (affineInShape.size() != 4) {
+        return mlir::failure();
+    }
+
+    auto maybeTransposeOp = maybeAffineReshape.getInput().getDefiningOp<IE::TransposeOp>();
+    if (maybeTransposeOp == nullptr || !maybeTransposeOp->hasOneUse()) {
+        return mlir::failure();
+    }
+
+    // Advanced path: Transpose modifies axes that are split or merged.
+    // We must deduce a new permutation for the input and a completely new dim_mapping.
+
+    // 1. Map each output index to its final position after Transpose
+    SmallVector<int64_t> outToFinal(affineOutShape.size(), 0);
+    for (size_t finalIdx = 0; finalIdx < order.size(); finalIdx++) {
+        outToFinal[order[finalIdx]] = finalIdx;
+    }
+
+    // 2. For each input index, find where its mapped output dimensions end up in the final shape
+    SmallVector<SmallVector<int64_t>> nonTrivialFinalIdxsForIn(affineInShape.size());
+    for (size_t inIdx = 0; inIdx < dimMapping.size(); inIdx++) {
+        for (auto outIdx : dimMapping[inIdx]) {
+            auto finalIdx = outToFinal[outIdx];
+            if (finalShape[Dim(finalIdx)] > 1) {
+                nonTrivialFinalIdxsForIn[inIdx].push_back(finalIdx);
+            }
+        }
+        if (!llvm::is_sorted(nonTrivialFinalIdxsForIn[inIdx])) {
+            _log.trace("Cannot move Transpose: inIdx {0} maps to out-of-order final axes", inIdx);
+            return mlir::failure();
+        }
+    }
+
+    // 3. Ensure that for each input index, its non-trivial final dimensions are contiguous.
+    // If they are scattered, we cannot represent this with a single AffineReshape.
+    for (size_t inIdx = 0; inIdx < affineInShape.size(); inIdx++) {
+        const auto& finalIdxs = nonTrivialFinalIdxsForIn[inIdx];
+        for (size_t i = 1; i < finalIdxs.size(); i++) {
+            if (finalIdxs[i] != finalIdxs[i - 1] + 1) {
+                _log.trace("Cannot move Transpose: inIdx {0} maps to non-contiguous final axes", inIdx);
+                return mlir::failure();
             }
         }
     }
 
-    // Validate permutation
-    SmallVector<bool> used(affineInShape.size(), false);
-    for (size_t i = 0; i < newPerm.size(); i++) {
-        if (newPerm[i] >= affineInShape.size() || used[newPerm[i]]) {
-            return {};
-        }
-        used[newPerm[i]] = true;
+    // 4. Determine the new permutation for the input shape by sorting based on their final positions
+    SmallVector<int64_t> newOrderVec(affineInShape.size());
+    std::iota(newOrderVec.begin(), newOrderVec.end(), 0);
+    std::stable_sort(newOrderVec.begin(), newOrderVec.end(), [&](int64_t a, int64_t b) {
+        auto getStartIdx = [&](int64_t idx) {
+            if (!nonTrivialFinalIdxsForIn[idx].empty()) {
+                return nonTrivialFinalIdxsForIn[idx].front();
+            }
+            // Fallback for purely size-1 dimensions: use their trivial final position
+            int64_t minFinal = std::numeric_limits<int64_t>::max();
+            for (auto outIdx : dimMapping[idx]) {
+                minFinal = std::min(minFinal, outToFinal[outIdx]);
+            }
+            return minFinal;
+        };
+        return getStartIdx(a) < getStartIdx(b);
+    });
+
+    // 5. Calculate the shape after the new Transpose
+    SmallVector<int64_t> newTransposedShape(affineInShape.size());
+    for (size_t i = 0; i < newOrderVec.size(); i++) {
+        newTransposedShape[i] = affineInShape[Dim(newOrderVec[i])];
     }
 
-    const auto orderAttr = mlir::AffineMapAttr::get(mlir::AffineMap::getPermutationMap(newPerm, origOp->getContext()));
-    return SmallVector<mlir::Attribute>{orderAttr};
-}
+    // 6. Automatically deduce the new dim_mapping using getReassociationMap
+    auto reassociationMap = IE::getReassociationMap(newTransposedShape, finalShape.raw());
+    if (mlir::failed(reassociationMap)) {
+        _log.trace("Failed to get reassociation map for new transposed shape");
+        return mlir::failure();
+    }
 
-void MoveThroughTranspose::updateAttrs(mlir::Operation* origOp, ArrayRef<mlir::Attribute> newAttrs) const {
-    origOp->setAttr("order_value", newAttrs[0]);
+    // 7. Create the new Transpose and AffineReshape operations
+    const auto orderAttr =
+            mlir::AffineMapAttr::get(mlir::AffineMap::getPermutationMap(newOrderVec, origOp->getContext()));
+    auto newTranspose =
+            rewriter.create<IE::TransposeOp>(origOp.getLoc(), maybeAffineReshape.getInput(), nullptr, orderAttr);
+
+    auto outShapeAttr = getIntArrayAttr(rewriter.getContext(), finalShape);
+    auto newDimMappingAttr = getIntArrayOfArray(rewriter.getContext(), reassociationMap.value());
+    rewriter.replaceOpWithNewOp<IE::AffineReshapeOp>(origOp, newTranspose.getOutput(), newDimMappingAttr, outShapeAttr);
+
+    _log.trace("Successfully moved Transpose through AffineReshape (Advanced Path)");
+    return mlir::success();
 }
 
 //
@@ -411,6 +508,15 @@ public:
     mlir::LogicalResult matchAndRewrite(IE::ConcatOp origOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
+    IE::AffineReshapeOp analyzeSingleAffineReshapePattern(mlir::OperandRange inputs,
+                                                          const mlir::DenseSet<int64_t>& modifiedAxes) const;
+
+    mlir::LogicalResult handleSingleAffineReshapeInput(IE::ConcatOp origConcatOp, mlir::PatternRewriter& rewriter,
+                                                       IE::AffineReshapeOp singleAffineReshapeOp,
+                                                       mlir::OperandRange inputs,
+                                                       const mlir::DenseSet<int64_t>& modifiedAxes) const;
+
+private:
     Logger _log;
 };
 
@@ -477,6 +583,43 @@ mlir::ArrayAttr getConcatOffsetsParameters(mlir::ArrayAttr oldOffsets, mlir::Arr
     return getIntArrayOfArray(dimsMappingAttr.getContext(), ArrayRef(newOffsetsList));
 }
 
+IE::AffineReshapeOp MoveThroughConcat::analyzeSingleAffineReshapePattern(
+        mlir::OperandRange inputs, const mlir::DenseSet<int64_t>& modifiedAxes) const {
+    // Find single AffineReshape from largest input on concat axis
+    auto singleAffineReshapeOp = IE::findSingleOpFromLargestInput<IE::AffineReshapeOp>(inputs, modifiedAxes, _log);
+    if (singleAffineReshapeOp == nullptr) {
+        return nullptr;
+    }
+
+    // Validate the selected AffineReshape pattern
+    auto affineInput = singleAffineReshapeOp.getInput();
+    const auto affineInputShape = getShape(affineInput);
+    const auto affineOutputShape = getShape(singleAffineReshapeOp.getOutput());
+    const auto dimMapping = parseIntArrayOfArrayAttr<int64_t>(singleAffineReshapeOp.getDimMapping());
+
+    // Validate that concat axes are not split or merged
+    if (IE::areModifiedAxesSplitOrMerged(dimMapping, affineInputShape, affineOutputShape, modifiedAxes, false,
+                                         _log.nest())) {
+        _log.trace("[{0}]: Concat axis is split or merged in selected AffineReshape", getDebugName());
+        return nullptr;
+    }
+
+    // Validate pattern: ComputeOp (Conv/GroupConv/Eltwise) -> [Transpose] -> AffineReshape
+    mlir::Operation* computeOp = nullptr;
+    if (auto transposeOp = mlir::dyn_cast_if_present<IE::TransposeOp>(affineInput.getDefiningOp())) {
+        computeOp = transposeOp.getInput().getDefiningOp();
+    } else {
+        computeOp = affineInput.getDefiningOp();
+    }
+
+    if (computeOp == nullptr || !IE::isValidComputeOp(computeOp)) {
+        _log.trace("[{0}]: Selected AffineReshape input is not a valid compute op", getDebugName());
+        return nullptr;
+    }
+
+    return singleAffineReshapeOp;
+}
+
 mlir::LogicalResult MoveThroughConcat::matchAndRewrite(IE::ConcatOp origConcatOp,
                                                        mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}]: Rewriting {1}", getDebugName(), origConcatOp->getLoc());
@@ -495,9 +638,9 @@ mlir::LogicalResult MoveThroughConcat::matchAndRewrite(IE::ConcatOp origConcatOp
     SmallVector<mlir::Value> newInputs;
     newInputs.reserve(inputs.size());
     mlir::ArrayAttr dimsMapping;
-    const auto modifiedAxises = IE::getConcatAxes(origConcatOp);
+    const auto modifiedAxes = IE::getConcatAxes(origConcatOp);
 
-    if (modifiedAxises.empty()) {
+    if (modifiedAxes.empty()) {
         return mlir::failure();
     }
 
@@ -505,6 +648,11 @@ mlir::LogicalResult MoveThroughConcat::matchAndRewrite(IE::ConcatOp origConcatOp
         if (mlir::isa<IE::ConcatOp>(userOp)) {
             return mlir::failure();
         }
+    }
+
+    // Analyze if we can apply single AffineReshape optimization
+    if (auto singleAffineReshape = analyzeSingleAffineReshapePattern(inputs, modifiedAxes)) {
+        return handleSingleAffineReshapeInput(origConcatOp, rewriter, singleAffineReshape, inputs, modifiedAxes);
     }
 
     ShapeRef shapeBeforeAffineReshape;
@@ -518,6 +666,7 @@ mlir::LogicalResult MoveThroughConcat::matchAndRewrite(IE::ConcatOp origConcatOp
         return differentNums;
     };
 
+    // Original logic: all inputs must be AffineReshape
     for (auto input : inputs) {
         auto parentOp = input.getDefiningOp<IE::AffineReshapeOp>();
 
@@ -549,7 +698,7 @@ mlir::LogicalResult MoveThroughConcat::matchAndRewrite(IE::ConcatOp origConcatOp
         } else {
             auto curShapeBeforeAffineReshape = getShape(parentOp.getInput());
             auto differentNums = getDifferentNums(curShapeBeforeAffineReshape, shapeBeforeAffineReshape);
-            if (differentNums > modifiedAxises.size()) {
+            if (differentNums > modifiedAxes.size()) {
                 _log.trace("[{0}]: Input {1} has different shape of non concat axis from others", getDebugName(),
                            parentOp.getLoc());
                 return mlir::failure();
@@ -560,7 +709,7 @@ mlir::LogicalResult MoveThroughConcat::matchAndRewrite(IE::ConcatOp origConcatOp
         const auto affineOutputShape = getShape(parentOp.getOutput());
 
         const auto dimMappingList = parseIntArrayOfArrayAttr<int64_t>(dimsMapping);
-        if (IE::areModifiedAxesSplitOrMerged(dimMappingList, affineInputShape, affineOutputShape, modifiedAxises, false,
+        if (IE::areModifiedAxesSplitOrMerged(dimMappingList, affineInputShape, affineOutputShape, modifiedAxes, false,
                                              _log.nest())) {
             return mlir::failure();
         }
@@ -582,6 +731,100 @@ mlir::LogicalResult MoveThroughConcat::matchAndRewrite(IE::ConcatOp origConcatOp
 
     rewriter.replaceOpWithNewOp<IE::AffineReshapeOp>(
             origConcatOp, newConcat, dimsMapping,
+            getIntArrayAttr(origConcatOp.getContext(), getShape(origConcatOp).raw()));
+
+    return mlir::success();
+}
+
+mlir::LogicalResult MoveThroughConcat::handleSingleAffineReshapeInput(
+        IE::ConcatOp origConcatOp, mlir::PatternRewriter& rewriter, IE::AffineReshapeOp singleAffineReshapeOp,
+        mlir::OperandRange inputs, const mlir::DenseSet<int64_t>& modifiedAxes) const {
+    _log.trace("[{0}]: Handling single AffineReshape input case at '{1}'", getDebugName(), origConcatOp->getLoc());
+
+    auto input = singleAffineReshapeOp.getInput();
+    const auto affineInputShape = getShape(input);
+    const auto affineOutputShape = getShape(singleAffineReshapeOp.getOutput());
+    const auto dimMapping = parseIntArrayOfArrayAttr<int64_t>(singleAffineReshapeOp.getDimMapping());
+
+    // Validations already done in analyzeSingleAffineReshapePattern:
+    // - modifiedAxes.size() == 1
+    // - concat axes not split or merged
+    // - valid compute op pattern
+
+    // Find corresponding concat axis in input space
+    int64_t newConcatAxis = -1;
+    auto origConcatAxis = *modifiedAxes.begin();
+    for (size_t inIdx = 0; inIdx < dimMapping.size(); inIdx++) {
+        const auto& outDims = dimMapping[inIdx];
+        if (llvm::find(outDims, origConcatAxis) != outDims.end()) {
+            if (affineInputShape[Dim(inIdx)] == affineOutputShape[Dim(origConcatAxis)]) {
+                newConcatAxis = inIdx;
+                break;
+            }
+        }
+    }
+
+    if (newConcatAxis == -1) {
+        return mlir::failure();
+    }
+
+    // Build inverse dim mapping (or use ShapeCast if not available)
+    auto inverseDimMappingResult = IE::getReassociationMap(affineOutputShape, affineInputShape);
+    const bool useShapeCast = mlir::failed(inverseDimMappingResult);
+
+    SmallVector<SmallVector<int64_t>> inverseDimMapping;
+    if (!useShapeCast) {
+        inverseDimMapping = inverseDimMappingResult.value();
+    }
+
+    // Create new inputs
+    SmallVector<mlir::Value> newInputs;
+    newInputs.reserve(inputs.size());
+
+    for (auto input : inputs) {
+        if (auto parentOp = mlir::dyn_cast_if_present<IE::AffineReshapeOp>(input.getDefiningOp())) {
+            newInputs.push_back(parentOp.getInput());
+        } else {
+            auto inputShape = getShape(input).raw();
+            SmallVector<int64_t> targetShape = to_small_vector(affineInputShape);
+
+            // Infer targetShape by updating the concat axis
+            if (affineInputShape[Dim(newConcatAxis)] != 1) {
+                const auto& outDims = dimMapping[newConcatAxis];
+                for (auto outDim : outDims) {
+                    if (affineOutputShape[Dim(outDim)] != 1) {
+                        targetShape[newConcatAxis] = inputShape[outDim];
+                        break;
+                    }
+                }
+            }
+
+            auto targetShapeAttr = getIntArrayAttr(rewriter.getContext(), targetShape);
+            if (useShapeCast) {
+                auto shapeCast = rewriter.create<IE::ShapeCastOp>(input.getLoc(), input, targetShapeAttr);
+                newInputs.push_back(shapeCast.getResult());
+            } else {
+                auto inverseDimMappingAttr = getIntArrayOfArray(rewriter.getContext(), ArrayRef(inverseDimMapping));
+                auto inverseReshape = rewriter.create<IE::AffineReshapeOp>(input.getLoc(), input, inverseDimMappingAttr,
+                                                                           targetShapeAttr);
+                newInputs.push_back(inverseReshape.getOutput());
+            }
+        }
+    }
+
+    // Create new Concat
+    SmallVector<ShapeRef> newInputShapes;
+    newInputShapes.reserve(newInputs.size());
+    for (auto input : newInputs) {
+        newInputShapes.push_back(getShape(input));
+    }
+
+    auto newOffsetsAttr = IE::inferConcatOffsets(newInputShapes, Dim(newConcatAxis), origConcatOp.getContext());
+    auto newConcat = rewriter.create<IE::ConcatOp>(origConcatOp.getLoc(), newInputs, nullptr, newOffsetsAttr);
+
+    // Apply forward AffineReshape
+    rewriter.replaceOpWithNewOp<IE::AffineReshapeOp>(
+            origConcatOp, newConcat, singleAffineReshapeOp.getDimMapping(),
             getIntArrayAttr(origConcatOp.getContext(), getShape(origConcatOp).raw()));
 
     return mlir::success();
@@ -904,7 +1147,7 @@ mlir::LogicalResult MoveThroughMultiply::processMultiplyOpWithBroadCastConstInpu
         }
         auto newConstInputShape = Shape(affineReshapeOutShape.size(), 1);
         newConstInputShape[nonBroadCastDimBeforeReshape] = nonBroadCastDimSize;
-        constInput = rewriter.createOrFold<IE::ReshapeOp>(constInput.getLoc(), constInput, nullptr, false,
+        constInput = rewriter.createOrFold<IE::ReshapeOp>(constInput.getLoc(), constInput,
                                                           getIntArrayAttr(origOp->getContext(), newConstInputShape));
         // New constant should have the same memory order as AffineReshape input
         const auto affineReshapeInputDimOrder = DimsOrder::fromValue(affineReshapeOp.getInput());
@@ -1191,15 +1434,15 @@ mlir::LogicalResult MoveThroughSlice::matchAndRewrite(IE::SliceOp origSliceOp, m
     const auto affineInputShape = getShape(affineReshapeOp.getInput());
     const auto affineOutputShape = getShape(affineReshapeOp.getOutput());
 
-    const auto modifiedAxises = getModifiedAxis(affineReshapeOp);
-    if (modifiedAxises.empty() || modifiedAxises.size() > 1) {
+    const auto modifiedAxes = getModifiedAxis(affineReshapeOp);
+    if (modifiedAxes.empty() || modifiedAxes.size() > 1) {
         _log.trace("[{0}]: {1}'s user has more than one dim sliced or empty, size: {2}", getDebugName(),
-                   origSliceOp.getLoc(), modifiedAxises.size());
+                   origSliceOp.getLoc(), modifiedAxes.size());
         return mlir::failure();
     }
 
     const auto dimMappingList = parseIntArrayOfArrayAttr<int64_t>(dimsMapping);
-    if (IE::areModifiedAxesSplitOrMerged(dimMappingList, affineInputShape, affineOutputShape, modifiedAxises, false,
+    if (IE::areModifiedAxesSplitOrMerged(dimMappingList, affineInputShape, affineOutputShape, modifiedAxes, false,
                                          _log.nest())) {
         _log.trace("[{0}]: slice operation {1} areModifiedAxesSplitOrMerged in affineReshape op {2}", getDebugName(),
                    origSliceOp.getLoc(), affineReshapeOp.getLoc());
@@ -1209,14 +1452,14 @@ mlir::LogicalResult MoveThroughSlice::matchAndRewrite(IE::SliceOp origSliceOp, m
     const auto invertedDimMapping =
             IE::invertDimMappingWithAxesNotSplitOrMerged(dimMappingList, affineInputShape, affineOutputShape);
 
-    const auto newSliceAxis = invertedDimMapping[*modifiedAxises.begin()];
+    const auto newSliceAxis = invertedDimMapping[*modifiedAxes.begin()];
     SmallVector<int64_t> newStaticOffset(affineInputShape.size(), 0);
     SmallVector<int64_t> newStaticSize = to_small_vector(affineInputShape);
 
     const auto staticOffset = parseIntArrayAttr<int64_t>(origSliceOp.getStaticOffsetsAttr());
-    newStaticOffset[newSliceAxis] = staticOffset[*modifiedAxises.begin()];
+    newStaticOffset[newSliceAxis] = staticOffset[*modifiedAxes.begin()];
     const auto staticSize = parseIntArrayAttr<int64_t>(origSliceOp.getStaticSizesAttr());
-    newStaticSize[newSliceAxis] = staticSize[*modifiedAxises.begin()];
+    newStaticSize[newSliceAxis] = staticSize[*modifiedAxes.begin()];
     auto newStaticOffsetAttr = getIntArrayAttr(rewriter.getContext(), newStaticOffset);
     auto newStaticSizeAttr = getIntArrayAttr(rewriter.getContext(), newStaticSize);
 
@@ -1394,6 +1637,153 @@ mlir::LogicalResult MoveThroughConvert::matchAndRewrite(IE::ConvertOp convertOp,
     return mlir::success();
 }
 
+/*
+Convert Subgraph
+
+AffineReshape        QuantizeCast
+     |          =>        |
+QuantizeCast         AffineReshape
+
+*/
+
+class MoveThroughQuantizeCast final : public mlir::OpRewritePattern<IE::QuantizeCastOp> {
+public:
+    MoveThroughQuantizeCast(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpRewritePattern<IE::QuantizeCastOp>(ctx), _log(log) {
+    }
+
+public:
+    mlir::LogicalResult matchAndRewrite(IE::QuantizeCastOp origOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+mlir::LogicalResult MoveThroughQuantizeCast::matchAndRewrite(IE::QuantizeCastOp origOp,
+                                                             mlir::PatternRewriter& rewriter) const {
+    _log.trace("[{0}] Got '{1}' at '{2}'", this->getDebugName(), origOp->getName(), origOp->getLoc());
+
+    auto affineReshapeOp = mlir::dyn_cast_or_null<IE::AffineReshapeOp>(origOp.getInput().getDefiningOp());
+    if (affineReshapeOp == nullptr || !affineReshapeOp->hasOneUse()) {
+        return matchFailed(_log, rewriter, origOp, "AffineReshapeOp not found or has multiple uses");
+    }
+
+    if (IE::isPerAxisQuant(origOp.getInput()) || IE::isPerAxisQuant(origOp.getOutput())) {
+        return matchFailed(_log, rewriter, origOp, "QuantizeCastOp doesn't have valid quantize type");
+    }
+
+    if (!origOp->hasOneUse()) {
+        return matchFailed(_log, rewriter, origOp, "QuantizeCastOp has multiple uses");
+    }
+
+    if (!mlir::isa_and_nonnull<IE::AffineReshapeOp>(*origOp->getUsers().begin())) {
+        return matchFailed(_log, rewriter, origOp, "QuantizeCastOp doesn't have affinereshape user");
+    }
+
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
+    const auto outElemType = outputType.getElementType();
+    auto newQuantizeCastOp =
+            rewriter.create<IE::QuantizeCastOp>(origOp->getLoc(), affineReshapeOp.getInput(), outElemType);
+    rewriter.replaceOpWithNewOp<IE::AffineReshapeOp>(origOp, newQuantizeCastOp.getOutput(),
+                                                     affineReshapeOp.getDimMappingAttr(),
+                                                     affineReshapeOp.getShapeValueAttr());
+
+    _log.trace("Swapped AffineReshape QuantizeCast pattern");
+    return mlir::success();
+}
+
+/*
+
+Gather              AffineReshape
+     |         =>        |
+AffineReshape         Gather
+
+*/
+
+class MoveUpThroughGather final : public mlir::OpRewritePattern<IE::GatherOp> {
+public:
+    MoveUpThroughGather(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<IE::GatherOp>(ctx), _log(log) {
+        setDebugName("MoveUpThroughGather");
+    }
+
+    mlir::LogicalResult matchAndRewrite(IE::GatherOp origOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+// Not all the affineReshape can move through Gather. Like if Gather input is [1000x3], indices is [10]
+// output is [10x3], if we reshape to [30x1], then we actually could not create a correct Gather.
+// So here we only handle the unsqueeze case, like [10x3] -> [10x3x1]
+
+mlir::LogicalResult MoveUpThroughGather::matchAndRewrite(IE::GatherOp origOp, mlir::PatternRewriter& rewriter) const {
+    if (!origOp->hasOneUse()) {
+        return mlir::failure();
+    }
+
+    if (getShape(origOp.getIndices()).size() != 1 || origOp.getBatchDims() != 0) {
+        return mlir::failure();
+    }
+
+    if (origOp.getAxisValueAttr() == nullptr) {
+        return mlir::failure();
+    }
+
+    auto affineReshapeOp = mlir::dyn_cast<IE::AffineReshapeOp>(*origOp->getUsers().begin());
+    if (affineReshapeOp == nullptr) {
+        return mlir::failure();
+    }
+
+    auto origAxis = origOp.getAxisValueAttr().getValue().getSExtValue();
+    auto newAxis = origAxis;
+    // Check if affineReshape is unsqueeze for input, like reshape from 2x3 to 1x2x3x1, and also get the new axis.
+    auto isUnsqueezeAffineReshape = [&](IE::AffineReshapeOp affineReshapeOp) {
+        auto inShape = getShape(affineReshapeOp.getInput());
+        auto outShape = getShape(affineReshapeOp.getOutput());
+        if (outShape.size() <= inShape.size()) {
+            return false;
+        }
+
+        for (int64_t inIdx = 0, outIdx = 0;
+             inIdx < static_cast<int64_t>(inShape.size()) && outIdx < static_cast<int64_t>(outShape.size());) {
+            if (inShape[Dim(inIdx)] == outShape[Dim(outIdx)]) {
+                if (origAxis == inIdx) {
+                    newAxis = outIdx;
+                }
+                ++inIdx;
+                ++outIdx;
+                continue;
+            }
+
+            if (outShape[Dim(outIdx)] == 1) {
+                ++outIdx;
+                continue;
+            }
+            return false;
+        }
+        return true;
+    };
+
+    if (!isUnsqueezeAffineReshape(affineReshapeOp)) {
+        return mlir::failure();
+    }
+
+    auto gatherInShape = getShape(origOp.getInput());
+    auto affineReshapeOutShape = getShape(affineReshapeOp.getOutput());
+
+    SmallVector<int64_t> newInShape(affineReshapeOutShape.raw());
+    newInShape[newAxis] = gatherInShape[Dim(origAxis)];
+    auto inShapeAttr = getIntArrayAttr(origOp.getContext(), newInShape);
+    auto inAffineReshapeOp = rewriter.create<IE::AffineReshapeOp>(affineReshapeOp.getLoc(), origOp.getInput(),
+                                                                  affineReshapeOp.getDimMapping(), inShapeAttr);
+    auto newGatherOp = rewriter.create<IE::GatherOp>(
+            origOp.getLoc(), inAffineReshapeOp.getOutput(), origOp.getIndices(), origOp.getAxis(),
+            getIntAttr(origOp.getContext(), newAxis), origOp.getBatchDims(), origOp.getIndicesRankAttr());
+    rewriter.replaceOp(affineReshapeOp, newGatherOp.getOutput());
+
+    return mlir::success();
+}
+
 //
 // PropagateAffineReshape
 //
@@ -1435,6 +1825,8 @@ void PropagateAffineReshape::safeRunOnFunc() {
     patterns.add<MoveThroughOneInputEltwise>(&ctx, _log);
     patterns.add<MoveThroughConvert>(&ctx, _log);
     patterns.add<ConcatReshapeConcat>(&ctx, _log);
+    patterns.add<MoveThroughQuantizeCast>(&ctx, _log);
+    patterns.add<MoveUpThroughGather>(&ctx, _log);
     IE::ReshapeOp::getCanonicalizationPatterns(patterns, &ctx);
     IE::AffineReshapeOp::getCanonicalizationPatterns(patterns, &ctx);
     IE::ShapeCastOp::getCanonicalizationPatterns(patterns, &ctx);

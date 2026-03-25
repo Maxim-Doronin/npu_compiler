@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -407,7 +407,7 @@ func.func @SharedWeightsGroupConv(%arg0: tensor<1x3x32x32xf16>, %arg1: tensor<1x
     // CHECK-SAME:      dilations = [1, 1], groups = 16 : i64, pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]
     // CHECK-SAME:          -> tensor<1x16x32x32xf16>
 
-    // CHECK:       return [[EXPAND]], [[GROUP_CONV_1:%.+]]
+    // CHECK:       return [[EXPAND]], [[GROUP_CONV_1]]
 }
 
 
@@ -429,7 +429,7 @@ func.func @ExpandGroupConvToShapeCastGroupConvWithReshapeAttribute(%arg0: tensor
 
     // CHECK-DAG:    [[CST:%.+]] = const.Declare tensor<16x1x1x1xf16, {order = #NHWC}> = dense<0.0232320447> : tensor<1x1x1x1x1xf32>, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>, #const.Reorder<#NHWC>, #const.Broadcast<0 : i64, 16 : i64>, #const.Reshape<[16, 1, 1, 1]>]
     // CHECK-DAG:    [[CST_1:%.+]] = const.Declare tensor<1x16x1x1xf16> = dense<-2.4650476> : tensor<1x1x1x1x1xf32>, [#const.Reshape<[1, 1, 1, 1]>, #const.CastElemType<f16>, #const.Broadcast<1 : i64, 16 : i64>, #const.Reshape<[1, 16, 1, 1]>]
-    // CHECK:        [[SHAPECAST_1:%.+]] = IE.ShapeCast {shape = [1, 16, 70, 70]} inputs(%arg0 : tensor<1x25x56x56xf16, {order = #NHWC}>) -> tensor<1x16x70x70xf16, {order = #NHWC}>
+    // CHECK:        [[SHAPECAST_1:%.+]] = IE.ShapeCast {shape = [1, 16, 70, 70]} inputs([[INPUT]] : tensor<1x25x56x56xf16, {order = #NHWC}>) -> tensor<1x16x70x70xf16, {order = #NHWC}>
 
     // CHECK:        [[GROUP_CONV:%.+]] = IE.GroupConvolution([[SHAPECAST_1]], [[CST]], [[CST_1]]) {
     // CHECK-SAME:      dilations = [1, 1],
@@ -461,7 +461,7 @@ func.func @ExpandGroupConvToShapeCastGroupConvWithAffineReshapeAttribute(%arg0: 
 
     // CHECK-DAG:    [[CST:%.+]] = const.Declare tensor<16x1x1x1xf16> = dense<2.323910e-02> : tensor<1x1x1x1xf16>, [#const.Reshape<[1, 1, 1, 1]>, #const.Broadcast<0 : i64, 16 : i64>, #const.Reshape<[16, 1, 1, 1]>]
     // CHECK-DAG:    [[CST_1:%.+]] = const.Declare tensor<1x16x1x1xf16> = dense<-2.464840e+00> : tensor<1x1x1x1xf16>, [#const.Broadcast<1 : i64, 16 : i64>, #const.Reshape<[1, 16, 1, 1]>]
-    // CHECK:        [[SHAPECAST_1:%.+]] = IE.ShapeCast {shape = [1, 16, 49, 48]} inputs(%arg0 : tensor<1x12x56x56xf16>) -> tensor<1x16x49x48xf16>
+    // CHECK:        [[SHAPECAST_1:%.+]] = IE.ShapeCast {shape = [1, 16, 49, 48]} inputs([[INPUT]] : tensor<1x12x56x56xf16>) -> tensor<1x16x49x48xf16>
 
     // CHECK:        [[GROUP_CONV:%.+]] = IE.GroupConvolution([[SHAPECAST_1]], [[CST]], [[CST_1]]) {
     // CHECK-SAME:      dilations = [1, 1],
@@ -767,7 +767,7 @@ func.func @NotAdjustNonEltwiseGroupConv(%arg0: tensor<1x3x32x32xf16>) -> tensor<
 
     // CHECK-DAG:   [[FILTER:%.+]] = const.Declare tensor<16x1x1x1xf32> = dense<1.000000e+00> : tensor<1x1x1x1xf32>, [#const.Broadcast<0 : i64, 16 : i64>]
     // CHECK-DAG:   [[BIAS:%.+]] = const.Declare tensor<1x16x1x1xf32> = dense<0.000000e+00> : tensor<1x1x1x1xf32>, [#const.Broadcast<1 : i64, 16 : i64>]
-    // CHECK:       [[EXPAND:%.+]] = IE.Expand(%arg0) {pads_begin = [0, 0, 0, 0], pads_end = [0, 13, 0, 0]} : tensor<1x3x32x32xf16> -> tensor<1x16x32x32xf16>
+    // CHECK:       [[EXPAND:%.+]] = IE.Expand([[INPUT]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 13, 0, 0]} : tensor<1x3x32x32xf16> -> tensor<1x16x32x32xf16>
     // CHECK:       [[GROUP_CONV:%.+]] = IE.GroupConvolution([[EXPAND]], [[FILTER]], [[BIAS]]) {
     // CHECK-SAME:      dilations = [1, 1],
     // CHECK-SAME:      groups = 16 : i64, pads_begin = [0, 0],
@@ -791,7 +791,7 @@ func.func @KeepConstReshapeAttrIfIsDimShrinkWhenShapeCastEltwise(%arg0: tensor<1
 
     // CHECK-DAG:    [[CST:%.+]] = const.Declare tensor<1x16x3x1xf16> = dense<4.200000e+01> : tensor<1x3x2x4x2xf32>,
     // CHECK-SAME:      [#const.Reshape<[1, 16, 3, 1]>, #const.CastElemType<f16>]
-    // CHECK:        [[SHAPECAST_IN:%.+]] = IE.ShapeCast {shape = [1, 16, 3, 1]} inputs(%arg0 : tensor<1x3x8x2xf16>) -> tensor<1x16x3x1xf16>
+    // CHECK:        [[SHAPECAST_IN:%.+]] = IE.ShapeCast {shape = [1, 16, 3, 1]} inputs([[INPUT]] : tensor<1x3x8x2xf16>) -> tensor<1x16x3x1xf16>
     // CHECK:        [[ADD:%.+]] = IE.Add([[SHAPECAST_IN]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x16x3x1xf16>, tensor<1x16x3x1xf16> -> tensor<1x16x3x1xf16>
     // CHECK:        [[SHAPECAST_OUT:%.+]] = IE.ShapeCast {shape = [1, 3, 8, 2]} inputs([[ADD]] : tensor<1x16x3x1xf16>) -> tensor<1x3x8x2xf16>
     // CHECK:        [[EXPAND:%.+]] = IE.Expand([[SHAPECAST_OUT]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 13, 0, 0]} : tensor<1x3x8x2xf16> -> tensor<1x16x8x2xf16>
@@ -868,10 +868,10 @@ func.func @ExpandSingleAddToShapeCastAdd(%arg0: tensor<1x3x32x32xf16>, %arg1: te
     %3 = IE.Slice %2 [0, 0, 0, 0] [1, 3, 32, 32] : tensor<1x16x32x32xf16> to tensor<1x3x32x32xf16>
     return %3 : tensor<1x3x32x32xf16>
 
-    // CHECK:        [[ADD_1:%.+]] = IE.Add(%arg1, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x16x32x32xf16>, tensor<1x16x32x32xf16> -> tensor<1x16x32x32xf16>
+    // CHECK:        [[ADD_1:%.+]] = IE.Add([[INPUT2]], [[INPUT2]]) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x16x32x32xf16>, tensor<1x16x32x32xf16> -> tensor<1x16x32x32xf16>
     // CHECK:        [[SLICE:%.+]] = IE.Slice [[ADD_1]] [0, 0, 0, 0] [1, 3, 32, 32] : tensor<1x16x32x32xf16> to tensor<1x3x32x32xf16>
     // CHECK:        [[SHAPECAST_1:%.+]] = IE.ShapeCast {shape = [1, 16, 16, 12]} inputs([[SLICE]] : tensor<1x3x32x32xf16>) -> tensor<1x16x16x12xf16>
-    // CHECK:        [[SHAPECAST_2:%.+]] = IE.ShapeCast {shape = [1, 16, 16, 12]} inputs(%arg0 : tensor<1x3x32x32xf16>) -> tensor<1x16x16x12xf16>
+    // CHECK:        [[SHAPECAST_2:%.+]] = IE.ShapeCast {shape = [1, 16, 16, 12]} inputs([[INPUT1]] : tensor<1x3x32x32xf16>) -> tensor<1x16x16x12xf16>
     // CHECK:        [[ADD:%.+]] = IE.Add([[SHAPECAST_1]], [[SHAPECAST_2]]) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x16x16x12xf16>, tensor<1x16x16x12xf16> -> tensor<1x16x16x12xf16>
     // CHECK:        [[SHAPECAST_OUT:%.+]] = IE.ShapeCast {shape = [1, 3, 32, 32]} inputs([[ADD]] : tensor<1x16x16x12xf16>) -> tensor<1x3x32x32xf16>
     // CHECK:        [[EXPAND:%.+]] = IE.Expand([[SHAPECAST_OUT]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 13, 0, 0]} : tensor<1x3x32x32xf16> -> tensor<1x16x32x32xf16>
@@ -1049,7 +1049,7 @@ func.func @ExpandTwoPoolingOpsWithSingleChannel(%input_0: tensor<1x1x48x4040xf16
     // CHECK:       [[POOL0:%.+]] = IE.AvgPool([[EXPAND0]]) {exclude_pads, kernel_size = [8, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [8, 1]} : tensor<1x4048x48x1xf16, {order = #NHWC}> -> tensor<1x4048x6x1xf16, {order = #NHWC}>
     // CHECK:       [[SHAPECAST1:%.+]] = IE.ShapeCast {shape = [1, 1, 6, 4048]} inputs([[POOL0]] : tensor<1x4048x6x1xf16, {order = #NHWC}>) -> tensor<1x1x6x4048xf16, {order = #NHWC}>
     // CHECK:       [[SLICE0:%.+]] = IE.Slice [[SHAPECAST1]] [0, 0, 0, 0] [1, 1, 6, 4040] : tensor<1x1x6x4048xf16, {order = #NHWC}> to tensor<1x1x6x4040xf16, {order = #NHWC}>
-    // CHECK:       [[SHAPECAST2:%.+]] = IE.ShapeCast {shape = [1, 16, 101, 15]} inputs(%4 : tensor<1x1x6x4040xf16, {order = #NHWC}>) -> tensor<1x16x101x15xf16, {order = #NHWC}>
+    // CHECK:       [[SHAPECAST2:%.+]] = IE.ShapeCast {shape = [1, 16, 101, 15]} inputs([[SLICE0]] : tensor<1x1x6x4040xf16, {order = #NHWC}>) -> tensor<1x16x101x15xf16, {order = #NHWC}>
     // CHECK:       [[POOL1:%.+]] = IE.AvgPool([[SHAPECAST2]]) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.LeakyRelu<negative_slope = 0.10000000149011612 : f64>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x16x101x15xf16, {order = #NHWC}> -> tensor<1x16x101x15xf16, {order = #NHWC}>
     // CHECK:       [[SHAPECAST3:%.+]] = IE.ShapeCast {shape = [1, 1, 6, 4040]} inputs([[POOL1]] : tensor<1x16x101x15xf16, {order = #NHWC}>) -> tensor<1x1x6x4040xf16, {order = #NHWC}>
     // CHECK:       [[EXPAND1:%.+]] = IE.Expand([[SHAPECAST3]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 15, 0, 0]} : tensor<1x1x6x4040xf16, {order = #NHWC}> -> tensor<1x16x6x4040xf16, {order = #NHWC}>
@@ -1371,7 +1371,7 @@ func.func @NotAdjustInputShapeForPermuteQuantizeDueToNonePad(%arg0: tensor<1x8x2
     return %0 : tensor<1x16x245760x16xf16, {order = #NHWC}>
 
     // CHECK-NOT:   IE.ShapeCast
-    // CHECK:       [[PERMUTEQUANTIZE:%.+]] = IE.PermuteQuantize(%arg0) {dstElemType = f16, dst_order = #NHWC, mem_perm = #NHWC, pads_begin = [0, 0, 0, 0], pads_end = [0, 8, 0, 0]} : tensor<1x8x245760x16xf16> -> tensor<1x16x245760x16xf16, {order = #NHWC}>
+    // CHECK:       [[PERMUTEQUANTIZE:%.+]] = IE.PermuteQuantize([[INPUT]]) {dstElemType = f16, dst_order = #NHWC, mem_perm = #NHWC, pads_begin = [0, 0, 0, 0], pads_end = [0, 8, 0, 0]} : tensor<1x8x245760x16xf16> -> tensor<1x16x245760x16xf16, {order = #NHWC}>
     // CHECK:       return [[PERMUTEQUANTIZE]]
 }
 
@@ -1386,7 +1386,7 @@ func.func @NotAdjustInputShapeForPermuteQuantizeDueToBigW(%arg0: tensor<1x8x2457
     return %0 : tensor<1x8x245760x2048xf16, {order = #NHWC}>
 
     // CHECK-NOT:   IE.ShapeCast
-    // CHECK:       [[PERMUTEQUANTIZE:%.+]] = IE.PermuteQuantize(%arg0) {dstElemType = f16, dst_order = #NHWC, mem_perm = #NHWC, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0]} : tensor<1x8x245760x2048xf16> -> tensor<1x8x245760x2048xf16, {order = #NHWC}>
+    // CHECK:       [[PERMUTEQUANTIZE:%.+]] = IE.PermuteQuantize([[INPUT]]) {dstElemType = f16, dst_order = #NHWC, mem_perm = #NHWC, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0]} : tensor<1x8x245760x2048xf16> -> tensor<1x8x245760x2048xf16, {order = #NHWC}>
     // CHECK:       return [[PERMUTEQUANTIZE]]
 }
 
@@ -1401,7 +1401,7 @@ func.func @NotAdjustInputShapeForPermuteQuantizeDueToBigH(%arg0: tensor<1x8x2048
     return %0 : tensor<1x8x2048x245760xf16, {order = #NHWC}>
 
     // CHECK-NOT:   IE.ShapeCast
-    // CHECK:       [[PERMUTEQUANTIZE:%.+]] = IE.PermuteQuantize(%arg0) {dstElemType = f16, dst_order = #NHWC, mem_perm = #NHWC, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0]} : tensor<1x8x2048x245760xf16> -> tensor<1x8x2048x245760xf16, {order = #NHWC}>
+    // CHECK:       [[PERMUTEQUANTIZE:%.+]] = IE.PermuteQuantize([[INPUT]]) {dstElemType = f16, dst_order = #NHWC, mem_perm = #NHWC, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0]} : tensor<1x8x2048x245760xf16> -> tensor<1x8x2048x245760xf16, {order = #NHWC}>
     // CHECK:       return [[PERMUTEQUANTIZE]]
 
 }
@@ -1469,7 +1469,7 @@ func.func @AdjustInputShapeWithMinimalDimChange(%arg0: tensor<1x4x1600x2560xf16,
 !qElemType1 = !quant.uniform<u8:f16:1, {0.956:128, 0.785:128, 0.567:128, 0.567:128, 0.567:128, 0.567:128}>
 
 // CHECK-LABEL: @NotExpandGroupConvToShapeCastForAxisQuantizedType
-// CHECK-SAME:        [[INPUT:%arg0]]: tensor<1x3x32x32x!qElemType>
+// CHECK-SAME:        [[INPUT:%[^:]+]]: tensor<1x3x32x32x!qElemType>
 func.func @NotExpandGroupConvToShapeCastForAxisQuantizedType(%arg0: tensor<1x3x32x32x!qElemType>) -> tensor<1x6x32x32x!qElemType1> {
     %filters = const.Declare tensor<6x1x1x1xf32> = dense<1.0> : tensor<1x1x1x1xf32>, [#const.Broadcast<0 : i64, 6 : i64>]
     %bias = const.Declare tensor<1x6x1x1xf32> = dense<0.0> : tensor<1x1x1x1xf32>, [#const.Broadcast<1 : i64, 6 : i64>]
@@ -1487,4 +1487,25 @@ func.func @NotExpandGroupConvToShapeCastForAxisQuantizedType(%arg0: tensor<1x3x3
     // CHECK-SAME:          -> tensor<1x6x32x32x!qElemType1>
 
     // CHECK:       return [[GROUP_CONV]]
+}
+
+
+// -----
+
+// CHECK-LABEL: @DoNotAddShapeCastToDynamicAdd
+// CHECK-SAME:        [[INPUT1:%arg[0-9]]]: tensor<1x3x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 32, 32]> : tensor<4xsi64>}>
+// CHECK-SAME:        [[INPUT2:%arg[0-9]]]: tensor<1x3x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 32, 32]> : tensor<4xsi64>}>
+func.func @DoNotAddShapeCastToDynamicAdd(%arg0: tensor<1x3x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 32, 32]> : tensor<4xsi64>}>, %arg1: tensor<1x3x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 32, 32]> : tensor<4xsi64>}>) -> tensor<1x16x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 32, 32]> : tensor<4xsi64>}> {
+    %0 = IE.Expand(%arg0) {pads_begin = [0, 0, 0, 0], pads_end = [0, 13, 0, 0]} : tensor<1x3x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 32, 32]> : tensor<4xsi64>}> -> tensor<1x16x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 32, 32]> : tensor<4xsi64>}>
+    %1 = IE.Expand(%arg1) {pads_begin = [0, 0, 0, 0], pads_end = [0, 13, 0, 0]} : tensor<1x3x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 32, 32]> : tensor<4xsi64>}> -> tensor<1x16x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 32, 32]> : tensor<4xsi64>}>
+    %2 = IE.Add(%0, %1) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x16x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 32, 32]> : tensor<4xsi64>}>, tensor<1x16x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 32, 32]> : tensor<4xsi64>}> -> tensor<1x16x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 32, 32]> : tensor<4xsi64>}>
+    return %2 : tensor<1x16x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 32, 32]> : tensor<4xsi64>}>
+
+    // CHECK:  [[EXPAND1:%.+]] = IE.Expand([[INPUT1]])
+    // CHECK-NOT:   IE.ShapeCast
+    // CHECK:  [[EXPAND2:%.+]] = IE.Expand([[INPUT2]])
+    // CHECK-NOT:   IE.ShapeCast
+    // CHECK:       [[ADD:%.+]] = IE.Add([[EXPAND1]], [[EXPAND2]]) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x16x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 32, 32]> : tensor<4xsi64>}>, tensor<1x16x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 32, 32]> : tensor<4xsi64>}> -> tensor<1x16x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 32, 32]> : tensor<4xsi64>}>
+    // CHECK-NOT:   IE.ShapeCast
+    // CHECK:       return [[ADD]]
 }

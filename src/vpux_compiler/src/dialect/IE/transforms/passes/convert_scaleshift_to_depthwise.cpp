@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -103,7 +103,7 @@ mlir::LogicalResult ConvertScaleShiftToDWPass::ScaleShiftOpConverter::matchAndRe
     if (origOp.getWeights() != nullptr) {
         const auto multiply = origOp.getWeights();
         const auto weightShapeAttr = getIntArrayAttr(origOp.getContext(), weightShape);
-        weights = rewriter.createOrFold<IE::ReshapeOp>(origOp->getLoc(), multiply, nullptr, false, weightShapeAttr);
+        weights = rewriter.createOrFold<IE::ReshapeOp>(origOp->getLoc(), multiply, weightShapeAttr);
     } else {
         weights = createConstOp(weightShape, 1.0f);
         auto inputFq = origOp.getInput().getDefiningOp<IE::FakeQuantizeOp>();
@@ -126,7 +126,7 @@ mlir::LogicalResult ConvertScaleShiftToDWPass::ScaleShiftOpConverter::matchAndRe
         if (origBiasShape[Dims4D::Act::C] == 1) {
             const SmallVector<int64_t> biasShape = {1, outShape[Dims4D::Act::C], kernelSize, kernelSize};
             const auto biaseShapeAttr = getIntArrayAttr(origOp.getContext(), biasShape);
-            auto dwConvBias = rewriter.create<IE::ReshapeOp>(origOp->getLoc(), biases, nullptr, false, biaseShapeAttr);
+            auto dwConvBias = rewriter.create<IE::ReshapeOp>(origOp->getLoc(), biases, biaseShapeAttr);
             biases = dwConvBias.getOutput();
         }
     }

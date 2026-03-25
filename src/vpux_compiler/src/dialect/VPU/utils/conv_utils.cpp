@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -328,9 +328,6 @@ mlir::LogicalResult vpux::VPU::verifyConvUtil(mlir::Location loc, mlir::Operatio
         std::ignore = errorAt(loc, "{0}", msg.str());
     };
 
-    const auto outputShape = getShape(output);
-    auto OC = outputShape[Dims4D::Act::C];
-
     const auto KY = filterShape[Dims4D::Filter::KY];
     const auto KX = filterShape[Dims4D::Filter::KX];
 
@@ -346,11 +343,11 @@ mlir::LogicalResult vpux::VPU::verifyConvUtil(mlir::Location loc, mlir::Operatio
         return mlir::failure();
     }
 
-    if (VPU::canAutopadOutput(op)) {
-        OC = vpux::VPU::NCEInvariant::VPU_CHANNEL_ALIGNMENT;
-    }
-
-    const auto expectedWeightsTableShape = VPU::NCESparsity::inferWeightsTableShape(OC);
+    // The weights table must always have the number of output channels aligned to 16, even if the operation produces
+    // fewer channels
+    const auto outputShape = getShape(output);
+    const auto weightsTableOC = alignValUp(outputShape[Dims4D::Act::C], vpux::VPU::NCEInvariant::VPU_CHANNEL_ALIGNMENT);
+    const auto expectedWeightsTableShape = VPU::NCESparsity::inferWeightsTableShape(weightsTableOC);
 
     if (weightsTableShape.has_value() && weightsTableShape.value() != expectedWeightsTableShape) {
         return errorAt(loc, "Got wrong shape for 'weightsTable' '{0}', expected '{1}'", weightsTableShape.value(),
@@ -613,8 +610,9 @@ mlir::Value vpux::VPU::splitNCEConvolutionOverIC(VPU::NCEConvolutionOp origOp, m
     // per tensor output scales.
     // The last op in the chain is either an Eltwise op (per tensor output scale or no scale) or
     // a DepthwiseConv op (per channel output scale).
-    auto strippedPpeAttr = VPU::PpeVersionConfig::retrievePPEAttribute(origOp);
-    if (const auto clampAdapter = VPU::PpeVersionConfig::getFactoryAs<VPU::IPpeAdapterClamp*>()) {
+    const auto& ppeConfig = VPU::getPpeConfig(ctx);
+    auto strippedPpeAttr = ppeConfig.retrievePPEAttribute(origOp);
+    if (const auto clampAdapter = ppeConfig.getFactoryAs<VPU::IPpeAdapterClamp*>()) {
         strippedPpeAttr = clampAdapter->discardClamp(strippedPpeAttr, f16Type);
     }
 
@@ -625,7 +623,7 @@ mlir::Value vpux::VPU::splitNCEConvolutionOverIC(VPU::NCEConvolutionOp origOp, m
 
     // First Conv ppe attr must not clear the per tensor bias
     auto firstConvPpeAttr = strippedPpeAttr;
-    const auto scaleAdapter = VPU::PpeVersionConfig::getFactoryAs<VPU::IPpeAdapterScaleBias*>();
+    const auto scaleAdapter = VPU::getPpeConfig(ctx).getFactoryAs<VPU::IPpeAdapterScaleBias*>();
     if (scaleAdapter != nullptr) {
         const auto oldScale = scaleAdapter->getScale(finalPpeAttr);
         const auto oldBias = scaleAdapter->getBias(finalPpeAttr);
@@ -658,7 +656,7 @@ mlir::Value vpux::VPU::splitNCEConvolutionOverIC(VPU::NCEConvolutionOp origOp, m
         }
     }
 
-    if (auto preluAlphaAdapter = VPU::PpeVersionConfig::getFactoryAs<VPU::IPpeAdapterFpPreluAlpha*>()) {
+    if (auto preluAlphaAdapter = ppeConfig.getFactoryAs<VPU::IPpeAdapterFpPreluAlpha*>()) {
         firstConvPpeAttr = preluAlphaAdapter->updateFpPreluAlpha(firstConvPpeAttr, SmallVector<double>{1.0});
         strippedPpeAttr = preluAlphaAdapter->updateFpPreluAlpha(strippedPpeAttr, SmallVector<double>{1.0});
         eltwisePpeAttr = preluAlphaAdapter->updateFpPreluAlpha(eltwisePpeAttr, SmallVector<double>{1.0});
@@ -966,7 +964,7 @@ mlir::Value vpux::VPU::splitNCEConvolutionOverIC(VPU::NCEConvolutionOp origOp, m
 
     // If we have output quantization scale and it is per tensor, adapt the PPE scale of the last Eltwise with
     // (output_quant_scale * static_scale) value
-    if (const auto ppeAdapter = VPU::PpeVersionConfig::getFactoryAs<VPU::IPpeAdapterScaleBias*>()) {
+    if (const auto ppeAdapter = ppeConfig.getFactoryAs<VPU::IPpeAdapterScaleBias*>()) {
         const auto outputScale = outQuantScales.front();
         if (mlir::isa<vpux::VPU::PPEFpAttr>(finalPpeAttr)) {
             finalPpeAttr = ppeAdapter->updateScale(finalPpeAttr, SmallVector<double>{outputScale});

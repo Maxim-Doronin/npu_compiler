@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -19,14 +19,19 @@ using namespace vpux;
 
 namespace {
 
-FuncRef<void(mlir::MLIRContext*, std::optional<config::Platform>)> getSingletonInitializer(config::ArchKind arch) {
+struct SingletonInitializers {
+    FuncRef<void(mlir::MLIRContext*, std::optional<config::Platform>)> initializeSingletonCache;
+    FuncRef<void(mlir::MLIRContext*)> initializePPEVersionConfig;
+};
+
+SingletonInitializers getSingletonInitializer(config::ArchKind arch) {
     switch (arch) {
     case config::ArchKind::NPU37XX:
-        return VPU::arch37xx::initializeSingletonCache;
+        return {VPU::arch37xx::initializeSingletonCache, VPU::arch37xx::initializePPEVersionConfig};
     case config::ArchKind::NPU40XX:
-        return VPU::arch40xx::initializeSingletonCache;
+        return {VPU::arch40xx::initializeSingletonCache, VPU::arch37xx::initializePPEVersionConfig};
     case config::ArchKind::NPU50XX:
-        return VPU::arch50xx::initializeSingletonCache;
+        return {VPU::arch50xx::initializeSingletonCache, VPU::arch50xx::initializePPEVersionConfig};
     default:
         VPUX_THROW("Unsupported arch kind: {0}", arch);
     }
@@ -45,14 +50,15 @@ public:
 
     void apply(mlir::MLIRContext* context, VPUDialect* /*dialect*/) const override {
         auto singletonInitializer = getSingletonInitializer(_deviceVersion.arch);
-        singletonInitializer(context, _deviceVersion.platform);
+        singletonInitializer.initializeSingletonCache(context, _deviceVersion.platform);
+        singletonInitializer.initializePPEVersionConfig(context);
     }
 
 private:
     DeviceVersion _deviceVersion;
 };
 
-void initializeSingletonCache(mlir::DialectRegistry& registry, const DeviceVersion& deviceVersion) {
+void initializeSingletons(mlir::DialectRegistry& registry, const DeviceVersion& deviceVersion) {
     registry.addExtension(mlir::TypeID::get<SingletonExtension>(), std::make_unique<SingletonExtension>(deviceVersion));
 }
 

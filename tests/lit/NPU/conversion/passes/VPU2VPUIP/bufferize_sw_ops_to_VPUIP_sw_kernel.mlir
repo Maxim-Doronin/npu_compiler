@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -880,7 +880,7 @@ module @DynamicBroadcastShapeSubgraph {
     // CHECK:    }
     // CHECK:    [[ALLOC_2:%.+]] = memref.alloc() : memref<4xsi32>
     // CHECK:    [[COPY_0:%.+]] = VPUIP.Copy inputs([[RESULT]] : memref<4xsi32, [@CMX_NN, 0]>) outputs([[ALLOC_2]] : memref<4xsi32>) -> memref<4xsi32>
-    // CHECK:    [[RESHAPE:%.+]] = VPUIP.GenericReshape inputs(%arg0 : memref<4x1x1xf16>) -> memref<1x4x1x1xf16>
+    // CHECK:    [[RESHAPE:%.+]] = VPUIP.GenericReshape inputs([[ARG0]] : memref<4x1x1xf16>) -> memref<1x4x1x1xf16>
     // CHECK:    [[ALLOC_3:%.+]] = memref.alloc() : memref<1x4x5x5xf16>
     // CHECK:    [[ALLOC_4:%.+]] = memref.alloc() : memref<4xsi32>
     // CHECK:    [[BUFF_0:%.+]] = VPUIP.GroupBoundedBuffer([[ALLOC_3]], [[ALLOC_4]]) : memref<1x4x5x5xf16>, memref<4xsi32> -> !VPUIP.BoundedBuffer<data=memref<1x4x5x5xf16>, dynamic_shape=memref<4xsi32>>

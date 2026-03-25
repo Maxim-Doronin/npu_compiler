@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -213,7 +213,7 @@ bool categoryRuleEnabler(const std::string& category, const std::vector<std::str
     return conditionFlag;
 }
 
-std::vector<std::string> disabledTestPatterns() {
+const std::vector<std::regex>& disabled_test_patterns() {
     // Initialize skip registry
     static const auto skipRegistry = []() {
         SkipRegistry _skipRegistry;
@@ -273,9 +273,10 @@ std::vector<std::string> disabledTestPatterns() {
         return _skipRegistry;
     }();
 
-    std::vector<std::string> matchingPatterns;
+    static std::vector<std::regex> patterns;
+    patterns.clear();
     const auto currentTestName = getCurrentTestName();
-    matchingPatterns.emplace_back(skipRegistry.getMatchingPattern(currentTestName));
+    patterns.emplace_back(skipRegistry.getMatchingPattern(currentTestName));
 
-    return matchingPatterns;
+    return patterns;
 }

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,6 +12,8 @@
 #include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
 #include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
@@ -25,7 +27,7 @@
 using namespace vpux;
 
 mlir::Type IE::rescaleUniformQuantizedType(const mlir::Type tensorType, const double factor) {
-    auto ndType = mlir::cast<vpux::NDTypeInterface>(tensorType);
+    auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(tensorType);
     VPUX_THROW_UNLESS(ndType != nullptr, "Type {0} does not implement NDTypeInterface", tensorType);
     auto elemType = ndType.getElementType();
     auto uniformQElemType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(elemType);
@@ -41,6 +43,27 @@ mlir::Type IE::rescaleUniformQuantizedType(const mlir::Type tensorType, const do
     auto resultType = ndType.changeElemType(quantizeElemType);
 
     return resultType;
+}
+
+mlir::quant::UniformQuantizedPerAxisType IE::rescaleUniformQuantizedPerAxisType(
+        const mlir::quant::UniformQuantizedPerAxisType perAxisQType, ArrayRef<float> factors) {
+    const auto originalScales = perAxisQType.getScales();
+    VPUX_THROW_UNLESS(factors.size() == 1 || factors.size() == originalScales.size(),
+                      "Factors size {0} must be 1 (broadcast) or match scales size {1}", factors.size(),
+                      originalScales.size());
+    SmallVector<double> newScales;
+    newScales.reserve(originalScales.size());
+    const auto factor = factors.front();
+    const bool isBroadcast = factors.size() == 1;
+
+    for (size_t i = 0; i < originalScales.size(); ++i) {
+        newScales.push_back(originalScales[i] * (isBroadcast ? factor : factors[i]));
+    }
+
+    return mlir::quant::UniformQuantizedPerAxisType::get(
+            perAxisQType.getFlags(), perAxisQType.getStorageType(), perAxisQType.getExpressedType(), newScales,
+            perAxisQType.getZeroPoints(), perAxisQType.getQuantizedDimension(), perAxisQType.getStorageTypeMin(),
+            perAxisQType.getStorageTypeMax());
 }
 
 void IE::getFakeQuantParams(vpux::NDTypeInterface qType, int64_t& levels, mlir::RankedTensorType& attrType,
@@ -367,7 +390,7 @@ bool IE::areAllUsersQuantized(mlir::Operation* op) {
 
 bool IE::isPerAxisQuant(mlir::Value val) {
     auto elemType = mlir::cast<vpux::NDTypeInterface>(val.getType()).getElementType();
-    return mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(elemType);
+    return mlir::isa<mlir::quant::UniformQuantizedPerAxisType, mlir::quant::QuantileQuantizedPerAxisType>(elemType);
 }
 
 bool IE::checkQuantApproximation(mlir::Operation* op) {
@@ -416,6 +439,42 @@ mlir::Value IE::findQuantizedInput(mlir::Value opInput, bool allowPerAxisQuantiz
 }
 
 bool IE::isSymmetricQuantType(mlir::quant::QuantizedType type) {
+    int64_t targetZeroPoint = 0;
+    if (mlir::isa_and_nonnull<mlir::quant::QuantileQuantizedType, mlir::quant::QuantileQuantizedPerAxisType>(type)) {
+        mlir::Type quantileType =
+                mlir::isa<mlir::quant::QuantileQuantizedType>(type)
+                        ? mlir::cast<mlir::quant::QuantileQuantizedType>(type).getQuantileType()
+                        : mlir::cast<mlir::quant::QuantileQuantizedPerAxisType>(type).getQuantileType();
+
+        if (auto intType = mlir::dyn_cast<mlir::IntegerType>(quantileType)) {
+            bool isSignedInteger = intType.isSigned();
+            int64_t integerMin =
+                    mlir::quant::QuantizedType::getDefaultMinimumForInteger(isSignedInteger, intType.getWidth());
+            int64_t integerMax =
+                    mlir::quant::QuantizedType::getDefaultMaximumForInteger(isSignedInteger, intType.getWidth());
+            targetZeroPoint = (integerMax + integerMin + 1) / 2;
+        }
+    } else if (mlir::isa<mlir::IntegerType>(type.getStorageType())) {
+        const auto qMin = type.getStorageTypeMin();
+        const auto qMax = type.getStorageTypeMax();
+        targetZeroPoint = (qMax + qMin + 1) / 2;
+    } else if (!mlir::isa_and_nonnull<mlir::FloatType>(type.getStorageType())) {
+        return false;
+    }
+
+    if (const auto uniformQuantType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(type)) {
+        return uniformQuantType.getZeroPoint() == targetZeroPoint;
+    } else if (const auto uniformPerAxisQuantType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(type)) {
+        const auto zeroPoints = uniformPerAxisQuantType.getZeroPoints();
+        return std::all_of(zeroPoints.begin(), zeroPoints.end(), [targetZeroPoint](const int64_t zp) {
+            return zp == targetZeroPoint;
+        });
+    }
+
+    return false;
+}
+
+bool IE::areAllQuantTypeZeroPointsEqualToZero(mlir::quant::QuantizedType type) {
     // Check that zero points are all 0s
     if (const auto uniformQuantType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(type)) {
         return uniformQuantType.getZeroPoint() == 0;

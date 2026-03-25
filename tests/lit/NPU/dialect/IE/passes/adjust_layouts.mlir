@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -118,19 +118,20 @@ net.NetworkInfo
         DataInfo "prob" : tensor<1x16x30x25xf16>
     }
 
-// CHECK-LABEL: @main
+// CHECK-LABEL: func.func @main
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x16x30x25xf16>) -> tensor<1x16x30x25xf16> {
 func.func @main(%arg0: tensor<1x16x30x25xf16>) -> tensor<1x16x30x25xf16> {
     %0 = IE.Add(%arg0, %arg0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x16x30x25xf16>, tensor<1x16x30x25xf16> -> tensor<1x16x30x25xf16>
     %1 = IE.Add(%0, %arg0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x16x30x25xf16>, tensor<1x16x30x25xf16> -> tensor<1x16x30x25xf16>
     return %1 : tensor<1x16x30x25xf16>
 
-    // CHECK:    [[VAR0:%.+]] = IE.Reorder(%arg0) {dstOrder = #NHWC} : tensor<1x16x30x25xf16> -> tensor<1x16x30x25xf16, {order = #NHWC}>
-    // CHECK:    [[VAR1:%.+]] = IE.Reorder(%arg0) {dstOrder = #NHWC} : tensor<1x16x30x25xf16> -> tensor<1x16x30x25xf16, {order = #NHWC}>
+    // CHECK:    [[VAR0:%.+]] = IE.Reorder([[ARG_0]]) {dstOrder = #NHWC} : tensor<1x16x30x25xf16> -> tensor<1x16x30x25xf16, {order = #NHWC}>
+    // CHECK:    [[VAR1:%.+]] = IE.Reorder([[ARG_0]]) {dstOrder = #NHWC} : tensor<1x16x30x25xf16> -> tensor<1x16x30x25xf16, {order = #NHWC}>
 
     // CHECK:    [[VAR2:%.+]] = IE.Add([[VAR0]], [[VAR1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} :
     // CHECK-SAME:     tensor<1x16x30x25xf16, {order = #NHWC}>, tensor<1x16x30x25xf16, {order = #NHWC}> -> tensor<1x16x30x25xf16, {order = #NHWC}>
 
-    // CHECK:    [[VAR3:%.+]] = IE.Reorder(%arg0) {dstOrder = #NHWC} : tensor<1x16x30x25xf16> -> tensor<1x16x30x25xf16, {order = #NHWC}>
+    // CHECK:    [[VAR3:%.+]] = IE.Reorder([[ARG_0]]) {dstOrder = #NHWC} : tensor<1x16x30x25xf16> -> tensor<1x16x30x25xf16, {order = #NHWC}>
     // CHECK:    [[VAR4:%.+]] = IE.Add([[VAR2]], [[VAR3]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} :
     // CHECK-SAME:     tensor<1x16x30x25xf16, {order = #NHWC}>, tensor<1x16x30x25xf16, {order = #NHWC}> -> tensor<1x16x30x25xf16, {order = #NHWC}>
 
@@ -154,14 +155,15 @@ net.NetworkInfo
         DataInfo "prob" : tensor<1x3x676x2xf16>
     }
 
-// CHECK-LABEL: @main
+// CHECK-LABEL: func.func @main
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x3x676x2xf16>) -> tensor<1x3x676x2xf16> {
 func.func @main(%arg0: tensor<1x3x676x2xf16>) -> tensor<1x3x676x2xf16> {
     %cst = const.Declare tensor<1x1x676x2xf16> = dense<1.0> : tensor<1x1x676x2xf16>
     %0 = IE.Add(%arg0, %cst) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3x676x2xf16>, tensor<1x1x676x2xf16> -> tensor<1x3x676x2xf16>
     return %0 : tensor<1x3x676x2xf16>
 
     // CHECK-DAG:    [[CST:%.+]] = const.Declare tensor<1x1x676x2xf16> = dense<1.000000e+00> : tensor<1x1x676x2xf16>
-    // CHECK:    [[ADD:%.+]] = IE.Add(%arg0, [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} :
+    // CHECK:    [[ADD:%.+]] = IE.Add([[ARG_0]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} :
     // CHECK-SAME:     tensor<1x3x676x2xf16>, tensor<1x1x676x2xf16> -> tensor<1x3x676x2xf16>
     // CHECK:    return [[ADD]] : tensor<1x3x676x2xf16>
 }
@@ -185,19 +187,20 @@ net.NetworkInfo
         DataInfo "prob2" : tensor<1x16x30x25xf16>
     }
 
-// CHECK-LABEL: @main
+// CHECK-LABEL: func.func @main
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x16x30x25xf16, {order = #NHCW}>)
 func.func @main(%arg0: tensor<1x16x30x25xf16, {order = #NHCW}>) -> (tensor<1x16x30x25xf16, {order = #NHCW}>, tensor<1x16x30x25xf16, {order = #NHCW}>) {
     %0 = IE.Add(%arg0, %arg0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x16x30x25xf16, {order = #NHCW}>, tensor<1x16x30x25xf16, {order = #NHCW}> -> tensor<1x16x30x25xf16, {order = #NHCW}>
     %1 = IE.GRN(%arg0) {bias = 1.0} : tensor<1x16x30x25xf16, {order = #NHCW}> -> tensor<1x16x30x25xf16, {order = #NHCW}>
     return %0, %1 : tensor<1x16x30x25xf16, {order = #NHCW}>, tensor<1x16x30x25xf16, {order = #NHCW}>
 
-    // CHECK:    [[VAR0:%.+]] = IE.Reorder(%arg0) {dstOrder = #NHWC} : tensor<1x16x30x25xf16, {order = #NHCW}> -> tensor<1x16x30x25xf16, {order = #NHWC}>
-    // CHECK:    [[VAR1:%.+]] = IE.Reorder(%arg0) {dstOrder = #NHWC} : tensor<1x16x30x25xf16, {order = #NHCW}> -> tensor<1x16x30x25xf16, {order = #NHWC}>
+    // CHECK:    [[VAR0:%.+]] = IE.Reorder([[ARG_0]]) {dstOrder = #NHWC} : tensor<1x16x30x25xf16, {order = #NHCW}> -> tensor<1x16x30x25xf16, {order = #NHWC}>
+    // CHECK:    [[VAR1:%.+]] = IE.Reorder([[ARG_0]]) {dstOrder = #NHWC} : tensor<1x16x30x25xf16, {order = #NHCW}> -> tensor<1x16x30x25xf16, {order = #NHWC}>
     // CHECK:    [[VAR2:%.+]] = IE.Add([[VAR0]], [[VAR1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} :
     // CHECK-SAME:     tensor<1x16x30x25xf16, {order = #NHWC}>, tensor<1x16x30x25xf16, {order = #NHWC}> -> tensor<1x16x30x25xf16, {order = #NHWC}>
     // CHECK:    [[VAR3:%.+]] = IE.Reorder([[VAR2]]) {dstOrder = #NHCW} : tensor<1x16x30x25xf16, {order = #NHWC}> -> tensor<1x16x30x25xf16, {order = #NHCW}>
 
-    // CHECK:    [[VAR4:%.+]] = IE.Reorder(%arg0) {dstOrder = #NCHW} : tensor<1x16x30x25xf16, {order = #NHCW}> -> tensor<1x16x30x25xf16>
+    // CHECK:    [[VAR4:%.+]] = IE.Reorder([[ARG_0]]) {dstOrder = #NCHW} : tensor<1x16x30x25xf16, {order = #NHCW}> -> tensor<1x16x30x25xf16>
     // CHECK:    [[VAR5:%.+]] = IE.GRN([[VAR4]]) {bias = 1.000000e+00 : f64} : tensor<1x16x30x25xf16> -> tensor<1x16x30x25xf16>
     // CHECK:    [[VAR6:%.+]] = IE.Reorder([[VAR5]]) {dstOrder = #NHCW} : tensor<1x16x30x25xf16> -> tensor<1x16x30x25xf16, {order = #NHCW}>
 
@@ -237,14 +240,15 @@ func.func @main(%arg0: tensor<1x16x30x30xf16>) -> tensor<1x16x30x30xf16> {
 // CHECK-LABEL: @ReorderWithScatterNDUpdate
 module @ReorderWithScatterNDUpdate {
 
+// CHECK:    func.func @main([[ARG_0:%[^:]+]]: tensor<1x50x56x56xf16, {order = #NHWC}>, [[ARG_1:%[^:]+]]: tensor<1x35x56x56xf16>)
 func.func @main(%arg0: tensor<1x50x56x56xf16, {order = #NHWC}>, %arg1: tensor<1x35x56x56xf16>) -> tensor<1x50x56x56xf16> {
     %cst = const.Declare tensor<1x35x2xsi32> = dense<1> : tensor<1x35x2xsi64>, [#const.CastElemType<si32>]
     %1 = IE.ScatterNDUpdate(%arg0, %cst, %arg1) : tensor<1x50x56x56xf16, {order = #NHWC}>, tensor<1x35x2xsi32>, tensor<1x35x56x56xf16> -> tensor<1x50x56x56xf16>
     return %1 : tensor<1x50x56x56xf16>
 
     // CHECK:       [[CST:%.+]] = const.Declare tensor<1x35x2xsi32> = dense<1> : tensor<1x35x2xsi64>, [#const.CastElemType<si32>]
-    // CHECK:       [[VAR0:%.+]] = IE.Reorder(%arg0) {dstOrder = #NCHW} : tensor<1x50x56x56xf16, {order = #NHWC}> -> tensor<1x50x56x56xf16>
-    // CHECK:       [[VAR1:%.+]] = IE.ScatterNDUpdate([[VAR0]], [[CST]], %arg1) : tensor<1x50x56x56xf16>, tensor<1x35x2xsi32>, tensor<1x35x56x56xf16> -> tensor<1x50x56x56xf16>
+    // CHECK:       [[VAR0:%.+]] = IE.Reorder([[ARG_0]]) {dstOrder = #NCHW} : tensor<1x50x56x56xf16, {order = #NHWC}> -> tensor<1x50x56x56xf16>
+    // CHECK:       [[VAR1:%.+]] = IE.ScatterNDUpdate([[VAR0]], [[CST]], [[ARG_1]]) : tensor<1x50x56x56xf16>, tensor<1x35x2xsi32>, tensor<1x35x56x56xf16> -> tensor<1x50x56x56xf16>
     // CHECK:       return [[VAR1]] : tensor<1x50x56x56xf16>
 }
 }

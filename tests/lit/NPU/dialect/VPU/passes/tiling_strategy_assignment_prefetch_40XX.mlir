@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -535,6 +535,9 @@ module @executors {
     }
 
     // CHECK-LABEL:   @SplitNCECompressConv
+    // CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x4x512x512xf16, {order = #NHWC}>,
+    // CHECK-SAME:      [[ARG_1:%[^:]+]]: tensor<64x1x1x160xf16, {order = #NHWC}>,
+    // CHECK-SAME:      [[ARG_2:%[^:]+]]: tensor<64x1x1x4xsi32>
     func.func @SplitNCECompressConv(
             %arg0: tensor<1x4x512x512xf16, {order = #NHWC}>,
             %arg1: tensor<64x1x1x160xf16, {order = #NHWC}>,
@@ -550,7 +553,7 @@ module @executors {
 
         return %0 : tensor<1x64x256x256xf16, {order = #NHWC}>
 
-        // CHECK:       [[OUTPUT:%.+]] = VPU.NCE.CompressConvolution(%arg0, %arg1, %arg2) {
+        // CHECK:       [[OUTPUT:%.+]] = VPU.NCE.CompressConvolution([[ARG_0]], [[ARG_1]], [[ARG_2]]) {
         // CHECK-SAME:      cm_sp_pattern = 15 : i64, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeightOverlapped>,
         // CHECK-SAME:      pad = #VPU.Padding<left = 3 : i64, right = 2 : i64, top = 3 : i64, bottom = 2 : i64>,
         // CHECK-SAME:      rawFilterShape = [64, 4, 7, 7], strides = [2, 2], tilingStrategy = [1, 1, 2, 1]}

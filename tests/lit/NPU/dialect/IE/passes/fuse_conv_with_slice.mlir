@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2026 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,6 +9,7 @@
 
 
 // CHECK-LABEL: @FuseConvWithSliceSingleUser
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x16x80x80xf16>
 func.func @FuseConvWithSliceSingleUser(%arg0: tensor<1x16x80x80xf16>) -> tensor<1x32x80x80xf16> {
     %weights = const.Declare tensor<64x16x3x3xf16> = dense<1.0> : tensor<64x16x3x3xf16>
     %bias = const.Declare tensor<1x64x1x1xf16> = dense<1.0> : tensor<1x64x1x1xf16>
@@ -18,7 +19,7 @@ func.func @FuseConvWithSliceSingleUser(%arg0: tensor<1x16x80x80xf16>) -> tensor<
 
     // CHECK-DAG:       [[WEIGHTS:%.+]] = const.Declare tensor<32x16x3x3xf16> = dense<1.000000e+00> : tensor<64x16x3x3xf16>, [#const.SubView<[0, 0, 0, 0], [32, 16, 3, 3]>]
     // CHECK-DAG:       [[BIAS:%.+]] = const.Declare tensor<1x32x1x1xf16> = dense<1.000000e+00> : tensor<1x64x1x1xf16>, [#const.SubView<[0, 0, 0, 0], [1, 32, 1, 1]>]
-    // CHECK:           [[CONV0:%.+]] = IE.Convolution(%arg0, [[WEIGHTS]], [[BIAS]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], post_op = #IE.Relu<>, strides = [1, 1]}
+    // CHECK:           [[CONV0:%.+]] = IE.Convolution([[ARG_0]], [[WEIGHTS]], [[BIAS]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], post_op = #IE.Relu<>, strides = [1, 1]}
     // CHECK-SAME:              : tensor<1x16x80x80xf16>, tensor<32x16x3x3xf16>, tensor<1x32x1x1xf16> -> tensor<1x32x80x80xf16>
     // CHECK:           return      [[CONV0]]
 }
@@ -30,6 +31,7 @@ func.func @FuseConvWithSliceSingleUser(%arg0: tensor<1x16x80x80xf16>) -> tensor<
 !qElemType2 = !quant.uniform<u8:f32, 3.000000e+00>
 !qElemType1 = !quant.uniform<u8:f32, 2.000000e+00>
 // CHECK-LABEL: @FuseConvWithSliceSingleUserQuantizeType
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x16x80x80x!qElemType>
 func.func @FuseConvWithSliceSingleUserQuantizeType(%arg0: tensor<1x16x80x80x!qElemType>) -> tensor<1x32x80x80x!qElemType1> {
     %weights = const.Declare tensor<64x16x3x3x!qElemType2> = dense<1.000000e+00> : tensor<64x16x3x3xf16>, [#const.CastElemType<ui8>, #const.CastElemType<!qElemType2>]
     %bias = const.Declare tensor<1x64x1x1xf16> = dense<1.0> : tensor<1x64x1x1xf16>
@@ -39,7 +41,7 @@ func.func @FuseConvWithSliceSingleUserQuantizeType(%arg0: tensor<1x16x80x80x!qEl
 
     // CHECK-DAG:       [[WEIGHTS:%.+]] = const.Declare tensor<32x16x3x3x!qElemType2> = dense<1.000000e+00> : tensor<64x16x3x3xf16>, [#const.SubView<[0, 0, 0, 0], [32, 16, 3, 3]>, #const.CastElemType<ui8>, #const.CastElemType<!qElemType2>]
     // CHECK-DAG:       [[BIAS:%.+]] = const.Declare tensor<1x32x1x1xf16> = dense<1.000000e+00> : tensor<1x64x1x1xf16>, [#const.SubView<[0, 0, 0, 0], [1, 32, 1, 1]>]
-    // CHECK:           [[CONV0:%.+]] = IE.Convolution(%arg0, [[WEIGHTS]], [[BIAS]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], post_op = #IE.Relu<>, strides = [1, 1]}
+    // CHECK:           [[CONV0:%.+]] = IE.Convolution([[ARG_0]], [[WEIGHTS]], [[BIAS]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], post_op = #IE.Relu<>, strides = [1, 1]}
     // CHECK-SAME:              : tensor<1x16x80x80x!qElemType>, tensor<32x16x3x3x!qElemType2>, tensor<1x32x1x1xf16> -> tensor<1x32x80x80x!qElemType1>
     // CHECK:           return      [[CONV0]]
 }
@@ -47,6 +49,7 @@ func.func @FuseConvWithSliceSingleUserQuantizeType(%arg0: tensor<1x16x80x80x!qEl
 // -----
 
 // CHECK-LABEL: @FuseConvWithSliceTwoUsers
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x16x80x80xf16>
 func.func @FuseConvWithSliceTwoUsers(%arg0: tensor<1x16x80x80xf16>) -> (tensor<1x16x80x80xf16>, tensor<1x32x80x80xf16>) {
     %weights = const.Declare tensor<64x16x3x3xf16> = dense<1.0> : tensor<64x16x3x3xf16>
     %0 = IE.Convolution(%arg0, %weights) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], strides = [1, 1]} : tensor<1x16x80x80xf16>, tensor<64x16x3x3xf16> -> tensor<1x64x80x80xf16>
@@ -55,10 +58,10 @@ func.func @FuseConvWithSliceTwoUsers(%arg0: tensor<1x16x80x80xf16>) -> (tensor<1
     return %1, %2 : tensor<1x16x80x80xf16>, tensor<1x32x80x80xf16>
 
     // CHECK-DAG:       [[WEIGHTS0:%.+]] = const.Declare tensor<32x16x3x3xf16> = dense<1.000000e+00> : tensor<64x16x3x3xf16>, [#const.SubView<[0, 0, 0, 0], [32, 16, 3, 3]>]
-    // CHECK-DAG:       [[CONV0:%.+]] = IE.Convolution(%arg0, [[WEIGHTS0]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], strides = [1, 1]}
+    // CHECK-DAG:       [[CONV0:%.+]] = IE.Convolution([[ARG_0]], [[WEIGHTS0]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], strides = [1, 1]}
     // CHECK-SAME:               : tensor<1x16x80x80xf16>, tensor<32x16x3x3xf16> -> tensor<1x32x80x80xf16>
     // CHECK-DAG:       [[WEIGHTS1:%.+]] = const.Declare tensor<16x16x3x3xf16> = dense<1.000000e+00> : tensor<64x16x3x3xf16>, [#const.SubView<[32, 0, 0, 0], [16, 16, 3, 3]>]
-    // CHECK:           [[CONV1:%.+]] = IE.Convolution(%arg0, [[WEIGHTS1]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], strides = [1, 1]}
+    // CHECK:           [[CONV1:%.+]] = IE.Convolution([[ARG_0]], [[WEIGHTS1]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], strides = [1, 1]}
     // CHECK-SAME:               : tensor<1x16x80x80xf16>, tensor<16x16x3x3xf16> -> tensor<1x16x80x80xf16>
     // CHECK:           return      [[CONV1]], [[CONV0]]
 }
@@ -67,6 +70,7 @@ func.func @FuseConvWithSliceTwoUsers(%arg0: tensor<1x16x80x80xf16>) -> (tensor<1
 // -----
 
 // CHECK-LABEL: @NotFuseWithNonConstWeights
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x16x80x80xf16>, [[ARG_1:%[^:]+]]: tensor<64x16x3x3xf16>
 func.func @NotFuseWithNonConstWeights(%arg0: tensor<1x16x80x80xf16>, %arg1: tensor<64x16x3x3xf16>) -> tensor<1x32x80x80xf16> {
     %bias = const.Declare tensor<1x64x1x1xf16> = dense<1.0> : tensor<1x64x1x1xf16>
     %0 = IE.Convolution(%arg0, %arg1, %bias) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], strides = [1, 1], post_op = #IE.Relu<>} : tensor<1x16x80x80xf16>, tensor<64x16x3x3xf16>, tensor<1x64x1x1xf16> -> tensor<1x64x80x80xf16>
@@ -74,7 +78,7 @@ func.func @NotFuseWithNonConstWeights(%arg0: tensor<1x16x80x80xf16>, %arg1: tens
     return %1 : tensor<1x32x80x80xf16>
 
     // CHECK-DAG:       [[BIAS:%.+]] = const.Declare tensor<1x64x1x1xf16> = dense<1.000000e+00> : tensor<1x64x1x1xf16>
-    // CHECK:           [[CONV:%.+]] = IE.Convolution(%arg0, %arg1, [[BIAS]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], post_op = #IE.Relu<>, strides = [1, 1]} : tensor<1x16x80x80xf16>, tensor<64x16x3x3xf16>, tensor<1x64x1x1xf16> -> tensor<1x64x80x80xf16>
+    // CHECK:           [[CONV:%.+]] = IE.Convolution([[ARG_0]], [[ARG_1]], [[BIAS]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], post_op = #IE.Relu<>, strides = [1, 1]} : tensor<1x16x80x80xf16>, tensor<64x16x3x3xf16>, tensor<1x64x1x1xf16> -> tensor<1x64x80x80xf16>
     // CHECK:           [[SLICE:%.+]] =  IE.Slice [[CONV]] [0, 0, 0, 0] [1, 32, 80, 80] : tensor<1x64x80x80xf16> to tensor<1x32x80x80xf16>
     // CHECK:           return      [[SLICE]]
 }
@@ -83,6 +87,7 @@ func.func @NotFuseWithNonConstWeights(%arg0: tensor<1x16x80x80xf16>, %arg1: tens
 // -----
 
 // CHECK-LABEL: @NotFuseWithNonChannelSlice
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x16x80x80xf16>
 func.func @NotFuseWithNonChannelSlice(%arg0: tensor<1x16x80x80xf16>) -> tensor<1x64x32x80xf16> {
     %weights = const.Declare tensor<64x16x3x3xf16> = dense<1.0> : tensor<64x16x3x3xf16>
     %bias = const.Declare tensor<1x64x1x1xf16> = dense<1.0> : tensor<1x64x1x1xf16>
@@ -92,7 +97,7 @@ func.func @NotFuseWithNonChannelSlice(%arg0: tensor<1x16x80x80xf16>) -> tensor<1
 
     // CHECK-DAG:       [[WEIGHTS:%.+]] = const.Declare tensor<64x16x3x3xf16> = dense<1.000000e+00> : tensor<64x16x3x3xf16>
     // CHECK-DAG:       [[BIAS:%.+]] = const.Declare tensor<1x64x1x1xf16> = dense<1.000000e+00> : tensor<1x64x1x1xf16>
-    // CHECK:           [[CONV:%.+]] = IE.Convolution(%arg0, [[WEIGHTS]], [[BIAS]])
+    // CHECK:           [[CONV:%.+]] = IE.Convolution([[ARG_0]], [[WEIGHTS]], [[BIAS]])
     // CHECK:           [[SLICE:%.+]] = IE.Slice [[CONV]]
     // CHECK:           return      [[SLICE]]
 }
@@ -100,6 +105,7 @@ func.func @NotFuseWithNonChannelSlice(%arg0: tensor<1x16x80x80xf16>) -> tensor<1
 // -----
 
 // CHECK-LABEL: @NotFuseWithUnAlignedSlice
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x16x80x80xf16>
 func.func @NotFuseWithUnAlignedSlice(%arg0: tensor<1x16x80x80xf16>) -> tensor<1x33x80x80xf16> {
     %weights = const.Declare tensor<64x16x3x3xf16> = dense<1.0> : tensor<64x16x3x3xf16>
     %bias = const.Declare tensor<1x64x1x1xf16> = dense<1.0> : tensor<1x64x1x1xf16>
@@ -109,7 +115,7 @@ func.func @NotFuseWithUnAlignedSlice(%arg0: tensor<1x16x80x80xf16>) -> tensor<1x
 
     // CHECK-DAG:       [[WEIGHTS:%.+]] = const.Declare tensor<64x16x3x3xf16> = dense<1.000000e+00> : tensor<64x16x3x3xf16>
     // CHECK-DAG:       [[BIAS:%.+]] = const.Declare tensor<1x64x1x1xf16> = dense<1.000000e+00> : tensor<1x64x1x1xf16>
-    // CHECK:           [[CONV:%.+]] = IE.Convolution(%arg0, [[WEIGHTS]], [[BIAS]])
+    // CHECK:           [[CONV:%.+]] = IE.Convolution([[ARG_0]], [[WEIGHTS]], [[BIAS]])
     // CHECK:           [[SLICE:%.+]] = IE.Slice [[CONV]]
     // CHECK:           return      [[SLICE]]
 }
@@ -118,6 +124,7 @@ func.func @NotFuseWithUnAlignedSlice(%arg0: tensor<1x16x80x80xf16>) -> tensor<1x
 // -----
 
 // CHECK-LABEL: @NotFuseWithSliceOverlap
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x16x80x80xf16>
 func.func @NotFuseWithSliceOverlap(%arg0: tensor<1x16x80x80xf16>) -> (tensor<1x16x80x80xf16>, tensor<1x32x80x80xf16>) {
     %weights = const.Declare tensor<64x16x3x3xf16> = dense<1.0> : tensor<64x16x3x3xf16>
     %0 = IE.Convolution(%arg0, %weights) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], strides = [1, 1]} : tensor<1x16x80x80xf16>, tensor<64x16x3x3xf16> -> tensor<1x64x80x80xf16>
@@ -126,7 +133,7 @@ func.func @NotFuseWithSliceOverlap(%arg0: tensor<1x16x80x80xf16>) -> (tensor<1x1
     return %1, %2 : tensor<1x16x80x80xf16>, tensor<1x32x80x80xf16>
 
     // CHECK-DAG:       [[WEIGHTS:%.+]] = const.Declare tensor<64x16x3x3xf16> = dense<1.000000e+00> : tensor<64x16x3x3xf16>
-    // CHECK:           [[CONV0:%.+]] = IE.Convolution(%arg0, [[WEIGHTS]])
+    // CHECK:           [[CONV0:%.+]] = IE.Convolution([[ARG_0]], [[WEIGHTS]])
     // CHECK:           [[SLICE0:%.+]] = IE.Slice [[CONV0]] [0, 31, 0, 0] [1, 16, 80, 80] : tensor<1x64x80x80xf16> to tensor<1x16x80x80xf16>
     // CHECK:           [[SLICE1:%.+]] = IE.Slice [[CONV0]] [0, 0, 0, 0] [1, 32, 80, 80] : tensor<1x64x80x80xf16> to tensor<1x32x80x80xf16>
 
@@ -137,6 +144,7 @@ func.func @NotFuseWithSliceOverlap(%arg0: tensor<1x16x80x80xf16>) -> (tensor<1x1
 // -----
 
 // CHECK-LABEL: @NotFuseWithNonSliceUser
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x16x80x80xf16>
 func.func @NotFuseWithNonSliceUser(%arg0: tensor<1x16x80x80xf16>) -> (tensor<1x64x80x80xf16>, tensor<1x32x80x80xf16>) {
     %weights = const.Declare tensor<64x16x3x3xf16> = dense<1.0> : tensor<64x16x3x3xf16>
     %0 = IE.Convolution(%arg0, %weights) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], strides = [1, 1]} : tensor<1x16x80x80xf16>, tensor<64x16x3x3xf16> -> tensor<1x64x80x80xf16>
@@ -145,7 +153,7 @@ func.func @NotFuseWithNonSliceUser(%arg0: tensor<1x16x80x80xf16>) -> (tensor<1x6
     return %1, %2 : tensor<1x64x80x80xf16>, tensor<1x32x80x80xf16>
 
     // CHECK-DAG:       [[WEIGHTS:%.+]] = const.Declare tensor<64x16x3x3xf16> = dense<1.000000e+00> : tensor<64x16x3x3xf16>
-    // CHECK:           [[CONV:%.+]] = IE.Convolution(%arg0, [[WEIGHTS]])
+    // CHECK:           [[CONV:%.+]] = IE.Convolution([[ARG_0]], [[WEIGHTS]])
     // CHECK:           [[AVGPOOL:%.+]] = IE.AvgPool([[CONV]])
     // CHECK:           [[SLICE:%.+]] = IE.Slice [[CONV]]
     // CHECK:           return      [[AVGPOOL]],  [[SLICE]]
@@ -154,6 +162,7 @@ func.func @NotFuseWithNonSliceUser(%arg0: tensor<1x16x80x80xf16>) -> (tensor<1x6
 // -----
 
 // CHECK-LABEL: @FuseConvWithSliceTwoUsersWithBias
+// CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x16x80x80xf16>
 func.func @FuseConvWithSliceTwoUsersWithBias(%arg0: tensor<1x16x80x80xf16>) -> (tensor<1x16x80x80xf16>, tensor<1x32x80x80xf16>) {
     %weights = const.Declare tensor<64x16x3x3xf16> = dense<1.0> : tensor<64x16x3x3xf16>
     %bias = const.Declare tensor<1x64x1x1xf16> = dense<1.0> : tensor<1x64x1x1xf16>
@@ -164,11 +173,11 @@ func.func @FuseConvWithSliceTwoUsersWithBias(%arg0: tensor<1x16x80x80xf16>) -> (
 
     // CHECK-DAG: [[WEIGHTS0:%.+]] = const.Declare tensor<32x16x3x3xf16> = dense<1.000000e+00> : tensor<64x16x3x3xf16>, [#const.SubView<[0, 0, 0, 0], [32, 16, 3, 3]>]
     // CHECK-DAG: [[BIAS0:%.+]] = const.Declare tensor<1x32x1x1xf16> = dense<1.000000e+00> : tensor<1x64x1x1xf16>, [#const.SubView<[0, 0, 0, 0], [1, 32, 1, 1]>]
-    // CHECK-DAG: [[CONV0:%.+]] = IE.Convolution(%arg0, [[WEIGHTS0]], [[BIAS0]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], strides = [1, 1]}
+    // CHECK-DAG: [[CONV0:%.+]] = IE.Convolution([[ARG_0]], [[WEIGHTS0]], [[BIAS0]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], strides = [1, 1]}
     // CHECK-SAME: : tensor<1x16x80x80xf16>, tensor<32x16x3x3xf16>, tensor<1x32x1x1xf16> -> tensor<1x32x80x80xf16>
     // CHECK-DAG: [[WEIGHTS1:%.+]] = const.Declare tensor<16x16x3x3xf16> = dense<1.000000e+00> : tensor<64x16x3x3xf16>, [#const.SubView<[32, 0, 0, 0], [16, 16, 3, 3]>]
     // CHECK-DAG: [[BIAS1:%.+]] = const.Declare tensor<1x16x1x1xf16> = dense<1.000000e+00> : tensor<1x64x1x1xf16>, [#const.SubView<[0, 32, 0, 0], [1, 16, 1, 1]>]
-    // CHECK:     [[CONV1:%.+]] = IE.Convolution(%arg0, [[WEIGHTS1]], [[BIAS1]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], strides = [1, 1]}
+    // CHECK:     [[CONV1:%.+]] = IE.Convolution([[ARG_0]], [[WEIGHTS1]], [[BIAS1]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], strides = [1, 1]}
     // CHECK-SAME: : tensor<1x16x80x80xf16>, tensor<16x16x3x3xf16>, tensor<1x16x1x1xf16> -> tensor<1x16x80x80xf16>
     // CHECK:     return [[CONV1]], [[CONV0]]
 }

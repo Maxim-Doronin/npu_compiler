@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/dialect/config/IR/ops.hpp"
 #include "vpux/compiler/dialect/core/IR/ops.hpp"
 #include "vpux/compiler/dialect/core/transforms/passes.hpp"
@@ -179,6 +180,7 @@ SmallVector<mlir::ModuleOp> UnpackNestedModulesPass::collectTopLevelNestedModule
         return (nestedModule == nullptr) ? SmallVector<mlir::ModuleOp>{} : SmallVector<mlir::ModuleOp>({nestedModule});
     }
 
+    SmallVector<mlir::ModuleOp> nestedWithPackedAttribute;
     SmallVector<mlir::ModuleOp> topLevelNested;
 
     // Note: assumed to be "fast" since we only walk modules.
@@ -201,11 +203,23 @@ SmallVector<mlir::ModuleOp> UnpackNestedModulesPass::collectTopLevelNestedModule
             _log.trace("Found top-level nested module '{0}' inside '{1}'", nestedModule.getSymName(),
                        mainModule.getSymName());
             topLevelNested.push_back(nestedModule);
+
+            const bool hasPackedModuleAttribute = config::hasPackedModuleAttribute(nestedModule);
+            if (hasPackedModuleAttribute) {
+                _log.trace("Module '{0}' has PackedModule attribute, will be unpacked", nestedModule.getSymName());
+                nestedWithPackedAttribute.push_back(nestedModule);
+            }
         }
-        return mlir::WalkResult::skip();  // ignore nested ops, regions, etc.
+        return mlir::WalkResult::skip();
     });
 
-    return topLevelNested;
+    if (nestedWithPackedAttribute.empty()) {
+        _log.trace("No modules with PackedModule attribute found, falling back to unpacking all nested modules for "
+                   "backward compatibility");
+        return topLevelNested;
+    }
+
+    return nestedWithPackedAttribute;
 }
 
 // Recursive walk function that moves func ops to the top module and collects nested modules names to std::set
@@ -353,9 +367,7 @@ void UnpackNestedModulesPass::moveNetworkInfoToTheTopOfModule(mlir::ModuleOp mod
     auto it = llvm::find_if(moduleOp.getOps(), [](auto& op) {
         return mlir::isa<mlir::func::FuncOp, mlir::ModuleOp>(op);
     });
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp mainFuncOp;
-    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, mainFuncOp);
+    auto [netInfo, mainFuncOp] = net::getFromModule(moduleOp);
     if (it != moduleOp.getOps().end()) {
         netInfo->moveBefore(&(*it));
     }

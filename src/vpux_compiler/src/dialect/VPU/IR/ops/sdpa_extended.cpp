@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -224,33 +224,31 @@ llvm::LogicalResult VPU::SDPAExtendedOp::verify() {
     }
     return mlir::success();
 }
+mlir::FailureOr<OutputTiling> vpux::VPU::SDPAExtendedOp::getTilingStrategy(TilingMode tilingMode, Logger log) {
+    return vpux::getSWLayerTilingStrategy(getOperation(), tilingMode, std::move(log));
+}
 
 //
 // ClusteredOpInterface
 //
 
 bool vpux::VPU::SDPAExtendedOp::checkStrategyCompatibility(VPU::MultiClusterStrategy strategy, size_t numTiles) {
-    const auto outputShape = getShape(getOutput());
-
     if (strategy == VPU::MultiClusterStrategy::Clustering) {
         return true;
     }
+
+    const auto queryShape = getShape(getInputQ());
+    const auto numHeads = checked_cast<size_t>(queryShape[Dims4D::Act::C]);
+    const auto targetSeqLen = checked_cast<size_t>(queryShape[Dims4D::Act::H]);
+
     if (strategy == VPU::MultiClusterStrategy::SplitOverBatch) {
-        return outputShape[Dims4D::Act::N] >= checked_cast<int64_t>(numTiles);
+        return queryShape[Dims4D::Act::N] >= checked_cast<int64_t>(numTiles);
     }
 
-    if (strategy == VPU::MultiClusterStrategy::SplitOverKernel) {
-        if (outputShape[Dims4D::Act::C] % numTiles == 0) {
-            return true;
-        }
-        if ((outputShape[Dims4D::Act::H] < outputShape[Dims4D::Act::C]) && (outputShape[Dims4D::Act::C] > 1)) {
-            return true;
-        }
-        return false;
-    }
-
-    if (strategy == VPU::MultiClusterStrategy::SplitOverHeight) {
-        return outputShape[Dims4D::Act::H] >= checked_cast<int64_t>(numTiles);
+    if (targetSeqLen >= numTiles) {
+        return strategy == VPU::MultiClusterStrategy::SplitOverHeight;
+    } else if (numHeads >= numTiles) {
+        return strategy == VPU::MultiClusterStrategy::SplitOverKernel;
     }
 
     return false;
@@ -356,10 +354,6 @@ InputTiling vpux::VPU::SDPAExtendedOp::backInferTileInfo(const vpux::TileInfo& o
 
 void vpux::VPU::SDPAExtendedOp::adjustAttrs(const TilingInfo& /*inputTiling*/, const TileInfo& /*outputTile*/) {
     // Do nothing
-}
-
-mlir::FailureOr<OutputTiling> vpux::VPU::SDPAExtendedOp::getTilingStrategy(TilingMode tilingMode, Logger log) {
-    return vpux::getSWLayerTilingStrategy(this->getOperation(), tilingMode, log);
 }
 
 SmallVector<mlir::OpOperand*> VPU::SDPAExtendedOp::getAuxiliaryBuffers() {

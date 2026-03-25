@@ -1,8 +1,9 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/factories/barrier_variant_constraint.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/factories/wlm_register_config.hpp"
@@ -144,15 +145,14 @@ void SetupNpuConstraintPass::safeRunOnModule() {
         workloadManagementStatus = WorkloadManagementStatus::DISABLED;
     }
 
-    bool isRollBackPossible = wlmRollback.hasValue() && wlmRollback;
-    bool isWlmWithoutRollback = workloadManagementStatus == WorkloadManagementStatus::ENABLED && !isRollBackPossible;
-    if (_enableSwFifoPerShave && !config::hasSupportForFifoPerShaveEngine(arch, isWlmWithoutRollback)) {
+    bool isWlmEnabled = workloadManagementStatus == WorkloadManagementStatus::ENABLED;
+    if (_enableSwFifoPerShave && !config::hasSupportForFifoPerShaveEngine(arch, isWlmEnabled)) {
         // if dedicated SHAVE FIFOs are not, or cannot be supported, the feature will be disabled. For convenience, this
         // will be reflected in the IR in pipeline options section, as the value will be accessed by multiple passes.
         _enableSwFifoPerShave = false;
         _log.info("Dedicated FIFOs per SHAVE engine were requested but are currently not supported by the architecture "
-                  "({0}) or WLM ({1}) and rollback ({2}) options setting. The feature will not be enabled.",
-                  arch, workloadManagementStatus, isRollBackPossible);
+                  "({0}) or WLM ({1}) settings. The feature will not be enabled.",
+                  arch, workloadManagementStatus);
     }
 
     VPUX_THROW_WHEN(
@@ -170,12 +170,6 @@ void SetupNpuConstraintPass::safeRunOnModule() {
     _log.info("Support for FIFO per each SHAVE engine enabled: {0}", supportsSwFifoPerShave);
 
     auto useWlmBarrierConfig = workloadManagementStatus == WorkloadManagementStatus::ENABLED;
-    if (wlmRollback.hasValue() && wlmRollback.getValue() == true) {
-        // Using non-WLM values might result in slightly worse inference latency but is
-        // safer in case compilation with WLM enabled fails
-        _log.trace("Will use barrier variant constraint as for non-WLM due to enabled WLM rollback");
-        useWlmBarrierConfig = false;
-    }
     // Disable WLM barrier configuration as it requires more adjustments in the code to be done in E#155846
     // Currently enabling this breaks compilation for some models.
     useWlmBarrierConfig = false;

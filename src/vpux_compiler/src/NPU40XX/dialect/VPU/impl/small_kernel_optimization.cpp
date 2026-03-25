@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -20,7 +20,7 @@ bool isSmallKernelOptimizationSupported(mlir::Operation* op, const int64_t KX, c
     auto is16Workload = false;
     auto is64Workload = false;
     const auto workloadChannelsMeetRequirement = llvm::all_of(workloads, [&](auto workload) {
-        const auto wlSizes = parseIntArrayAttr<int64_t>(workload.getOutSizes());
+        const auto wlSizes = workload.getConstOutputSizes();
         is16Workload |= wlSizes[Dims4D::Act::C.ind()] == VPU::NCEInvariant::VPU_CHANNEL_SIZE_FOR_L1OPT16;
         is64Workload |= wlSizes[Dims4D::Act::C.ind()] == VPU::NCEInvariant::VPU_CHANNEL_SIZE_FOR_L1OPT64;
         return isFp16Input ? wlSizes[Dims4D::Act::C.ind()] == VPU::NCEInvariant::VPU_CHANNEL_SIZE_FOR_L1OPT16 ||

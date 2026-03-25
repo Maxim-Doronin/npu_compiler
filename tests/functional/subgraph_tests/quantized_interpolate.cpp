@@ -137,6 +137,14 @@ TEST_P(QuantizedSEInterpSubGraphTest_NPU5010_HW, HW) {
     run(Platform::NPU5010);
 }
 
+class QuantizedSEInterpSubGraphTest_NPU5020_HW : public QuantizedSEInterpSubGraphTestCommon {};
+
+TEST_P(QuantizedSEInterpSubGraphTest_NPU5020_HW, HW) {
+    abs_threshold = 1.0;
+    setDefaultHardwareMode();
+    run(Platform::NPU5020);
+}
+
 std::vector<std::vector<float>> fqRanges = {{0.0f, 255.0f, 0.0f, 255.0f}};
 
 std::vector<std::vector<ov::Shape>> inputShapes = {{{1, 16, 16, 16}}, {{1, 32, 40, 40}}, {{1, 160, 40, 40}}};
@@ -177,6 +185,8 @@ INSTANTIATE_TEST_SUITE_P(smoke_QuantizedInterp_HW, QuantizedSEInterpSubGraphTest
 // TODO: E156484 - investigate accuracy issue
 INSTANTIATE_TEST_SUITE_P(DISABLED_smoke_QuantizedInterp_HW, QuantizedSEInterpSubGraphTest_NPU5010_HW, basicCases,
                          QuantizedSEInterpSubGraphTest_NPU5010_HW::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(smoke_QuantizedInterp_HW, QuantizedSEInterpSubGraphTest_NPU5020_HW, basicCases,
+                         QuantizedSEInterpSubGraphTest_NPU5020_HW::getTestCaseName);
 
 // TODO: E156484 - investigate accuracy issue
 

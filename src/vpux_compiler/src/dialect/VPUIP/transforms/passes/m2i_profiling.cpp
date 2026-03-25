@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -14,6 +14,7 @@
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 
 #include "vpux/compiler/core/profiling.hpp"
 
@@ -91,9 +92,7 @@ void M2IProfilingPass::safeRunOnModule() {
     auto module = getOperation();
     auto* ctx = module->getContext();
 
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp netFunc;
-    net::NetworkInfoOp::getFromModule(module, netInfo, netFunc);
+    auto [netInfo, netFunc] = net::getFromModule(module);
     const auto arch = config::getArch(module);
 
     if (arch != config::ArchKind::NPU50XX) {

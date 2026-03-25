@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,9 +10,9 @@
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
 // CHECK-LABEL: @PatchFusedConstantWithSpill
-func.func @PatchFusedConstantWithSpill() ->  memref<1x126x2x2xf16, #NHWC, [@CMX_NN, 0]> {
-    %in = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x1008x14x14xf16, #NHWC, [@CMX_NN, 0]>
-    %out = VPURT.DeclareBuffer <CMX_NN> [0] <556416> -> memref<1x126x2x2xf16, #NHWC, [@CMX_NN, 0]>
+func.func @PatchFusedConstantWithSpill() ->  memref<1x16x2x2xf16, #NHWC, [@CMX_NN, 0]> {
+    %in = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x16x14x14xf16, #NHWC, [@CMX_NN, 0]>
+    %out = VPURT.DeclareBuffer <CMX_NN> [0] <556416> -> memref<1x16x2x2xf16, #NHWC, [@CMX_NN, 0]>
 
     %fused_const = const.Declare memref<1x1x1x784xui8> = dense<1> : tensor<16x1x1x4xsi32>,
         [#const.FuseWeights<tensor<1x1x1x784xui8>,
@@ -35,28 +35,28 @@ func.func @PatchFusedConstantWithSpill() ->  memref<1x126x2x2xf16, #NHWC, [@CMX_
     %8 = VPUIP.ViewOp %5 : memref<1x1x1x512xui8, {order = #NCHW, strides = [784, 784, 784, 1]}, [@CMX_NN, 0]> to memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>
     %9 = VPUIP.ViewOp %6 : memref<1x1x1x16xui8, {order = #NCHW, strides = [784, 784, 784, 1]}, [@CMX_NN, 0]> to memref<1x1x1x16xui8, [@CMX_NN, 0]>
 
-    %10 = VPUIP.NCEClusterTask {
-        constantsFused = true,
+    %10 = VPUIP.NCEClusterTask {constantsFused = true} <{
         kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
         kernel_size = [7, 7],
         kernel_strides = [7, 7],
         task_type = #VPUIP.nce_task_type<DWCONV>
-        }
-        input(%in : memref<1x1008x14x14xf16, #NHWC, [@CMX_NN, 0]>)
+        }>
+        input(%in : memref<1x16x14x14xf16, #NHWC, [@CMX_NN, 0]>)
 
         weights(%8 : memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>)
         weight_table(%7 : memref<16x1x1x4xsi32, [@CMX_NN, 0]>)
 
-        parent_input(%in : memref<1x1008x14x14xf16, #NHWC, [@CMX_NN, 0]>)
-        parent_output(%out : memref<1x126x2x2xf16, #NHWC, [@CMX_NN, 0]>) outputs(%out : memref<1x126x2x2xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x126x2x2xf16, #NHWC, [@CMX_NN, 0]> variants :  {
+        parent_input(%in : memref<1x16x14x14xf16, #NHWC, [@CMX_NN, 0]>)
+        parent_output(%out : memref<1x16x2x2xf16, #NHWC, [@CMX_NN, 0]>)
+        outputs(%out : memref<1x16x2x2xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x16x2x2xf16, #NHWC, [@CMX_NN, 0]> variants :  {
         DPUTask {outEnd = [1, 0, 1007], mpe_mode = #VPU.mpe_mode<VECTOR_FP16>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, outStart = [0, 0, 0]}
     } PPE :  {
     }
 
-    return %10 : memref<1x126x2x2xf16, #NHWC, [@CMX_NN, 0]>
+    return %10 : memref<1x16x2x2xf16, #NHWC, [@CMX_NN, 0]>
 
-    // CHECK:   [[INPUT:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x1008x14x14xf16, #NHWC, [@CMX_NN, 0]>
-    // CHECK:   [[OUTPUT:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <556416> -> memref<1x126x2x2xf16, #NHWC, [@CMX_NN, 0]>
+    // CHECK:   [[INPUT:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x16x14x14xf16, #NHWC, [@CMX_NN, 0]>
+    // CHECK:   [[OUTPUT:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <556416> -> memref<1x16x2x2xf16, #NHWC, [@CMX_NN, 0]>
     // CHECK-DAG:   [[FUSED_CONSTANT:%.+]] = const.Declare memref<1x1x1x784xui8> =
     // CHECK-SAME:  #const.RelocateWeightsTable<weightsPtr=[1837312], sparsityPtr=16777215 : i64, offsets=[0], weightsTableSize=256 : i64, weightsElemBitSize=16 : i64, channelOffset=0 : i64, originalOC=0 : i64>
 
@@ -121,7 +121,7 @@ func.func @PatchFusedConstantWithSpillAsyncConstruct() -> !IpOp_Stub {
         %5 = VPUIP.SubView %arg7 [0, 0, 0, 1024] [1, 1, 1, 4096] : memref<1x1x1x5120xui8, [@CMX_NN, 0]> to memref<1x1x1x4096xui8, {order = #NCHW, strides = [5120, 5120, 5120, 1]}, [@CMX_NN, 0]>
         %6 = VPUIP.ViewOp %4: memref<1x1x1x1024xui8, {order = #NCHW, strides = [5120, 5120, 5120, 1]}, [@CMX_NN, 0]> to memref<64x1x1x4xsi32, [@CMX_NN, 0]>
         %7 = VPUIP.ViewOp %5 : memref<1x1x1x4096xui8, {order = #NCHW, strides = [5120, 5120, 5120, 1]}, [@CMX_NN, 0]> to memref<64x64x1x1xf16, #NHWC, [@CMX_NN, 0]>
-        %8 = VPUIP.NCEClusterTask {constantsFused = true, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], minimumHardwareExecutionCost = 56892 : i64, task_type = #VPUIP.nce_task_type<CONV>}
+        %8 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 56892 : i64, constantsFused = true} <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
         input(%in : memref<1x64x52x52xf16, #NHWC, [@CMX_NN, 0]>)
         weights(%7 : memref<64x64x1x1xf16, #NHWC, [@CMX_NN, 0]>)
         weight_table(%6 : memref<64x1x1x4xsi32, [@CMX_NN, 0]>) parent_input(%in : memref<1x64x52x52xf16, #NHWC, [@CMX_NN, 0]>)

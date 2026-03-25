@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -49,7 +49,7 @@ protected:
     virtual SmallVector<mlir::Value> getWeightsBuffers(mlir::Location loc, VPUIP::NCEClusterTaskOp nceTask,
                                                        const int64_t numClusters, mlir::OpBuilder& builder) const;
 
-    virtual mlir::UnitAttr isSegmentedNCETask(VPUIP::DistributedBufferType inputType) const = 0;
+    virtual bool isSegmentedNCETask(VPUIP::DistributedBufferType inputType) const = 0;
 
 private:
     SmallVector<mlir::IntegerAttr> getOutChannelOffsets(VPUIP::NCEClusterTaskOp nceTask,
@@ -64,6 +64,35 @@ protected:
     Logger _log;
     mlir::MLIRContext* _ctx;
     mlir::FlatSymbolRefAttr _cmxNameAttr;
+};
+
+//
+// ClusterNCERewriter
+//
+
+class ClusterNCERewriter final : public VPUIP::ClusterNCEBaseRewriter {
+public:
+    ClusterNCERewriter(mlir::MLIRContext* ctx, Logger log): ClusterNCEBaseRewriter(ctx, log) {
+    }
+
+private:
+    void getOutputBuffers(SmallVector<mlir::Value>& parentOutputBuffs, SmallVector<mlir::Value>& outputBuffs,
+                          SmallVector<mlir::Value>& parentOutputSparsityMap,
+                          SmallVector<mlir::Value>& outputSparsityMapBuffs,
+                          SmallVector<SmallVector<mlir::Value>>& outputItiBuffs, mlir::Location loc,
+                          VPUIP::NCEClusterTaskOp nceTask, const int64_t numClusters,
+                          mlir::OpBuilder& builder) const override;
+
+    void getInputBuffers(SmallVector<mlir::Value>& parentInputBuffs, SmallVector<mlir::Value>& inputBuffs,
+                         SmallVector<mlir::Value>& parentInputSparsityMap,
+                         SmallVector<mlir::Value>& inputSparsityMapBuffs, SmallVector<mlir::Value>& parentInputSETable,
+                         SmallVector<mlir::Value>& inputSETableBuffs, mlir::Location loc,
+                         VPUIP::NCEClusterTaskOp nceTask, const int64_t numClusters,
+                         mlir::OpBuilder& builder) const override;
+
+    bool isSegmentedNCETask(VPUIP::DistributedBufferType /*inputType*/) const override {
+        return false;
+    };
 };
 
 //
@@ -108,7 +137,7 @@ private:
 // ClusterDMARewriter
 //
 
-class ClusterDMARewriter final : public ClusterPerElementDMABaseRewriter {
+class ClusterDMARewriter final : public VPUIP::ClusterPerElementDMABaseRewriter {
 public:
     ClusterDMARewriter(mlir::MLIRContext* ctx, int64_t dmaPortCount,
                        std::optional<DmaFusionHandlerType> maybeFusionHandler, Logger log)
@@ -129,6 +158,24 @@ void unrollDistributedOpsCommon40XXPlus(mlir::func::FuncOp funcOp,
 mlir::Value patchSETableValue(mlir::Location loc, Const::DeclareOp constOp,
                               VPUIP::DistributedBufferType nceInputDistType, const int64_t targetClusterId,
                               mlir::OpBuilder& builder, bool resetBasePtrs);
+
+//
+// ClusterConvertDMARewriter
+//
+
+class ClusterConvertDMARewriter final : public VPUIP::ClusterPerElementDMABaseRewriter {
+public:
+    ClusterConvertDMARewriter(mlir::MLIRContext* ctx, int64_t dmaPortCount, Logger log)
+            : ClusterPerElementDMABaseRewriter(ctx, dmaPortCount, /*dmaFusionHandler=*/{}, log) {
+    }
+
+private:
+    bool isTargetOp(VPUIP::DMATypeOpInterface dmaOp) const override;
+    VPUIP::DMATypeOpInterface wrapIntoTaskOp(VPUIP::DMATypeOpInterface dmaOp, VPURT::TaskOp vpurtTask,
+                                             mlir::Location loc, mlir::Value input, mlir::Value output_buff,
+                                             int64_t port, mlir::OpBuilder& builder) const override;
+    UnrollingType getUnrollingType(VPU::DistributionMode inputMode, VPU::DistributionMode outputMode) const override;
+};
 
 }  // namespace VPUIP
 }  // namespace vpux

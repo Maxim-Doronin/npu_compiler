@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -77,9 +77,7 @@ func.func @PatchSWKernelSingleCluster(%arg0: memref<1x1x2048xf32, @DDR>, %scale:
       %22 = VPUIP.PermuteCast {dst_order = #NHWC, mem_perm = #NHWC} inputs(%21 : memref<1x2048x1x1xf16, [@CMX_NN, 0]>) -> memref<1x2048x1x1xf16, #NHWC, [@CMX_NN, 0]>
       %23 = VPUIP.ConcatView inputs(%arg3, %arg4 : memref<208x1x1x4xsi32, [@CMX_NN, 0]>, memref<208x1x1x4xsi32, [@CMX_NN, 0]>)
         outputs(%2 : memref<416x1x1x4xsi32, [@CMX_NN, 0]>) -> memref<416x1x1x4xsi32, [@CMX_NN, 0]>
-      %24 = VPUIP.NCEClusterTask
-                {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1],
-                minimumHardwareExecutionCost = 4294967295 : i64, populateWeightTable = true, task_type = #VPUIP.nce_task_type<CONV>}
+      %24 = VPUIP.NCEClusterTask {populateWeightTable = true, minimumHardwareExecutionCost = 4294967295 : i64} <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
             input(%22 : memref<1x2048x1x1xf16, #NHWC, [@CMX_NN, 0]>)
             weights(%arg5 : memref<416x2048x1x1x!qElemType, #NHWC, [@CMX_NN, 0]>)
             weight_table(%23 : memref<416x1x1x4xsi32, [@CMX_NN, 0]>)
@@ -219,9 +217,7 @@ func.func @PatchSWKernelSingleClusterWithDMASpill(%arg0: memref<1x1x2048xf32, @D
       %22 = VPUIP.PermuteCast {dst_order = #NHWC, mem_perm = #NHWC} inputs(%21 : memref<1x2048x1x1xf16, [@CMX_NN, 0]>) -> memref<1x2048x1x1xf16, #NHWC, [@CMX_NN, 0]>
       %23 = VPUIP.ConcatView inputs(%arg3, %arg4 : memref<208x1x1x4xsi32, [@CMX_NN, 0]>, memref<208x1x1x4xsi32, [@CMX_NN, 0]>)
         outputs(%2 : memref<416x1x1x4xsi32, [@CMX_NN, 0]>) -> memref<416x1x1x4xsi32, [@CMX_NN, 0]>
-      %24 = VPUIP.NCEClusterTask
-                {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1],
-                minimumHardwareExecutionCost = 4294967295 : i64, populateWeightTable = true, task_type = #VPUIP.nce_task_type<CONV>}
+      %24 = VPUIP.NCEClusterTask {populateWeightTable = true, minimumHardwareExecutionCost = 4294967295 : i64} <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
             input(%22 : memref<1x2048x1x1xf16, #NHWC, [@CMX_NN, 0]>)
             weights(%arg5 : memref<416x2048x1x1x!qElemType, #NHWC, [@CMX_NN, 0]>)
             weight_table(%23 : memref<416x1x1x4xsi32, [@CMX_NN, 0]>)
@@ -390,8 +386,8 @@ func.func @PatchSWKernelModeSegmented(%arg0: memref<1x1x4096xf32, @DDR>, %scale:
           -> !ConvInputDistributed
       %21 = VPUIP.ConcatView inputs(%arg4, %arg5 : !PopulateWeightTableDistributed, !PopulateWeightTableDistributed)
         outputs(%3 : !WTDistributed) -> !WTDistributed
-      %22 = VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1],
-                kernel_strides = [1, 1], minimumHardwareExecutionCost = 4294967295 : i64, populateWeightTable = true, task_type = #VPUIP.nce_task_type<CONV>}
+      %22 = VPUIP.NCEClusterTask {populateWeightTable = true, minimumHardwareExecutionCost = 4294967295 : i64} <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1],
+                kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
         input(%20 : !ConvInputDistributed)
         weights(%arg3 : !WeightsDistributed)
         weight_table(%21 : !WTDistributed)
@@ -526,9 +522,7 @@ func.func @DoNotPatchSWKernelWhenZeroOffset(%arg0: memref<1x1x2048xf32, @DDR>, %
       %22 = VPUIP.PermuteCast {dst_order = #NHWC, mem_perm = #NHWC} inputs(%21 : memref<1x2048x1x1xf16, [@CMX_NN, 0]>) -> memref<1x2048x1x1xf16, #NHWC, [@CMX_NN, 0]>
       %23 = VPUIP.ConcatView inputs(%arg3, %arg4 : memref<208x1x1x4xsi32, [@CMX_NN, 0]>, memref<208x1x1x4xsi32, [@CMX_NN, 0]>)
         outputs(%2 : memref<416x1x1x4xsi32, [@CMX_NN, 0]>) -> memref<416x1x1x4xsi32, [@CMX_NN, 0]>
-      %24 = VPUIP.NCEClusterTask
-                {is_zero_offset_weights_table, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1],
-                minimumHardwareExecutionCost = 4294967295 : i64, populateWeightTable = true, task_type = #VPUIP.nce_task_type<CONV>}
+      %24 = VPUIP.NCEClusterTask {populateWeightTable = true, minimumHardwareExecutionCost = 4294967295 : i64} <{is_zero_offset_weights_table, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
             input(%22 : memref<1x2048x1x1xf16, #NHWC, [@CMX_NN, 0]>)
             weights(%arg5 : memref<416x2048x1x1x!qElemType, #NHWC, [@CMX_NN, 0]>)
             weight_table(%23 : memref<416x1x1x4xsi32, [@CMX_NN, 0]>)

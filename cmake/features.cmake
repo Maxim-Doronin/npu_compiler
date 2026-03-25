@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2022-2026 Intel Corporation.
+# Copyright (C) 2022-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -78,6 +78,8 @@ if(NOT DEFINED ENABLE_NPU_MICRO_BENCHMARKS)
     set(ENABLE_NPU_MICRO_BENCHMARKS ${ENABLE_DEVELOPER_BUILD})
 endif()
 ov_option(ENABLE_NPU_MICRO_BENCHMARKS "NPU micro benchmarks" ${ENABLE_NPU_MICRO_BENCHMARKS})
+
+ov_option(ENABLE_CCACHE_FOR_VISUAL_STUDIO "Enable ccache for CMake-generated Visual Studio solution" OFF)
 
 # Enable NPU Execution Engine only for developer build as it is an experimental feature
 ov_dependent_option(ENABLE_NPU_EXECUTION_ENGINE "Enable NPU Execution Engine" ON "ENABLE_DEVELOPER_BUILD" OFF)

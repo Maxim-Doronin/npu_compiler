@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -360,7 +360,7 @@ void ConvertPrecisionToFP16Pass::safeRunOnModule() {
     // SelectOp
     mlir::TypeConverter selectOpConverter;
     setupConvertPrecision(selectOpConverter, [](mlir::Type elemType) -> mlir::Type {
-        if (elemType.isF32() || elemType.isF64() || elemType.isSignlessInteger(8) || elemType.isSignedInteger(32) ||
+        if (elemType.isF32() || elemType.isF64() || elemType.isSignlessInteger(8) || elemType.isSignedInteger(16) ||
             elemType.isSignedInteger(64)) {
             return mlir::Float16Type::get(elemType.getContext());
         } else {

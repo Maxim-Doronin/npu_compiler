@@ -1,9 +1,9 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW allow-custom-values=true workload-management-enable=false" --mlir-elide-elementsattrs-if-larger 8 --default-hw-mode-vpuip="enable-schedule-trace=true" --vpuip-finalize="enable-schedule-trace=true" %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW allow-custom-values=true workload-management-enable=true" --mlir-elide-elementsattrs-if-larger 8 --default-hw-mode-vpuip="enable-schedule-trace=true" %s | FileCheck %s
 // RUN: rm compileTimeScheduleTrace.json
 // REQUIRES: arch-NPU40XX
 
@@ -68,11 +68,11 @@ module @Gather attributes {config.arch = #config.arch_kind<NPU40XX>, config.comp
         // CHECK: VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier) {
         // CHECK:   VPUIP.NNDMA <{is_out_of_order, port = 0 : i64}> inputs([[IN]] : memref<1x1xsi32, @DDR>) outputs([[BUFF0]] : memref<1x1xsi32, [@CMX_NN, 0]>) -> memref<1x1xsi32, [@CMX_NN, 0]>
 
-        // CHECK: VPURT.Task waits([[BAR1]] : !VPURT.Barrier) updates([[BAR2]] : !VPURT.Barrier) <{clean_after = 2 : ui64}> {
+        // CHECK: VPURT.Task waits([[BAR1]] : !VPURT.Barrier) updates([[BAR2]] : !VPURT.Barrier) {
         // CHECK:   VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 0, 0, 0>} @VPU.SW::@cache_flush_invalidate inputs() outputs() on tile 0{
         // CHECK:     VPUIP.SW.Kernel.run
 
-        // CHECK: VPURT.Task waits([[BAR2]] : !VPURT.Barrier) updates([[BAR3]] : !VPURT.Barrier) <{clean_after = 3 : ui64}> {
+        // CHECK: VPURT.Task waits([[BAR2]] : !VPURT.Barrier) updates([[BAR3]] : !VPURT.Barrier) {
         // CHECK:   VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_Gather inputs([[CST]] as [[ARG2:%[^:]+]]: memref<32000x4096xf16>, [[BUFF0]] as [[ARG3:%[^:]+]]: memref<1x1xsi32, [@CMX_NN, 0]>) outputs([[BUFF1]] as [[ARG4:%[^:]+]]: memref<1x1x4096xf16, [@CMX_NN, 0]>) on tile 0 -> memref<1x1x4096xf16, [@CMX_NN, 0]>{
         // CHECK:     VPUIP.SW.Kernel.run {attrs = [1, 0]}([[ARG2]], [[ARG3]], [[ARG4]]) : memref<32000x4096xf16>, memref<1x1xsi32, [@CMX_NN, 0]>, memref<1x1x4096xf16, [@CMX_NN, 0]>
 

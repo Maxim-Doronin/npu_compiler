@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/VPUIP/IR/dialect_interfaces.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
+#include "vpux/compiler/dialect/VPUIP/interfaces/strategies.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
@@ -64,6 +65,7 @@ void vpux::VPUIP::VPUIPDialect::initialize() {
     registerTypes();
 
     addInterfaces<VPUIPInlinerInterface>();
+    addInterfaces<VPUIP::StrategyFactoryCache>();
 
     Core::registerDispatchedInlinerInterface<VPUIP::VPUIPInlinerDispatchAttr, VPUIP::FuncInlinerInterface>(
             getContext());

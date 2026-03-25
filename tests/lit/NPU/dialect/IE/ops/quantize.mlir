@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -41,22 +41,26 @@ func.func @ConstFold() -> tensor<1x8x4x4x!qElemType> {
 
 !qElemType = !quant.uniform<u8:f16, 2.4627450980392158>
 
+// CHECK-LABEL: @FuseDequantQuantWithSeveralUses
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<1x8x4x4x!qElemType>
 func.func @FuseDequantQuantWithSeveralUses(%arg0: tensor<1x8x4x4x!qElemType>) -> (tensor<1x8x4x4xf16>, tensor<1x8x4x4x!qElemType>) {
     %0 = IE.Dequantize(%arg0) {dstElemType = f16} : tensor<1x8x4x4x!qElemType> -> tensor<1x8x4x4xf16>
     %1 = IE.ReLU(%0) : tensor<1x8x4x4xf16> -> tensor<1x8x4x4xf16>
     %2 = IE.Quantize(%0) {dstElemType = !qElemType}: tensor<1x8x4x4xf16> -> tensor<1x8x4x4x!qElemType>
     return %1, %2 : tensor<1x8x4x4xf16>, tensor<1x8x4x4x!qElemType>
 
-    // CHECK:   [[VAL0:%.+]] = IE.Dequantize(%arg0)
+    // CHECK:   [[VAL0:%.+]] = IE.Dequantize([[ARG_0]])
     // CHECK-NOT:   IE.Quantize
     // CHECK:       [[VAL1:%.+]] = IE.ReLU([[VAL0]])
-    // CHECK:       return [[VAL1]], %arg0 : tensor<1x8x4x4xf16>, tensor<1x8x4x4x!qElemType>
+    // CHECK:       return [[VAL1]], [[ARG_0]] : tensor<1x8x4x4xf16>, tensor<1x8x4x4x!qElemType>
 }
 
 // -----
 
 !qElemType = !quant.uniform<u8:f16, 2.4627450980392158>
 
+// CHECK-LABEL: @FuseDequantQuant
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<1x8x4x4x!qElemType>
 func.func @FuseDequantQuant(%arg0: tensor<1x8x4x4x!qElemType>) -> tensor<1x8x4x4x!qElemType> {
     %1 = IE.Dequantize(%arg0) {dstElemType = f16} : tensor<1x8x4x4x!qElemType> -> tensor<1x8x4x4xf16>
     %2 = IE.Quantize(%1) {dstElemType = !qElemType}: tensor<1x8x4x4xf16> -> tensor<1x8x4x4x!qElemType>
@@ -64,13 +68,15 @@ func.func @FuseDequantQuant(%arg0: tensor<1x8x4x4x!qElemType>) -> tensor<1x8x4x4
 
     // CHECK-NOT:   IE.Dequantize
     // CHECK-NOT:   IE.Quantize
-    // CHECK:       return %arg0 : tensor<1x8x4x4x!qElemType>
+    // CHECK:       return [[ARG_0]] : tensor<1x8x4x4x!qElemType>
 }
 
 // -----
 
 !qElemType = !quant.uniform<u8<0:254>:f16:1, {8.7179349163385824E-4:127,5.2096149114173233E-4:127}>
 
+// CHECK-LABEL: @FuseDequantQuantPerAxis
+// CHECK-SAME: [[ARG_0:%[^:]+]]: tensor<1x2x4x4x!qElemType>
 func.func @FuseDequantQuantPerAxis(%arg0: tensor<1x2x4x4x!qElemType>) -> tensor<1x2x4x4x!qElemType> {
     %1 = IE.Dequantize(%arg0) {dstElemType = f16} : tensor<1x2x4x4x!qElemType> -> tensor<1x2x4x4xf16>
     %2 = IE.Quantize(%1) {dstElemType = !qElemType}: tensor<1x2x4x4xf16> -> tensor<1x2x4x4x!qElemType>
@@ -78,7 +84,7 @@ func.func @FuseDequantQuantPerAxis(%arg0: tensor<1x2x4x4x!qElemType>) -> tensor<
 
     // CHECK-NOT:   IE.Dequantize
     // CHECK-NOT:   IE.Quantize
-    // CHECK:       return %arg0 : tensor<1x2x4x4x!qElemType>
+    // CHECK:       return [[ARG_0]] : tensor<1x2x4x4x!qElemType>
 }
 
 // -----
@@ -91,9 +97,8 @@ func.func @DifferentQuantizationParams(%arg0: tensor<1x8x4x4x!qElemType>) -> ten
     %1 = IE.Quantize(%0) {dstElemType = !qElemType1}: tensor<1x8x4x4xf16> -> tensor<1x8x4x4x!qElemType1>
     return %1 : tensor<1x8x4x4x!qElemType1>
 
-    // CHECK-DAG:   IE.Dequantize
-    // CHECK-DAG:   IE.Quantize
-    // CHECK:   return %1 : tensor<1x8x4x4x!qElemType1>
+    // CHECK:       [[QUANTIZE:%.+]] = IE.Quantize
+    // CHECK:   return [[QUANTIZE]] : tensor<1x8x4x4x!qElemType1>
 }
 
 // -----
@@ -106,9 +111,8 @@ func.func @DifferentQuantizationParams(%arg0: tensor<1x2x4x4x!qElemType>) -> ten
     %1 = IE.Quantize(%0) {dstElemType = !qElemType1}: tensor<1x2x4x4xf16> -> tensor<1x2x4x4x!qElemType1>
     return %1 : tensor<1x2x4x4x!qElemType1>
 
-    // CHECK-DAG:   IE.Dequantize
-    // CHECK-DAG:   IE.Quantize
-    // CHECK:   return %1 : tensor<1x2x4x4x!qElemType1>
+    // CHECK:       [[QUANTIZE:%.+]] = IE.Quantize
+    // CHECK:   return [[QUANTIZE]] : tensor<1x2x4x4x!qElemType1>
 }
 
 // -----

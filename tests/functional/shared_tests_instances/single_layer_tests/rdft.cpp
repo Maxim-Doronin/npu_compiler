@@ -2,6 +2,7 @@
 // Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
+
 #include "single_op_tests/rdft.hpp"
 #include <common_test_utils/ov_tensor_utils.hpp>
 #include "common_test_utils/node_builders/rdft.hpp"
@@ -60,6 +61,13 @@ TEST_P(RdftLayerTestCommon, NPU5010) {
     VpuOv2LayerTest::abs_threshold = 1.0;
     VpuOv2LayerTest::setDefaultHardwareMode();
     VpuOv2LayerTest::run(Platform::NPU5010);
+}
+TEST_P(RdftLayerTestCommon, NPU5020) {
+    VpuOv2LayerTest::abs_threshold = 1.0;
+    VpuOv2LayerTest::setDefaultHardwareMode();
+    // TODO E####-159644
+    VpuOv2LayerTest::setBatchCompilerMode("unroll");
+    VpuOv2LayerTest::run(Platform::NPU5020);
 }
 
 }  // namespace test

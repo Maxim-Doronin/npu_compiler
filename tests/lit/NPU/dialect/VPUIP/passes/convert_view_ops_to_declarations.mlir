@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -521,6 +521,7 @@ func.func @ImplicitConcatView(%arg0: !InputBufferDdr, %arg1: !OutputBufferDdr) -
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @ShapeCast
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<64x3x7x7xf16, #NHWC>, [[ARG_1:%[^:]+]]: memref<1x64x56x56xf16, #NHWC, [@CMX_NN, 0]>)
 func.func @ShapeCast(%arg0: memref<64x3x7x7xf16, #NHWC>, %arg1: memref<1x64x56x56xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x64x56x56xf16, #NHWC, [@CMX_NN, 0]> {
 
 %0 = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<64x3x7x7xf16, #NHWC, [@CMX_NN, 0]>
@@ -534,12 +535,12 @@ func.func @ShapeCast(%arg0: memref<64x3x7x7xf16, #NHWC>, %arg1: memref<1x64x56x5
 
 %in = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x16x112x112xf16, #NHWC, [@CMX_NN, 0]>
 
-%1 = VPUIP.NCEClusterTask {
+%1 = VPUIP.NCEClusterTask <{
         kernel_padding = #VPU.Padding<left = 3 : i64, right = 3 : i64, top = 3 : i64, bottom = 3 : i64>,
         kernel_size = [7, 7],
         kernel_strides = [2, 2],
         task_type = #VPUIP.nce_task_type<CONV>
-    }
+    }>
     input(%in : memref<1x16x112x112xf16, #NHWC, [@CMX_NN, 0]>)
     weights(%weights_align : memref<64x16x7x7xf16, #NHWC, [@CMX_NN, 0]>)
     parent_input(%in : memref<1x16x112x112xf16, #NHWC, [@CMX_NN, 0]>)
@@ -555,15 +556,15 @@ func.func @ShapeCast(%arg0: memref<64x3x7x7xf16, #NHWC>, %arg1: memref<1x64x56x5
 return %1 : memref<1x64x56x56xf16, #NHWC, [@CMX_NN, 0]>
 
 //CHECK:        [[VAR0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<64x3x7x7xf16, #NHWC, [@CMX_NN, 0]>
-//CHECK:        [[VAR1:%.+]] = VPUIP.NNDMA inputs(%arg0 : memref<64x3x7x7xf16, #NHWC>) outputs([[VAR0]] : memref<64x3x7x7xf16, #NHWC, [@CMX_NN, 0]>) -> memref<64x3x7x7xf16, #NHWC, [@CMX_NN, 0]>
+//CHECK:        [[VAR1:%.+]] = VPUIP.NNDMA inputs([[ARG_0]] : memref<64x3x7x7xf16, #NHWC>) outputs([[VAR0]] : memref<64x3x7x7xf16, #NHWC, [@CMX_NN, 0]>) -> memref<64x3x7x7xf16, #NHWC, [@CMX_NN, 0]>
 //CHECK:        [[VAR2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<64x16x7x7xf16, #NHWC, [@CMX_NN, 0]>
 //CHECK:        [[VAR4:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x16x112x112xf16, #NHWC, [@CMX_NN, 0]>
-//CHECK:        [[VAR5:%.+]] = VPUIP.NCEClusterTask {kernel_padding = #VPU.Padding<left = 3 : i64, right = 3 : i64, top = 3 : i64, bottom = 3 : i64>, kernel_size = [7, 7], kernel_strides = [2, 2], task_type = #VPUIP.nce_task_type<CONV>}
+//CHECK:        [[VAR5:%.+]] = VPUIP.NCEClusterTask <{kernel_padding = #VPU.Padding<left = 3 : i64, right = 3 : i64, top = 3 : i64, bottom = 3 : i64>, kernel_size = [7, 7], kernel_strides = [2, 2], task_type = #VPUIP.nce_task_type<CONV>}>
 //CHECK-SAME:           input([[VAR4]] : memref<1x16x112x112xf16, #NHWC, [@CMX_NN, 0]>)
 //CHECK-SAME:           weights([[VAR2]] : memref<64x16x7x7xf16, #NHWC, [@CMX_NN, 0]>)
 //CHECK-SAME:           parent_input([[VAR4]] : memref<1x16x112x112xf16, #NHWC, [@CMX_NN, 0]>)
-//CHECK-SAME:           parent_output(%arg1 : memref<1x64x56x56xf16, #NHWC, [@CMX_NN, 0]>)
-//CHECK-SAME:           outputs(%arg1 : memref<1x64x56x56xf16, #NHWC, [@CMX_NN, 0]>)
+//CHECK-SAME:           parent_output([[ARG_1]] : memref<1x64x56x56xf16, #NHWC, [@CMX_NN, 0]>)
+//CHECK-SAME:           outputs([[ARG_1]] : memref<1x64x56x56xf16, #NHWC, [@CMX_NN, 0]>)
 //CHECK-SAME:           -> memref<1x64x56x56xf16, #NHWC, [@CMX_NN, 0]>
 //CHECK-SAME:           variants :  {
 //CHECK:       DPUTask {mpe_mode = #VPU.mpe_mode<VECTOR_FP16>, outEnd = [55, 55, 63], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
@@ -638,13 +639,13 @@ func.func @ReinterpretCast(%arg0: memref<8xi8, @DDR>, %arg1: memref<8xi8, @DDR>)
 
 #NC = affine_map<(d0, d1) -> (d0, d1)>
 
-net.NetworkInfo entryPoint :  @ConvertViewOpsWithStridedInput inputsInfo : {
+net.NetworkInfo entryPoint :  @StridedTensorSimpleTiling inputsInfo : {
     DataInfo "Input_1" : tensor<4x6xui8> {dynamicStrides}
 } outputsInfo : {
     DataInfo "Outputs_1" : tensor<4x6xui8>
 }
 
-func.func @ConvertViewOpsWithStridedInput(%arg0: memref<4x6xui8, @DDR>, %arg1: memref<4x6xui8, @DDR>) -> memref<4x6xui8, @DDR> {
+func.func @StridedTensorSimpleTiling(%arg0: memref<4x6xui8, @DDR>, %arg1: memref<4x6xui8, @DDR>) -> memref<4x6xui8, @DDR> {
     %0 = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<4x6xui8, @DDR>
     %1 = VPUIP.SubView %0 [0, 0] [2, 3] : memref<4x6xui8, @DDR> to memref<2x3xui8, {order = #NC, strides = [6, 1]}, @DDR>
     // CHECK: VPURT.DeclareBuffer <NetworkInput> [0] <0> {offsets = [0, 0]}
@@ -652,8 +653,98 @@ func.func @ConvertViewOpsWithStridedInput(%arg0: memref<4x6xui8, @DDR>, %arg1: m
     // CHECK: VPURT.DeclareBuffer <NetworkInput> [0] <15> {offsets = [2, 3]}
     %3 = VPUIP.SubView %0 [0, 0] [2, 6] : memref<4x6xui8, @DDR> to memref<2x6xui8, @DDR>
     // CHECK: VPURT.DeclareBuffer <NetworkInput> [0] <0> {offsets = [0, 0]}
-    %4 = VPUIP.GenericReshape inputs(%3 : memref<2x6xui8, @DDR>) -> memref<2x2x3xui8, @DDR>
-    // CHECK: VPURT.DeclareBuffer <NetworkInput> [0] <0> {offsets = [0, 0, 0]}
+
+    return %arg1 : memref<4x6xui8, @DDR>
+}
+
+// -----
+
+#NC = affine_map<(d0, d1) -> (d0, d1)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+net.NetworkInfo entryPoint :  @StridedTensorReshapeSubViewPermute inputsInfo : {
+    DataInfo "Input_1" : tensor<4x6xui8> {dynamicStrides}
+} outputsInfo : {
+    DataInfo "Outputs_1" : tensor<4x6xui8>
+}
+
+func.func @StridedTensorReshapeSubViewPermute(%arg0: memref<4x6xui8, @DDR>, %arg1: memref<4x6xui8, @DDR>) -> memref<4x6xui8, @DDR> {
+    %0 = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<4x6xui8, @DDR>
+    %1 = VPUIP.GenericReshape inputs(%0 : memref<4x6xui8, @DDR>) -> memref<1x1x4x6xui8, @DDR>
+    %2 = VPUIP.SubView %1 [0, 0, 0, 3] [1, 1, 4, 3] : memref<1x1x4x6xui8, @DDR> to memref<1x1x4x3xui8, {order = #NCHW, strides = [24, 24, 6, 1]}, @DDR>
+    %3 = VPUIP.PermuteCast {dst_order = #NHWC, mem_perm = #NCHW} inputs(%2 :  memref<1x1x4x3xui8, {order = #NCHW, strides = [24, 24, 6, 1]}, @DDR>) -> memref<1x3x1x4xui8, {order = #NHWC, strides = [24, 1, 24, 6]}, @DDR>
+    // CHECK: VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<1x1x4x6xui8, @DDR>
+    // CHECK-NEXT: VPURT.DeclareBuffer <NetworkInput> [0] <3> {offsets = [0, 0, 0, 3]} -> memref<1x1x4x3xui8, {order = #NCHW, strides = [24, 24, 6, 1]}, @DDR>
+    // CHECK-NEXT: VPURT.DeclareBuffer <NetworkInput> [0] <3> {offsets = [0, 3, 0, 0]} -> memref<1x3x1x4xui8, {order = #NHWC, strides = [24, 1, 24, 6]}, @DDR>
+
+    return %arg1 : memref<4x6xui8, @DDR>
+}
+
+// -----
+
+#NC = affine_map<(d0, d1) -> (d0, d1)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+net.NetworkInfo entryPoint :  @StridedTensorSubViewReshapePermute inputsInfo : {
+    DataInfo "Input_1" : tensor<4x6xui8> {dynamicStrides}
+} outputsInfo : {
+    DataInfo "Outputs_1" : tensor<4x6xui8>
+}
+
+func.func @StridedTensorSubViewReshapePermute(%arg0: memref<4x6xui8, @DDR>, %arg1: memref<4x6xui8, @DDR>) -> memref<4x6xui8, @DDR> {
+    %0 = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<4x6xui8, @DDR>
+    %1 = VPUIP.SubView %0 [0, 3] [4, 3] : memref<4x6xui8, @DDR> to memref<4x3xui8, {order = #NC, strides = [6, 1]}, @DDR>
+    %2 = VPUIP.GenericReshape inputs(%1 : memref<4x3xui8, {order = #NC, strides = [6, 1]}, @DDR>) -> memref<1x4x1x3xui8, {order = #NCHW, strides = [24, 6, 6, 1]}, @DDR>
+    %3 = VPUIP.PermuteCast {dst_order = #NHWC, mem_perm = #NCHW} inputs(%2 : memref<1x4x1x3xui8, {order = #NCHW, strides = [24, 6, 6, 1]}, @DDR>) -> memref<1x3x4x1xui8, {order = #NHWC, strides = [24, 1, 6, 6]}, @DDR>
+    // CHECK: VPURT.DeclareBuffer <NetworkInput> [0] <3> {offsets = [0, 3]} -> memref<4x3xui8, {order = #NC, strides = [6, 1]}, @DDR>
+    // CHECK-NEXT: VPURT.DeclareBuffer <NetworkInput> [0] <3> {offsets = [0, 0, 0, 3]} -> memref<1x4x1x3xui8, {order = #NCHW, strides = [24, 6, 6, 1]}, @DDR>
+    // CHECK-NEXT: VPURT.DeclareBuffer <NetworkInput> [0] <3> {offsets = [0, 3, 0, 0]} -> memref<1x3x4x1xui8, {order = #NHWC, strides = [24, 1, 6, 6]}, @DDR>
+
+    return %arg1 : memref<4x6xui8, @DDR>
+}
+
+// -----
+
+#NC = affine_map<(d0, d1) -> (d0, d1)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+net.NetworkInfo entryPoint :  @StridedTensorShapeContract inputsInfo : {
+    DataInfo "Input_1" : tensor<1x4x1x6xui8> {dynamicStrides}
+} outputsInfo : {
+    DataInfo "Outputs_1" : tensor<4x6xui8>
+}
+
+func.func @StridedTensorShapeContract(%arg0: memref<1x4x1x6xui8, @DDR>, %arg1: memref<4x6xui8, @DDR>) -> memref<4x6xui8, @DDR> {
+    %0 = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<1x4x1x6xui8, @DDR>
+    %1 = VPUIP.SubView %0 [0, 2, 0, 3] [1, 2, 1, 3] : memref<1x4x1x6xui8, @DDR> to memref<1x2x1x3xui8, {order = #NCHW, strides = [24, 6, 6, 1]}, @DDR>
+    %2 = VPUIP.GenericReshape inputs(%1 : memref<1x2x1x3xui8, {order = #NCHW, strides = [24, 6, 6, 1]}, @DDR>) -> memref<2x3xui8, {order = #NC, strides = [6, 1]}, @DDR>
+    // CHECK: VPURT.DeclareBuffer <NetworkInput> [0] <15> {offsets = [0, 2, 0, 3]} -> memref<1x2x1x3xui8, {order = #NCHW, strides = [24, 6, 6, 1]}, @DDR>
+    // CHECK-NEXT: VPURT.DeclareBuffer <NetworkInput> [0] <15> {offsets = [2, 3]} -> memref<2x3xui8, {order = #NC, strides = [6, 1]}, @DDR>
+
+    return %arg1 : memref<4x6xui8, @DDR>
+}
+
+// -----
+
+#NC = affine_map<(d0, d1) -> (d0, d1)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+net.NetworkInfo entryPoint :  @StridedTensorRepeatedOffset inputsInfo : {
+    DataInfo "Input_1" : tensor<1x6x1x6xui8> {dynamicStrides}
+} outputsInfo : {
+    DataInfo "Outputs_1" : tensor<4x6xui8>
+}
+
+func.func @StridedTensorRepeatedOffset(%arg0: memref<1x6x1x6xui8, @DDR>, %arg1: memref<4x6xui8, @DDR>) -> memref<4x6xui8, @DDR> {
+    %0 = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<1x6x1x6xui8, @DDR>
+    %1 = VPUIP.SubView %0 [0, 3, 0, 3] [1, 3, 1, 3] : memref<1x6x1x6xui8, @DDR> to memref<1x3x1x3xui8, {order = #NCHW, strides = [36, 6, 6, 1]}, @DDR>
+    %2 = VPUIP.GenericReshape inputs(%1 : memref<1x3x1x3xui8, {order = #NCHW, strides = [36, 6, 6, 1]}, @DDR>) -> memref<3x3xui8, {order = #NC, strides = [6, 1]}, @DDR>
+    // CHECK: VPURT.DeclareBuffer <NetworkInput> [0] <21> {offsets = [0, 3, 0, 3]} -> memref<1x3x1x3xui8, {order = #NCHW, strides = [36, 6, 6, 1]}, @DDR>
+    // CHECK-NEXT: VPURT.DeclareBuffer <NetworkInput> [0] <21> {offsets = [3, 3]} -> memref<3x3xui8, {order = #NC, strides = [6, 1]}, @DDR>
 
     return %arg1 : memref<4x6xui8, @DDR>
 }
@@ -678,27 +769,27 @@ func.func @ComplexViewSequence(%arg0: memref<512x1024x!qElemType, @DDR>,
     %0 = VPUIP.GenericReshape inputs(%in : memref<512x1024x!qElemType, @DDR>) -> memref<1x2x256x1024x!qElemType, @DDR>
     // CHECK: VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<1x2x256x1024x!qElemType, @DDR>
 
-    %1 = VPUIP.SubView %0 [0, 1, 0, 0] [1, 1, 256, 1024] : 
+    %1 = VPUIP.SubView %0 [0, 1, 0, 0] [1, 1, 256, 1024] :
         memref<1x2x256x1024x!qElemType, @DDR> to memref<1x1x256x1024x!qElemType, {order = #NCHW, strides = [524288, 262144, 1024, 1]}, @DDR>
     // CHECK: VPURT.DeclareBuffer <NetworkInput> [0] <262144> -> memref<1x1x256x1024x!qElemType, {order = #NCHW, strides = [524288, 262144, 1024, 1]}, @DDR>
 
     %2 = VPUIP.PermuteCast {dst_order = #NHCW, mem_perm = #NHCW}
-        inputs(%1 : memref<1x1x256x1024x!qElemType, {order = #NCHW, strides = [524288, 262144, 1024, 1]}, @DDR>) 
+        inputs(%1 : memref<1x1x256x1024x!qElemType, {order = #NCHW, strides = [524288, 262144, 1024, 1]}, @DDR>)
         -> memref<256x1x1024x1x!qElemType, #NHCW, @DDR>
     // CHECK: VPURT.DeclareBuffer <NetworkInput> [0] <262144> -> memref<256x1x1024x1x!qElemType, #NHCW, @DDR>
-    
-    %3 = VPUIP.ShapeCast {shape = [16, 16, 32, 32]} 
-        inputs(%2 : memref<256x1x1024x1x!qElemType, #NHCW, @DDR>) 
+
+    %3 = VPUIP.ShapeCast {shape = [16, 16, 32, 32]}
+        inputs(%2 : memref<256x1x1024x1x!qElemType, #NHCW, @DDR>)
         -> memref<16x16x32x32x!qElemType, #NHCW, @DDR>
     // CHECK: VPURT.DeclareBuffer <NetworkInput> [0] <262144> -> memref<16x16x32x32x!qElemType, #NHCW, @DDR>
 
     %4 = VPUIP.QuantizeCast inputs(%3 : memref<16x16x32x32x!qElemType, #NHCW, @DDR>) -> memref<16x16x32x32x!qElemType1, #NHCW, @DDR>
     // CHECK: [[BUF_INPUT:%.+]] = VPURT.DeclareBuffer <NetworkInput> [0] <262144> -> memref<16x16x32x32x!qElemType1, #NHCW, @DDR>
-    
-    %5 = VPUIP.NNDMA inputs(%4 : memref<16x16x32x32x!qElemType1, #NHCW, @DDR>) 
+
+    %5 = VPUIP.NNDMA inputs(%4 : memref<16x16x32x32x!qElemType1, #NHCW, @DDR>)
         outputs(%out : memref<16x16x32x32x!qElemType1, #NHCW, @DDR>) -> memref<16x16x32x32x!qElemType1, #NHCW, @DDR>
     // CHECK: VPUIP.NNDMA  inputs([[BUF_INPUT]] : memref<16x16x32x32x!qElemType1, #NHCW, @DDR>) outputs([[OUT]] : memref<16x16x32x32x!qElemType1, #NHCW, @DDR>) -> memref<16x16x32x32x!qElemType1, #NHCW, @DDR>
-    
+
     return %arg1 : memref<16x16x32x32x!qElemType1, #NHCW, @DDR>
 }
 
@@ -719,29 +810,29 @@ func.func @SI4SubViewAndQuantization(%arg0: memref<2048x16384xsi4, @DDR>,
     // CHECK-DAG: [[IN:%.+]] = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<2048x16384xsi4, @DDR>
     // CHECK-DAG: [[OUT:%.+]] = VPURT.DeclareBuffer <NetworkOutput> [0] <0> -> memref<2048x8192x1x1x!qElemType, {order = #NCHW, strides = [16384, 1, 1, 1]}, @DDR>
 
-    %0 = VPUIP.SubView %in [0, 8192] [2048, 8192] : 
+    %0 = VPUIP.SubView %in [0, 8192] [2048, 8192] :
         memref<2048x16384xsi4, @DDR> to memref<2048x8192xsi4, {order = affine_map<(d0, d1) -> (d0, d1)>, strides = [16384, 1]}, @DDR>
     // CHECK: VPURT.DeclareBuffer <NetworkInput> [0] <4096> -> memref<2048x8192xsi4, {order = #NC, strides = [16384, 1]}, @DDR>
 
-    %1 = VPUIP.GenericReshape inputs(%0 : memref<2048x8192xsi4, {order = affine_map<(d0, d1) -> (d0, d1)>, strides = [16384, 1]}, @DDR>) 
+    %1 = VPUIP.GenericReshape inputs(%0 : memref<2048x8192xsi4, {order = affine_map<(d0, d1) -> (d0, d1)>, strides = [16384, 1]}, @DDR>)
         -> memref<1x1x2048x8192xsi4, {order = #NCHW, strides = [33554432, 33554432, 16384, 1]}, @DDR>
     // CHECK: VPURT.DeclareBuffer <NetworkInput> [0] <4096> -> memref<1x1x2048x8192xsi4, {order = #NCHW, strides = [33554432, 33554432, 16384, 1]}, @DDR>
 
-    %2 = VPUIP.QuantizeCast inputs(%1 : memref<1x1x2048x8192xsi4, {order = #NCHW, strides = [33554432, 33554432, 16384, 1]}, @DDR>) 
+    %2 = VPUIP.QuantizeCast inputs(%1 : memref<1x1x2048x8192xsi4, {order = #NCHW, strides = [33554432, 33554432, 16384, 1]}, @DDR>)
         -> memref<1x1x2048x8192x!qElemType, {order = #NCHW, strides = [33554432, 33554432, 16384, 1]}, @DDR>
     // CHECK: VPURT.DeclareBuffer <NetworkInput> [0] <4096> -> memref<1x1x2048x8192x!qElemType, {order = #NCHW, strides = [33554432, 33554432, 16384, 1]}, @DDR>
-    
-    %3 = VPUIP.GenericReshape inputs(%2 : memref<1x1x2048x8192x!qElemType, {order = #NCHW, strides = [33554432, 33554432, 16384, 1]}, @DDR>) 
+
+    %3 = VPUIP.GenericReshape inputs(%2 : memref<1x1x2048x8192x!qElemType, {order = #NCHW, strides = [33554432, 33554432, 16384, 1]}, @DDR>)
         -> memref<2048x8192x1x1x!qElemType, {order = #NCHW, strides = [16384, 1, 1, 1]}, @DDR>
     // CHECK: VPURT.DeclareBuffer <NetworkInput> [0] <4096> -> memref<2048x8192x1x1x!qElemType, {order = #NCHW, strides = [16384, 1, 1, 1]}, @DDR>
 
     %4 = VPUIP.PermuteCast {dst_order = #NHWC, mem_perm = #NHWC}
-        inputs(%3 : memref<2048x8192x1x1x!qElemType, {order = #NCHW, strides = [16384, 1, 1, 1]}, @DDR>) 
+        inputs(%3 : memref<2048x8192x1x1x!qElemType, {order = #NCHW, strides = [16384, 1, 1, 1]}, @DDR>)
         -> memref<2048x8192x1x1x!qElemType, {order = #NCHW, strides = [16384, 1, 1, 1]}, @DDR>
     // CHECK: [[BUF_INPUT:%.+]] = VPURT.DeclareBuffer <NetworkInput> [0] <4096> -> memref<2048x8192x1x1x!qElemType, {order = #NCHW, strides = [16384, 1, 1, 1]}, @DDR>
 
-    %5 = VPUIP.NNDMA inputs(%4 : memref<2048x8192x1x1x!qElemType, {order = #NCHW, strides = [16384, 1, 1, 1]}, @DDR>) 
-        outputs(%out : memref<2048x8192x1x1x!qElemType, {order = #NCHW, strides = [16384, 1, 1, 1]}, @DDR>) 
+    %5 = VPUIP.NNDMA inputs(%4 : memref<2048x8192x1x1x!qElemType, {order = #NCHW, strides = [16384, 1, 1, 1]}, @DDR>)
+        outputs(%out : memref<2048x8192x1x1x!qElemType, {order = #NCHW, strides = [16384, 1, 1, 1]}, @DDR>)
         -> memref<2048x8192x1x1x!qElemType, {order = #NCHW, strides = [16384, 1, 1, 1]}, @DDR>
     // CHECK: VPUIP.NNDMA  inputs([[BUF_INPUT]] : memref<2048x8192x1x1x!qElemType, {order = #NCHW, strides = [16384, 1, 1, 1]}, @DDR>) outputs([[OUT]] : memref<2048x8192x1x1x!qElemType, {order = #NCHW, strides = [16384, 1, 1, 1]}, @DDR>) -> memref<2048x8192x1x1x!qElemType, {order = #NCHW, strides = [16384, 1, 1, 1]}, @DDR>
 
@@ -762,24 +853,24 @@ func.func @NestedSubViewAndReshape(%arg0: memref<2x64x256xf16, @DDR>,
     // CHECK-DAG: [[IN:%.+]] = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<2x64x256xf16, @DDR>
     // CHECK-DAG: [[OUT:%.+]] = VPURT.DeclareBuffer <NetworkOutput> [0] <0> -> memref<1x32x4x64xf16, @DDR>
 
-    %0 = VPUIP.SubView %in [0, 0, 0] [2, 64, 128] : 
+    %0 = VPUIP.SubView %in [0, 0, 0] [2, 64, 128] :
         memref<2x64x256xf16, @DDR> to memref<2x64x128xf16, {order = affine_map<(d0, d1, d2) -> (d0, d1, d2)>, strides = [16384, 256, 1]}, @DDR>
     // CHECK: VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<2x64x128xf16, {order = #CHW, strides = [16384, 256, 1]}, @DDR>
 
     // Second SubView: 2x64x128 -> 2x64x64 (take first half of last dimension again)
     // Offset calculation: offset[0]=0, offset[1]=0, offset[2]=0, so offset = 0 bytes from previous buffer
     // Strides: [16384, 256, 1] (inherited from parent)
-    %1 = VPUIP.SubView %0 [0, 0, 0] [2, 64, 64] : 
+    %1 = VPUIP.SubView %0 [0, 0, 0] [2, 64, 64] :
         memref<2x64x128xf16, {order = affine_map<(d0, d1, d2) -> (d0, d1, d2)>, strides = [16384, 256, 1]}, @DDR> to memref<2x64x64xf16, {order = affine_map<(d0, d1, d2) -> (d0, d1, d2)>, strides = [16384, 256, 1]}, @DDR>
     // CHECK: VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<2x64x64xf16, {order = #CHW, strides = [16384, 256, 1]}, @DDR>
 
-    %2 = VPUIP.GenericReshape inputs(%1 : memref<2x64x64xf16, {order = affine_map<(d0, d1, d2) -> (d0, d1, d2)>, strides = [16384, 256, 1]}, @DDR>) 
+    %2 = VPUIP.GenericReshape inputs(%1 : memref<2x64x64xf16, {order = affine_map<(d0, d1, d2) -> (d0, d1, d2)>, strides = [16384, 256, 1]}, @DDR>)
         -> memref<1x32x4x64xf16, {order = #NCHW, strides = [32768, 1024, 256, 1]}, @DDR>
     // CHECK: [[BUF_INPUT:%.+]] = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<1x32x4x64xf16, {order = #NCHW, strides = [32768, 1024, 256, 1]}, @DDR>
 
     // Copy to output
-    %3 = VPUIP.NNDMA inputs(%2 : memref<1x32x4x64xf16, {order = #NCHW, strides = [32768, 1024, 256, 1]}, @DDR>) 
-        outputs(%out : memref<1x32x4x64xf16, @DDR>) 
+    %3 = VPUIP.NNDMA inputs(%2 : memref<1x32x4x64xf16, {order = #NCHW, strides = [32768, 1024, 256, 1]}, @DDR>)
+        outputs(%out : memref<1x32x4x64xf16, @DDR>)
         -> memref<1x32x4x64xf16, @DDR>
     // CHECK: VPUIP.NNDMA inputs([[BUF_INPUT]] : memref<1x32x4x64xf16, {order = #NCHW, strides = [32768, 1024, 256, 1]}, @DDR>) outputs([[OUT]] : memref<1x32x4x64xf16, @DDR>) -> memref<1x32x4x64xf16, @DDR>
 

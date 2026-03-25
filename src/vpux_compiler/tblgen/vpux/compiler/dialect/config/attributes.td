@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025-2026 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -60,6 +60,7 @@ def Config_Platform :
                 I64EnumAttrCase<"NPU4000", 4000>,
                 I64EnumAttrCase<"NPU5000", 5000>,
                 I64EnumAttrCase<"NPU5010", 5010>,
+                I64EnumAttrCase<"NPU5020", 5020>,
             ]
         > {
 }

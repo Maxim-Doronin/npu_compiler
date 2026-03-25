@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
 #include <mlir/Conversion/LLVMCommon/TypeConverter.h>
@@ -134,9 +135,7 @@ void AdaptLLVMFuncsForShavePass::adaptFuncForShave(mlir::SymbolRefAttr funcSym) 
 
 void AdaptLLVMFuncsForShavePass::safeRunOnModule() {
     auto moduleOp = getOperation();
-    net::NetworkInfoOp netInfo;
-    mlir::func::FuncOp func;
-    net::NetworkInfoOp::getFromModule(moduleOp, netInfo, func);
+    auto func = net::getMainFunc(moduleOp);
     _swModule = VPUIP::getVPUSWModule(moduleOp, _log);
 
     func.walk([&](VPUIP::SwKernelOp swKernelOp) {

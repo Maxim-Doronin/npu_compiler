@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation.
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -49,9 +49,9 @@ module @DMAGraph {
 
 // CHECK:        profilingOutputsInfo
 // CHECK-NEXT:   DataInfo "dma" : tensor<6xui64>
-// CHECK:        func.func @main(%arg0: memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>,
-// CHECK-SAME:       %arg1: memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>,
-// CHECK-SAME:       %arg2: memref<6xui64>) ->
+// CHECK:        func.func @main([[ARG_0:%[^:]+]]: memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>,
+// CHECK-SAME:       [[ARG_1:%[^:]+]]: memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>,
+// CHECK-SAME:       [[ARG_2:%[^:]+]]: memref<6xui64>) ->
 // CHECK-SAME:       (memref<1x16x4x4xf16, #NHWC, [@CMX_NN, 0]>,
 // CHECK-SAME:       memref<6xui64>) {
 // CHECK:    [[BAR0:%.+]] = VPURT.DeclareVirtualBarrier
@@ -70,7 +70,7 @@ module @DMAGraph {
 // Profiled DMA task
 // CHECK:  VPURT.Task
 // CHECK-NEXT:    VPUIP.NNDMA <{is_out_of_order}>
-// CHECK-SAME:        inputs(%arg0 :
+// CHECK-SAME:        inputs([[ARG_0]] :
 // CHECK-SAME:        outputs([[BUF_DATA_0]] :
 
 // Getting end time of a DMA task
@@ -127,7 +127,7 @@ module @DMAGraph {
 // CHECK:  VPURT.Task
 // CHECK-NEXT:    VPUIP.NNDMA <{is_out_of_order, port = 1 : i64}>
 // CHECK-SAME:        inputs([[BUF_DATA_1]] :
-// CHECK-SAME:        outputs(%arg1 :
+// CHECK-SAME:        outputs([[ARG_1]] :
 
 // Getting end time of a DMA task
 // CHECK:    [[REG_5:%.+]] = VPURT.DeclareBuffer <Register> <637702144> -> memref<1xui64, @Register>

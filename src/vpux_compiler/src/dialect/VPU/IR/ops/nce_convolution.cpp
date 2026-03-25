@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -284,8 +284,6 @@ mlir::FailureOr<OutputTiling> vpux::VPU::NCEConvolutionOp::getTilingStrategy(Til
 //
 
 bool vpux::VPU::NCEConvolutionOp::checkStrategyCompatibility(VPU::MultiClusterStrategy strategy, size_t) {
-    const auto arch = config::getArch(getOperation());
-
     auto nceOp = mlir::cast<VPU::NCEConvolutionOp>(getOperation());
     const auto isCompatible = VPU::isSEPConvCompatibleWithClusterStrategy(nceOp, strategy);
     if (isCompatible.has_value()) {
@@ -303,7 +301,9 @@ bool vpux::VPU::NCEConvolutionOp::checkStrategyCompatibility(VPU::MultiClusterSt
     }
 
     const auto batchSize = outputType.getShape()[Dims4D::Act::N];
-    if (batchSize > 1 && batchSize <= VPU::getMaxArchDPUClusterNum(arch)) {
+    const auto enabledTileNum = config::getNumOfTiles(getOperation());
+
+    if (batchSize > 1 && batchSize <= enabledTileNum) {
         return strategy == VPU::MultiClusterStrategy::SplitOverBatch;
     }
 

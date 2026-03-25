@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation.
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -315,14 +315,14 @@ void StrategyManager::assignMultiClusterStrategy(bool enableMultiClusterForSWLay
                                        VPU::NCEAveragePoolOp>(op)) {
                             return false;
                         }
-                        return clusteredOp.doesLayerFitIntoCMX(VPU::MultiClusterStrategy::SplitOverKernel,
-                                                               _siblingsOpsAnalysis,
-                                                               /*reservedMem=*/Byte(0)) &&
-                               clusteredOp.checkStrategyCompatibility(VPU::MultiClusterStrategy::SplitOverKernel,
+                        return clusteredOp.checkStrategyCompatibility(VPU::MultiClusterStrategy::SplitOverKernel,
                                                                       _numTiles) &&
                                clusteredOp.isOperationSplitOverKernelCompatible(/*outputShape=*/ShapeRef(),
                                                                                 /*offset=*/ShapeRef(),
-                                                                                /*axis=*/ShapeRef());
+                                                                                /*axis=*/ShapeRef()) &&
+                               clusteredOp.doesLayerFitIntoCMX(VPU::MultiClusterStrategy::SplitOverKernel,
+                                                               _siblingsOpsAnalysis,
+                                                               /*reservedMem=*/Byte(0));
                     };
 
                     const auto checkTileDim = [&](Dim tileDim) -> bool {
