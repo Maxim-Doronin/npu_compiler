@@ -88,14 +88,14 @@ jobs:
       - name: Restore OpenVINO/NPU package from cache
         if: ${{ inputs.build-cache }}
         id: cache-restore
-        uses: actions/cache/restore@9255dc7a253b0ccc959486e2bca901246202afeb # v5.0.1
+        uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           key: ${{ steps.cache-key.outputs.cache-key }}
           path: ${{ env.OPENVINO_INSTALL_DIR }}
 
       - name: Checkout versions action
         if: ${{ !steps.cache-restore.outputs.cache-hit }}
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           path: ${{ env.NPU_ACTIONS_DIR }}
           sparse-checkout: |
@@ -109,7 +109,7 @@ jobs:
 
       - name: Clone OpenVINO
         if: ${{ !steps.cache-restore.outputs.cache-hit }}
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         timeout-minutes: 15
         with:
           repository: ${{ steps.versions.outputs.openvino-repository }}
@@ -119,7 +119,7 @@ jobs:
 
       - name: Clone NPU Compiler
         if: ${{ !steps.cache-restore.outputs.cache-hit }}
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         timeout-minutes: 15
         with:
           path: ${{ env.NPU_COMPILER_REPO }}
@@ -128,13 +128,13 @@ jobs:
 
       - name: System info
         if: ${{ !steps.cache-restore.outputs.cache-hit }}
-        uses: openvinotoolkit/openvino/.github/actions/system_info@82bbf0292c5bd490bc25a383e63d6461d3ee05c5 # 2025.4.1
+        uses: openvinotoolkit/openvino/.github/actions/system_info@9185925763612da451e6c5dd2819670bec249ea5 # 2026.0.1
 
       - name: Setup python version
         if: ${{ !steps.cache-restore.outputs.cache-hit }}
-        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
-          python-version: '3.13'
+          python-version: '3.14'
 
       - name: Install python dependencies
         if: ${{ !steps.cache-restore.outputs.cache-hit }}
@@ -152,7 +152,7 @@ jobs:
 
       - name: Initialize CodeQL
         if: ${{ !steps.cache-restore.outputs.cache-hit && inputs.with-codeql }}
-        uses: github/codeql-action/init@5d4e8d1aca955e8d8589aabd499c5cae939e33c7 # v4.31.9
+        uses: github/codeql-action/init@38697555549f1db7851b81482ff19f1fa5c4fedc # v4.34.1
         with:
           languages: c-cpp
           build-mode: manual
@@ -239,7 +239,7 @@ jobs:
       - name: Perform CodeQL Analysis
         id: codeql-analyze
         if: ${{ !steps.cache-restore.outputs.cache-hit && inputs.with-codeql }}
-        uses: github/codeql-action/analyze@5d4e8d1aca955e8d8589aabd499c5cae939e33c7 # v4.31.9
+        uses: github/codeql-action/analyze@38697555549f1db7851b81482ff19f1fa5c4fedc # v4.34.1
         with:
           category: "/language:c-cpp"
           output: ${{ env.CODEQL_OUTPUTS }}
@@ -262,7 +262,7 @@ jobs:
 
       - name: Upload CodeQL SARIF
         if: ${{ !steps.cache-restore.outputs.cache-hit && inputs.with-codeql }}
-        uses: github/codeql-action/upload-sarif@5d4e8d1aca955e8d8589aabd499c5cae939e33c7 # v4.31.9
+        uses: github/codeql-action/upload-sarif@38697555549f1db7851b81482ff19f1fa5c4fedc # v4.34.1
         with:
           sarif_file: ${{ env.CODEQL_OUTPUTS }}/filtered-results.sarif
           checkout_path: ${{ env.NPU_COMPILER_REPO }}
@@ -277,7 +277,7 @@ jobs:
 
       - name: Cache artifacts
         if: ${{ inputs.build-cache && !steps.cache-restore.outputs.cache-hit }}
-        uses: actions/cache/save@9255dc7a253b0ccc959486e2bca901246202afeb # v5.0.1
+        uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: ${{ env.OPENVINO_INSTALL_DIR }}
           key: ${{ steps.cache-key.outputs.cache-key }}
