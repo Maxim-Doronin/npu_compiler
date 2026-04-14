@@ -342,3 +342,6 @@ rtlCases
 
 # SW Kernels
 sw_runtime_kernels/kernels/prebuild/3720_ELF/report.xml
+
+# Do not ignore build documentation.
+!src/vpux_driver_compiler/docs/build/
