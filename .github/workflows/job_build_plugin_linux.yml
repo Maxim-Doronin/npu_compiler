@@ -156,6 +156,7 @@ jobs:
         with:
           languages: c-cpp
           build-mode: manual
+          config-file: ${{ env.NPU_COMPILER_REPO }}/.github/codeql/codeql-config-cpp.yml
           source-root: ${{ env.NPU_COMPILER_REPO }}
 
       - name: CMake configure - OpenVINO
@@ -255,7 +256,6 @@ jobs:
           output: ${{ env.CODEQL_OUTPUTS }}/filtered-results.sarif
           patterns: |
             +**
-            -thirdparty/flatbuffers/**
             -thirdparty/gtest-parallel/**
             -thirdparty/llvm-project/**
             -thirdparty/yaml-cpp/**
