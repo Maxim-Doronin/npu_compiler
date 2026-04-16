@@ -1,0 +1,7 @@
+name: NPU Compiler C/C++ CodeQL Config
+
+# Exclude dependency trees from CodeQL processing to reduce extraction and query time.
+paths-ignore:
+  - thirdparty/gtest-parallel/**
+  - thirdparty/llvm-project/**
+  - thirdparty/yaml-cpp/**

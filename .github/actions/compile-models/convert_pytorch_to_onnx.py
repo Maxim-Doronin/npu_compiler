@@ -45,6 +45,24 @@ class CLIPWrapper(torch.nn.Module):
         )
 
 
+class ResNetWrapper(torch.nn.Module):
+    """
+    ResNetForImageClassification returns an ImageClassifierOutputWithNoAttention dataclass.
+    In transformers 5.x, ONNX tracing of this dataclass may expose intermediate feature
+    tensors (e.g. the 2048-dim pooler output) alongside the logits, causing onnxruntime
+    shape inference to fail during quantization with (2048) vs (1000) mismatch.
+    This wrapper ensures only the logits tensor is exported.
+    """
+
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
+
+    def forward(self, pixel_values):
+        """Returns logits only"""
+        return self.model(pixel_values).logits
+
+
 class PromptEncoderWrapper(torch.nn.Module):
     """
     SamPromptEncoder takes extra input_boxes optional input
@@ -72,16 +90,16 @@ class MaskDecoderWrapper(torch.nn.Module):
     that shouldn't be counted in onnx model inputs.
     """
 
-    def __init__(self, decoder):
+    def __init__(self, decoder, multimask_output: bool):
         super().__init__()
         self.decoder = decoder
+        self.multimask_output = multimask_output
 
     def forward(
         self,
         image_embeddings,
         sparse_prompt_embeddings,
         dense_prompt_embeddings,
-        multimask_output,
     ):
         """Adds extra image_positional_embeddings input"""
         low_res_masks, iou_predictions = self.decoder(
@@ -89,7 +107,7 @@ class MaskDecoderWrapper(torch.nn.Module):
             image_positional_embeddings=torch.randn_like(image_embeddings),
             sparse_prompt_embeddings=sparse_prompt_embeddings,
             dense_prompt_embeddings=dense_prompt_embeddings,
-            multimask_output=multimask_output,
+            multimask_output=self.multimask_output,
         )
         return low_res_masks, iou_predictions
 
@@ -100,6 +118,7 @@ def convert_pytorch_to_onnx(model: dict, torch_model_path: str):
     onnx_model_path = pytorch_model_dir / f"{model.get('name')}.onnx"
     model_type = model.get("model_type", "")
     convert_config = model.get("Convert", {})
+    export_kwargs = {}
 
     input_names = convert_config.get("input_names", [])
     output_names = convert_config.get("output_names", [])
@@ -107,6 +126,10 @@ def convert_pytorch_to_onnx(model: dict, torch_model_path: str):
     dynamic_axes = {}
     for name, shape in convert_config.get("dynamic_axes", {}).items():
         dynamic_axes[name] = {int(axis): type for axis, type in shape.items()}
+
+    if model_type == "sam_mask_decoder":
+        input_names = [name for name in input_names if name != "multimask_output"]
+        dynamic_axes.pop("multimask_output", None)
 
     if model_type == "transformer":
         tokenizer = AutoTokenizer.from_pretrained(pytorch_model_dir, use_fast=True)
@@ -145,6 +168,7 @@ def convert_pytorch_to_onnx(model: dict, torch_model_path: str):
         sam_pytorch_model = SamModel.from_pretrained(pytorch_model_dir)
         processor = SamProcessor.from_pretrained(pytorch_model_dir)
         pytorch_model = sam_pytorch_model.vision_encoder.eval()
+        export_kwargs["dynamo"] = False
 
         image = Image.open(
             requests.get(
@@ -171,23 +195,24 @@ def convert_pytorch_to_onnx(model: dict, torch_model_path: str):
         }
     elif model_type == "sam_mask_decoder":
         sam_pytorch_model = SamModel.from_pretrained(pytorch_model_dir)
-        pytorch_model = MaskDecoderWrapper(sam_pytorch_model.mask_decoder.eval())
+        multimask_output = bool(convert_config.get("multimask_output", False))
+        pytorch_model = MaskDecoderWrapper(
+            sam_pytorch_model.mask_decoder.eval(),
+            multimask_output,
+        )
 
         image_embeddings = torch.rand(convert_config.get("image_embeddings_shape", []))
         sparse_embeddings = torch.rand(
             convert_config.get("sparse_embeddings_shape", [])
         )
         dense_embeddings = torch.rand(convert_config.get("dense_embeddings_shape", []))
-        multimask_output = torch.tensor([0], dtype=torch.bool)
         inputs = {
             "image_embeddings": image_embeddings,
             "sparse_embeddings": sparse_embeddings,
             "dense_embeddings": dense_embeddings,
-            "multimask_output": multimask_output,
         }
     elif model_type == "resnet":
-        pytorch_model = ResNetForImageClassification.from_pretrained(pytorch_model_dir)
-        pytorch_model.eval()
+        pytorch_model = ResNetWrapper(ResNetForImageClassification.from_pretrained(pytorch_model_dir)).eval()
         processor = AutoImageProcessor.from_pretrained(pytorch_model_dir, use_fast=True)
 
         image = Image.open(
@@ -205,6 +230,7 @@ def convert_pytorch_to_onnx(model: dict, torch_model_path: str):
         output_names=output_names,
         dynamic_axes=dynamic_axes,
         opset_version=18,
+        **export_kwargs,
     )
 
     return onnx_model_path

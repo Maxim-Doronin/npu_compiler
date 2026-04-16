@@ -88,7 +88,7 @@ jobs:
       - name: Restore OpenVINO/NPU package from cache
         if: ${{ inputs.build-cache }}
         id: cache-restore
-        uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           key: ${{ steps.cache-key.outputs.cache-key }}
           path: ${{ env.OPENVINO_INSTALL_DIR }}
@@ -128,7 +128,7 @@ jobs:
 
       - name: System info
         if: ${{ !steps.cache-restore.outputs.cache-hit }}
-        uses: openvinotoolkit/openvino/.github/actions/system_info@9185925763612da451e6c5dd2819670bec249ea5 # 2026.0.1
+        uses: openvinotoolkit/openvino/.github/actions/system_info@3687ccc8dab6a9ad5debfd9263414e6357c43d6f # 2026.1.1
 
       - name: Setup python version
         if: ${{ !steps.cache-restore.outputs.cache-hit }}
@@ -152,10 +152,11 @@ jobs:
 
       - name: Initialize CodeQL
         if: ${{ !steps.cache-restore.outputs.cache-hit && inputs.with-codeql }}
-        uses: github/codeql-action/init@38697555549f1db7851b81482ff19f1fa5c4fedc # v4.34.1
+        uses: github/codeql-action/init@c10b8064de6f491fea524254123dbe5e09572f13 # v4.35.1
         with:
           languages: c-cpp
           build-mode: manual
+          config-file: ${{ env.NPU_COMPILER_REPO }}/.github/codeql/codeql-config-cpp.yml
           source-root: ${{ env.NPU_COMPILER_REPO }}
 
       - name: CMake configure - OpenVINO
@@ -239,7 +240,7 @@ jobs:
       - name: Perform CodeQL Analysis
         id: codeql-analyze
         if: ${{ !steps.cache-restore.outputs.cache-hit && inputs.with-codeql }}
-        uses: github/codeql-action/analyze@38697555549f1db7851b81482ff19f1fa5c4fedc # v4.34.1
+        uses: github/codeql-action/analyze@c10b8064de6f491fea524254123dbe5e09572f13 # v4.35.1
         with:
           category: "/language:c-cpp"
           output: ${{ env.CODEQL_OUTPUTS }}
@@ -255,14 +256,13 @@ jobs:
           output: ${{ env.CODEQL_OUTPUTS }}/filtered-results.sarif
           patterns: |
             +**
-            -thirdparty/flatbuffers/**
             -thirdparty/gtest-parallel/**
             -thirdparty/llvm-project/**
             -thirdparty/yaml-cpp/**
 
       - name: Upload CodeQL SARIF
         if: ${{ !steps.cache-restore.outputs.cache-hit && inputs.with-codeql }}
-        uses: github/codeql-action/upload-sarif@38697555549f1db7851b81482ff19f1fa5c4fedc # v4.34.1
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4.35.1
         with:
           sarif_file: ${{ env.CODEQL_OUTPUTS }}/filtered-results.sarif
           checkout_path: ${{ env.NPU_COMPILER_REPO }}
@@ -277,7 +277,7 @@ jobs:
 
       - name: Cache artifacts
         if: ${{ inputs.build-cache && !steps.cache-restore.outputs.cache-hit }}
-        uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ${{ env.OPENVINO_INSTALL_DIR }}
           key: ${{ steps.cache-key.outputs.cache-key }}

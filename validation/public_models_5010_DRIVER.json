@@ -470,7 +470,6 @@
     },
     {
       "name": "sam-vit-base_image_encoder_FP32_LATENCY_DRIVER",
-      "disabled": true,
       "repository": "facebook/sam-vit-base",
       "repository_type": "huggingface",
       "repository_path": "pytorch_model.bin",
