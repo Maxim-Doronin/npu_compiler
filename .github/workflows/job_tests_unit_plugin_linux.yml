@@ -49,12 +49,14 @@ jobs:
 
       - name: Prepare environment
         run: |
+          echo "BYTECODE_INTERPRETER_PATH=$(realpath "${OPENVINO_INSTALL_DIR}/tools/bytecode_interpreter")" >> $GITHUB_ENV
           echo "PROF_PARSER_PATH=$(realpath "${OPENVINO_INSTALL_DIR}/tools/prof_parser")" >> $GITHUB_ENV
           echo "LSP_SERVER_PATH=$(realpath "${OPENVINO_INSTALL_DIR}/tools/npu-lsp-server")" >> $GITHUB_ENV
           echo "VPUX_OPT_PATH=$(realpath "${OPENVINO_INSTALL_DIR}/tools/vpux-opt")" >> $GITHUB_ENV
           echo "VPUX_TRANSLATE_PATH=$(realpath "${OPENVINO_INSTALL_DIR}/tools/vpux-translate")" >> $GITHUB_ENV
           chmod +x ${OPENVINO_INSTALL_DIR}/setupvars.sh
           chmod +x ${OPENVINO_INSTALL_DIR}/tests/FileCheck
+          chmod +x ${OPENVINO_INSTALL_DIR}/tools/bytecode_interpreter/bytecode_interpreter
           chmod +x ${OPENVINO_INSTALL_DIR}/tools/prof_parser/prof_parser
           chmod +x ${OPENVINO_INSTALL_DIR}/tools/vpux-opt/vpux-opt
           chmod +x ${OPENVINO_INSTALL_DIR}/tools/vpux-translate/vpux-translate
@@ -77,7 +79,7 @@ jobs:
         if: ${{ inputs.run-lit-tests }}
         run: |
           source ${OPENVINO_INSTALL_DIR}/setupvars.sh
-          export PATH=$PATH:${PROF_PARSER_PATH}:${LSP_SERVER_PATH}:${VPUX_OPT_PATH}:${VPUX_TRANSLATE_PATH}
+          export PATH=$PATH:${BYTECODE_INTERPRETER_PATH}:${PROF_PARSER_PATH}:${LSP_SERVER_PATH}:${VPUX_OPT_PATH}:${VPUX_TRANSLATE_PATH}
           cd ${OPENVINO_INSTALL_DIR}/tests/lit-tests
           python3 ./lit-tool/lit.py -v --param arch=NPU37XX NPU/NPU
 
@@ -85,7 +87,7 @@ jobs:
         if: ${{ inputs.run-lit-tests }}
         run: |
           source ${OPENVINO_INSTALL_DIR}/setupvars.sh
-          export PATH=$PATH:${PROF_PARSER_PATH}:${LSP_SERVER_PATH}:${VPUX_OPT_PATH}:${VPUX_TRANSLATE_PATH}
+          export PATH=$PATH:${BYTECODE_INTERPRETER_PATH}:${PROF_PARSER_PATH}:${LSP_SERVER_PATH}:${VPUX_OPT_PATH}:${VPUX_TRANSLATE_PATH}
           cd ${OPENVINO_INSTALL_DIR}/tests/lit-tests
           python3 ./lit-tool/lit.py -v --param arch=NPU40XX NPU/NPU
 
@@ -93,6 +95,6 @@ jobs:
         if: ${{ inputs.run-lit-tests }}
         run: |
           source ${OPENVINO_INSTALL_DIR}/setupvars.sh
-          export PATH=$PATH:${PROF_PARSER_PATH}:${LSP_SERVER_PATH}:${VPUX_OPT_PATH}:${VPUX_TRANSLATE_PATH}
+          export PATH=$PATH:${BYTECODE_INTERPRETER_PATH}:${PROF_PARSER_PATH}:${LSP_SERVER_PATH}:${VPUX_OPT_PATH}:${VPUX_TRANSLATE_PATH}
           cd ${OPENVINO_INSTALL_DIR}/tests/lit-tests
           python3 ./lit-tool/lit.py -v --param arch=NPU50XX NPU/NPU
