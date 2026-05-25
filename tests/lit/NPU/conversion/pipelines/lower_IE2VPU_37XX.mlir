@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --mlir-elide-elementsattrs-if-larger 8 --lower-IE-to-VPU %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --mlir-elide-elementsattrs-if-larger 8 --lower-IE-to-VPU %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -32,8 +32,8 @@ module @TwoFunctions {
         // CHECK-DAG:       [[WEIGHTS:%.+]] = const.Declare tensor<48x16x3x3xf16, {order = #NHWC}>
 
         // CHECK:       [[EXPAND:%.+]] = VPU.Expand([[ARG0]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 2]} : tensor<1x3x62x62xf16> -> tensor<1x3x62x64xf16>
-        // CHECK:       [[NCE_PERM:%.+]] = VPU.NCE.Permute([[EXPAND]]) {dstElemType = f16, dstOrder = #NHWC, expandedChannels = 16 : i64, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, quant_scale = [5.000000e-01], fp_prelu_alpha = 5.000000e-01 : f64>} -> tensor<1x16x62x64xf16, {order = #NHWC}>
-        // CHECK:       [[SLICE:%.+]] = VPU.Slice %1 [0, 0, 0, 0] [1, 16, 62, 62] : tensor<1x16x62x64xf16, {order = #NHWC}> to tensor<1x16x62x62xf16, {order = #NHWC}>
+        // CHECK:       [[NCE_PERM:%.+]] = VPU.NCE.Permute([[EXPAND]]) {dstElemType = f16, dstOrder = #NHWC, expandedChannels = 16 : i64, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, quant_scale = [5.000000e-01], fp_prelu_alpha = 5.000000e-01 : f64>} -> tensor<1x16x62x64xf16, {order = #NHWC}>
+        // CHECK:       [[SLICE:%.+]] = VPU.Slice [[NCE_PERM]] [0, 0, 0, 0] [1, 16, 62, 62] : tensor<1x16x62x64xf16, {order = #NHWC}> to tensor<1x16x62x62xf16, {order = #NHWC}>
         // CHECK:       [[OUT:%.+]] = VPU.NCE.Convolution([[SLICE]], [[WEIGHTS]], [[MAP]])
         // CHECK-SAME:        {mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
         // CHECK-SAME:        ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>,

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-shape-to-4d --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --convert-shape-to-4d --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 // CHECK-LABEL: func.func @ConvertShapeTo4DFrom5D
 // CHECK-SAME:    [[ARG_0:%[^:]+]]: tensor<1x3x9x16x1xf16>

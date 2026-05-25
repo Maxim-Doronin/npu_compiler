@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "vpux/compiler/passes_register.hpp"
+#include "vpux/compiler/init/passes_register.hpp"
 
 namespace vpux {
 

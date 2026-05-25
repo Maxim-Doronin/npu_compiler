@@ -85,17 +85,15 @@ private:
     Logger _log;
 };
 
-class QuantizeWithConvolution final : public mlir::OpRewritePattern<IE::ConvolutionOp> {
+template <typename ConcreteOp>
+class QuantizeWithNCEOp final : public mlir::OpRewritePattern<ConcreteOp> {
 public:
-    QuantizeWithConvolution(mlir::MLIRContext* ctx, const SupportedMixedPrecisionFunctor& isMixPrecisionSupported,
-                            Logger log)
-            : mlir::OpRewritePattern<IE::ConvolutionOp>(ctx),
-              _isMixPrecisionSupported(isMixPrecisionSupported),
-              _log(log) {
+    QuantizeWithNCEOp(mlir::MLIRContext* ctx, const SupportedMixedPrecisionFunctor& isMixPrecisionSupported, Logger log)
+            : mlir::OpRewritePattern<ConcreteOp>(ctx), _isMixPrecisionSupported(isMixPrecisionSupported), _log(log) {
     }
 
 public:
-    mlir::LogicalResult matchAndRewrite(IE::ConvolutionOp convOp, mlir::PatternRewriter& rewriter) const final;
+    mlir::LogicalResult matchAndRewrite(ConcreteOp origOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
     const SupportedMixedPrecisionFunctor _isMixPrecisionSupported;

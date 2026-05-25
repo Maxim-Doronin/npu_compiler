@@ -255,7 +255,8 @@ mlir::LogicalResult FuseExpandIntoPermuteQuantizeRewrite::matchAndRewrite(IE::Ex
     }
 
     const auto users = SmallVector<mlir::Operation*>(origOp->getUsers());
-    if (IE::anyIDUAutopadCandidate(users)) {
+    // Block fusion only when every user is an IDU autopad candidate
+    if (IE::allIDUAutopadCandidates(users)) {
         return mlir::failure();
     }
 
@@ -323,7 +324,7 @@ mlir::LogicalResult FuseQuantizeCastExpandIntoPermuteQuantizeQuantizeCastRewrite
     }
 
     const auto users = SmallVector<mlir::Operation*>(origOp->getUsers());
-    if (IE::anyIDUAutopadCandidate(users)) {
+    if (IE::allIDUAutopadCandidates(users)) {
         return mlir::failure();
     }
 

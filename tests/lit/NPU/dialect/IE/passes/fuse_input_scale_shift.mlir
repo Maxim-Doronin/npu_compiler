@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" -mlir-print-elementsattrs-with-hex-if-larger=-1 --fuse-input-scale-shift --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" -mlir-print-elementsattrs-with-hex-if-larger=-1 --fuse-input-scale-shift --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK: func.func @SplatScales([[ARG0:%.+]]: tensor<1x3x224x224xf32>)
 func.func @SplatScales(%arg0: tensor<1x3x224x224xf32>) -> tensor<1x8x112x112xf32> {

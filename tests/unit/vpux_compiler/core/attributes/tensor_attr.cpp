@@ -7,7 +7,7 @@
 #include "vpux/compiler/core/attributes/dims_order.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/core/IR/dynamic_attrs.hpp"
-#include "vpux/compiler/init.hpp"
+#include "vpux/compiler/init/dialects_registry.hpp"
 
 #include <mlir/IR/BuiltinTypeInterfaces.h>
 

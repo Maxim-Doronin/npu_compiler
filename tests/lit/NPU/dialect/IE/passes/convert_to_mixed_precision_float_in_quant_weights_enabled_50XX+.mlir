@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-to-mixed-precision="enable-float-in-quant-weights-mixed-mode=true" %s | FileCheck %s
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --convert-to-mixed-precision="enable-float-in-quant-weights-mixed-mode=true" %s | FileCheck %s
+// REQUIRES: platform-NPU5010
 
 !qElemType = !quant.uniform<f8E4M3FN:f16, 0.0021300796153289931>
 // CHECK: !qElemType = !quant.uniform<f8E4M3FN:f16, 0.0021300796153289931>

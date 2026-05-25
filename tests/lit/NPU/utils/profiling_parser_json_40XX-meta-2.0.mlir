@@ -4,7 +4,7 @@
 //
 
 // RUN: prof_parser -b %data_path_npu%/profiling-40XX-meta2.0.blob -p %data_path_npu%/profiling-0-40XX.bin -f json | FileCheck %s
-// REQUIRES: arch-NPU40XX
+// REQUIRES: platform-NPU4000
 
 //CHECK: {"traceEvents":[
 //CHECK-NEXT: {"name": "process_name", "ph": "M", "pid":0, "args": {"name" : "DMA"}},

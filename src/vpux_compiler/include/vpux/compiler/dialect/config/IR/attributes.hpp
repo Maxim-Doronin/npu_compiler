@@ -39,6 +39,13 @@ bool hasCompilationMode(mlir::ModuleOp module);
 CompilationMode getCompilationMode(mlir::Operation* op);
 
 //
+// HostBackendMode
+//
+
+void setHostBackendMode(mlir::ModuleOp module, HostBackendMode mode);
+HostBackendMode getHostBackendMode(mlir::ModuleOp module);
+
+//
 // ELF ABI Version
 //
 

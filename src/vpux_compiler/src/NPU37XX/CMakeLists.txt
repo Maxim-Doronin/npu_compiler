@@ -17,39 +17,45 @@ npu_embed_bin_file(
 file(GLOB_RECURSE SRC_FILES *.cpp)
 add_npu_library(npu_compiler_npu37xx
     ${SRC_FILES}
-    LINK_LIBS PRIVATE
+    LINK_LIBS
+      PUBLIC
+        npu_compiler_dialect_npureg37xx
+        npu_compiler_dialect_vpu
+        npu_compiler_dialect_vpuipdpu
+        npu_compiler_dialect_vpureg
+        npu_compiler_dynamic_rewriter
+        npu_compiler_utils
+        npu_compiler_vpuipdpu_37XX
         npu_compiler_conversion
-        npu_compiler_dialect_vpurt
-        npu_compiler_dialect_vpurt_transforms
-        npu_compiler_dialect_vpurt_utils
-        npu_compiler_dialect_vpuip
         npu_compiler_core
         npu_compiler_dialect_config
-        npu_compiler_dialect_const
         npu_compiler_dialect_core
         npu_compiler_dialect_ie
         npu_compiler_dialect_ie_interfaces
         npu_compiler_dialect_ie_transforms
-        npu_compiler_dialect_hostexec
-        npu_compiler_dialect_hostexec_transforms
         npu_compiler_dialect_vpu_interfaces
         npu_compiler_dialect_vpu_transforms
-        npu_compiler_dialect_vpu_utils
+        npu_compiler_dialect_vpuip
         npu_compiler_dialect_vpuip_interfaces
         npu_compiler_dialect_vpuip_transforms
+        npu_compiler_dialect_vpurt
+        npu_compiler_pipelines
+        npu_ov_utils
+        npu_core_utils
+        npu_logger
+      PRIVATE
+        npu_compiler_dialect_const
+        npu_compiler_dialect_ie_utils
+        npu_compiler_dialect_vpumi37xx
+        npu_compiler_dialect_vpu_utils
         npu_compiler_dialect_vpuip_utils
         npu_compiler_dialect_elfnpu37xx
-        npu_compiler_pipelines
+        npu_compiler_dialect_vpurt_transforms
         npu_compiler_locverif
-        npu_llvm_utils
-        npu_ov_utils
-        npu_profiling_utils
         npu_elf
         npu_costmodel
+        openvino::npu_al
     DEPENDS
         cost_model_data_2_7
         cost_model_data_2_7_fast
-    SYSTEM_INCLUDES
-        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
-    INCLUDES
-        $<TARGET_PROPERTY:openvino::npu_al,INTERFACE_INCLUDE_DIRECTORIES>)
+)

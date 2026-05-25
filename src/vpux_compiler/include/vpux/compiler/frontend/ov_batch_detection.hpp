@@ -10,12 +10,30 @@
 #include <openvino/core/partial_shape.hpp>
 
 #include "vpux/compiler/core/pipelines_options.hpp"
-#include "vpux/compiler/init.hpp"
 #include "vpux/utils/logger/logger.hpp"
 
 #include "intel_npu/config/options.hpp"
 
 namespace vpux {
+
+/**
+ * @brief finds a batch dimension in @layout and @shape. In case if the batch is
+ * detected and is not a unit array (N != 1), the function returns true
+ *
+ * @param layout - the layout of models input/output
+ * @param shape - the shape of the appropriate input/output
+ */
+bool hasExplicitBatchInLayout(const ov::Layout& layout, const ov::PartialShape& shape);
+
+/**
+ * @brief checks if layout is set explicitly and doesn't contain a batch dimension
+ * Return true, if no batch dimension exists
+ *
+ * @param layout - the layout of models input/output
+ * @param shape - the shape of the appropriate input/output
+ */
+bool hasExplicitBatchInLayoutForbidden(const ov::Layout& layout);
+
 /**
  * @brief analyze @shape of unknown layout whether it contains a batch dimension. In case if the batch is being
  * detected, the function increments @realBatchShapesCount when the batch dimension is not a unit array (N != 1). The
@@ -59,6 +77,21 @@ bool collectDebatchCoeffDescriptionIfPossible(std::ostream& stream, const ov::La
  * suitable combinations of params and options
  */
 bool isExplicitCfgBatchMethodOptionRequested(const intel_npu::Config& config, vpux::Logger& logger);
+
+/* @brief checks whether inputs and outputs layouts of a @model have no batch dimensions.
+ * If there are no batch dimensions neither in inputs not outputs, which have their layouts set explicitly,
+ * the function deems that the batch processing is forbidden and returns true.
+ * If at least one N-dimension is explicitly specified, then it assumes that batch processing is enabled,
+ * so that auto-detection of batch will go on the deep inspection
+ *
+ * @param model - a model for batch detection
+ * @param logger - an instance of a logger
+ *
+ * @details For further details please check out
+ * `tests/unit/vpux_compiler/frontend/auto_batch_compiler_detection_utils.cpp` where you can find information about
+ * suitable combinations of params and options
+ */
+bool isBatchForbiddenExplicitly(const std::shared_ptr<ov::Model>& model, vpux::Logger& logger);
 
 /**
  * @brief the function determines whether a model has a batch dimension based on complemented layout information.

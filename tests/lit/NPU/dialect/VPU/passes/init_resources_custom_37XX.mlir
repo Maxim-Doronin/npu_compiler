@@ -3,22 +3,22 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-resources="vpu-arch=%arch% compilation-mode=DefaultHW allow-custom-values=true" %s | FileCheck %s --strict-whitespace
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --init-resources="platform=%platform% compilation-mode=DefaultHW allow-custom-values=true" %s | FileCheck %s --strict-whitespace
+// REQUIRES: platform-NPU3720
 
-// CHECK: module @mode attributes {config.arch = #config.arch_kind<NPU37XX>, config.compilationMode = #config.compilation_mode<ReferenceSW>, config.revisionID = #config.revision_id<REVISION_NONE>}
+// CHECK: module @mode attributes {config.compilationMode = #config.compilation_mode<ReferenceSW>, config.platform = #config.platform<NPU3720>, config.revisionID = #config.revision_id<REVISION_NONE>} {
 module @mode attributes {config.compilationMode = #config.compilation_mode<ReferenceSW>} {
 }
 
 // -----
 
-// CHECK: module @arch attributes {config.arch = #config.arch_kind<NPU37XX>, config.compilationMode = #config.compilation_mode<DefaultHW>, config.revisionID = #config.revision_id<REVISION_NONE>}
-module @arch attributes {config.arch = #config.arch_kind<NPU37XX>} {
+// CHECK: module @arch attributes {config.compilationMode = #config.compilation_mode<DefaultHW>, config.platform = #config.platform<NPU3720>, config.revisionID = #config.revision_id<REVISION_NONE>} {
+module @arch {
 }
 
 // -----
 
-// CHECK: module @executors attributes {config.arch = #config.arch_kind<NPU37XX>, config.compilationMode = #config.compilation_mode<DefaultHW>, config.revisionID = #config.revision_id<REVISION_NONE>}
+// CHECK: module @executors attributes {config.compilationMode = #config.compilation_mode<DefaultHW>, config.platform = #config.platform<NPU3720>, config.revisionID = #config.revision_id<REVISION_NONE>} {
 module @executors {
     config.Resources 5 of @NCE at 6.000000e+02 MHz
     config.Resources 1 of @global {
@@ -39,7 +39,7 @@ module @executors {
 
 // -----
 
-// CHECK: module @memory attributes {config.arch = #config.arch_kind<NPU37XX>, config.compilationMode = #config.compilation_mode<DefaultHW>, config.revisionID = #config.revision_id<REVISION_NONE>}
+// CHECK: module @memory attributes {config.compilationMode = #config.compilation_mode<DefaultHW>, config.platform = #config.platform<NPU3720>, config.revisionID = #config.revision_id<REVISION_NONE>}
 module @memory {
     config.Resources 2 of @NCE at 1.300000e+03 MHz {
         config.MemoryResource 5 bytes of @CMX_NN_FragmentationAware

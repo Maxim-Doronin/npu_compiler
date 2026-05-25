@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/dialect/VPU/transforms/factories/sparsity_constraint.hpp"
+#include "vpux/compiler/dialect/VPU/interfaces/strategies.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
@@ -143,8 +143,8 @@ void ComputeSESizesPass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
 
-    auto arch = config::getArch(func);
-    auto constraint = VPU::getSparsityConstraint(arch);
+    const auto& strategyFactory = VPU::getVPUStrategyFactory(&ctx);
+    auto constraint = strategyFactory->getSparsityConstraint();
 
     // Set the storage element size attributes only for the input operand in case the sparse data is concatenated
     // over channels. This is necessary since sparse activations are sparsified individually by each DPU producer

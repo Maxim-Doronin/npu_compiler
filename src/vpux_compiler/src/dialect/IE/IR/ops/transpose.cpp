@@ -307,6 +307,13 @@ mlir::LogicalResult ConvertTrivialTransposeToReshape::matchAndRewrite(IE::Transp
     }
 
     const auto inOrder = DimsOrder::fromValue(transposeOp.getInput());
+    // E#70418: this canonicalizer cannot rely on IE::isTrivialTranspose()
+    // because IE::Reshape *removes* layout information of the output - trivial
+    // transpose on a tensor with non-identity layout would break IR here.
+    if (!inOrder.isIdentity()) {
+        return mlir::failure();
+    }
+
     const auto inShape = getShape(transposeOp.getInput());
     const auto inMemShape = inOrder.toMemoryOrder(inShape);
     const auto perm = transposeOp.getOrderValue().value();

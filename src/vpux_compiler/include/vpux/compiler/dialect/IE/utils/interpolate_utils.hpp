@@ -6,7 +6,11 @@
 #pragma once
 
 #include <mlir/IR/PatternMatch.h>
+#include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/image.hpp"
+#include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/utils/interpolate_bound.hpp"
 
 namespace vpux {
 namespace IE {
@@ -25,6 +29,9 @@ mlir::FailureOr<SmallVector<int64_t>> extractIntVector(mlir::Location loc, const
                                                        const std::optional<mlir::ArrayAttr>& attr);
 mlir::FailureOr<SmallVector<double>> extractFPVector(mlir::Location loc, const mlir::Value value,
                                                      const std::optional<mlir::ArrayAttr>& attr);
+
+bool isSizesAsParameter(const mlir::Value value, const std::optional<mlir::ArrayAttr>& attr);
+bool isScalesAsParameter(const mlir::Value value, const std::optional<mlir::ArrayAttr>& attr);
 
 SmallVector<int64_t> getInterpAxesVal(mlir::Location loc, const mlir::Value value,
                                       const std::optional<mlir::ArrayAttr>& attr, NDTypeInterface inType);
@@ -51,7 +58,7 @@ template <typename InterpolateAdaptor>
 SmallVector<int64_t> calcOutputShapes(InterpolateAdaptor interpolate, mlir::Location loc, vpux::Logger log,
                                       mlir::MLIRContext* ctx) {
     const auto inType = mlir::cast<vpux::NDTypeInterface>(interpolate.getInput().getType());
-    const auto inShape = inType.getShape();
+    const auto inShape = vpux::getBoundedShape(interpolate.getInput().getType());
 
     const auto axesVal = getInterpAxesVal(loc, interpolate.getAxes(), interpolate.getAxesAttr(), inType);
     const auto beginPads = extractIntVector(loc, nullptr, interpolate.getAttr().getPadsBegin());
@@ -60,11 +67,11 @@ SmallVector<int64_t> calcOutputShapes(InterpolateAdaptor interpolate, mlir::Loca
     const auto sizes = extractIntVector(loc, interpolate.getSizes(), interpolate.getSizesAttr());
 
     const auto scalesIn = interpolate.getScales();
-    const auto scales = extractFPVector(loc, scalesIn, interpolate.getScalesAttr());
     const auto scalesElemType = scalesIn != nullptr
                                         ? mlir::cast<vpux::NDTypeInterface>(scalesIn.getType()).getElementType()
                                         : mlir::Float64Type::get(ctx);
 
+    const auto scales = extractFPVector(loc, scalesIn, interpolate.getScalesAttr());
     return inferInterpOutShape(loc, axesVal, inShape, beginPads, endPads, calcMode, sizes, scales, scalesElemType, log);
 }
 

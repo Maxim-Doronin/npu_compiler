@@ -68,13 +68,13 @@ struct CommandListIndexState {
     mlir::LLVM::CallOp lastSubmitCommandListCallOp = nullptr;
 
     bool commandListGroupStarted = false;
-    bool useSingleCmdList = false;
+    bool enablePipelinedCmdListRecording = vpux::HostExec::defaultEnablePipelinedCmdListRecording;
 
-    void initialize(mlir::func::FuncOp funcOp, bool useSingleCmdList) {
+    void initialize(mlir::func::FuncOp funcOp, bool enablePipelinedCmdListRecording) {
         mlir::OpBuilder builder(funcOp);
         auto& entryBlock = funcOp.getBody().front();
         builder.setInsertionPointToStart(&entryBlock);
-        this->useSingleCmdList = useSingleCmdList;
+        this->enablePipelinedCmdListRecording = enablePipelinedCmdListRecording;
         stepSizeInByte = builder.create<mlir::LLVM::ConstantOp>(builder.getUnknownLoc(), builder.getIntegerType(64), 8);
     }
 
@@ -86,7 +86,7 @@ struct CommandListIndexState {
         mlir::Type i64Type = builder.getI64Type();
         auto voidPtrType = mlir::LLVM::LLVMPointerType::get(builder.getContext());
 
-        if (useSingleCmdList && resetIndex > 0) {
+        if (!enablePipelinedCmdListRecording && resetIndex > 0) {
             resetIndex++;
             // no need of increase command list pointer
             return;
@@ -111,12 +111,12 @@ struct CommandListIndexState {
 
         // For the first subgraph, no need of commandlist pointer update is requried
 
-        return ((resetIndex > 1) && (useSingleCmdList == false)) ? lastResultPtr : cmdList;
+        return ((resetIndex > 1) && enablePipelinedCmdListRecording) ? lastResultPtr : cmdList;
     }
 
     // Returns commandListIndex
     mlir::Value getCommandListIndex(mlir::OpBuilder& builder) {
-        int64_t index = ((resetIndex > 1) && (useSingleCmdList == false)) ? resetIndex - 1 : 0;
+        int64_t index = ((resetIndex > 1) && enablePipelinedCmdListRecording) ? resetIndex - 1 : 0;
         return builder.create<mlir::LLVM::ConstantOp>(builder.getUnknownLoc(), builder.getIntegerType(64), index);
     }
 
@@ -135,9 +135,10 @@ struct CommandListIndexState {
             lastSubmitCommandListCallOp.setOperand(argIndexEvent, event);
         }
 
-        // Add an atribute "number of subgraphs" to the main module
+        // Add an attribute "number of subgraphs" to the main module
         mlir::Type i64Type = mlir::IntegerType::get(ctx, 64);
-        mlir::IntegerAttr numSubGraphs = mlir::IntegerAttr::get(i64Type, ((useSingleCmdList == true) ? 1 : resetIndex));
+        mlir::IntegerAttr numSubGraphs =
+                mlir::IntegerAttr::get(i64Type, ((enablePipelinedCmdListRecording == false) ? 1 : resetIndex));
 
         module->setAttr(HOST_EXEC_NUM_SUBGRAPH_ATTR_NAME, numSubGraphs);
     }
@@ -211,11 +212,11 @@ int64_t getElementByteSize(mlir::Value sourceDesc) {
     int64_t bytes = 2;
 
     if (auto op = sourceDesc.getDefiningOp<mlir::memref::SubViewOp>()) {
-        auto memRefType = op.getSource().getType();
+        auto memRefType = op.getType();
         auto elementType = memRefType.getElementType();
         return (elementType.getIntOrFloatBitWidth() + 7) / 8;
     } else if (auto op = sourceDesc.getDefiningOp<mlir::memref::ViewOp>()) {
-        auto memRefType = op.getSource().getType();
+        auto memRefType = op.getType();
         auto elementType = memRefType.getElementType();
         return (elementType.getIntOrFloatBitWidth() + 7) / 8;
     } else if (auto op = sourceDesc.getDefiningOp<mlir::UnrealizedConversionCastOp>()) {
@@ -229,6 +230,38 @@ int64_t getElementByteSize(mlir::Value sourceDesc) {
 
         return bytes;
     }
+}
+
+// Recursively accumulate offsets for subview/view/cast chains
+mlir::Value accumulateOffsets(mlir::OpBuilder& builder, mlir::Location loc, mlir::Value value) {
+    auto i64Type = builder.getI64Type();
+    mlir::Value totalOffset = MemRefDescriptorUtil::extractOffset(builder, loc, value);
+    int64_t elemBytes = getElementByteSize(value);
+    mlir::Value current = value;
+
+    while (true) {
+        if (auto subviewOp = current.getDefiningOp<mlir::memref::SubViewOp>()) {
+            current = subviewOp.getSource();
+        } else if (auto viewOp = current.getDefiningOp<mlir::memref::ViewOp>()) {
+            // Accumulate byteShift (offset in bytes)
+            auto byteShift = viewOp.getByteShift();
+            if (byteShift) {
+                auto shiftValue = builder.create<mlir::arith::IndexCastOp>(loc, i64Type, byteShift);
+                // Convert byte offset to element offset if needed
+                auto elemByteSize = builder.create<mlir::LLVM::ConstantOp>(loc, i64Type, elemBytes);
+                auto divOp = builder.create<mlir::LLVM::SDivOp>(loc, i64Type, shiftValue, elemByteSize);
+                totalOffset = builder.create<mlir::LLVM::AddOp>(loc, i64Type, totalOffset, divOp);
+            }
+            current = viewOp.getSource();
+        } else if (auto castOp = current.getDefiningOp<mlir::memref::ReinterpretCastOp>()) {
+            current = castOp.getSource();
+        } else if (auto castOp = current.getDefiningOp<mlir::UnrealizedConversionCastOp>()) {
+            current = castOp.getInputs()[0];
+        } else {
+            break;
+        }
+    }
+    return totalOffset;
 }
 
 // Extract buffer pointers from memref descriptors
@@ -382,8 +415,7 @@ private:
         }
 
         if (auto defOp = value.getDefiningOp()) {
-            if (!mlir::isa<mlir::UnrealizedConversionCastOp>(defOp) && !mlir::isa<mlir::memref::SubViewOp>(defOp) &&
-                !mlir::isa<mlir::memref::ViewOp>(defOp)) {
+            if (!mlir::isa<mlir::UnrealizedConversionCastOp, mlir::memref::SubViewOp, mlir::memref::ViewOp>(defOp)) {
                 // only view, subview and cast ops are allowed in the chain
                 // for mutable command list
                 return -1;
@@ -440,8 +472,8 @@ private:
         builder.create<mlir::LLVM::StoreOp>(loc, basePtrExtractOp, bufferBaseGepPtr);
 
         auto offsetGepPtr = createGetOp(MemRefDescMemberIndex::OFFSET);
-        auto srcOffsetExtractOp = MemRefDescriptorUtil::extractOffset(builder, loc, llvmValue);
-        builder.create<mlir::LLVM::StoreOp>(loc, srcOffsetExtractOp, offsetGepPtr);
+        auto accumulatedOffset = accumulateOffsets(builder, loc, llvmValue);
+        builder.create<mlir::LLVM::StoreOp>(loc, accumulatedOffset, offsetGepPtr);
 
         auto elementByteSizeGepPtr = createGetOp(MemRefDescMemberIndex::ELEMENT_BYTE_SIZE);
         int64_t bytes = getElementByteSize(llvmValue);
@@ -576,10 +608,11 @@ void createSubmitCommandList(mlir::OpBuilder& builder, mlir::ModuleOp moduleOp, 
     // The last two arguments will be updated in increaseCommandListIndex later if required.
     auto numArgs = funcOp.getNumArguments();
     auto cmdQueue = funcOp.getArgument(GET_ARG_INDEX_COMMAND_QUEUE(numArgs));
+    auto execContext = funcOp.getArgument(GET_ARG_INDEX_COMMAND_EXECUTION_CONTEXT(numArgs));
 
     auto cmdList = cmdListIndexState.getCommandList(funcOp);
     auto callOp = createLLVMFuncCallOp(builder, moduleOp, "npu_level_zero_submit_commandlist",
-                                       {cmdList, cmdQueue, nullPtr, nullPtr}, returnType);
+                                       {cmdList, cmdQueue, nullPtr, nullPtr, execContext}, returnType);
 
     // Mark this call op as the last one to update 3rd and 4th arguments of the last submit command list
     cmdListIndexState.lastSubmitCommandListCallOp = callOp;
@@ -625,9 +658,10 @@ mlir::LogicalResult LvlZeroAllocLowering::matchAndRewrite(mlir::memref::AllocOp 
     auto funcOp = origOp->getParentOfType<mlir::func::FuncOp>();
     auto numArgs = funcOp.getNumArguments();
     auto context = funcOp.getArgument(GET_ARG_INDEX_CONTEXT(numArgs));
-    auto allocatedPtr =
-            createLLVMFuncCallOp(rewriter, moduleOp, "npu_level_zero_alloc", {sizeBytes, context}, returnType)
-                    .getResult();
+    auto execContext = funcOp.getArgument(GET_ARG_INDEX_COMMAND_EXECUTION_CONTEXT(numArgs));
+    auto allocatedPtr = createLLVMFuncCallOp(rewriter, moduleOp, "npu_level_zero_alloc",
+                                             {sizeBytes, context, execContext}, returnType)
+                                .getResult();
     // No alignment.
     mlir::Value alignedPtr = allocatedPtr;
     auto memrefDescriptor =
@@ -885,6 +919,7 @@ mlir::LogicalResult AsyncOpRewriter<mlir::async::ExecuteOp>::matchAndRewrite(mli
     auto umdContext = funcOp.getArgument(GET_ARG_INDEX_CONTEXT(numArgs));
     auto device = funcOp.getArgument(GET_ARG_INDEX_DEVICE(numArgs));
     auto ddiTable = funcOp.getArgument(GET_ARG_INDEX_DDI_TABLE(numArgs));
+    auto commandQueue = funcOp.getArgument(GET_ARG_INDEX_COMMAND_QUEUE(numArgs));
     auto executionContext = funcOp.getArgument(GET_ARG_INDEX_COMMAND_EXECUTION_CONTEXT(numArgs));
 
     // note: needs to calculate the size of the kernel function after serialization of the core.NestedModule
@@ -970,7 +1005,7 @@ mlir::LogicalResult AsyncOpRewriter<mlir::async::ExecuteOp>::matchAndRewrite(mli
                     rewriter, moduleOp, "npu_level_zero_execute_graph",
                     {modelIOManager.getInputBufferDescs(), numInputs, modelIOManager.getOutputBufferDescs(), numOutputs,
                      kernelName, kernelGlobal, kernelSize, umdContext, device, ddiTable, cmdList, commandListIndex,
-                     executionContext},
+                     commandQueue, executionContext},
                     returnType);
 
             // Restore stack used for descriptors
@@ -992,14 +1027,14 @@ mlir::LogicalResult AsyncOpRewriter<mlir::async::ExecuteOp>::matchAndRewrite(mli
 
 class ConvertToLLVMUMDCallsPass final : public HostExec::impl::ConvertToLLVMUMDCallsBase<ConvertToLLVMUMDCallsPass> {
 public:
-    explicit ConvertToLLVMUMDCallsPass(bool useSingleCommandList, Logger log) {
+    explicit ConvertToLLVMUMDCallsPass(bool enablePipelinedCmdListRecording, Logger log)
+            : enablePipelinedCmdListRecording(enablePipelinedCmdListRecording) {
         Base::initLogger(std::move(log), Base::getArgumentName());
-        this->useSingleCommandList = useSingleCommandList;
     }
 
 private:
     void safeRunOnModule() final;
-    bool useSingleCommandList = false;
+    bool enablePipelinedCmdListRecording;
 };
 
 SmallVector<mlir::func::FuncOp> addFuncParamsForUmdForCallers(mlir::func::FuncOp callee) {
@@ -1200,11 +1235,12 @@ void ConvertToLLVMUMDCallsPass::safeRunOnModule() {
     });
     target.addLegalOp<mlir::ModuleOp>();
     target.addLegalDialect<mlir::LLVM::LLVMDialect>();
+    target.addLegalDialect<mlir::arith::ArithDialect>();
     target.addLegalOp<mlir::UnrealizedConversionCastOp>();
     target.addLegalOp<mlir::cf::AssertOp>();
 
     CommandListIndexState commandListIndexState;
-    commandListIndexState.initialize(funcOpToConvert, useSingleCommandList);
+    commandListIndexState.initialize(funcOpToConvert, enablePipelinedCmdListRecording);
 
     ModelIOManager ioManager(module, funcOpToConvert, _log);
 
@@ -1242,7 +1278,7 @@ void ConvertToLLVMUMDCallsPass::safeRunOnModule() {
     }
 
     // remove redundant submit command list calls if useSingleCommandList is true
-    if (useSingleCommandList) {
+    if (enablePipelinedCmdListRecording == false) {
         bool found = false;
         for (auto funcOp : targetFunctions) {
             auto callOps = to_small_vector(funcOp.getOps<mlir::LLVM::CallOp>());
@@ -1296,11 +1332,21 @@ void ConvertToLLVMUMDCallsPass::safeRunOnModule() {
 // createConvertToLLVMUMDCallsPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::HostExec::createConvertToLLVMUMDCallsPass(Logger log) {
-    bool useSingleCmdList = false;
+std::unique_ptr<mlir::Pass> vpux::HostExec::createConvertToLLVMUMDCallsPass(bool enablePipelinedCmdListRecording,
+                                                                            Logger log) {
 #if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
-    const auto useSingleCmdListOption = std::getenv(ENABLE_HOSTCOMPILE_USE_SINGLE_CMDLIST);
-    useSingleCmdList = useSingleCmdListOption != nullptr && std::string(useSingleCmdListOption) == "1";
+    const auto overrideEnablePipelinedCmdListOption =
+            std::getenv(OVERRIDE_ENABLE_PIPELINED_COMMANDLIST_RECORDING.data());
+    if (overrideEnablePipelinedCmdListOption != nullptr) {
+        log.warning("The environment variable {0} is set to {1}, which overrides the default behavior of pipelined "
+                    "command list recording.",
+                    OVERRIDE_ENABLE_PIPELINED_COMMANDLIST_RECORDING, overrideEnablePipelinedCmdListOption);
+
+        enablePipelinedCmdListRecording = std::string(overrideEnablePipelinedCmdListOption) != "0";
+    }
 #endif
-    return std::make_unique<ConvertToLLVMUMDCallsPass>(useSingleCmdList, log);
+
+    log.info("Pipelined command list recording is {0} for the ConvertToLLVMUMDCallsPass.",
+             enablePipelinedCmdListRecording ? "enabled" : "disabled");
+    return std::make_unique<ConvertToLLVMUMDCallsPass>(enablePipelinedCmdListRecording, log);
 }

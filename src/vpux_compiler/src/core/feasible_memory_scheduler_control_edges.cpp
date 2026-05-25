@@ -269,17 +269,6 @@ void vpux::updateScheduledOpsResourcesForControlEdge(std::list<ScheduledOpOneRes
 void FeasibleMemorySchedulerControlEdges::insertMemoryControlEdges(
         ArrayRef<FeasibleMemoryScheduler::ScheduledOpInfo> scheduledOps) {
     std::list<ScheduledOpOneResource> scheduledOpsResources;
-    // set of modified operations, e.g.
-    // DMA         : input  [0-100]   : cycles [180-220]
-    // DPU         : output [500-600] : cycles [200-250]
-    // SPILL-WRITE : input  [500-600] : cycles [250-280]
-    // SPILL-READ  : output [0-100]   : cycles [280-310]
-    // can be optimized to:
-    // DMA         : input  [0-100]   : cycles [180-220]
-    // DPU         : output [0-100]   : cycles [200-250]
-    // now DMA with DPU can not coexist
-    std::unordered_set<size_t> modifiedOps;
-
     _log.trace("Insert control edges for overlapping memory resources");
 
     // Analyze output from feasible scheduler and prepare list of scheduled
@@ -290,11 +279,6 @@ void FeasibleMemorySchedulerControlEdges::insertMemoryControlEdges(
 
         auto opIndex = scheduledOp.op_;
         auto execOp = _depsInfo.getExecuteOpAtIndex(opIndex);
-
-        // store operations modified by spilling optimizations
-        if (scheduledOp.modifiedMemoryRange_) {
-            modifiedOps.insert(opIndex);
-        }
 
         // Check all operands of operation and prepare entries in scheduledOpsResources that will be used
         // by control edge algorithm to generate new dependencies
@@ -311,7 +295,7 @@ void FeasibleMemorySchedulerControlEdges::insertMemoryControlEdges(
 
     // Apply dependencies from controlEdges set into depsInfo.
     // Later they should be transfered to token based dependencies between AsyncExecuteOps
-    updateControlEdgesInDepsInfo(_depsInfo, controlEdges, _log, modifiedOps);
+    updateControlEdgesInDepsInfo(_depsInfo, controlEdges, _log);
 
     _log = _log.unnest();
 }
@@ -322,21 +306,7 @@ void FeasibleMemorySchedulerControlEdges::updateDependenciesInIR() {
     _depsInfo.updateTokenDependencies();
 }
 
-void vpux::updateControlEdgesInDepsInfo(AsyncDepsInfo& depsInfo, ControlEdgeSet& controlEdges, Logger& log,
-                                        const std::unordered_set<size_t>& modifiedOps) {
-    // Store information about optimized pairs which can coexist based on scheduler decision
-    // and assignment of overlapping cycles
-    // Map represents all control edges for a given sink node
-    //  key - sink node
-    //  vector of values - source nodes
-    // TODO: This is to be removed when control edge subview awareness is fully completed (E#106837)
-    std::map<size_t, SmallVector<size_t>> optimizedEdgesBasedOnSinkOp;
-    // Map represents all control edges for a given  source node
-    //  key - source node
-    //  vector of values - sink nodes
-    // TODO: This is to be removed when control edge subview awareness is fully completed (E#106837)
-    std::map<size_t, SmallVector<size_t>> optimizedEdgesBasedOnSourceOp;
-
+void vpux::updateControlEdgesInDepsInfo(AsyncDepsInfo& depsInfo, ControlEdgeSet& controlEdges, Logger& log) {
     for (auto itr = controlEdges.begin(); itr != controlEdges.end(); ++itr) {
         if (itr->_source == itr->_sink) {
             continue;
@@ -345,59 +315,7 @@ void vpux::updateControlEdgesInDepsInfo(AsyncDepsInfo& depsInfo, ControlEdgeSet&
         auto sourceOp = depsInfo.getExecuteOpAtIndex(itr->_source);
         auto sinkOp = depsInfo.getExecuteOpAtIndex(itr->_sink);
 
-        if (!modifiedOps.count(itr->_source) && !modifiedOps.count(itr->_sink)) {
-            // Coexisting pairs may be modified by spilling optimizations
-            auto sourceOpCycleStart = getAsyncExecuteCycleBegin(sourceOp);
-            auto sourceOpCycleEnd = getAsyncExecuteCycleEnd(sourceOp);
-            auto sinkOpCycleStart = getAsyncExecuteCycleBegin(sinkOp);
-            auto sinkOpCycleEnd = getAsyncExecuteCycleEnd(sinkOp);
-
-            // If there is cycle overlap then scheduler assumed operations can coexist and there
-            // is no need for memory control edge
-            if (sinkOpCycleStart < sourceOpCycleEnd && sinkOpCycleEnd > sourceOpCycleStart) {
-                optimizedEdgesBasedOnSinkOp[itr->_sink].push_back(itr->_source);
-                optimizedEdgesBasedOnSourceOp[itr->_source].push_back(itr->_sink);
-                continue;
-            }
-        }
-
         log.trace("Dep: {0} -> {1}", itr->_source, itr->_sink);
         depsInfo.addDependency(sourceOp, sinkOp);
-    }
-
-    if (optimizedEdgesBasedOnSinkOp.empty() && optimizedEdgesBasedOnSourceOp.empty()) {
-        return;
-    }
-
-    log.trace("Identified edges to optimize due to overlapping cycles - {0}", optimizedEdgesBasedOnSourceOp);
-
-    // Traverse again to update dependencies from optimized deps sources
-    // to destinations of optimized control flow sinks
-    for (auto itr = controlEdges.begin(); itr != controlEdges.end(); ++itr) {
-        if (itr->_source == itr->_sink) {
-            continue;
-        }
-
-        auto thisOpOptimEdgesItr = optimizedEdgesBasedOnSinkOp.find(itr->_source);
-        if (thisOpOptimEdgesItr != optimizedEdgesBasedOnSinkOp.end()) {
-            for (auto& src : thisOpOptimEdgesItr->second) {
-                auto sourceOp = depsInfo.getExecuteOpAtIndex(src);
-                auto sinkOp = depsInfo.getExecuteOpAtIndex(itr->_sink);
-
-                log.trace("Dep: {0} -> {1}", src, itr->_sink);
-                depsInfo.addDependency(sourceOp, sinkOp);
-            }
-        }
-
-        thisOpOptimEdgesItr = optimizedEdgesBasedOnSourceOp.find(itr->_sink);
-        if (thisOpOptimEdgesItr != optimizedEdgesBasedOnSourceOp.end()) {
-            for (auto& dst : thisOpOptimEdgesItr->second) {
-                auto sourceOp = depsInfo.getExecuteOpAtIndex(itr->_source);
-                auto sinkOp = depsInfo.getExecuteOpAtIndex(dst);
-
-                log.trace("Dep: {0} -> {1}", itr->_source, dst);
-                depsInfo.addDependency(sourceOp, sinkOp);
-            }
-        }
     }
 }

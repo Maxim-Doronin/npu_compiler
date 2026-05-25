@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --lower-VPUIP-to-ELF %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --lower-VPUIP-to-ELF %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 module @OneDMA {
   net.NetworkInfo entryPoint : @main inputsInfo :  {

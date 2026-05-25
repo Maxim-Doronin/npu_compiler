@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "common/npu_test_env_cfg.hpp"
 #include "common_test_utils/ov_tensor_utils.hpp"
 #include "openvino/opsets/opset1_decl.hpp"
 #include "vpu_ov2_layer_test.hpp"
@@ -34,6 +35,9 @@ public:
                Output
         */
         const auto& [inShape, scaleShape, iType, oType] = GetParam();
+        if (utils::getTestDeviceId() == "3720" && iType == ov::element::nf4) {
+            GTEST_SKIP() << "nf4 input type is unsupported on NPU3720";
+        }
 
         init_input_shapes(static_shapes_to_test_representation({inShape, scaleShape}));
         const auto input = std::make_shared<ov::opset1::Parameter>(iType, inputDynamicShapes.at(0));
@@ -57,7 +61,7 @@ public:
         return result.str();
     };
 };
-
+class DynDQTestCommonWithoutNF4 : public DynDQTestCommon {};
 //
 // Platform test definition
 //
@@ -89,7 +93,13 @@ const std::vector<DynDeQuantParams> params = {
         {{16, 8, 32}, {16, 1, 1}, ov::element::nf4, ov::element::f16},
         {{16, 8, 32}, {1, 1, 32}, ov::element::nf4, ov::element::f16},
 };
+const std::vector<DynDeQuantParams> paramsI4 = {
+        {{3, 30, 128}, {3, 30, 1}, ov::element::i4, ov::element::f16},
+        {{3, 30, 128}, {3, 1, 128}, ov::element::i4, ov::element::f16},
+        {{3, 14, 12}, {3, 1, 12}, ov::element::i4, ov::element::f16},
+};
 
 INSTANTIATE_TEST_SUITE_P(DynDQ, DynDQTestCommon, ::testing::ValuesIn(params), DynDQTestCommon::getTestCaseName);
-
+INSTANTIATE_TEST_SUITE_P(DynDQ, DynDQTestCommonWithoutNF4, ::testing::ValuesIn(paramsI4),
+                         DynDQTestCommonWithoutNF4::getTestCaseName);
 }  // namespace ov::test::subgraph

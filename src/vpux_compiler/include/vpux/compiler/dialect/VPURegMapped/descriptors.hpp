@@ -27,11 +27,10 @@
 #include <mlir/Support/LLVM.h>
 #include <mlir/Support/LogicalResult.h>
 
-#include "vpux/compiler/core/developer_build_utils.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/types.hpp"
 #include "vpux/utils/core/array_ref.hpp"
+#include "vpux/utils/core/developer_build_utils.hpp"
 #include "vpux/utils/core/mem_size.hpp"
-
 #include "vpux/utils/core/string_ref.hpp"
 #include "vpux/utils/core/type/bfloat16.hpp"
 #include "vpux/utils/core/type/float16.hpp"

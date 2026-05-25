@@ -5,7 +5,7 @@
 
 //
 
-#include "vpux/utils/IE/config.hpp"
+#include "vpux/utils/ov/config.hpp"
 
 #include "intel_npu/config/options.hpp"
 
@@ -100,7 +100,7 @@ TEST_F(MLIR_ConfigTests, UpdateAndHas) {
     conf.update({{"PUBLIC_OPT", "YES"}});
     EXPECT_TRUE(conf.has<SimpleOption>());
 
-    conf.update({{"PRIVATE_OPT", "5"}}, OptionMode::RunTime);
+    conf.update({{"PRIVATE_OPT", "5"}});
     EXPECT_TRUE(conf.has<PrivateOption>());
 }
 

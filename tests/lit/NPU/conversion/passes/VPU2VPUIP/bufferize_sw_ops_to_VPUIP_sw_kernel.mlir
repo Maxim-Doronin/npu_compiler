@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --one-shot-bufferize-VPU-to-VPUIP %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --one-shot-bufferize-VPU-to-VPUIP %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK:  module @VPU.SW {
 // CHECK-NEXT:    func.func private @builtin_Convert(memref<*xi8>, memref<*xf32>) attributes {
@@ -1075,7 +1075,7 @@ func.func @ExperimentalDetectronROIFeatureExtractor(%arg0: tensor<100x4xf32>, %a
 // CHECK-LABEL:  func.func @RoPE
 // CHECK-SAME:      ([[INPUT:%.+]]: memref<1x32x1x64xf32>, [[INPUT_COS:%.+]]: memref<1x1x1x64xf32>, [[INPUT_SIN:%.+]]: memref<1x1x1x64xf32>)
 func.func @RoPE(%input: tensor<1x32x1x64xf32>, %input_cos: tensor<1x1x1x64xf32>, %input_sin: tensor<1x1x1x64xf32>) -> tensor<1x32x1x64xf32> {
-    %ropeop = VPU.RoPE(%input, %input_cos, %input_sin) : tensor<1x32x1x64xf32>, tensor<1x1x1x64xf32>, tensor<1x1x1x64xf32> -> tensor<1x32x1x64xf32>
+    %ropeop = VPU.RoPE(%input, %input_cos, %input_sin) {mode = #IE.rope_mode<SPLIT_HALF>} : tensor<1x32x1x64xf32>, tensor<1x1x1x64xf32>, tensor<1x1x1x64xf32> -> tensor<1x32x1x64xf32>
     return %ropeop : tensor<1x32x1x64xf32>
 
     // CHECK: [[ALLOC:%.+]] = memref.alloc() : memref<1x32x1x64xf32>
@@ -1097,12 +1097,34 @@ func.func @RoPE(%input: tensor<1x32x1x64xf32>, %input_cos: tensor<1x1x1x64xf32>,
 // CHECK-LABEL:  func.func @RoPEInterleaved
 // CHECK-SAME:      ([[INPUT:%.+]]: memref<1x32x1x64xf32>, [[INPUT_COS:%.+]]: memref<1x1x1x64xf32>, [[INPUT_SIN:%.+]]: memref<1x1x1x64xf32>)
 func.func @RoPEInterleaved(%input: tensor<1x32x1x64xf32>, %input_cos: tensor<1x1x1x64xf32>, %input_sin: tensor<1x1x1x64xf32>) -> tensor<1x32x1x64xf32> {
-    %ropeop = VPU.RoPE(%input, %input_cos, %input_sin) {is_interleaved} : tensor<1x32x1x64xf32>, tensor<1x1x1x64xf32>, tensor<1x1x1x64xf32> -> tensor<1x32x1x64xf32>
+    %ropeop = VPU.RoPE(%input, %input_cos, %input_sin) {mode = #IE.rope_mode<INTERLEAVED>} : tensor<1x32x1x64xf32>, tensor<1x1x1x64xf32>, tensor<1x1x1x64xf32> -> tensor<1x32x1x64xf32>
     return %ropeop : tensor<1x32x1x64xf32>
 
     // CHECK: [[ALLOC:%.+]] = memref.alloc() : memref<1x32x1x64xf32>
     // CHECK: [[RES:%.+]] = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_RoPE inputs([[INPUT]] as {{[^:]+}}: memref<1x32x1x64xf32>, [[INPUT_COS]] as {{[^:]+}}: memref<1x1x1x64xf32>, [[INPUT_SIN]] as {{[^:]+}}: memref<1x1x1x64xf32>) outputs([[ALLOC]] as {{[^:]+}}: memref<1x32x1x64xf32>) on tile 0 -> memref<1x32x1x64xf32>{
     // CHECK:   VPUIP.SW.Kernel.run {attrs = [1]}({{[^:]+}}, {{[^:]+}}, {{[^:]+}}, {{[^:]+}}) : memref<1x32x1x64xf32>, memref<1x1x1x64xf32>, memref<1x1x1x64xf32>, memref<1x32x1x64xf32>
+    // CHECK: }
+    // CHECK: return [[RES]] : memref<1x32x1x64xf32>
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+// CHECK:  module @VPU.SW {
+// CHECK-NEXT:    func.func private @builtin_RoPE(memref<*xf32>, memref<*xf32>, memref<*xf32>, memref<*xf32>, i64) attributes {VPU.kernel_code = "rope_pairwise.cpp", VPU.kernel_entry = "rope_pairwise", VPU.kernel_name = "rope_pairwise", VPU.task_type = @COMPUTE}
+// CHECK-NEXT:    func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
+// CHECK-NEXT:    }
+
+// CHECK-LABEL:  func.func @RoPEPairwise
+// CHECK-SAME:      ([[INPUT:%.+]]: memref<1x32x1x64xf32>, [[INPUT_COS:%.+]]: memref<1x1x1x64xf32>, [[INPUT_SIN:%.+]]: memref<1x1x1x64xf32>)
+func.func @RoPEPairwise(%input: tensor<1x32x1x64xf32>, %input_cos: tensor<1x1x1x64xf32>, %input_sin: tensor<1x1x1x64xf32>) -> tensor<1x32x1x64xf32> {
+    %ropeop = VPU.RoPE(%input, %input_cos, %input_sin) {mode = #IE.rope_mode<PAIRWISE>} : tensor<1x32x1x64xf32>, tensor<1x1x1x64xf32>, tensor<1x1x1x64xf32> -> tensor<1x32x1x64xf32>
+    return %ropeop : tensor<1x32x1x64xf32>
+
+    // CHECK: [[ALLOC:%.+]] = memref.alloc() : memref<1x32x1x64xf32>
+    // CHECK: [[RES:%.+]] = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_RoPE inputs([[INPUT]] as {{[^:]+}}: memref<1x32x1x64xf32>, [[INPUT_COS]] as {{[^:]+}}: memref<1x1x1x64xf32>, [[INPUT_SIN]] as {{[^:]+}}: memref<1x1x1x64xf32>) outputs([[ALLOC]] as {{[^:]+}}: memref<1x32x1x64xf32>) on tile 0 -> memref<1x32x1x64xf32>{
+    // CHECK:   VPUIP.SW.Kernel.run {attrs = [2]}({{[^:]+}}, {{[^:]+}}, {{[^:]+}}, {{[^:]+}}) : memref<1x32x1x64xf32>, memref<1x1x1x64xf32>, memref<1x1x1x64xf32>, memref<1x32x1x64xf32>
     // CHECK: }
     // CHECK: return [[RES]] : memref<1x32x1x64xf32>
 }
@@ -1242,7 +1264,7 @@ func.func @RoPEInterleaved(%input: tensor<1x32x1x64xf32>, %input_cos: tensor<1x1
 // CHECK:    [[OUT_MEMREF:%.+]] = memref.alloc() : memref<1x32x44x44xi8, @CMX_NN>
 
 // CHECK:    [[OUT_COPY:%.+]] = VPUIP.Copy
-// CHECK-SAME:             inputs(%results : !VPUIP.DistributedBuffer<1x32x44x44xi8, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64, uniform_distributed_segments,
+// CHECK-SAME:             inputs([[SW_OP_RESULT]] : !VPUIP.DistributedBuffer<1x32x44x44xi8, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64, uniform_distributed_segments,
 // CHECK-SAME{LITERAL}:    compute_shapes = [[1, 32, 8, 44], [1, 32, 8, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44]],
 // CHECK-SAME{LITERAL}:    compute_offsets = [[0, 0, 0, 0], [0, 0, 8, 0], [0, 0, 16, 0], [0, 0, 23, 0], [0, 0, 30, 0], [0, 0, 37, 0]],
 // CHECK-SAME{LITERAL}:    memory_shapes = [[1, 32, 8, 44], [1, 32, 8, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44], [1, 32, 7, 44]],

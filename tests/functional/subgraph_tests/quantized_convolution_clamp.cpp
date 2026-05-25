@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -157,6 +157,20 @@ TEST_P(QuantizedConvClampSubGraphTest_NPU3720, HW) {
     run(Platform::NPU3720);
 }
 
+class QuantizedConvClampSubGraphTest_NPU4000 : public QuantizedConvClampSubGraphTestCommon {};
+
+TEST_P(QuantizedConvClampSubGraphTest_NPU4000, HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU4000);
+}
+
+class QuantizedConvClampSubGraphTest_NPU5000 : public QuantizedConvClampSubGraphTestCommon {};
+
+TEST_P(QuantizedConvClampSubGraphTest_NPU5000, HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5000);
+}
+
 }  // namespace LayerTestsDefinitions
 
 using namespace LayerTestsDefinitions;
@@ -189,6 +203,12 @@ const auto basicCases = ::testing::Combine(::testing::ValuesIn(inPrecisions), ::
                                            ::testing::ValuesIn(outFQAndClampRanges));
 
 INSTANTIATE_TEST_SUITE_P(precommit_QuantizedConvClamp, QuantizedConvClampSubGraphTest_NPU3720, basicCases,
+                         QuantizedConvClampSubGraphTestCommon::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(precommit_QuantizedConvClamp, QuantizedConvClampSubGraphTest_NPU4000, basicCases,
+                         QuantizedConvClampSubGraphTestCommon::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(precommit_QuantizedConvClamp, QuantizedConvClampSubGraphTest_NPU5000, basicCases,
                          QuantizedConvClampSubGraphTestCommon::getTestCaseName);
 
 }  // namespace

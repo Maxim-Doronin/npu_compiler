@@ -25,9 +25,9 @@ enum class BackInferStrategy { TILING_DIM, TILING_STRATEGY };
 // information about input and output tiles for operands and result
 using VFOperationTiling = std::pair<InputTiling, TileInfo>;
 
-// storage keeps connection between argument number of the block and biggest tile
+// storage keeps connection between {argument number of the block, block argument user op} and biggest tile
 // for parent operation of the block for each separate VF tile
-using TilingStorage = VFContainer<size_t, TileInfo>;
+using TilingStorage = VFContainer<std::pair<size_t, mlir::Operation*>, TileInfo>;
 
 // storage keeps connection between operation in the block and its information
 // about input and output tiles for each VF tile
@@ -86,7 +86,14 @@ bool isSpatialTiling(ArrayRef<int64_t> strategy);
 
 // function merges operations to VF and returns the created subgraph
 VPU::VerticalFusionOp fuseOpsInBlock(mlir::OpBuilder& rewriter, VPU::VerticalFusionOp vfOp, mlir::Operation* prevOp,
-                                     mlir::ArrayAttr tilingInfo = nullptr, bool isManuallConfigured = false);
+                                     mlir::ArrayAttr tilingInfo = nullptr, bool isManualConfigured = false);
+
+// function merges a single producer chain of operations to VF in one step.
+// prevOpChain order is from the op closest to vfOp to the farthest producer.
+VPU::VerticalFusionOp fuseSingleViewOpsChainInBlock(mlir::OpBuilder& rewriter, VPU::VerticalFusionOp vfOp,
+                                                    ArrayRef<mlir::Operation*> prevOpChain,
+                                                    mlir::ArrayAttr tilingInfo = nullptr,
+                                                    bool isManualConfigured = false);
 
 template <typename VFConfigType>
 mlir::FailureOr<SmallVector<SmallVector<int64_t>>> backInferVFTilingStrategy(
@@ -118,5 +125,11 @@ bool onlySupportPartialTilingDims(vpux::VPU::TilingViewLikeOpInterface viewOp);
 
 SmallVector<mlir::Operation*> getParentViewLikeOpsInVF(mlir::Operation* operation);
 
+// Infer the casted distributed tensor type through a series of view-like operations
+VPU::DistributedTensorType inferDistributedTypeThroughViewOps(VPU::DistributedTensorType srcType,
+                                                              ArrayRef<mlir::Operation*> viewOps);
+
+// Get the linked argument between two VF ops
+mlir::BlockArgument getLinkedArgumentBetweenVFOps(VPU::VerticalFusionOp currentOp, VPU::VerticalFusionOp prevOp);
 }  // namespace VPU
 }  // namespace vpux

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --make-ops-with-distributed-tensor --make-distributed-copies %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW" --make-ops-with-distributed-tensor --make-distributed-copies %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -3942,4 +3942,176 @@ func.func @ReLUSWWithClustering(%arg0: tensor<1x1x1x44xf16>) -> tensor<1x1x1x44x
 
     // CHECK:        [[OUT:%.+]] = VPU.Copy([[RELU]]
     // CHECK:        return [[OUT]] : tensor<1x1x1x44xf16>
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+// CHECK-LABEL:   @SquaredDiffSWSOHTileNotAtBroadcastAxis
+// CHECK-SAME:    [[INPUT_0:%.+]]: tensor<1x32x44x44xf16>, [[INPUT_1:%.+]]: tensor<1x1x44x44xf16>
+func.func @SquaredDiffSWSOHTileNotAtBroadcastAxis(%arg0: tensor<1x32x44x44xf16>,
+                %arg1: tensor<1x1x44x44xf16>) -> tensor<1x32x44x44xf16> {
+    %0 = VPU.SquaredDiff(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>} :
+                tensor<1x32x44x44xf16>,
+                tensor<1x1x44x44xf16> -> tensor<1x32x44x44xf16>
+
+    return %0 : tensor<1x32x44x44xf16>
+
+    //CHECK:        [[INPUT0:%.+]] = VPU.Copy([[INPUT_0]]
+    //CHECK-SAME:                       -> !VPU.DistributedTensor<1x32x44x44xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
+
+    //CHECK:        [[INPUT1:%.+]] = VPU.Copy([[INPUT_1]]
+    //CHECK-SAME:                       -> !VPU.DistributedTensor<1x1x44x44xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
+
+    //CHECK:        [[SQDIFF:%.+]] = VPU.SquaredDiff([[INPUT0]], [[INPUT1]])
+    //CHECK-SAME:        -> !VPU.DistributedTensor<1x32x44x44xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
+
+    //CHECK:        [[OUTPUT:%.+]] = VPU.Copy([[SQDIFF]]
+
+    //CHECK:        return [[OUTPUT]] : tensor<1x32x44x44xf16>
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+// CHECK-LABEL:   @SquaredDiffSWSOHTileAtBroadcastAxis
+// CHECK-SAME:    [[INPUT_0:%.+]]: tensor<1x32x44x44xf16>, [[INPUT_1:%.+]]: tensor<1x1x1x44xf16>
+func.func @SquaredDiffSWSOHTileAtBroadcastAxis(%arg0: tensor<1x32x44x44xf16>,
+                %arg1: tensor<1x1x1x44xf16>) -> tensor<1x32x44x44xf16> {
+    %0 = VPU.SquaredDiff(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>} :
+                tensor<1x32x44x44xf16>,
+                tensor<1x1x1x44xf16> -> tensor<1x32x44x44xf16>
+
+    return %0 : tensor<1x32x44x44xf16>
+
+    //CHECK:        [[INPUT0:%.+]] = VPU.Copy([[INPUT_0]]
+    //CHECK-SAME:                       -> !VPU.DistributedTensor<1x32x44x44xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
+
+    //CHECK:        [[INPUT1:%.+]] = VPU.Copy([[INPUT_1]]
+    //CHECK-SAME:                       -> !VPU.DistributedTensor<1x1x1x44xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+
+    //CHECK:        [[SQDIFF:%.+]] = VPU.SquaredDiff([[INPUT0]], [[INPUT1]])
+    //CHECK-SAME:         -> !VPU.DistributedTensor<1x32x44x44xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
+
+    //CHECK:        [[OUTPUT:%.+]] = VPU.Copy([[SQDIFF]]
+
+    //CHECK:        return [[OUTPUT]] : tensor<1x32x44x44xf16>
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+// CHECK-LABEL: @SquaredDiffSWSOKTileNotAtBroadcastAxis
+// CHECK-SAME:    [[INPUT_0:%.+]]: tensor<1x32x1x44xf16>, [[INPUT_1:%.+]]: tensor<1x32x1x1xf16>
+func.func @SquaredDiffSWSOKTileNotAtBroadcastAxis(%arg0: tensor<1x32x1x44xf16>,
+                %arg1: tensor<1x32x1x1xf16>) -> tensor<1x32x1x44xf16> {
+    %0 = VPU.SquaredDiff(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>} :
+                tensor<1x32x1x44xf16>,
+                tensor<1x32x1x1xf16> -> tensor<1x32x1x44xf16>
+
+    return %0 : tensor<1x32x1x44xf16>
+
+    //CHECK:        [[INPUT0:%.+]] = VPU.Copy([[INPUT_0]]
+    //CHECK-SAME:                       -> !VPU.DistributedTensor<1x32x1x44xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64}>
+
+    //CHECK:        [[INPUT1:%.+]] = VPU.Copy([[INPUT_1]]
+    //CHECK-SAME:                       -> !VPU.DistributedTensor<1x32x1x1xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64}>
+
+    //CHECK:        [[SQDIFF:%.+]] = VPU.SquaredDiff([[INPUT0]], [[INPUT1]])
+    //CHECK-SAME:      -> !VPU.DistributedTensor<1x32x1x44xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64}>
+
+    //CHECK:        [[OUTPUT:%.+]] = VPU.Copy([[SQDIFF]]
+
+    //CHECK:        return [[OUTPUT]] : tensor<1x32x1x44xf16>
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+// CHECK-LABEL: @SquaredDiffSWSOKTileAtBroadcastAxis
+// CHECK-SAME:    [[INPUT_0:%.+]]: tensor<1x32x1x44xf16>, [[INPUT_1:%.+]]: tensor<1x1x1x44xf16>
+func.func @SquaredDiffSWSOKTileAtBroadcastAxis(%arg0: tensor<1x32x1x44xf16>,
+                %arg1: tensor<1x1x1x44xf16>) -> tensor<1x32x1x44xf16> {
+    %0 = VPU.SquaredDiff(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>} :
+                tensor<1x32x1x44xf16>,
+                tensor<1x1x1x44xf16> -> tensor<1x32x1x44xf16>
+
+    return %0 : tensor<1x32x1x44xf16>
+
+    //CHECK:        [[INPUT0:%.+]] = VPU.Copy([[INPUT_0]]
+    //CHECK-SAME:                       -> !VPU.DistributedTensor<1x32x1x44xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64}>
+
+    //CHECK:        [[INPUT1:%.+]] = VPU.Copy([[INPUT_1]]
+    //CHECK-SAME:                       -> !VPU.DistributedTensor<1x1x1x44xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+
+    //CHECK:        [[SQDIFF:%.+]] = VPU.SquaredDiff([[INPUT0]], [[INPUT1]])
+    //CHECK-SAME:      -> !VPU.DistributedTensor<1x32x1x44xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64}>
+
+    //CHECK:        [[OUTPUT:%.+]] = VPU.Copy([[SQDIFF]]
+
+    //CHECK:        return [[OUTPUT]] : tensor<1x32x1x44xf16>
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+// CHECK-LABEL:   @SquaredDiffSWSplitOverWidth
+// CHECK-SAME:    [[INPUT0:%.+]]: tensor<1x16x16x14580xf16>
+// CHECK-SAME:    [[INPUT1:%.+]]: tensor<1x16x1x14580xf16>
+func.func @SquaredDiffSWSplitOverWidth(%arg0: tensor<1x16x16x14580xf16>, %arg1: tensor<1x16x1x14580xf16>) -> tensor<1x16x16x14580xf16> {
+    %0 = VPU.SquaredDiff(%arg0, %arg1) {
+        auto_broadcast = #IE.auto_broadcast_type<NUMPY>,
+        multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverWidth>
+    } : tensor<1x16x16x14580xf16>, tensor<1x16x1x14580xf16> -> tensor<1x16x16x14580xf16>
+
+    return %0 : tensor<1x16x16x14580xf16>
+
+    //CHECK:        [[INPUT0_CMX:%.+]] = VPU.Copy([[INPUT0]]
+    //CHECK-SAME:                       -> !VPU.DistributedTensor<1x16x16x14580xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 1, 2], num_clusters = 2 : i64}>
+
+    //CHECK:        [[INPUT1_CMX:%.+]] = VPU.Copy([[INPUT1]]
+    //CHECK-SAME:                       -> !VPU.DistributedTensor<1x16x1x14580xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 1, 2], num_clusters = 2 : i64}>
+
+    //CHECK:        [[SQDIFF:%.+]] = VPU.SquaredDiff([[INPUT0_CMX]], [[INPUT1_CMX]])
+    //CHECK-SAME:      -> !VPU.DistributedTensor<1x16x16x14580xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 1, 2], num_clusters = 2 : i64}>
+
+    //CHECK:        [[OUTPUT:%.+]] = VPU.Copy([[SQDIFF]]
+
+    //CHECK:        return [[OUTPUT]] : tensor<1x16x16x14580xf16>
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+// CHECK-LABEL: @SquaredDiffSWClustering
+// CHECK-SAME:    ([[INPUT0:%.+]]: tensor<1x16x32x32xf16>, [[INPUT1:%.+]]: tensor<1x1x32x32xf16>)
+func.func @SquaredDiffSWClustering(%arg0: tensor<1x16x32x32xf16>, %arg1: tensor<1x1x32x32xf16>) -> tensor<1x16x32x32xf16> {
+    %0 = VPU.SquaredDiff(%arg0, %arg1) {
+        auto_broadcast = #IE.auto_broadcast_type<NUMPY>,
+        multiClusterStrategy = #VPU.multi_cluster_strategy<Clustering>
+    } : tensor<1x16x32x32xf16>, tensor<1x1x32x32xf16> -> tensor<1x16x32x32xf16>
+
+    return %0 : tensor<1x16x32x32xf16>
+
+    // CHECK:               [[INPUT0_COPY:%.+]] = VPU.Copy([[INPUT0]])
+    // CHECK-SAME:               -> !VPU.DistributedTensor<1x16x32x32xf16, #NCHW, @CMX_NN, {
+    // CHECK-SAME{LITERAL}:     mode = "DUPLICATED", num_clusters = 2 : i64}>
+
+    // CHECK:               [[INPUT1_COPY:%.+]] = VPU.Copy([[INPUT1]]
+    // CHECK-SAME:               -> !VPU.DistributedTensor<1x1x32x32xf16, #NCHW, @CMX_NN, {
+    // CHECK-SAME{LITERAL}:     mode = "DUPLICATED", num_clusters = 2 : i64}>
+
+    // CHECK:               [[SQDIFF:%.+]] = VPU.SquaredDiff([[INPUT0_COPY]], [[INPUT1_COPY]])
+    // CHECK-SAME:               -> !VPU.DistributedTensor<1x16x32x32xf16, #NCHW, @CMX_NN, {
+    // CHECK-SAME{LITERAL}:     mode = "DUPLICATED", num_clusters = 2 : i64}>
+
+    // CHECK:               [[RES:%.+]] = VPU.Copy([[SQDIFF]]
+
+    // CHECK:               return [[RES]] : tensor<1x16x32x32xf16>
 }

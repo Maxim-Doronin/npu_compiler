@@ -372,7 +372,7 @@ void SplitDMAToBalanceLoad::safeRunOnFunc() {
         if (auto dmaOp = mlir::dyn_cast<VPUIP::NNDMAOp>(taskOp.getInnerTaskOp())) {
             VPUX_THROW_UNLESS(dmaOp.getPort().has_value(), "DMA at '{0}' has no portId", dmaOp->getLoc());
 
-            if (!dmaOp.getSplitCandidate()) {
+            if (!dmaOp.getSplitCandidate().has_value() || !dmaOp.getSplitCandidate().value()) {
                 return;
             }
             _log.trace("Found split candidate at '{0}'", dmaOp->getLoc());
@@ -388,7 +388,7 @@ void SplitDMAToBalanceLoad::safeRunOnFunc() {
         if (auto gatherDMAOp = mlir::dyn_cast<VPUIP::GatherDMAOp>(taskOp.getInnerTaskOp())) {
             VPUX_THROW_UNLESS(gatherDMAOp.getPort().has_value(), "Gather DMA at '{0}' has no portId",
                               gatherDMAOp->getLoc());
-            if (!gatherDMAOp.getSplitCandidate()) {
+            if (!gatherDMAOp.getSplitCandidate().has_value() || !gatherDMAOp.getSplitCandidate().value()) {
                 return;
             }
             _log.trace("Found split candidate at '{0}'", gatherDMAOp->getLoc());

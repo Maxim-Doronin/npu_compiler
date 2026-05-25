@@ -18,7 +18,6 @@
 
 namespace vpux::VPU {
 enum class MultiClusterStrategy : uint64_t;
-class TransposedConvolutionOp;
 }  // namespace vpux::VPU
 
 namespace vpux::VPU {
@@ -30,15 +29,6 @@ bool isNCEConvSupported(mlir::Operation* op, NDTypeInterface inputType, NDTypeIn
 
 bool isSupportedConv(IE::ConvolutionOp op, LogCb logCb, bool checkLayout, bool checkChannelAlignment,
                      bool supportsInputActCompression = false);
-
-bool isSupportedSEPTransposedConv(IE::TransposedConvolutionOp op, LogCb logCb, bool checkLayout,
-                                  bool checkChannelAlignment, bool supportsInputActCompression = false);
-
-bool isSupportedSEPTransposedConv(IE::GroupTransposedConvolutionOp op, LogCb logCb, bool checkLayout,
-                                  bool checkChannelAlignment, bool supportsInputActCompression = false);
-
-bool isSupportedSEPTransposedConv(VPU::TransposedConvolutionOp op, LogCb logCb, bool checkLayout,
-                                  bool checkChannelAlignment, bool supportsInputActCompression = false);
 
 std::optional<bool> isSEPConvCompatibleWithClusterStrategy(VPU::NCEConvolutionOp nceConv,
                                                            VPU::MultiClusterStrategy strategy);
@@ -91,44 +81,6 @@ inline bool isSupportedSEPDilatedConvPadding(PadInfo pads, ArrayRef<int64_t> dil
     const auto paddingEqualDilation = symmetricDilation && paddingYEqualtoDilationY && paddingXEqualtoDilationX;
 
     return paddingZero || paddingEqualDilation;
-}
-
-template <typename GroupConvOpType>
-bool isSupportedSEPDilatedConv(GroupConvOpType groupConvOp, LogCb logCb, bool checkLayout, bool checkChannelAlignment) {
-    if (!areConvInputOutputs4d(groupConvOp, logCb)) {
-        return false;
-    }
-    auto dilations = parseIntArrayAttr<int64_t>(groupConvOp.getDilations());
-    const auto dilationY = dilations[Dims4D::Dilation::Y.ind()];
-    const auto dilationX = dilations[Dims4D::Dilation::X.ind()];
-    if (dilationY == 1 && dilationX == 1) {
-        return false;
-    }
-    auto pads = PadInfo(groupConvOp.getPadsBegin(), groupConvOp.getPadsEnd());
-    if (!isSupportedSEPDilatedConvPadding(pads, dilations)) {
-        return false;
-    }
-    const auto filterShape = getShape(groupConvOp.getFilter());
-    const auto inputType = mlir::cast<vpux::NDTypeInterface>(groupConvOp.getInput().getType());
-    const auto filterType = mlir::cast<vpux::NDTypeInterface>(groupConvOp.getFilter().getType());
-    const auto outputType = mlir::cast<vpux::NDTypeInterface>(groupConvOp.getOutput().getType());
-
-    const auto KY = filterShape[Dims4D::Filter::KY];
-    const auto KX = filterShape[Dims4D::Filter::KX];
-    const auto kernelStrides = Shape(parseIntArrayAttr<int64_t>(groupConvOp.getStrides()));
-    const auto SY = kernelStrides[Dims4D::Strides::Y];
-    const auto SX = kernelStrides[Dims4D::Strides::X];
-
-    pads = shrinkPadsForDilatedConvolution(pads, dilations);
-
-    // Normal isNCEConvSupported can be used to check if Op can be run on NCE,
-    // when padding and dilation is adjusted
-    dilations[Dims4D::Dilation::X.ind()] = 1;
-    dilations[Dims4D::Dilation::Y.ind()] = 1;
-
-    return VPU::isNCEConvSupported(groupConvOp, inputType, filterType, outputType, dilations, KY, KX, SY, SX, pads,
-                                   checkLayout, checkChannelAlignment, logCb,
-                                   /*supportsInputActCompression*/ false);
 }
 
 template <typename GroupConvOpType>

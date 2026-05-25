@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --unroll-tensor-iterator %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --unroll-tensor-iterator %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // -----
 
@@ -235,6 +235,60 @@ func.func @main(%arg0: tensor<3x4x6x10xf32>, %arg1: tensor<3x4x6x10xf32>, %arg2:
     // CHECK-SAME:      : tensor<1x4x6x10xf32>, tensor<1x4x6x10xf32> -> tensor<1x4x6x10xf32>
 
     // CHECK:       return [[ADD2]] : tensor<1x4x6x10xf32>
+
+}
+
+}
+
+// -----
+
+// CHECK-LABEL: @MultipleSliceInputsUniqueLoc
+module @MultipleSliceInputsUniqueLoc {
+
+// CHECK:       func.func @main(
+// CHECK-SAME:      [[ARG0:%arg[0-9]+]]: tensor<2x4x4x4xf32>,
+// CHECK-SAME:      [[ARG1:%arg[0-9]+]]: tensor<2x4x4x4xf32>)
+func.func @main(%arg0: tensor<2x4x4x4xf32>, %arg1: tensor<2x4x4x4xf32>) -> (tensor<2x4x4x4xf32>) {
+    %0 = IE.TensorIterator body_module : {
+    ^bb0(%arg2: tensor<1x4x4x4xf32>, %arg3: tensor<1x4x4x4xf32>):
+      %1 = IE.Add(%arg2, %arg3) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x4x4x4xf32>, tensor<1x4x4x4xf32> -> tensor<1x4x4x4xf32>
+      "IE.LoopTerminator"(%1) : (tensor<1x4x4x4xf32>) -> ()
+    }
+    num_iterations : 2
+    slice_input_descs : [
+        #IE.SliceInputPortMap<external_port_id = 0 : i64, internal_layer_id = 0 : i64, axis = 0 : i64, start = 0 : i64, stride = 1 : i64, part_size = 1 : i64, end = 1 : i64>,
+        #IE.SliceInputPortMap<external_port_id = 1 : i64, internal_layer_id = 1 : i64, axis = 0 : i64, start = 1 : i64, stride = -1 : i64, part_size = 1 : i64, end = 0 : i64>
+    ]
+    invariant_input_descs : []
+    feedback_input_descs : []
+    concat_output_descs : [#IE.ConcatOutputPortMap<external_port_id = 0 : i64, internal_layer_id = 0 : i64, axis = 0 : i64, start = 0 : i64, stride = 1 : i64, part_size = 1 : i64, end = -1 : i64>]
+    invariant_output_descs : []
+    (%arg0, %arg1) : tensor<2x4x4x4xf32>, tensor<2x4x4x4xf32> -> tensor<2x4x4x4xf32>
+    return %0 : tensor<2x4x4x4xf32>
+
+    // CHECK:       [[SLICE0:%.+]] = IE.Slice [[ARG0]]
+    // CHECK-SAME:      [0, 0, 0, 0] [1, 4, 4, 4] : tensor<2x4x4x4xf32> to tensor<1x4x4x4xf32>
+    // CHECK:       [[SLICE1:%.+]] = IE.Slice [[ARG0]]
+    // CHECK-SAME:      [1, 0, 0, 0] [1, 4, 4, 4] : tensor<2x4x4x4xf32> to tensor<1x4x4x4xf32>
+
+    // CHECK:       [[SLICE2:%.+]] = IE.Slice [[ARG1]]
+    // CHECK-SAME:      [1, 0, 0, 0] [1, 4, 4, 4] : tensor<2x4x4x4xf32> to tensor<1x4x4x4xf32>
+    // CHECK:       [[SLICE3:%.+]] = IE.Slice [[ARG1]]
+    // CHECK-SAME:      [0, 0, 0, 0] [1, 4, 4, 4] : tensor<2x4x4x4xf32> to tensor<1x4x4x4xf32>
+
+    // CHECK:       [[ADD0:%.+]] = IE.Add([[SLICE0]], [[SLICE2]])
+    // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+    // CHECK-SAME:      : tensor<1x4x4x4xf32>, tensor<1x4x4x4xf32> -> tensor<1x4x4x4xf32>
+
+    // CHECK:       [[ADD1:%.+]] = IE.Add([[SLICE1]], [[SLICE3]])
+    // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+    // CHECK-SAME:      : tensor<1x4x4x4xf32>, tensor<1x4x4x4xf32> -> tensor<1x4x4x4xf32>
+
+    // CHECK:       [[CONCAT:%.+]] = IE.Concat([[ADD0]], [[ADD1]])
+    // CHECK-SAME:      {per_axis = #IE.Concat<axis = 0 : i64>}
+    // CHECK-SAME:      : tensor<1x4x4x4xf32>, tensor<1x4x4x4xf32> -> tensor<2x4x4x4xf32>
+
+    // CHECK:       return [[CONCAT]] : tensor<2x4x4x4xf32>
 
 }
 

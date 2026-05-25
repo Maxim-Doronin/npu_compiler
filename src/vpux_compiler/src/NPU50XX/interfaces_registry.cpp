@@ -32,6 +32,9 @@ void InterfacesRegistry50XX::registerInterfaces(mlir::DialectRegistry& registry)
     IE::arch40xx::registerExecutorOpInterfaces(registry);
     // NB: arch50xx has its own QuantizedLayerOpModel implementation
     IE::arch50xx::registerQuantizedLayerOpInterfaces(registry);
+    IE::arch50xx::registerMPEEngineInfoOpInterfaces(registry);
+    // NB: arch37xx::SEOpModel can be re-used for 50XX
+    IE::arch37xx::registerSEOpInterfaces(registry);
     VPU::arch50xx::registerLayerWithPostOpModelInterface(registry);
     // NB: arch37xx::LayoutInfo can be re-used for 50XX
     VPU::arch37xx::registerLayoutInfoOpInterfaces(registry);

@@ -7,13 +7,17 @@ file(GLOB_RECURSE SRC_FILES *.cpp)
 add_npu_library(npu_compiler_shave_code_gen
     ${SRC_FILES}
     LINK_LIBS
-    PRIVATE
-        npu_compiler_core
-        npu_compiler_utils
-        npu_ov_utils
-        npu_llvm_utils
-        npu_profiling_utils
-        MLIRTensorInferTypeOpInterfaceImpl
-    PUBLIC
+      PUBLIC
         mlir-dependencies
+        npu_compiler_dialect_ie
+        npu_core_utils
+        npu_logger
+        npu_compiler_utils
+      PRIVATE
+        MLIRQuantTransforms
+        MLIRTensorInferTypeOpInterfaceImpl
+        npu_compiler_dialect_net
+        npu_compiler_dialect_vpu
+        npu_compiler_dialect_vpuip
+        npu_compiler_dialect_vpuip_utils
     )

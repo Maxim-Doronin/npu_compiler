@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --adapt-LLVM-funcs-for-shave --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --adapt-LLVM-funcs-for-shave --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 module @SingleCosLayer {
   VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096]

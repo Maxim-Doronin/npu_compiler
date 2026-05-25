@@ -9,11 +9,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
   set(CMAKE_MODULE_LINKER_FLAGS_RELEASE "${CMAKE_MODULE_LINKER_FLAGS_RELEASE} /LTCG")
 endif()
 
-if(BUILD_COMPILER_FOR_DRIVER)
-    set(LINK_COMPILER_LIBRARY npu_driver_compiler)
-else()
-    set(LINK_COMPILER_LIBRARY openvino_intel_npu_compiler)
-endif()
+set(COMPILER_LOADER_DLL openvino_intel_npu_compiler_loader)
 
 add_subdirectory(functional)
 add_subdirectory(smoke)

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --add-sw-kernel-cache-handling-ops %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --add-sw-kernel-cache-handling-ops %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 VPURT.SW.Runtime
     entryPoint: @VPU.SW::@runtime
@@ -574,7 +574,7 @@ func.func @DontAddCacheOpsInOutInCMX(%arg0: memref<1x1x1x1000xf16, @DDR>, %arg1:
 
     // CHECK:   [[T_2:%.+]], [[R_2:%.+]] = async.execute [[[T_1]]] ([[R_1]] as [[INPUT:%.+]]: !async.value<memref<1x1x1x1000xf16, [@CMX_NN, 0]>>) -> !async.value<memref<1x1x1x1000xf16, [@CMX_NN, 0]>> attributes {VPUIP.executor = @DMA_NN, "async-deps-index" = 3 : i64} {
     // CHECK:     [[NNDMA_1:%.+]] = VPUIP.NNDMA inputs([[INPUT]] : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) outputs([[ARG_1]] : memref<1x1x1x1000xf16, [@CMX_NN, 0]>) -> memref<1x1x1x1000xf16, [@CMX_NN, 0]>
-    // CHECK:     async.yield %3 : memref<1x1x1x1000xf16, [@CMX_NN, 0]>
+    // CHECK:     async.yield [[NNDMA_1]] : memref<1x1x1x1000xf16, [@CMX_NN, 0]>
 
     // CHECK:   [[AWAIT:%.+]] = async.await [[R_2]] : !async.value<memref<1x1x1x1000xf16, [@CMX_NN, 0]>>
     // CHECK:   return [[AWAIT]] : memref<1x1x1x1000xf16, [@CMX_NN, 0]>
@@ -840,7 +840,7 @@ func.func @AddCacheFlushInvalidate(%arg0: memref<64x16x16x16xf16, @DDR>, %arg1: 
     // CHECK:    [[TOKEN_3:%.+]], [[RESULT_3:%.+]] = async.execute [[[TOKEN_2]]] ([[RESULT_1]] as [[ARG_2]]: !async.value<memref<64x16x16x16xf16, @DDR>>) -> !async.value<memref<64x16x16x16xf16, @DDR>> attributes {VPUIP.executor = @SHAVE_ACT, "async-deps-index" = 1 : i64} {
     // CHECK:      VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_Minimum inputs([[ARG_2]] as [[ARG_3:%[^:]+]]: memref<64x16x16x16xf16>, [[CST_1]] as [[ARG_4:%[^:]+]]: memref<64x16x16x16xf16>) outputs([[BUFF_1]] as [[ARG_5:%[^:]+]]: memref<64x16x16x16xf16>) on tile 0 -> memref<64x16x16x16xf16, @DDR>{
     // CHECK:        VPUIP.SW.Kernel.run([[ARG_3]], [[ARG_4]], [[ARG_5]]) : memref<64x16x16x16xf16>, memref<64x16x16x16xf16>, memref<64x16x16x16xf16>
-    // CHECK:      async.yield %1 : memref<64x16x16x16xf16, @DDR>
+    // CHECK:      async.yield [[BUFF_1]] : memref<64x16x16x16xf16, @DDR>
 
     // CHECK:    [[TOKEN_4:%.+]] = async.execute [[[TOKEN_3]]] attributes {VPUIP.executor = @SHAVE_ACT} {
     // CHECK:      VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 0, 0, 0>} @VPU.SW::@cache_flush inputs() outputs() on tile 0{
@@ -1017,7 +1017,7 @@ func.func @AddCacheInvalidateSwOpForDDRGridSampleOp(%arg0: memref<1x1x1920x1088x
     // CHECK:     async.yield [[NN_DMA_0]] : memref<1x1x1920x1088xf16, @DDR>
 
     // CHECK:   [[T_0:%.+]], [[R_1:%.+]] = async.execute -> !async.value<memref<1x120x68x2xf16, [@CMX_NN, 0]>> attributes {VPUIP.executor = @DMA_NN, "async-deps-index" = 0 : i64} {
-    // CHECK:     [[NN_DMA_0:%.+]] = VPUIP.NNDMA inputs([[ARG_1]] : memref<1x120x68x2xf16, [@CMX_NN, 0]>) outputs(%1 : memref<1x120x68x2xf16, [@CMX_NN, 0]>) -> memref<1x120x68x2xf16, [@CMX_NN, 0]>
+    // CHECK:     [[NN_DMA_0:%.+]] = VPUIP.NNDMA inputs([[ARG_1]] : memref<1x120x68x2xf16, [@CMX_NN, 0]>) outputs([[GRID_INPUT_CMX]] : memref<1x120x68x2xf16, [@CMX_NN, 0]>) -> memref<1x120x68x2xf16, [@CMX_NN, 0]>
     // CHECK:     async.yield [[NN_DMA_0]] : memref<1x120x68x2xf16, [@CMX_NN, 0]>
 
     // CHECK:   [[T_2:%.+]] = async.execute [[[T]]] attributes {VPUIP.executor = @SHAVE_ACT} {
@@ -1026,11 +1026,11 @@ func.func @AddCacheInvalidateSwOpForDDRGridSampleOp(%arg0: memref<1x1x1920x1088x
     // CHECK:      async.yield
 
     // CHECK:   [[T_03:%.+]], [[R_4:%.+]] = async.execute [[[T_2]]] ([[R]] as [[ARG_2:%[^:]+]]: !async.value<memref<1x1x1920x1088xf16, @DDR>>, [[R_1]] as [[ARG_3:%[^:]+]]: !async.value<memref<1x120x68x2xf16, [@CMX_NN, 0]>>) -> !async.value<memref<1x1x120x68xf16, [@CMX_NN, 0]>> attributes {VPUIP.executor = @SHAVE_ACT, "async-deps-index" = 1 : i64} {
-    // CHECK:   [[SW_KERNEL:%.+]] = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_GridSample inputs([[ARG_2]] as [[ARG_4:%[^:]+]]: memref<1x1x1920x1088xf16, @DDR>, [[ARG_3]] as [[ARG_5:%[^:]+]]: memref<1x120x68x2xf16, [@CMX_NN, 0]>) outputs(%2 as [[ARG_6:%[^:]+]]: memref<1x1x120x68xf16, [@CMX_NN, 0]>) on tile 0 -> memref<1x1x120x68xf16, [@CMX_NN, 0]>{
+    // CHECK:   [[SW_KERNEL:%.+]] = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_GridSample inputs([[ARG_2]] as [[ARG_4:%[^:]+]]: memref<1x1x1920x1088xf16, @DDR>, [[ARG_3]] as [[ARG_5:%[^:]+]]: memref<1x120x68x2xf16, [@CMX_NN, 0]>) outputs([[OUTPUT_CMX]] as [[ARG_6:%[^:]+]]: memref<1x1x120x68xf16, [@CMX_NN, 0]>) on tile 0 -> memref<1x1x120x68xf16, [@CMX_NN, 0]>{
     // CHECK:      VPUIP.SW.Kernel.run {attrs = [1, 2, [2, 1, 0]]}([[ARG_4]], [[ARG_5]], [[ARG_6]]) : memref<1x1x1920x1088xf16, @DDR>, memref<1x120x68x2xf16, [@CMX_NN, 0]>, memref<1x1x120x68xf16, [@CMX_NN, 0]>
     // CHECK:      async.yield [[SW_KERNEL]] : memref<1x1x120x68xf16, [@CMX_NN, 0]>
 
-    // CHECK:   [[AWAIT:%.+]] = async.await %bodyResults_4 : !async.value<memref<1x1x120x68xf16, [@CMX_NN, 0]>>
+    // CHECK:   [[AWAIT:%.+]] = async.await [[R_4]] : !async.value<memref<1x1x120x68xf16, [@CMX_NN, 0]>>
     // CHECK:   return [[AWAIT]] : memref<1x1x120x68xf16, [@CMX_NN, 0]>
 }
 
@@ -1092,7 +1092,8 @@ func.func @AddCacheInvalidateSwOpForDDRTopKOp(%arg0: memref<1x5898240xf16, @DDR>
     // CHECK:   [[OUTPUT_INDEX:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x1x1x1xsi32, [@CMX_NN, 0]>
 
     // CHECK:   [[TOKEN:%.+]], [[BODYRESULTS:%.+]] = async.execute -> !async.value<memref<1x1x1x5898240xf16, @DDR>> attributes {VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [0], "async-deps-index" = 0 : i64} {
-    // CHECK:   [[DMA_0:%.+]] = VPUIP.NNDMA <{port = 0 : i64}> inputs(%5 : memref<1x1x1x5898240xf16, @DDR>) outputs([[INPUT_DDR]] : memref<1x1x1x5898240xf16, @DDR>) -> memref<1x1x1x5898240xf16, @DDR>
+    // CHECK:   [[RESHAPE0:%.+]] = VPUIP.GenericReshape inputs([[ARG_0]] : memref<1x5898240xf16, @DDR>) -> memref<1x1x1x5898240xf16, @DDR>
+    // CHECK:   [[DMA_0:%.+]] = VPUIP.NNDMA <{port = 0 : i64}> inputs([[RESHAPE0]] : memref<1x1x1x5898240xf16, @DDR>) outputs([[INPUT_DDR]] : memref<1x1x1x5898240xf16, @DDR>) -> memref<1x1x1x5898240xf16, @DDR>
     // CHECK:     async.yield [[DMA_0]] : memref<1x1x1x5898240xf16, @DDR>
 
     // CHECK:   [[TOKEN_0:%.+]] = async.execute [[[TOKEN]]] attributes {VPUIP.executor = @SHAVE_ACT} {
@@ -1101,16 +1102,18 @@ func.func @AddCacheInvalidateSwOpForDDRTopKOp(%arg0: memref<1x5898240xf16, @DDR>
     // CHECK:      async.yield
 
     // CHECK:   [[TOKEN_1:%.+]], [[BODYRESULTS_2:%.+]]:2 = async.execute [[[TOKEN_0]]] ([[BODYRESULTS]] as [[ARG_3:%[^:]+]]: !async.value<memref<1x1x1x5898240xf16, @DDR>>) -> (!async.value<memref<1x1x1x1xf16, [@CMX_NN, 0]>>, !async.value<memref<1x1x1x1xsi32, [@CMX_NN, 0]>>) attributes {VPUIP.executor = @SHAVE_ACT, "async-deps-index" = 1 : i64} {
-    // CHECK:   [[SW_KERNEL:%.+]]:2 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 2, 0, 0>} @VPU.SW::@builtin_TopK inputs([[ARG_3]] as [[ARG_4:%[^:]+]]: memref<1x1x1x5898240xf16>, %cst as [[ARG_5:%[^:]+]]: memref<1x1x1x94371840xui8>) outputs(%1 as [[ARG_6:%[^:]+]]: memref<1x1x1x1xf16, [@CMX_NN, 0]>, %2 as [[ARG_7:%[^:]+]]: memref<1x1x1x1xsi32, [@CMX_NN, 0]>) on tile 0 -> (memref<1x1x1x1xf16, [@CMX_NN, 0]>, memref<1x1x1x1xsi32, [@CMX_NN, 0]>){
+    // CHECK:   [[SW_KERNEL:%.+]]:2 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 2, 0, 0>} @VPU.SW::@builtin_TopK inputs([[ARG_3]] as [[ARG_4:%[^:]+]]: memref<1x1x1x5898240xf16>, [[CST]] as [[ARG_5:%[^:]+]]: memref<1x1x1x94371840xui8>) outputs([[OUTPUT_MAX]] as [[ARG_6:%[^:]+]]: memref<1x1x1x1xf16, [@CMX_NN, 0]>, [[OUTPUT_INDEX]] as [[ARG_7:%[^:]+]]: memref<1x1x1x1xsi32, [@CMX_NN, 0]>) on tile 0 -> (memref<1x1x1x1xf16, [@CMX_NN, 0]>, memref<1x1x1x1xsi32, [@CMX_NN, 0]>){
     // CHECK:   VPUIP.SW.Kernel.run {attrs = [0, 0, 1, 1]}([[ARG_4]], [[ARG_5]], [[ARG_6]], [[ARG_7]]) : memref<1x1x1x5898240xf16>, memref<1x1x1x94371840xui8>, memref<1x1x1x1xf16, [@CMX_NN, 0]>, memref<1x1x1x1xsi32, [@CMX_NN, 0]>
     // CHECK:    async.yield [[SW_KERNEL]]#0, [[SW_KERNEL]]#1 : memref<1x1x1x1xf16, [@CMX_NN, 0]>, memref<1x1x1x1xsi32, [@CMX_NN, 0]>
 
     // CHECK:   [[TOKEN_3:%.+]], [[BODYRESULTS_4:%.+]] = async.execute [[[TOKEN_1]]] ([[BODYRESULTS_2]]#0 as [[ARG_3:%[^:]+]]: !async.value<memref<1x1x1x1xf16, [@CMX_NN, 0]>>) -> !async.value<memref<1x1xf16, @DDR>> attributes {VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [0], "async-deps-index" = 2 : i64} {
-    // CHECK:   [[DMA_1:%.+]] = VPUIP.NNDMA <{port = 0 : i64}> inputs(%5 : memref<1x1xf16, [@CMX_NN, 0]>) outputs([[ARG_1]] : memref<1x1xf16, @DDR>) -> memref<1x1xf16, @DDR>
+    // CHECK:   [[RESHAPE1:%.+]] = VPUIP.GenericReshape inputs([[ARG_3]] : memref<1x1x1x1xf16, [@CMX_NN, 0]>) -> memref<1x1xf16, [@CMX_NN, 0]>
+    // CHECK:   [[DMA_1:%.+]] = VPUIP.NNDMA <{port = 0 : i64}> inputs([[RESHAPE1]] : memref<1x1xf16, [@CMX_NN, 0]>) outputs([[ARG_1]] : memref<1x1xf16, @DDR>) -> memref<1x1xf16, @DDR>
     // CHECK:     async.yield [[DMA_1]] : memref<1x1xf16, @DDR>
 
     // CHECK:   [[TOKEN_5:%.+]], [[BODYRESULTS_6:%.+]] = async.execute [[[TOKEN_1]]] ([[BODYRESULTS_2]]#1 as [[ARG_3:%[^:]+]]: !async.value<memref<1x1x1x1xsi32, [@CMX_NN, 0]>>) -> !async.value<memref<1x1xsi32, @DDR>> attributes {VPUIP.executor = @DMA_NN, VPUIP.executorIdx = [1], "async-deps-index" = 3 : i64} {
-    // CHECK:   [[DMA_2:%.+]] = VPUIP.NNDMA <{port = 1 : i64}> inputs(%5 : memref<1x1xsi32, [@CMX_NN, 0]>) outputs([[ARG_2]] : memref<1x1xsi32, @DDR>) -> memref<1x1xsi32, @DDR>
+    // CHECK:   [[RESHAPE2:%.+]] = VPUIP.GenericReshape inputs([[ARG_3]] : memref<1x1x1x1xsi32, [@CMX_NN, 0]>) -> memref<1x1xsi32, [@CMX_NN, 0]>
+    // CHECK:   [[DMA_2:%.+]] = VPUIP.NNDMA <{port = 1 : i64}> inputs([[RESHAPE2]] : memref<1x1xsi32, [@CMX_NN, 0]>) outputs([[ARG_2]] : memref<1x1xsi32, @DDR>) -> memref<1x1xsi32, @DDR>
     // CHECK:     async.yield [[DMA_2]] : memref<1x1xsi32, @DDR>
 
     // CHECK:   [[AWAIT_0:%.+]] = async.await [[BODYRESULTS_4]] : !async.value<memref<1x1xf16, @DDR>>

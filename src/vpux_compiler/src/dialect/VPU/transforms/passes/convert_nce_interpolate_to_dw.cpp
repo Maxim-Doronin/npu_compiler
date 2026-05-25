@@ -54,7 +54,7 @@ namespace {
        - more than 3 (experimental number) tiles on C are needed for SEP DW.Conv to have per cluster workloads with
          channels in DEPTHWISE_WORKLOAD_SIZES that also meet L1aOpt workload reqs.
 */
-bool isDepthwiseConvMorePerformant(VPU::NCEInterpolateOp origOp, config::ArchKind arch, Logger log) {
+bool isDepthwiseConvMorePerformant(VPU::NCEInterpolateOp origOp, Logger log) {
     const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     const auto numChannels = outputType.getShape()[Dims4D::Act::C];
     const auto inputType = mlir::cast<VPU::SparseTensorType>(origOp.getInput().getType());
@@ -84,7 +84,7 @@ bool isDepthwiseConvMorePerformant(VPU::NCEInterpolateOp origOp, config::ArchKin
 
         log.trace("Checking if single cluster Interpolate can have DW L1aOpt applied.");
         return VPU::NCEInvariant::doesWorkloadSupportSmallKernelOpt(
-                arch, kernelSize[Dims4D::Kernel::X.ind()], kernelStride[Dims4D::Kernel::X.ind()],
+                origOp, kernelSize[Dims4D::Kernel::X.ind()], kernelStride[Dims4D::Kernel::X.ind()],
                 outputType.getShape().raw(), elemType.isF16(), kernelSize[Dims4D::Kernel::Y.ind()],
                 pads.getLeft().getInt());
     }
@@ -149,7 +149,7 @@ bool isDepthwiseConvMorePerformant(VPU::NCEInterpolateOp origOp, config::ArchKin
                             const auto workload = std::get<0>(clusterItem);
                             const auto padding = std::get<1>(clusterItem);
                             return VPU::NCEInvariant::doesWorkloadSupportSmallKernelOpt(
-                                    arch, kernelSize[Dims4D::Kernel::X.ind()], kernelStride[Dims4D::Kernel::X.ind()],
+                                    origOp, kernelSize[Dims4D::Kernel::X.ind()], kernelStride[Dims4D::Kernel::X.ind()],
                                     workload, elemType.isF16(), kernelSize[Dims4D::Kernel::Y.ind()], padding.left);
                         });
 
@@ -182,7 +182,7 @@ bool isDepthwiseConvMorePerformant(VPU::NCEInterpolateOp origOp, config::ArchKin
                 const auto workload = std::get<0>(clusterItem);
                 const auto padding = std::get<1>(clusterItem);
                 return VPU::NCEInvariant::doesWorkloadSupportSmallKernelOpt(
-                        arch, kernelSize[Dims4D::Kernel::X.ind()], kernelStride[Dims4D::Kernel::X.ind()], workload,
+                        origOp, kernelSize[Dims4D::Kernel::X.ind()], kernelStride[Dims4D::Kernel::X.ind()], workload,
                         elemType.isF16(), kernelSize[Dims4D::Kernel::Y.ind()], padding.left);
             });
         }
@@ -197,7 +197,7 @@ bool isDepthwiseConvMorePerformant(VPU::NCEInterpolateOp origOp, config::ArchKin
                   "checking if DW L1aopt can be applied.");
         return llvm::all_of(overlapParams.value().getComputeShapes(), [&](auto workload) {
             return VPU::NCEInvariant::doesWorkloadSupportSmallKernelOpt(
-                    arch, kernelSize[Dims4D::Kernel::X.ind()], kernelStride[Dims4D::Kernel::X.ind()], workload,
+                    origOp, kernelSize[Dims4D::Kernel::X.ind()], kernelStride[Dims4D::Kernel::X.ind()], workload,
                     elemType.isF16(), kernelSize[Dims4D::Kernel::Y.ind()], pads.getLeft().getInt());
         });
     }
@@ -350,9 +350,10 @@ void ConvertNCEInterpolateToDWPass::convertToDWConv(VPU::NCEInterpolateOp origOp
     const auto weightsTable =
             isNewWeightTableFormat ? nullptr
                                    : VPU::createWeightsTableTensor(builder, origOp->getLoc(), weightsTableVec, wtShape);
-    const auto newWeightsTableTensors =
-            VPU::NewWeightsTableTensors(isNewWeightTableFormat, builder, origOp->getLoc(), sparseInput,
-                                        adaptedOutElemType, weights, nullptr, wtShape, ppeConverter, biasConverter);
+    const auto newWeightsTableTensors = VPU::NewWeightsTableTensors(
+            origOp.getOperation(), isNewWeightTableFormat, /*isDataPointerTableSupported=*/false,
+            /*isZeroPointTableSupported=*/false, builder, origOp->getLoc(), sparseInput, adaptedOutElemType, weights,
+            nullptr, wtShape, ppeConverter, biasConverter);
 
     const auto origWeightsShape = getShape(origWeights);
     const auto rawFilterShape = getIntArrayAttr(
@@ -363,7 +364,8 @@ void ConvertNCEInterpolateToDWPass::convertToDWConv(VPU::NCEInterpolateOp origOp
             origOp->getLoc(), outputType, sparseInput, weights, weightsTable, newWeightsTableTensors.dataPointerTensor,
             newWeightsTableTensors.sparsityPointerTensor, newWeightsTableTensors.scaleTensor,
             newWeightsTableTensors.biasTensor, newWeightsTableTensors.zeroPointTensor, origOp.getStridesAttr(), padding,
-            origOp.getPpeAttr(), rawFilterShape, origOp.getMultiClusterStrategyAttr(), nullptr, nullptr);
+            origOp.getPpeAttr(), origOp.getMpeEngineAttr(), rawFilterShape, origOp.getMultiClusterStrategyAttr(),
+            nullptr, nullptr);
 
     nestedLog.trace("Created DWConv with SEP for Interpolate.");
 
@@ -414,7 +416,7 @@ void ConvertNCEInterpolateToDWPass::safeRunOnFunc() {
             }
         }
 
-        if (!isDepthwiseConvMorePerformant(interpOp, arch, _log.nest())) {
+        if (!isDepthwiseConvMorePerformant(interpOp, _log.nest())) {
             _log.trace("Interpolate is more performant as DPU Conv than DPU DWConv.");
             return;
         }

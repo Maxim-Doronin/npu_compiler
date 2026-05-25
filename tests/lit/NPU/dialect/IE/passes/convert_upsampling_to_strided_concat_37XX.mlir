@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-upsampling-to-strided-concat %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --convert-upsampling-to-strided-concat %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 // CHECK-LABEL: @ConvertUpsamplingToStridedConcatW
 // CHECK-SAME:     [[ARG_0:%[^:]+]]: tensor<1x1x2x2xf16>

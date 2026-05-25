@@ -40,10 +40,10 @@ mlir::Type getAuxiliaryBufferType(mlir::Value query, mlir::Value key, mlir::Modu
     const auto targetSeqLen = queryShape[Dim(keyShape.size() - 2)];
     const auto sourceSeqLen = keyShape[Dim(keyShape.size() - 2)];
 
-    // Have 2 buffers per SHAVE for double buffering when tiling on Heads (channels)
+    // Have 1 buffer per SHAVE when tiling on Heads (channels)
     // Have 1 buffer for both SHAVEs when tiling on TargetSequenceLength (height)
     const auto numShavesPerTile = vpux::config::getNumOfEnginesOnTile(module, config::ExecutorKind::SHAVE_ACT);
-    const auto numBuffers = (queryShape[Dims4D::Act::C] > 1) ? (2 * numShavesPerTile) : 1;
+    const auto numBuffers = (queryShape[Dims4D::Act::C] > 1) ? numShavesPerTile : 1;
 
     const auto bufferShape = SmallVector<int64_t>{1, numBuffers, targetSeqLen, sourceSeqLen};
     const auto auxBufferType = mlir::RankedTensorType::get(bufferShape, getFp16Type(query.getContext()));
@@ -151,7 +151,6 @@ mlir::LogicalResult vpux::VPU::FlashSDPAOp::inferReturnTypes(mlir::MLIRContext* 
     inferredReturnTypes.push_back(flashSdpa.getInputRunningOutput().getType());
     inferredReturnTypes.push_back(flashSdpa.getInputRunningMax().getType());
     inferredReturnTypes.push_back(flashSdpa.getInputRunningSum().getType());
-    inferredReturnTypes.push_back(flashSdpa.getQuery().getType());
 
     return mlir::success();
 }
@@ -160,14 +159,10 @@ mlir::LogicalResult vpux::VPU::FlashSDPAOp::inferReturnTypes(mlir::MLIRContext* 
 // after we unroll it by Key/Value tensors kvNumBlocks times.
 bool vpux::VPU::FlashSDPAOp::fitIntoCMXAfterKeyValueTiling(::llvm::ArrayRef<vpux::NDTypeInterface> buffers,
                                                            Byte reservedMem, int64_t kvNumBlocks) {
-    auto minNumberOfBuffers = size_t{14};
+    auto minNumberOfBuffers = size_t{13};
     VPUX_THROW_UNLESS(buffers.size() >= minNumberOfBuffers && buffers.size() <= minNumberOfBuffers + 2,
-                      "FlashSDPAOp requires 10-13 inputs and 4 outputs, but the number of buffer is {0}",
+                      "FlashSDPAOp requires 10-11 inputs and 3 outputs, but the number of buffer is {0}",
                       buffers.size());
-
-    // Drop output Query buffer from the list because it uses the same buffer as the input Query buffer.
-    buffers = buffers.drop_back();
-    minNumberOfBuffers--;
 
     // Modify buffers size to take into account future tiling on Key/Value
     // and compute how much CMX the biggest operation would take.
@@ -209,8 +204,7 @@ bool vpux::VPU::FlashSDPAOp::fitIntoCMXAfterKeyValueTiling(::llvm::ArrayRef<vpux
         return buffer.getTotalAllocSize();
     });
 
-    auto totalAvailableCMXSize = reservedMem.count() == 0 ? getTotalCMXSize(getOperation()).count()
-                                                          : getTotalCMXFragmentationAwareSize(getOperation()).count();
+    auto totalAvailableCMXSize = getTotalCMXSize(getOperation()).count();
 
     auto arch = config::getArch(getOperation());
     auto requiredMemory = vpux::VPU::calculateAlignedBuffersMemoryRequirement(arch, buffersSize).count();
@@ -253,9 +247,8 @@ InputTiling vpux::VPU::FlashSDPAOp::backInferTileInfo(const vpux::TileInfo& outp
     const auto numShavesPerTile = vpux::config::getNumOfEnginesOnTile(module, config::ExecutorKind::SHAVE_ACT);
     auto auxBufferShape = Shape(getShape(getAuxBuffer()));
 
-    auto needsDoubleBuffering = (outputTile.shape[Dims4D::Act::C] > 1);
-    if (needsDoubleBuffering) {
-        auxBufferShape[Dims4D::Act::C] = 2 * numShavesPerTile;
+    if (outputTile.shape[Dims4D::Act::C] > 1) {
+        auxBufferShape[Dims4D::Act::C] = numShavesPerTile;
     } else {
         auxBufferShape[Dims4D::Act::C] = 1;
     }
@@ -269,8 +262,7 @@ InputTiling vpux::VPU::FlashSDPAOp::backInferTileInfo(const vpux::TileInfo& outp
 }
 
 OutputTiling vpux::VPU::FlashSDPAOp::getOutputTiling(const vpux::TileInfo& firstOutputTile, vpux::Logger /*log*/) {
-    auto qkEmbedding = getShape(getQuery())[Dims4D::Act::W];
-    return vpux::VPU::FlashSDPAOpOutputTiling(firstOutputTile, qkEmbedding);
+    return vpux::VPU::FlashSDPAOpOutputTiling(firstOutputTile);
 }
 
 void vpux::VPU::FlashSDPAOp::adjustAttrs(const TilingInfo&, const TileInfo&) {

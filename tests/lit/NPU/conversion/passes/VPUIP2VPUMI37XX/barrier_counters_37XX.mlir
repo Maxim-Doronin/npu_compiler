@@ -4,8 +4,8 @@
 //
 
 
-// RUN: vpux-opt --init-compiler="vpu-arch=%arch%" --convert-VPUIP-to-VPUMI37XX %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --init-compiler="platform=%platform%" --convert-VPUIP-to-VPUMI37XX %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
@@ -46,12 +46,12 @@ func.func private @barrier_counters(%arg0: memref<1x32x32x32xf16, #NHWC, @DDR>, 
         %t0 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%cst_0 : memref<1x1x1x3088xui8>) outputs(%m0 : memref<1x1x1x3088xui8, [@CMX_NN, 0]>) -> memref<1x1x1x3088xui8, [@CMX_NN, 0]>
     }
     VPURT.Task waits(%b1 : !VPURT.Barrier) updates(%b2 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-        %t0 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 33741 : i64} <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}> input(%m1 : memref<1x16x112x112x!qElemType, {order = #NHWC}, [@CMX_NN, 0]>) weights(%m3 : memref<96x16x1x1x!qElemType, {order = #NHWC}, [@CMX_NN, 0]>) weight_table(%m4 : memref<96x1x1x4xsi32, {order = #NCHW}, [@CMX_NN, 0]>) parent_input(%m1 : memref<1x16x112x112x!qElemType, {order = #NHWC}, [@CMX_NN, 0]>) parent_output(%m2 : memref<1x96x112x112x!qElemType, {order = #NHWC}, [@CMX_NN, 0]>) outputs(%m2 : memref<1x96x112x112x!qElemType, {order = #NHWC}, [@CMX_NN, 0]>) -> memref<1x96x112x112x!qElemType, {order = #NHWC}, [@CMX_NN, 0]> variants : {
+        %t0 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 33741 : i64, resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}> input(%m1 : memref<1x16x112x112x!qElemType, {order = #NHWC}, [@CMX_NN, 0]>) weights(%m3 : memref<96x16x1x1x!qElemType, {order = #NHWC}, [@CMX_NN, 0]>) weight_table(%m4 : memref<96x1x1x4xsi32, {order = #NCHW}, [@CMX_NN, 0]>) parent_input(%m1 : memref<1x16x112x112x!qElemType, {order = #NHWC}, [@CMX_NN, 0]>) parent_output(%m2 : memref<1x96x112x112x!qElemType, {order = #NHWC}, [@CMX_NN, 0]>) outputs(%m2 : memref<1x96x112x112x!qElemType, {order = #NHWC}, [@CMX_NN, 0]>) -> memref<1x96x112x112x!qElemType, {order = #NHWC}, [@CMX_NN, 0]> variants : {
         DPUTask {outEnd = [111, 111, 95], outStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
         } PPE : { PPETask {ppe = #VPU.PPEStub<>} }
     }
     VPURT.Task waits(%b2 : !VPURT.Barrier) updates(%b3 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-        %t0 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 27694 : i64} <{kernel_padding = #VPU.Padding<left = 1 : i64, right = 0 : i64, top = 1 : i64, bottom = 0 : i64>, kernel_size = [3, 3], kernel_strides = [2, 2], task_type = #VPUIP.nce_task_type<DWCONV>}> input(%m2 : memref<1x96x112x112x!qElemType, {order = #NHWC}, [@CMX_NN, 0]>) weights(%m5 : memref<96x16x1x1x!qElemType, #NHWC, [@CMX_NN, 0]>) weight_table(%m6 : memref<96x1x1x4xsi32, [@CMX_NN, 0]>) parent_input(%m2 : memref<1x96x112x112x!qElemType, {order = #NHWC}, [@CMX_NN, 0]>) parent_output(%m8 : memref<1x96x56x56x!qElemType, {order = #NHWC}, [@CMX_NN, 0]>) outputs(%m8 : memref<1x96x56x56x!qElemType, {order = #NHWC}, [@CMX_NN, 0]>) -> memref<1x96x56x56x!qElemType, {order = #NHWC}, [@CMX_NN, 0]> variants : {
+        %t0 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 27694 : i64, resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{kernel_padding = #VPU.Padding<left = 1 : i64, right = 0 : i64, top = 1 : i64, bottom = 0 : i64>, kernel_size = [3, 3], kernel_strides = [2, 2], task_type = #VPUIP.nce_task_type<DWCONV>}> input(%m2 : memref<1x96x112x112x!qElemType, {order = #NHWC}, [@CMX_NN, 0]>) weights(%m5 : memref<96x16x1x1x!qElemType, #NHWC, [@CMX_NN, 0]>) weight_table(%m6 : memref<96x1x1x4xsi32, [@CMX_NN, 0]>) parent_input(%m2 : memref<1x96x112x112x!qElemType, {order = #NHWC}, [@CMX_NN, 0]>) parent_output(%m8 : memref<1x96x56x56x!qElemType, {order = #NHWC}, [@CMX_NN, 0]>) outputs(%m8 : memref<1x96x56x56x!qElemType, {order = #NHWC}, [@CMX_NN, 0]>) -> memref<1x96x56x56x!qElemType, {order = #NHWC}, [@CMX_NN, 0]> variants : {
         DPUTask {outEnd = [55, 55, 63], outStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, pad = #VPU.Padding<left = 1 : i64, right = 0 : i64, top = 1 : i64, bottom = 0 : i64>}
         DPUTask {outEnd = [55, 55, 95], outStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, pad = #VPU.Padding<left = 1 : i64, right = 0 : i64, top = 1 : i64, bottom = 0 : i64>}
         } PPE : { PPETask {ppe = #VPU.PPEStub<>} }
@@ -65,7 +65,7 @@ func.func private @barrier_counters(%arg0: memref<1x32x32x32xf16, #NHWC, @DDR>, 
 }
 }
 
-// CHECK: %0 = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<0, -1> -> !VPURegMapped.Index<0:0:0>
-// CHECK: %1 = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<1, -1> -> !VPURegMapped.Index<0:0:1>
-// CHECK: %2 = VPUMI37XX.ConfigureBarrier {consumer_count = 2 : ui8, producer_count = 1 : ui8}<2, -1> -> !VPURegMapped.Index<0:0:2>
-// CHECK: %3 = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 2 : ui8}<3, -1> -> !VPURegMapped.Index<0:0:3>
+// CHECK: [[BAR_0:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<0, -1> -> !VPURegMapped.Index<0:0:0>
+// CHECK: [[BAR_1:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<1, -1> -> !VPURegMapped.Index<0:0:1>
+// CHECK: [[BAR_2:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 2 : ui8, producer_count = 1 : ui8}<2, -1> -> !VPURegMapped.Index<0:0:2>
+// CHECK: [[BAR_3:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 2 : ui8}<3, -1> -> !VPURegMapped.Index<0:0:3>

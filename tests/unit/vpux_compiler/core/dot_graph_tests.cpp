@@ -6,7 +6,7 @@
 //
 
 #include "vpux/compiler/dialect/core/transforms/passes.hpp"
-#include "vpux/compiler/init.hpp"
+#include "vpux/compiler/init/dialects_registry.hpp"
 #include "vpux/compiler/utils/dot_printer.hpp"
 
 #include "common/utils.hpp"

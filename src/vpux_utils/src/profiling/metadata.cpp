@@ -3,14 +3,19 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#ifndef NDEBUG
+// This is a flatbuffers flag useful during debugging flatbuffer's verifier failures
+#define FLATBUFFERS_DEBUG_VERIFICATION_FAILURE
+#endif
+
 #include "vpux/utils/profiling/metadata.hpp"
 
+#include <flatbuffers/verifier.h>
 #include "schema/profiling_generated.h"
 
 #include <vpux_elf/accessor.hpp>
 #include <vpux_elf/reader.hpp>
 
-#include <sstream>
 #include "vpux/utils/core/checked_cast.hpp"
 #include "vpux/utils/core/error.hpp"
 #include "vpux/utils/logger/logger.hpp"
@@ -34,7 +39,13 @@ using namespace vpux::profiling;
 constexpr size_t HEADER_SIZE_V1 = /*version_size*/ sizeof(uint32_t) + /*pad_size*/ sizeof(uint32_t);
 
 const SchemaAndPtrType getProfilingMetaBufferVerified(const uint8_t* buffer, size_t size) {
-    auto verifier = flatbuffers::Verifier(buffer, size);
+    constexpr long maxNumberOfFBRecords = 10000000;
+    flatbuffers::Verifier::Options verificationOptions;
+    verificationOptions.max_tables = maxNumberOfFBRecords;
+#ifndef NDEBUG
+    verificationOptions.assert = true;
+#endif
+    auto verifier = flatbuffers::Verifier(buffer, size, verificationOptions);
     VPUX_THROW_UNLESS(ProfilingFB::VerifyProfilingMetaBuffer(verifier), "Corrupted profiling metadata");
     return {ProfilingFB::GetProfilingMeta(buffer), buffer};
 }

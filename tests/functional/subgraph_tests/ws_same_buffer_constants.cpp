@@ -20,7 +20,7 @@ class WsSameBufferConstantsSubGraphTest : public VpuOv2LayerTest {
         // Note: both PLUGIN and DRIVER are OK here, but PLUGIN is generally
         // preferred for weights separation.
         configuration["NPU_COMPILER_TYPE"] = "PLUGIN";
-        configuration["NPU_WEIGHTLESS_BLOB"] = "YES";
+        configuration["ENABLE_WEIGHTLESS"] = "YES";
         configuration["WEIGHTS_PATH"] = _binPath;
     }
 

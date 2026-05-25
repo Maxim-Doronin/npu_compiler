@@ -5,14 +5,14 @@
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
-#include "vpux/compiler/dialect/VPU/utils/se_padding_utils.hpp"
 #include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
-#include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Transforms/WalkPatternRewriteDriver.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_CONVERTNONCONSTANTPADTOSLICEANDCONCAT
@@ -23,6 +23,29 @@ namespace vpux::IE {
 using namespace vpux;
 
 namespace {
+
+bool shouldConvertPadOp(IE::PadOp op, bool hasSEPtrsEnabled, Logger log) {
+    const auto logCb = [&](const formatv_object_base& msg) {
+        log.trace("{0}", msg.str());
+    };
+
+    // Skip this rewriter if Pad is dynamic.
+    if (IE::hasDynamicTensors(op)) {
+        return false;
+    }
+
+    // Skip this rewriter if Pad can be executed using SEP.
+    if (hasSEPtrsEnabled) {
+        auto seOp = mlir::dyn_cast<IE::SEOpInterface>(op.getOperation());
+        if (seOp && seOp.isSupported(logCb)) {
+            log.nest().trace("Pad Operation {0} can be executed using SEP", op);
+            return false;
+        }
+    }
+
+    // Skip this rewriter for modes other than EDGE/REFLECT.
+    return op.getMode() == IE::PadMode::EDGE || op.getMode() == IE::PadMode::REFLECT;
+}
 
 //
 // ConvertNonConstantPadToSliceAndConcatPass
@@ -49,7 +72,8 @@ private:
 class ConvertNonConstantPadToSliceAndConcatPass::NonConstantPadConverter final :
         public mlir::OpRewritePattern<IE::PadOp> {
 public:
-    NonConstantPadConverter(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<IE::PadOp>(ctx), _log(log) {
+    NonConstantPadConverter(mlir::MLIRContext* ctx, bool hasSEPtrsEnabled, Logger log)
+            : mlir::OpRewritePattern<IE::PadOp>(ctx), _hasSEPtrsEnabled(hasSEPtrsEnabled), _log(log) {
         setDebugName("NonConstantPadConverter");
     }
 
@@ -57,6 +81,7 @@ public:
     mlir::LogicalResult matchAndRewrite(IE::PadOp PadOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
+    bool _hasSEPtrsEnabled;
     Logger _log;
 };
 
@@ -129,6 +154,10 @@ mlir::Value convertPerAxisForReflectPad(mlir::Value input, const int64_t padBegi
 
 mlir::LogicalResult ConvertNonConstantPadToSliceAndConcatPass::NonConstantPadConverter::matchAndRewrite(
         IE::PadOp padOp, mlir::PatternRewriter& rewriter) const {
+    if (!shouldConvertPadOp(padOp, _hasSEPtrsEnabled, _log)) {
+        return mlir::failure();
+    }
+
     _log.trace("[{0}] Found '{1}' at '{2}'", getDebugName(), padOp->getName(), padOp->getLoc());
 
     VPUX_THROW_UNLESS(padOp.getPadsBeginAttr().has_value() && padOp.getPadsEndAttr().has_value(),
@@ -167,35 +196,10 @@ void ConvertNonConstantPadToSliceAndConcatPass::safeRunOnFunc() {
     auto moduleOp = getModuleOp(func);
     const auto hasSEPtrsEnabled = config::hasEnableSEPtrsOperations(moduleOp);
 
-    mlir::ConversionTarget target(ctx);
-
-    const auto logCb = [&](const formatv_object_base& msg) {
-        _log.trace("{0}", msg.str());
-    };
-
-    target.addDynamicallyLegalOp<IE::PadOp>([&](IE::PadOp op) -> bool {
-        // Skip this rewriter if Pad is dynamic
-        if (IE::hasDynamicTensors(op)) {
-            return true;
-        }
-
-        if (hasSEPtrsEnabled &&
-            VPU::isSupportedSEPPadOp(op, logCb, /*checkLayout=*/false, /*checkChannelAlignment=*/false)) {
-            _log.nest().trace("Pad Operation {0} can be executed using SEP", op);
-            return true;
-        }
-
-        return !(op.getMode() == IE::PadMode::EDGE || op.getMode() == IE::PadMode::REFLECT);
-    });
-    target.addLegalOp<IE::SliceOp>();
-    target.addLegalOp<IE::ConcatOp>();
-
     mlir::RewritePatternSet patterns(&ctx);
-    patterns.add<NonConstantPadConverter>(&ctx, _log);
+    patterns.add<NonConstantPadConverter>(&ctx, hasSEPtrsEnabled, _log);
 
-    if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
-        signalPassFailure();
-    }
+    walkAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

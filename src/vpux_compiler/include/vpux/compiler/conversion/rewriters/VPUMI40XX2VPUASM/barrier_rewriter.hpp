@@ -15,17 +15,17 @@ public:
     using Base::Base;
 
     BarrierRewriter(mlir::func::FuncOp netFunc, SymbolizationTypeConverter& typeConverter, SymbolMapper& mapper,
-                    SectionMapper& sectionMap, mlir::MLIRContext* ctx, Logger log, bool enablePWLM)
+                    SectionMapper& sectionMap, mlir::MLIRContext* ctx, Logger log, bool skipBarrierLowering)
             : VPUASMSymbolizationPattern<VPUMI40XX::ConfigureBarrierOp>(netFunc, typeConverter, mapper, sectionMap, ctx,
                                                                         log),
-              _enablePWLM(enablePWLM) {
+              _skipBarrierLowering(skipBarrierLowering) {
     }
 
     mlir::FailureOr<SymbolizationResult> symbolize(VPUMI40XX::ConfigureBarrierOp op, SymbolMapper& mapper,
                                                    mlir::ConversionPatternRewriter& rewriter) const override;
 
 private:
-    bool _enablePWLM;
+    bool _skipBarrierLowering;
 };
 
 }  // namespace vpumi40xx2vpuasm

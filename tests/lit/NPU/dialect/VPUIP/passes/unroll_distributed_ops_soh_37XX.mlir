@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --unroll-distributed-ops --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --unroll-distributed-ops --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
@@ -317,7 +317,7 @@ func.func @UnrollNCEWithProfiling(%input: !Input_DDR, %output: !Output_DDR, %pro
 
     // Cluster tiling
     VPURT.Task waits(%bar0: !VPURT.Barrier) updates(%bar1: !VPURT.Barrier) {
-        %1:2 = VPUIP.NCEClusterTask <{
+        %1:2 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 1, 0, 0, 0>} <{
                     kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                     kernel_size = [1, 1],
                     kernel_strides = [1, 1],
@@ -570,7 +570,7 @@ func.func @UnrollNCESegmentedConv(%input: !Input_DDR, %output: !Output_DDR) -> !
 
     // Cluster tiling
     VPURT.Task waits(%bar0: !VPURT.Barrier) updates(%bar1: !VPURT.Barrier) {
-        %1 = VPUIP.NCEClusterTask <{
+        %1 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
                     kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
                     kernel_size = [3, 3],
                     kernel_strides = [1, 1],
@@ -668,7 +668,8 @@ func.func @UnrollNCESegmentedConv(%input: !Input_DDR, %output: !Output_DDR) -> !
     //CHECK:        VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier) {
     //CHECK:          VPUIP.NCEClusterTask
     //CHECK-SAME:           {is_segmented, kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
-    //CHECK-SAME:           kernel_size = [3, 3], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}
+    //CHECK-SAME:           kernel_size = [3, 3], kernel_strides = [1, 1],
+    //CHECK-SAME:           task_type = #VPUIP.nce_task_type<CONV>}
     //CHECK-SAME:       input([[IN1_CMX]] : memref<1x16x17x32xf16, #NHWC, [@CMX_NN, 0]>)
     //CHECK-SAME:           weights([[WEIGHTS1_CMX]] : memref<16x16x3x3xf16, #NHWC, [@CMX_NN, 0]>)
     //CHECK-SAME:           weight_table([[WEIGHTS_TABLE1_CMX]] : memref<16x1x1x4xsi32, [@CMX_NN, 0]>)
@@ -686,7 +687,8 @@ func.func @UnrollNCESegmentedConv(%input: !Input_DDR, %output: !Output_DDR) -> !
     //CHECK:        VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier) {
     //CHECK:          VPUIP.NCEClusterTask
     //CHECK-SAME:           {is_segmented, kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
-    //CHECK-SAME:           kernel_size = [3, 3], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}
+    //CHECK-SAME:           kernel_size = [3, 3], kernel_strides = [1, 1],
+    //CHECK-SAME:           task_type = #VPUIP.nce_task_type<CONV>}
     //CHECK-SAME:       input([[IN2_CMX]] : memref<1x16x16x32xf16, #NHWC, [@CMX_NN, 1]>)
     //CHECK-SAME:           weights([[WEIGHTS2_CMX]] : memref<16x16x3x3xf16, #NHWC, [@CMX_NN, 1]>)
     //CHECK-SAME:           weight_table([[WEIGHTS_TABLE2_CMX]] : memref<16x1x1x4xsi32, [@CMX_NN, 1]>)
@@ -798,7 +800,7 @@ func.func @UnrollNCESequence(%input: !Input_DDR, %output: !Output_DDR) -> !Outpu
 
     // Cluster tiling
     VPURT.Task waits(%bar0: !VPURT.Barrier) updates(%bar1: !VPURT.Barrier) {
-        %1 = VPUIP.NCEClusterTask <{
+        %1 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
                     kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                     kernel_size = [1, 1],
                     kernel_strides = [1, 1],
@@ -828,7 +830,7 @@ func.func @UnrollNCESequence(%input: !Input_DDR, %output: !Output_DDR) -> !Outpu
 
     // Cluster tiling
     VPURT.Task waits(%bar1: !VPURT.Barrier) updates(%bar2: !VPURT.Barrier) {
-        %1 = VPUIP.NCEClusterTask <{
+        %1 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
                     kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                     kernel_size = [1, 1],
                     kernel_strides = [1, 1],
@@ -938,7 +940,8 @@ func.func @UnrollNCESequence(%input: !Input_DDR, %output: !Output_DDR) -> !Outpu
     //CHECK:        VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier) {
     //CHECK:          VPUIP.NCEClusterTask
     //CHECK-SAME:           {is_segmented, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
-    //CHECK-SAME:           kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}
+    //CHECK-SAME:           kernel_size = [1, 1], kernel_strides = [1, 1],
+    //CHECK-SAME:           task_type = #VPUIP.nce_task_type<CONV>}
     //CHECK-SAME:       input([[IN1_CMX_1ST_TASK]] : memref<1x16x17x32xf16, #NHWC, [@CMX_NN, 0]>)
     //CHECK-SAME:           weights([[WEIGHTS1_CMX_1ST_TASK]] : memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>)
     //CHECK-SAME:           weight_table([[WEIGHTS_TABLE1_CMX_1ST_TASK]] : memref<16x1x1x4xsi32, [@CMX_NN, 0]>)
@@ -956,7 +959,8 @@ func.func @UnrollNCESequence(%input: !Input_DDR, %output: !Output_DDR) -> !Outpu
     //CHECK:        VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier) {
     //CHECK:          VPUIP.NCEClusterTask
     //CHECK-SAME:           {is_segmented, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
-    //CHECK-SAME:           kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}
+    //CHECK-SAME:           kernel_size = [1, 1], kernel_strides = [1, 1],
+    //CHECK-SAME:           task_type = #VPUIP.nce_task_type<CONV>}
     //CHECK-SAME:       input([[IN2_CMX_1ST_TASK]] : memref<1x16x16x32xf16, #NHWC, [@CMX_NN, 1]>)
     //CHECK-SAME:           weights([[WEIGHTS2_CMX_1ST_TASK]] : memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 1]>)
     //CHECK-SAME:           weight_table([[WEIGHTS_TABLE2_CMX_1ST_TASK]] : memref<16x1x1x4xsi32, [@CMX_NN, 1]>)
@@ -975,7 +979,8 @@ func.func @UnrollNCESequence(%input: !Input_DDR, %output: !Output_DDR) -> !Outpu
     //CHECK:        VPURT.Task waits([[BAR1]] : !VPURT.Barrier) updates([[BAR2]] : !VPURT.Barrier) {
     //CHECK:          VPUIP.NCEClusterTask
     //CHECK-SAME:           {is_segmented, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
-    //CHECK-SAME:           kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}
+    //CHECK-SAME:           kernel_size = [1, 1], kernel_strides = [1, 1],
+    //CHECK-SAME:           task_type = #VPUIP.nce_task_type<CONV>}
     //CHECK-SAME:       input([[IN1_CMX_2ND_TASK]] : memref<1x16x17x32xf16, #NHWC, [@CMX_NN, 0]>)
     //CHECK-SAME:           weights([[WEIGHTS1_CMX_2ND_TASK]] : memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>)
     //CHECK-SAME:           weight_table([[WEIGHTS_TABLE1_CMX_2ND_TASK]] : memref<16x1x1x4xsi32, [@CMX_NN, 0]>)
@@ -993,7 +998,8 @@ func.func @UnrollNCESequence(%input: !Input_DDR, %output: !Output_DDR) -> !Outpu
     //CHECK:        VPURT.Task waits([[BAR1]] : !VPURT.Barrier) updates([[BAR2]] : !VPURT.Barrier) {
     //CHECK:          VPUIP.NCEClusterTask
     //CHECK-SAME:           {is_segmented, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
-    //CHECK-SAME:           kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}
+    //CHECK-SAME:           kernel_size = [1, 1], kernel_strides = [1, 1],
+    //CHECK-SAME:           task_type = #VPUIP.nce_task_type<CONV>}
     //CHECK-SAME:       input([[IN2_CMX_2ND_TASK]] : memref<1x16x16x32xf16, #NHWC, [@CMX_NN, 1]>)
     //CHECK-SAME:           weights([[WEIGHTS2_CMX_2ND_TASK]] : memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 1]>)
     //CHECK-SAME:           weight_table([[WEIGHTS_TABLE2_CMX_2ND_TASK]] : memref<16x1x1x4xsi32, [@CMX_NN, 1]>)
@@ -1094,7 +1100,7 @@ func.func @UnrollTanhSOH(%input0: !Input_DDR, %output: !Output_DDR) -> !Output_D
     //CHECK:    VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_TanhOp inputs([[IN0_CMX]] as [[ARG2:%.+]]: memref<1x4x256x1xf16, [@CMX_NN, 0]>) outputs([[OUT0_CMX_COPY]] as [[ARG3:%.+]]: memref<1x4x256x1xf16, [@CMX_NN, 0]>) on tile 0 -> memref<1x4x256x1xf16, [@CMX_NN, 0]>{
     //CHECK:    VPUIP.SW.Kernel.run {attrs = [0]}([[ARG2]], [[ARG3]]) : memref<1x4x256x1xf16, [@CMX_NN, 0]>, memref<1x4x256x1xf16, [@CMX_NN, 0]>
 
-    //CHECK:    %results = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_TanhOp inputs([[IN1_CMX]] as [[ARG22:%.+]]: memref<1x4x256x1xf16, [@CMX_NN, 1]>) outputs([[OUT1_CMX_COPY]] as [[ARG23:%.+]]: memref<1x4x256x1xf16, [@CMX_NN, 1]>) on tile 1 -> memref<1x4x256x1xf16, [@CMX_NN, 1]>{
+    //CHECK:    VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_TanhOp inputs([[IN1_CMX]] as [[ARG22:%.+]]: memref<1x4x256x1xf16, [@CMX_NN, 1]>) outputs([[OUT1_CMX_COPY]] as [[ARG23:%.+]]: memref<1x4x256x1xf16, [@CMX_NN, 1]>) on tile 1 -> memref<1x4x256x1xf16, [@CMX_NN, 1]>{
     //CHECK:    VPUIP.SW.Kernel.run {attrs = [0]}([[ARG22]], [[ARG23]]) : memref<1x4x256x1xf16, [@CMX_NN, 1]>, memref<1x4x256x1xf16, [@CMX_NN, 1]>
 
     //CHECK:    VPUIP.NNDMA <{port = 0 : i64}> inputs([[OUT0_CMX]] : memref<1x4x256x1xf16, [@CMX_NN, 0]>) outputs([[OUT_DDR1]] : memref<1x4x256x1xf16, {order = #NCHW, strides = [2048, 512, 1, 1]}, @DDR>) -> memref<1x4x256x1xf16, {order = #NCHW, strides = [2048, 512, 1, 1]}, @DDR>
@@ -1311,7 +1317,7 @@ func.func @UnrollNNDMACMX2DDR_NCHW() -> !Output_DDR {
 //CHECK: [[BAR_0:%.+]]   = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
 //CHECK: VPURT.Task updates([[BAR_0]] : !VPURT.Barrier) {
 //CHECK: VPUIP.NNDMA <{port = 0 : i64}> inputs([[BUF_0]] : memref<1x3x86x512xf16, [@CMX_NN, 0]>) outputs([[OUTBUF1]] : memref<1x3x86x512xf16, {order = #NCHW, strides = [786432, 262144, 512, 1]}, @DDR>) -> memref<1x3x86x512xf16, {order = #NCHW, strides = [786432, 262144, 512, 1]}, @DDR>
-//CHECK: VPURT.Task updates(%5 : !VPURT.Barrier) {
+//CHECK: VPURT.Task updates([[BAR_0]] : !VPURT.Barrier) {
 //CHECK: VPUIP.NNDMA <{port = 1 : i64}> inputs([[BUF_1]] : memref<1x3x85x512xf16, [@CMX_NN, 1]>) outputs([[OUTBUF2]] : memref<1x3x85x512xf16, {order = #NCHW, strides = [786432, 262144, 512, 1]}, @DDR>) -> memref<1x3x85x512xf16, {order = #NCHW, strides = [786432, 262144, 512, 1]}, @DDR>
 //CHECK: return [[OUTBUF]] : memref<1x3x171x512xf16, {order = #NCHW, strides = [786432, 262144, 512, 1]}, @DDR>
 

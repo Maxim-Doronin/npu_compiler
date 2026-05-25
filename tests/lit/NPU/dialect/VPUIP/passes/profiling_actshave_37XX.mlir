@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file  --init-compiler="vpu-arch=%arch%" --act-shave-profiling %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file  --init-compiler="platform=%platform%" --act-shave-profiling %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 // CHECK-LABEL: @ActShaveProfiling
 module @ActShaveProfiling {

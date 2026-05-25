@@ -177,8 +177,9 @@ mlir::LogicalResult ODUOutActivationsOp::verify() {
     auto arch = config::getArch(*this);
     auto dataTypeExists = getDataType().has_value();
     auto dataWidthExists = getDataWidth().has_value();
+    auto outActivationsExists = getOutActivations() != nullptr;
 
-    if (!dataTypeExists && !dataWidthExists) {
+    if (!dataTypeExists && !dataWidthExists && outActivationsExists) {
         return ::mlir::success();
     }
 

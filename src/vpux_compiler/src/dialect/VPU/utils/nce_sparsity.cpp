@@ -5,6 +5,7 @@
 
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
 #include "vpux/compiler/core/layers.hpp"
+#include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/compiler/dialect/VPU/IR/types.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/factories/nce_sparsity_converters.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
@@ -222,6 +223,16 @@ std::vector<int32_t> vpux::VPU::NCESparsity::getWeightsTable(
     });
 
     return weightsTableVals;
+}
+
+mlir::Type vpux::VPU::NCESparsity::getQuantizedWeightsStorageType(mlir::Type weightsElemType) {
+    auto quantizedType = mlir::dyn_cast<mlir::quant::QuantizedType>(weightsElemType);
+    VPUX_THROW_WHEN(quantizedType == nullptr, "Expected quantized type for weightsElemType, got {0}", weightsElemType);
+    auto storageType = quantizedType.getStorageType();
+    if (const auto quantileType = mlir::dyn_cast<vpux::type::QuantileType>(storageType)) {
+        storageType = quantileType.getStorageType();
+    }
+    return storageType;
 }
 
 std::vector<float> vpux::VPU::NCESparsity::getBiasTable(mlir::Type inElemType, mlir::Type outElemType,

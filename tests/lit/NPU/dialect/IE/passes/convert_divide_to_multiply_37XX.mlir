@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-divide-to-multiply --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --convert-divide-to-multiply --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 // CHECK-LABEL: @NotConvertForSmallDivideOutputRatio
 // CHECK-SAME: ([[ARG0:%.+]]: tensor<1x151x1x768xf16>, [[ARG1:%.+]]: tensor<1x151x1x1xf16>) -> tensor<1x151x1x768xf16>

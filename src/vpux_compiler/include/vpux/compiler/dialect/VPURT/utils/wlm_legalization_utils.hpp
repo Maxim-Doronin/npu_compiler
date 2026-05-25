@@ -75,11 +75,14 @@ size_t getIndexOfBarrier(IndexType indexType, ArrayRef<VPURT::DeclareVirtualBarr
 VPURT::TaskOp createFetchDMA(mlir::OpBuilder& builder, mlir::Value input, mlir::Value output, int port,
                              mlir::ValueRange waitBarriers, mlir::ValueRange updateBarriers,
                              VPUIP::FetchDMAAttr fetchDMAAttr, llvm::StringLiteral opName = "fetch_dma");
+VPURT::TaskOp createSkipDMA(mlir::OpBuilder& builder, mlir::Value input, mlir::Value output, int port,
+                            VPUIP::SkipDMAAttr skipDMAAttr, llvm::StringLiteral opName = "skip_dma");
+VPUIP::FetchDMAAttr getFetchDMAAttr(int64_t groupIdxOrLogicalTaskIdx, BarrierInfo& barrierInfo, size_t taskIndex,
+                                    size_t tileIdx = 0, size_t listIdx = 0, int64_t descId = -1,
+                                    bool isLogicalTask = false);
+VPUIP::SkipDMAAttr getSkipDMAAttr(BarrierInfo& barrierInfo, size_t taskIndex, size_t logicalTaskIdx, int64_t descId);
 
-VPUIP::FetchDMAAttr getFetchDMAAttr(int64_t groupIdx, BarrierInfo& barrierInfo, size_t taskIndex);
-
-void legalizeScheduleForNonWlm(mlir::func::FuncOp netFunc, BarrierInfo& barrierInfo, Logger log);
-bool verifyBarriersForTaskDescriptorFetch(BarrierInfo& barrierInfo, mlir::func::FuncOp func, bool wlmFlag,
+bool verifyBarriersForTaskDescriptorFetch(BarrierInfo& barrierInfo, mlir::func::FuncOp func,
                                           std::optional<WorkloadManagementMode> wlmMode);
 
 bool verifyFetchDmaDependencies(mlir::func::FuncOp func, BarrierInfo& barrierInfo,

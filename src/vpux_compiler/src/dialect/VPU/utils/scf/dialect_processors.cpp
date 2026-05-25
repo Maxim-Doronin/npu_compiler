@@ -15,6 +15,7 @@
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 
 #include <llvm/ADT/TypeSwitch.h>
+#include <llvm/ADT/bit.h>
 
 namespace vpux::VPU {
 
@@ -224,6 +225,15 @@ bool ArithmeticDialectProcessor::processOperation(mlir::Operation* op, llvm::Den
             valueMap[op->getResult(0)] = intAttr.getInt();
             return true;
         }
+        if (auto floatAttr = mlir::dyn_cast<mlir::FloatAttr>(constOp.getValueAttr())) {
+            // Store float as bit pattern - will be interpreted correctly by float ops
+            valueMap[op->getResult(0)] = llvm::bit_cast<int64_t>(floatAttr.getValueAsDouble());
+            return true;
+        }
+        if (auto indexAttr = mlir::dyn_cast<mlir::IntegerAttr>(constOp.getValueAttr())) {
+            valueMap[op->getResult(0)] = indexAttr.getInt();
+            return true;
+        }
         return false;
     }
 
@@ -394,6 +404,49 @@ bool ArithmeticDialectProcessor::processOperation(mlir::Operation* op, llvm::Den
                 auto rhs = valueMap[andOp.getRhs()];
                 auto resultValue = lhs & rhs;
                 valueMap[op->getResult(0)] = resultValue;
+                return true;
+            })
+            .Case<mlir::arith::IndexCastOp>([&](auto castOp) {
+                valueMap[op->getResult(0)] = valueMap[castOp.getIn()];
+                return true;
+            })
+            .Case<mlir::arith::SIToFPOp>([&](auto siToFpOp) {
+                auto intVal = valueMap[siToFpOp.getIn()];
+                valueMap[op->getResult(0)] = llvm::bit_cast<int64_t>(static_cast<double>(intVal));
+                return true;
+            })
+            .Case<mlir::arith::FPToSIOp>([&](auto fpToSiOp) {
+                auto floatBits = valueMap[fpToSiOp.getIn()];
+                auto floatVal = llvm::bit_cast<double>(floatBits);
+                valueMap[op->getResult(0)] = static_cast<int64_t>(floatVal);
+                return true;
+            })
+            .Case<mlir::arith::MulFOp>([&](auto mulFOp) {
+                auto lhsBits = valueMap[mulFOp.getLhs()];
+                auto rhsBits = valueMap[mulFOp.getRhs()];
+                auto lhs = llvm::bit_cast<double>(lhsBits);
+                auto rhs = llvm::bit_cast<double>(rhsBits);
+                valueMap[op->getResult(0)] = llvm::bit_cast<int64_t>(lhs * rhs);
+                return true;
+            })
+            .Case<mlir::arith::AddFOp>([&](auto addFOp) {
+                auto lhsBits = valueMap[addFOp.getLhs()];
+                auto rhsBits = valueMap[addFOp.getRhs()];
+                auto lhs = llvm::bit_cast<double>(lhsBits);
+                auto rhs = llvm::bit_cast<double>(rhsBits);
+                valueMap[op->getResult(0)] = llvm::bit_cast<int64_t>(lhs + rhs);
+                return true;
+            })
+            .Case<mlir::arith::DivFOp>([&](auto divFOp) {
+                auto lhsBits = valueMap[divFOp.getLhs()];
+                auto rhsBits = valueMap[divFOp.getRhs()];
+                auto lhs = llvm::bit_cast<double>(lhsBits);
+                auto rhs = llvm::bit_cast<double>(rhsBits);
+                if (rhs == 0.0) {
+                    _log.warning("Division by zero in DivFOp");
+                    return false;
+                }
+                valueMap[op->getResult(0)] = llvm::bit_cast<int64_t>(lhs / rhs);
                 return true;
             })
             .Default([&](mlir::Operation*) {

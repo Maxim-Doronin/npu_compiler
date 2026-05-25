@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-VPUASM-to-NPUReg40XX %s | FileCheck %s
-// REQUIRES: dev-build && arch-NPU40XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --convert-VPUASM-to-NPUReg40XX %s | FileCheck %s
+// REQUIRES: dev-build && platform-NPU4000
 
 module @OneDMAWithoutAttributes {
   net.NetworkInfo entryPoint : @main inputsInfo : {
@@ -12,14 +12,16 @@ module @OneDMAWithoutAttributes {
   } outputsInfo : {
     DataInfo "output_0" : tensor<1x2x3x4xf16>
   }
-  VPUASM.IOBindings inputDeclarations : {
+  VPUASM.InputBindings inputDeclarations : {
     VPUASM.DeclareBuffer @input_0_buffDecl !VPUASM.Buffer< "NetworkInput"[0] <0> : memref<1x2x3x4xf32, @DDR> :  swizzling(0)>
-  } outputDeclarations : {
+  }
+  VPUASM.OutputBindings outputDeclarations : {
     VPUASM.DeclareBuffer @output_0_buffDecl !VPUASM.Buffer< "NetworkOutput"[0] <0> : memref<1x2x3x4xf16, @DDR> :  swizzling(0)>
-  } profilingBuffDeclarations : {
+  }
+  VPUASM.ProfilingBindings profilingDeclarations : {
   }
   func.func @main() {
-    ELF.Main @ELFMain {
+    ELF.Main {
       VPUASM.DeclareBuffer @DeclareBuffer0 !VPUASM.Buffer< "NetworkInput"[0] <0> : memref<1x2x3x4xf32, @DDR> :  swizzling(0)>
       VPUASM.DeclareBuffer @DeclareBuffer1 !VPUASM.Buffer< "NetworkOutput"[0] <0> : memref<1x2x3x4xf16, @DDR> :  swizzling(0)>
       ELF.CreateLogicalSection @builtin.tasks.DMA0 aligned(64) secType(SHT_NOBITS) secFlags(SHF_ALLOC) secLocation(<CMX_NN>) {
@@ -53,14 +55,16 @@ module @OneDMAWithoutAttributes {
   } outputsInfo : {
     DataInfo "output_0" : tensor<1x2x3x4xbf16>
   }
-  VPUASM.IOBindings inputDeclarations : {
+  VPUASM.InputBindings inputDeclarations : {
     VPUASM.DeclareBuffer @input_0_buffDecl !VPUASM.Buffer< "NetworkInput"[0] <0> : memref<1x2x3x4xf32, @DDR> :  swizzling(0)>
-  } outputDeclarations : {
+  }
+  VPUASM.OutputBindings outputDeclarations : {
     VPUASM.DeclareBuffer @output_0_buffDecl !VPUASM.Buffer< "NetworkOutput"[0] <0> : memref<1x2x3x4xbf16, @DDR> :  swizzling(0)>
-  } profilingBuffDeclarations : {
+  }
+  VPUASM.ProfilingBindings profilingDeclarations : {
   }
   func.func @main() {
-    ELF.Main @ELFMain {
+    ELF.Main {
       VPUASM.DeclareBuffer @DeclareBuffer0 !VPUASM.Buffer< "NetworkInput"[0] <0> : memref<1x2x3x4xf32, @DDR> :  swizzling(0)>
       VPUASM.DeclareBuffer @DeclareBuffer1 !VPUASM.Buffer< "NetworkOutput"[0] <0> : memref<1x2x3x4xbf16, @DDR> :  swizzling(0)>
       ELF.CreateLogicalSection @builtin.tasks.DMA0 aligned(64) secType(SHT_NOBITS) secFlags(SHF_ALLOC) secLocation(<CMX_NN>) {
@@ -97,14 +101,16 @@ module @OneDMAWithoutAttributes {
   } outputsInfo : {
     DataInfo "output_0" : tensor<1x3x3x4xui8>
   }
-  VPUASM.IOBindings inputDeclarations : {
+  VPUASM.InputBindings inputDeclarations : {
     VPUASM.DeclareBuffer @input_0_buffDecl !VPUASM.Buffer< "NetworkInput"[0] <0> : memref<1x2x3x4x!qElemType, @DDR> :  swizzling(0)>
-  } outputDeclarations : {
+  }
+  VPUASM.OutputBindings outputDeclarations : {
     VPUASM.DeclareBuffer @output_0_buffDecl !VPUASM.Buffer< "NetworkOutput"[0] <0> : memref<1x3x3x4x!qElemType1, @DDR> :  swizzling(0)>
-  } profilingBuffDeclarations : {
+  }
+  VPUASM.ProfilingBindings profilingDeclarations : {
   }
   func.func @main() {
-    ELF.Main @ELFMain {
+    ELF.Main {
       VPUASM.DeclareBuffer @DeclareBuffer0 !VPUASM.Buffer< "NetworkInput"[0] <0> : memref<1x2x3x4x!qElemType, @DDR> :  swizzling(0)>
       VPUASM.DeclareBuffer @DeclareBuffer1 !VPUASM.Buffer< "NetworkOutput"[0] <0> : memref<1x3x3x4x!qElemType1, @DDR> :  swizzling(0)>
       ELF.CreateLogicalSection @builtin.tasks.DMA0 aligned(64) secType(SHT_NOBITS) secFlags(SHF_ALLOC) secLocation(<CMX_NN>) {

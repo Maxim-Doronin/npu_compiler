@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-eltwise-layers-to-math %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --convert-eltwise-layers-to-math %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 // CHECK: func.func @foo(
 func.func @foo(%arg0: tensor<1x3x16x16xf32>) -> tensor<1x3x8x4xf32> {

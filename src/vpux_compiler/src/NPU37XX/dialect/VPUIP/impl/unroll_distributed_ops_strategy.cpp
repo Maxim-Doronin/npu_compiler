@@ -63,6 +63,17 @@ void VPUIP::arch37xx::ClusterSWRewriter::matchAndRewrite(VPUIP::SwKernelOp swTas
     auto inputType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(input.getType());
     auto outputType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(output.getType());
 
+    // For kernels using DMA for IOs, main IOs are not distributed ...
+    if (isIoDmaSwKernel(swTask) && (inputType == nullptr)) {
+        // ... so look for 1st distributed input (i.e. CMX aux-buffer)
+        for (auto in : swTask.getInputs()) {
+            if (auto inType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(in.getType())) {
+                inputType = inType;
+                break;
+            }
+        }
+    }
+
     if (inputType == nullptr && outputType == nullptr) {
         _log.trace("Input and output types are not distributed, nothing to unroll");
         auto oldLoc = swTask->getLoc();
@@ -306,7 +317,9 @@ void VPUIP::arch37xx::ClusterSWRewriter::matchAndRewrite(VPUIP::SwKernelOp swTas
         if (swTask.getListIndex().has_value()) {
             newTask.setListIndexAttr(listIndexAttr);
         }
-
+        if (auto logicalTask = swTask->getAttr(VPUIP::LOGICAL_TASK_INDEX_ATTR_NAME)) {
+            newTask->setAttr(VPUIP::LOGICAL_TASK_INDEX_ATTR_NAME, logicalTask);
+        }
         initSwKernel(newTask, inputBuffs[clusterId], outputBuffs[clusterId], newArgs, _log.nest(),
                      /*swKernelRunOp=*/nullptr);
 

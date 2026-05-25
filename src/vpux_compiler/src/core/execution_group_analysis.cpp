@@ -13,11 +13,6 @@
 namespace vpux {
 
 ExecutionGroupAnalysis::ExecutionGroupAnalysis(mlir::func::FuncOp func)
-        : ExecutionGroupAnalysis(func, /* ignoreVariantLimit */ false, /* ignoreInvariantLimit */ false) {
-}
-
-ExecutionGroupAnalysis::ExecutionGroupAnalysis(mlir::func::FuncOp func, bool ignoreVariantLimit,
-                                               bool ignoreInvariantLimit)
         : _log(Logger::global().nest("execution-group-analysis", 0)),
           _func(func),
           _barrierInfo(std::make_shared<BarrierInfo>(func)) {
@@ -26,17 +21,8 @@ ExecutionGroupAnalysis::ExecutionGroupAnalysis(mlir::func::FuncOp func, bool ign
 
     _maxKernelInvocationCount = config::getConstraint(_func, config::METADATA_MAX_KERNEL_INVOCATION_COUNT) / 2;
     _maxKernelRangeCount = config::getConstraint(_func, config::METADATA_MAX_KERNEL_RANGE_COUNT) / 2;
-    // In case of non-WLM legalization variants and invariants limits are considered independently
-    if (ignoreVariantLimit) {
-        _maxVariantCount = std::numeric_limits<size_t>::max();
-    } else {
-        _maxVariantCount = config::getConstraint(_func, config::METADATA_MAX_VARIANT_COUNT) / 2;
-    }
-    if (ignoreInvariantLimit) {
-        _maxInvariantCount = std::numeric_limits<size_t>::max();
-    } else {
-        _maxInvariantCount = config::getConstraint(_func, config::METADATA_MAX_INVARIANT_COUNT) / 2;
-    }
+    _maxVariantCount = config::getConstraint(_func, config::METADATA_MAX_VARIANT_COUNT) / 2;
+    _maxInvariantCount = config::getConstraint(_func, config::METADATA_MAX_INVARIANT_COUNT) / 2;
 
     createSWTaskExecutionGroups();
     createDPUTaskExecutionGroups();

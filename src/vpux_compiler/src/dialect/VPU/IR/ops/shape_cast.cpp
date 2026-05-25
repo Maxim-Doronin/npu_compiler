@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2026 Intel Corporation
+// Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -77,23 +77,26 @@ vpux::InputTiling vpux::VPU::ShapeCastOp::backInferTileInfo(const vpux::TileInfo
     const auto tilingDims = getNonOneDim(outputTile.axis);
 
     TileInfo inputTile(inputShape);
+    inputTile.axis = outputTile.axis;
+
     if (tilingDims.empty()) {
         return InputTiling{inputTile};
     }
 
     auto reshapedDims = getReshapedDims(*this);
 
-    const auto tilingDim = tilingDims.front();
-    const auto tilingDimIsReshaped = llvm::find(reshapedDims, tilingDim) != reshapedDims.end();
-    if (tilingDimIsReshaped) {
-        VPUX_THROW_WHEN(outputShape[tilingDim] == 0, "Invalid output shape {0}", outputShape);
-        inputTile.shape[tilingDim] = outputTile.shape[tilingDim] * inputShape[tilingDim] / outputShape[tilingDim];
-        inputTile.offsets[tilingDim] = outputTile.offsets[tilingDim] * inputShape[tilingDim] / outputShape[tilingDim];
-    } else {
-        inputTile.shape[tilingDim] = outputTile.shape[tilingDim];
-        inputTile.offsets[tilingDim] = outputTile.offsets[tilingDim];
+    for (auto tilingDim : tilingDims) {
+        const auto tilingDimIsReshaped = llvm::find(reshapedDims, tilingDim) != reshapedDims.end();
+        if (tilingDimIsReshaped) {
+            VPUX_THROW_WHEN(outputShape[tilingDim] == 0, "Invalid output shape {0}", outputShape);
+            inputTile.shape[tilingDim] = outputTile.shape[tilingDim] * inputShape[tilingDim] / outputShape[tilingDim];
+            inputTile.offsets[tilingDim] =
+                    outputTile.offsets[tilingDim] * inputShape[tilingDim] / outputShape[tilingDim];
+        } else {
+            inputTile.shape[tilingDim] = outputTile.shape[tilingDim];
+            inputTile.offsets[tilingDim] = outputTile.offsets[tilingDim];
+        }
     }
-
     return InputTiling{inputTile};
 }
 
@@ -103,9 +106,6 @@ void vpux::VPU::ShapeCastOp::adjustAttrs(const TilingInfo&, const TileInfo& outp
 }
 
 bool vpux::VPU::ShapeCastOp::isSupportedTilingDim(DimArrRef tilingDims) {
-    if (tilingDims.size() > 1) {
-        return false;
-    }
     if (tilingDims.empty()) {
         return true;
     }
@@ -116,17 +116,21 @@ bool vpux::VPU::ShapeCastOp::isSupportedTilingDim(DimArrRef tilingDims) {
         return false;
     }
 
-    auto tilingDim = tilingDims.front();
     auto dimOrder = DimsOrder::fromValue(getInput());
+    auto innermostTilingDim = *std::max_element(tilingDims.begin(), tilingDims.end(), [&](Dim a, Dim b) {
+        return dimOrder.dimPos(a) < dimOrder.dimPos(b);
+    });
+
     auto idx0 = checked_cast<int64_t>(dimOrder.dimPos(reshapedDims[0]));
     auto idx1 = checked_cast<int64_t>(dimOrder.dimPos(reshapedDims[1]));
     if (std::abs(idx0 - idx1) != 1) {
         return false;
     }
-    auto highestReshapedDim = *std::min_element(reshapedDims.begin(), reshapedDims.end(), [&](Dim a, Dim b) {
+    auto outermostReshapedDim = *std::min_element(reshapedDims.begin(), reshapedDims.end(), [&](Dim a, Dim b) {
         return dimOrder.dimPos(a) < dimOrder.dimPos(b);
     });
-    return dimOrder.dimPos(tilingDim) <= dimOrder.dimPos(highestReshapedDim);
+
+    return dimOrder.dimPos(innermostTilingDim) <= dimOrder.dimPos(outermostReshapedDim);
 }
 
 bool vpux::VPU::ShapeCastOp::isSupportedTilingDimWithRestrictions(Dim tilingDim) {
@@ -149,18 +153,19 @@ bool vpux::VPU::ShapeCastOp::isSupportedOutTile(const TileInfo& outTile) {
     auto inputShape = vpux::getShape(getInput());
     auto outputShape = vpux::getShape(getOutput());
     auto reshapedDims = getReshapedDims(*this);
-    auto tilingDim = tilingDims.front();
+    for (auto tilingDim : tilingDims) {
+        const auto tilingDimIsReshaped = llvm::find(reshapedDims, tilingDim) != reshapedDims.end();
+        if (!tilingDimIsReshaped) {
+            continue;
+        }
 
-    const auto tilingDimIsReshaped = llvm::find(reshapedDims, tilingDim) != reshapedDims.end();
-    if (!tilingDimIsReshaped) {
-        return true;
+        VPUX_THROW_WHEN(outputShape[tilingDim] == 0, "Invalid output shape {0}", outputShape);
+        if ((outTile.shape[tilingDim] * inputShape[tilingDim]) % outputShape[tilingDim] != 0 ||
+            (outTile.offsets[tilingDim] * inputShape[tilingDim]) % outputShape[tilingDim] != 0) {
+            return false;
+        }
     }
-
-    VPUX_THROW_WHEN(outputShape[tilingDim] == 0, "Invalid output shape {0}", outputShape);
-    if ((outTile.shape[tilingDim] * inputShape[tilingDim]) % outputShape[tilingDim] != 0) {
-        return false;
-    }
-    return (outTile.offsets[tilingDim] * inputShape[tilingDim]) % outputShape[tilingDim] == 0;
+    return true;
 }
 
 //
@@ -203,22 +208,42 @@ mlir::FailureOr<std::pair<mlir::Type, VPU::DistributionInfo>> vpux::VPU::ShapeCa
     }
 
     const auto reshapedDims = getReshapedDims(*this);
-    auto reshapePerClusterShape = [&](ArrayRef<SmallVector<int64_t>> perClusterShapes) {
+    auto reshapePerClusterShape =
+            [&](ArrayRef<SmallVector<int64_t>> perClusterShapes) -> mlir::FailureOr<SmallVector<SmallVector<int64_t>>> {
         SmallVector<SmallVector<int64_t>> reshapedShapes(perClusterShapes.begin(), perClusterShapes.end());
         for (auto& shape : reshapedShapes) {
             for (auto dim : reshapedDims) {
-                shape[dim.ind()] = outShape[dim];
+                if (outShape[dim] * shape[dim.ind()] % srcShape[dim] != 0) {
+                    return mlir::failure();
+                }
+                shape[dim.ind()] = outShape[dim] * shape[dim.ind()] / srcShape[dim];
             }
         }
         return reshapedShapes;
     };
 
     auto outPerClusterMemShapes = reshapePerClusterShape(distribution.getMemoryShapes());
+    if (mlir::failed(outPerClusterMemShapes)) {
+        return mlir::failure();
+    }
     auto outPerClusterComputeShapes = reshapePerClusterShape(distribution.getComputeShapes());
+    if (mlir::failed(outPerClusterComputeShapes)) {
+        return mlir::failure();
+    }
+    auto outPerClusterMemOffsets = reshapePerClusterShape(distribution.getMemoryOffsets());
+    if (mlir::failed(outPerClusterMemOffsets)) {
+        return mlir::failure();
+    }
+    auto outPerClusterComputeOffsets = reshapePerClusterShape(distribution.getComputeOffsets());
+    if (mlir::failed(outPerClusterComputeOffsets)) {
+        return mlir::failure();
+    }
 
     auto outDistribution = distribution;
-    outDistribution.setMemoryShapes(outPerClusterMemShapes);
-    outDistribution.setComputeShapes(outPerClusterComputeShapes);
+    outDistribution.setMemoryShapes(outPerClusterMemShapes.value());
+    outDistribution.setComputeShapes(outPerClusterComputeShapes.value());
+    outDistribution.setMemoryOffsets(outPerClusterMemOffsets.value());
+    outDistribution.setComputeOffsets(outPerClusterComputeOffsets.value());
     const auto typeComponents = TypeComponents().setShape(outShape);
     return std::make_pair(mlir::cast<mlir::Type>(inType.changeTypeComponents(typeComponents)), outDistribution);
 }

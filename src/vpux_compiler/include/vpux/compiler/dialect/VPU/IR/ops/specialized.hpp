@@ -10,6 +10,13 @@
 #include <mlir/IR/BuiltinTypes.h>
 #include <mlir/Interfaces/InferTypeOpInterface.h>
 
+// Forward declarations for IE ops referenced in VPU ops
+namespace vpux {
+namespace IE {
+class AttentionOp;
+}  // namespace IE
+}  // namespace vpux
+
 //
 // Generated
 //

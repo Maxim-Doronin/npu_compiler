@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --convert-VPUIP-to-VPUMI40XX %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW" --convert-VPUIP-to-VPUMI40XX %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module @expandDMA {
@@ -22,7 +22,9 @@ module @expandDMA {
     }
 
     // CHECK-NOT: VPUIP.NNDMA
-    // CHECK: [[DMA0:%.+]] = VPUMI40XX.NNDMA <{port = 0 : i64}> inputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>) outputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>)
+    // CHECK: [[BUF_0:%.+]] = VPURT.DeclareBuffer <DDR> <0> -> memref<1x64x7x7xf16, #NHWC, @DDR>
+    // CHECK: [[BUF_1:%.+]] = VPURT.DeclareBuffer <DDR> <3136> -> memref<1x64x7x16xf16, #NHWC, @DDR>
+    // CHECK: [[DMA0:%.+]] = VPUMI40XX.NNDMA <{port = 0 : i64}> inputs([[BUF_0]] : memref<1x64x7x7xf16, #NHWC, @DDR>) outputs([[BUF_0]] : memref<1x64x7x7xf16, #NHWC, @DDR>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>)
     // CHECK:                dma_transaction(#VPUMI40XX.NNDMATransaction<inputType = memref<1x64x7x7xf16, #NHWC, @DDR>, outputType = memref<1x64x7x7xf16, #NHWC, @DDR>>) -> !VPURegMapped.Index<0:0:0>
 
 
@@ -31,8 +33,8 @@ module @expandDMA {
     }
 
     // CHECK-NOT: VPUIP.NNDMA
-    // CHECK: [[DMA1:%.+]] = VPUMI40XX.NNDMA <{port = 0 : i64}> inputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>)
-    // CHECK:                outputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>) previousDMA([[DMA0]] : !VPURegMapped.Index<0:0:0>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>)
+    // CHECK: [[DMA1:%.+]] = VPUMI40XX.NNDMA <{port = 0 : i64}> inputs([[BUF_0]] : memref<1x64x7x7xf16, #NHWC, @DDR>)
+    // CHECK:                outputs([[BUF_0]] : memref<1x64x7x7xf16, #NHWC, @DDR>) previousDMA([[DMA0]] : !VPURegMapped.Index<0:0:0>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>)
     // CHECK:                dma_transaction(#VPUMI40XX.NNDMATransaction<inputType = memref<1x64x7x7xf16, #NHWC, @DDR>, outputType = memref<1x64x7x7xf16, #NHWC, @DDR>>) -> !VPURegMapped.Index<0:0:1>
 
     VPURT.Task attributes {isTrailingSWLayer = false} {
@@ -40,8 +42,8 @@ module @expandDMA {
     }
 
     // CHECK-NOT: VPUIP.ExpandDMA
-    // CHECK: [[DMA2:%.+]] = VPUMI40XX.NNDMA <{allow_different_in_out_shapes, port = 0 : i64}> inputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>)
-    //CHECK:                 outputs(%1 : memref<1x64x7x16xf16, #NHWC, @DDR>) previousDMA([[DMA1]] : !VPURegMapped.Index<0:0:1>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>)
+    // CHECK: [[DMA2:%.+]] = VPUMI40XX.NNDMA <{allow_different_in_out_shapes, port = 0 : i64}> inputs([[BUF_0]] : memref<1x64x7x7xf16, #NHWC, @DDR>)
+    //CHECK:                 outputs([[BUF_1]] : memref<1x64x7x16xf16, #NHWC, @DDR>) previousDMA([[DMA1]] : !VPURegMapped.Index<0:0:1>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>)
     //CHECK:                 dma_transaction(#VPUMI40XX.ExpandDMATransaction<inputType = memref<1x64x7x7xf16, #NHWC, @DDR>, outputType = memref<1x64x7x16xf16, #NHWC, @DDR>, padsBegin = [0, 0, 0, 0], padsEnd = [0, 0, 0, 9]>) -> !VPURegMapped.Index<0:0:2>
 
     VPURT.Task attributes {isTrailingSWLayer = false} {
@@ -49,8 +51,8 @@ module @expandDMA {
     }
 
     // CHECK-NOT: VPUIP.ExpandDMA
-    // CHECK: [[DMA3:%.+]] = VPUMI40XX.NNDMA <{allow_different_in_out_shapes, port = 0 : i64}> inputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>)
-    // CHECK:                outputs(%1 : memref<1x64x7x16xf16, #NHWC, @DDR>) previousDMA([[DMA2]] : !VPURegMapped.Index<0:0:2>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>)
+    // CHECK: [[DMA3:%.+]] = VPUMI40XX.NNDMA <{allow_different_in_out_shapes, port = 0 : i64}> inputs([[BUF_0]] : memref<1x64x7x7xf16, #NHWC, @DDR>)
+    // CHECK:                outputs([[BUF_1]] : memref<1x64x7x16xf16, #NHWC, @DDR>) previousDMA([[DMA2]] : !VPURegMapped.Index<0:0:2>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>)
     // CHECK:                dma_transaction(#VPUMI40XX.ExpandDMATransaction<inputType = memref<1x64x7x7xf16, #NHWC, @DDR>, outputType = memref<1x64x7x16xf16, #NHWC, @DDR>, padsBegin = [0, 0, 0, 0], padsEnd = [0, 0, 0, 9]>) -> !VPURegMapped.Index<0:0:3>
 
     VPURT.Task attributes {isTrailingSWLayer = false} {
@@ -58,8 +60,8 @@ module @expandDMA {
     }
 
     // CHECK-NOT: VPUIP.NNDMA
-    // CHECK: [[DMA4:%.+]] = VPUMI40XX.NNDMA <{port = 0 : i64}> inputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>)
-    // CHECK:                outputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>) previousDMA([[DMA3]] : !VPURegMapped.Index<0:0:3>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>)
+    // CHECK: [[DMA4:%.+]] = VPUMI40XX.NNDMA <{port = 0 : i64}> inputs([[BUF_0]] : memref<1x64x7x7xf16, #NHWC, @DDR>)
+    // CHECK:                outputs([[BUF_0]] : memref<1x64x7x7xf16, #NHWC, @DDR>) previousDMA([[DMA3]] : !VPURegMapped.Index<0:0:3>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>)
     // CHECK:                dma_transaction(#VPUMI40XX.NNDMATransaction<inputType = memref<1x64x7x7xf16, #NHWC, @DDR>, outputType = memref<1x64x7x7xf16, #NHWC, @DDR>>) -> !VPURegMapped.Index<0:0:4>
 
     VPURT.Task attributes {isTrailingSWLayer = false} {
@@ -67,8 +69,8 @@ module @expandDMA {
     }
 
     // CHECK-NOT: VPUIP.NNDMA
-    // CHECK: [[DMA5:%.+]] = VPUMI40XX.NNDMA <{port = 0 : i64}> inputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>)
-    // CHECK:                outputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>) previousDMA([[DMA4]] : !VPURegMapped.Index<0:0:4>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>)
+    // CHECK: [[DMA5:%.+]] = VPUMI40XX.NNDMA <{port = 0 : i64}> inputs([[BUF_0]] : memref<1x64x7x7xf16, #NHWC, @DDR>)
+    // CHECK:                outputs([[BUF_0]] : memref<1x64x7x7xf16, #NHWC, @DDR>) previousDMA([[DMA4]] : !VPURegMapped.Index<0:0:4>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>)
     // CHECK:                dma_transaction(#VPUMI40XX.NNDMATransaction<inputType = memref<1x64x7x7xf16, #NHWC, @DDR>, outputType = memref<1x64x7x7xf16, #NHWC, @DDR>>)  -> !VPURegMapped.Index<0:0:5>
 
     return %arg1 : memref<1x1x16x256xf16, #NHWC, @DDR>
@@ -92,9 +94,11 @@ module @expandDMA {
       %2 = VPUIP.ExpandDMA <{dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 1 : i64, len = 6272 : i64, srcWidth = 6272 : i64, srcStride = 6272 : i64, srcPlaneStride = 0 : i64, dstWidth = 896 : i64, dstStride = 2048 : i64, dstPlaneStride = 0 : i64>, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 9], port = 0 : i64}> inputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>) outputs(%1 : memref<1x64x7x16xf16, #NHWC, @DDR>) -> memref<1x64x7x16xf16, #NHWC, @DDR>
     }
 
+    // CHECK: [[BUF_0:%.+]] = VPURT.DeclareBuffer <DDR> <0> -> memref<1x64x7x7xf16, #NHWC, @DDR>
+    // CHECK: [[BUF_1:%.+]] = VPURT.DeclareBuffer <DDR> <3136> -> memref<1x64x7x16xf16, #NHWC, @DDR>
     // CHECK-NOT: VPUIP.ExpandDMA
-    // CHECK: [[DMA0:%.+]] = VPUMI40XX.NNDMA <{allow_different_in_out_shapes, port = 0 : i64}> inputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>)
-    // CHECK: outputs(%1 : memref<1x64x7x16xf16, #NHWC, @DDR>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>)
+    // CHECK: [[DMA0:%.+]] = VPUMI40XX.NNDMA <{allow_different_in_out_shapes, port = 0 : i64}> inputs([[BUF_0]] : memref<1x64x7x7xf16, #NHWC, @DDR>)
+    // CHECK: outputs([[BUF_1]] : memref<1x64x7x16xf16, #NHWC, @DDR>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>)
     // CHECK: dma_transaction(#VPUMI40XX.ExpandDMATransaction<inputType = memref<1x64x7x7xf16, #NHWC, @DDR>, outputType = memref<1x64x7x16xf16, #NHWC, @DDR>, padsBegin = [0, 0, 0, 0], padsEnd = [0, 0, 0, 9]>) -> !VPURegMapped.Index<0:0:0>
 
     VPURT.Task attributes {isTrailingSWLayer = false} {
@@ -102,8 +106,8 @@ module @expandDMA {
     }
 
     // CHECK-NOT: VPUIP.ExpandDMA
-    // CHECK: [[DMA1:%.+]] = VPUMI40XX.NNDMA <{allow_different_in_out_shapes, port = 0 : i64}> inputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>)
-    // CHECK:  outputs(%1 : memref<1x64x7x16xf16, #NHWC, @DDR>) previousDMA(%2 : !VPURegMapped.Index<0:0:0>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>)
+    // CHECK: [[DMA1:%.+]] = VPUMI40XX.NNDMA <{allow_different_in_out_shapes, port = 0 : i64}> inputs([[BUF_0]] : memref<1x64x7x7xf16, #NHWC, @DDR>)
+    // CHECK:  outputs([[BUF_1]] : memref<1x64x7x16xf16, #NHWC, @DDR>) previousDMA([[DMA0]] : !VPURegMapped.Index<0:0:0>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>)
     // CHECK:  dma_transaction(#VPUMI40XX.ExpandDMATransaction<inputType = memref<1x64x7x7xf16, #NHWC, @DDR>, outputType = memref<1x64x7x16xf16, #NHWC, @DDR>, padsBegin = [0, 0, 0, 0], padsEnd = [0, 0, 0, 9]>) -> !VPURegMapped.Index<0:0:1>
 
     VPURT.Task attributes {isTrailingSWLayer = false} {
@@ -111,23 +115,23 @@ module @expandDMA {
     }
 
     // CHECK-NOT: VPUIP.NNDMA
-    // CHECK: [[DMA2:%.+]] = VPUMI40XX.NNDMA <{port = 0 : i64}> inputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>)
-    // CHECK: outputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>) previousDMA([[DMA1]] : !VPURegMapped.Index<0:0:1>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>){{.+}} -> !VPURegMapped.Index<0:0:2>
+    // CHECK: [[DMA2:%.+]] = VPUMI40XX.NNDMA <{port = 0 : i64}> inputs([[BUF_0]] : memref<1x64x7x7xf16, #NHWC, @DDR>)
+    // CHECK: outputs([[BUF_0]] : memref<1x64x7x7xf16, #NHWC, @DDR>) previousDMA([[DMA1]] : !VPURegMapped.Index<0:0:1>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>){{.+}} -> !VPURegMapped.Index<0:0:2>
 
     VPURT.Task attributes {isTrailingSWLayer = false} {
       %5 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>) outputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>) -> memref<1x64x7x7xf16, #NHWC, @DDR>
     }
 
     // CHECK-NOT: VPUIP.NNDMA
-    // CHECK: [[DMA3:%.+]] = VPUMI40XX.NNDMA <{port = 0 : i64}> inputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>) outputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>) previousDMA([[DMA2]] : !VPURegMapped.Index<0:0:2>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>){{.+}} -> !VPURegMapped.Index<0:0:3>
+    // CHECK: [[DMA3:%.+]] = VPUMI40XX.NNDMA <{port = 0 : i64}> inputs([[BUF_0]] : memref<1x64x7x7xf16, #NHWC, @DDR>) outputs([[BUF_0]] : memref<1x64x7x7xf16, #NHWC, @DDR>) previousDMA([[DMA2]] : !VPURegMapped.Index<0:0:2>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>){{.+}} -> !VPURegMapped.Index<0:0:3>
 
     VPURT.Task attributes {isTrailingSWLayer = false} {
       %6 = VPUIP.ExpandDMA <{dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 1 : i64, len = 6272 : i64, srcWidth = 6272 : i64, srcStride = 6272 : i64, srcPlaneStride = 0 : i64, dstWidth = 896 : i64, dstStride = 2048 : i64, dstPlaneStride = 0 : i64>, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 9], port = 0 : i64}> inputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>) outputs(%1 : memref<1x64x7x16xf16, #NHWC, @DDR>) -> memref<1x64x7x16xf16, #NHWC, @DDR>
     }
 
     // CHECK-NOT: VPUIP.ExpandDMA
-    // CHECK: [[DMA4:%.+]] = VPUMI40XX.NNDMA <{allow_different_in_out_shapes, port = 0 : i64}> inputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>)
-    // CHECK: outputs(%1 : memref<1x64x7x16xf16, #NHWC, @DDR>) previousDMA([[DMA3]] : !VPURegMapped.Index<0:0:3>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>)
+    // CHECK: [[DMA4:%.+]] = VPUMI40XX.NNDMA <{allow_different_in_out_shapes, port = 0 : i64}> inputs([[BUF_0]] : memref<1x64x7x7xf16, #NHWC, @DDR>)
+    // CHECK: outputs([[BUF_1]] : memref<1x64x7x16xf16, #NHWC, @DDR>) previousDMA([[DMA3]] : !VPURegMapped.Index<0:0:3>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>)
     // CHECK: dma_transaction(#VPUMI40XX.ExpandDMATransaction<inputType = memref<1x64x7x7xf16, #NHWC, @DDR>, outputType = memref<1x64x7x16xf16, #NHWC, @DDR>, padsBegin = [0, 0, 0, 0], padsEnd = [0, 0, 0, 9]>) -> !VPURegMapped.Index<0:0:4>
 
     VPURT.Task attributes {isTrailingSWLayer = false} {
@@ -135,8 +139,8 @@ module @expandDMA {
     }
 
     // CHECK-NOT: VPUIP.ExpandDMA
-    // CHECK: [[DMA5:%.+]] = VPUMI40XX.NNDMA <{allow_different_in_out_shapes, port = 0 : i64}> inputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>)
-    // CHECK: outputs(%1 : memref<1x64x7x16xf16, #NHWC, @DDR>) previousDMA([[DMA4]] : !VPURegMapped.Index<0:0:4>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>)
+    // CHECK: [[DMA5:%.+]] = VPUMI40XX.NNDMA <{allow_different_in_out_shapes, port = 0 : i64}> inputs([[BUF_0]] : memref<1x64x7x7xf16, #NHWC, @DDR>)
+    // CHECK: outputs([[BUF_1]] : memref<1x64x7x16xf16, #NHWC, @DDR>) previousDMA([[DMA4]] : !VPURegMapped.Index<0:0:4>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>)
     // CHECK: dma_transaction(#VPUMI40XX.ExpandDMATransaction<inputType = memref<1x64x7x7xf16, #NHWC, @DDR>, outputType = memref<1x64x7x16xf16, #NHWC, @DDR>, padsBegin = [0, 0, 0, 0], padsEnd = [0, 0, 0, 9]>) -> !VPURegMapped.Index<0:0:5>
 
     return %arg1 : memref<1x1x16x256xf16, #NHWC, @DDR>
@@ -216,27 +220,27 @@ module @expandDMA {
     return %arg1 : memref<1x16x2x3xf16, @DDR>
   }
 
-    // CHECK: VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<1x1x2x3xf16, #NHWC, @DDR>
-    // CHECK: VPURT.DeclareBuffer <NetworkInput> [1] <0> -> memref<1x1x2x3xf16, #NHWC, @DDR>
-    // CHECK: VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x16x2x3xf16, #NHWC, [@CMX_NN, 0]>
-    // CHECK: VPURT.DeclareBuffer <CMX_NN> [1] <0> -> memref<1x16x2x3xf16, #NHWC, [@CMX_NN, 1]>
-    // CHECK: VPURT.DeclareBuffer <CMX_NN> [2] <0> -> memref<1x16x2x3xf16, #NHWC, [@CMX_NN, 2]>
-    // CHECK: VPURT.DeclareBuffer <CMX_NN> [3] <0> -> memref<1x16x2x3xf16, #NHWC, [@CMX_NN, 3]>
-    // CHECK: VPUMI40XX.NNDMA <{allow_different_in_out_shapes, is_out_of_order, port = 0 : i64}>
-    // CHECK: inputs({{%.+}} : memref<1x1x2x3xf16, #NHWC, @DDR>)
-    // CHECK: outputs({{%.+}}, {{%.+}}, {{%.+}}, {{%.+}} : memref<1x16x2x3xf16, #NHWC, [@CMX_NN, 0]>, memref<1x16x2x3xf16, #NHWC, [@CMX_NN, 1]>, memref<1x16x2x3xf16, #NHWC, [@CMX_NN, 2]>, memref<1x16x2x3xf16, #NHWC, [@CMX_NN, 3]>)
+    // CHECK: [[NI_BUF_0:%.+]] = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<1x1x2x3xf16, #NHWC, @DDR>
+    // CHECK: [[NI_BUF_1:%.+]] = VPURT.DeclareBuffer <NetworkInput> [1] <0> -> memref<1x1x2x3xf16, #NHWC, @DDR>
+    // CHECK: [[CMX_BUF_0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x16x2x3xf16, #NHWC, [@CMX_NN, 0]>
+    // CHECK: [[CMX_BUF_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> memref<1x16x2x3xf16, #NHWC, [@CMX_NN, 1]>
+    // CHECK: [[CMX_BUF_2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [2] <0> -> memref<1x16x2x3xf16, #NHWC, [@CMX_NN, 2]>
+    // CHECK: [[CMX_BUF_3:%.+]] = VPURT.DeclareBuffer <CMX_NN> [3] <0> -> memref<1x16x2x3xf16, #NHWC, [@CMX_NN, 3]>
+    // CHECK: [[DMA0_T3:%.+]] = VPUMI40XX.NNDMA <{allow_different_in_out_shapes, is_out_of_order, port = 0 : i64}>
+    // CHECK: inputs([[NI_BUF_0]] : memref<1x1x2x3xf16, #NHWC, @DDR>)
+    // CHECK: outputs([[CMX_BUF_0]], [[CMX_BUF_1]], [[CMX_BUF_2]], [[CMX_BUF_3]] : memref<1x16x2x3xf16, #NHWC, [@CMX_NN, 0]>, memref<1x16x2x3xf16, #NHWC, [@CMX_NN, 1]>, memref<1x16x2x3xf16, #NHWC, [@CMX_NN, 2]>, memref<1x16x2x3xf16, #NHWC, [@CMX_NN, 3]>)
     // CHECK: start_after(0) clean_after(0) acceleration_mode(<DISABLE>) dma_transaction(#VPUMI40XX.ExpandDMATransaction<inputType = memref<1x1x2x3xf16, #NHWC, @DDR>, outputType = !VPUIP.DistributedBuffer<1x16x2x3xf16, #NHWC, @CMX_NN,
     // CHECK{LITERAL}: {mode = "DUPLICATED", num_clusters = 4 : i64, uniform_distributed_segments, compute_shapes = [[1, 16, 2, 3], [1, 16, 2, 3], [1, 16, 2, 3], [1, 16, 2, 3]], compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
     // CHECK{LITERAL}: memory_shapes = [[1, 16, 2, 3], [1, 16, 2, 3], [1, 16, 2, 3], [1, 16, 2, 3]], memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]}>,
     // CHECK: padsBegin = [0, 0, 0, 0], padsEnd = [0, 15, 0, 0]>) -> !VPURegMapped.Index<0:0:0>
-    // CHECK: VPURT.DeclareBuffer <CMX_NN> [0] <192> -> memref<1x16x2x3xf16, #NHWC, [@CMX_NN, 0]>
-    // CHECK: VPURT.DeclareBuffer <CMX_NN> [1] <192> -> memref<1x16x2x3xf16, #NHWC, [@CMX_NN, 1]>
-    // CHECK: VPURT.DeclareBuffer <CMX_NN> [2] <192> -> memref<1x16x2x3xf16, #NHWC, [@CMX_NN, 2]>
-    // CHECK: VPURT.DeclareBuffer <CMX_NN> [3] <192> -> memref<1x16x2x3xf16, #NHWC, [@CMX_NN, 3]>
+    // CHECK: [[CMX_BUF_0B:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <192> -> memref<1x16x2x3xf16, #NHWC, [@CMX_NN, 0]>
+    // CHECK: [[CMX_BUF_1B:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <192> -> memref<1x16x2x3xf16, #NHWC, [@CMX_NN, 1]>
+    // CHECK: [[CMX_BUF_2B:%.+]] = VPURT.DeclareBuffer <CMX_NN> [2] <192> -> memref<1x16x2x3xf16, #NHWC, [@CMX_NN, 2]>
+    // CHECK: [[CMX_BUF_3B:%.+]] = VPURT.DeclareBuffer <CMX_NN> [3] <192> -> memref<1x16x2x3xf16, #NHWC, [@CMX_NN, 3]>
     // CHECK: VPUMI40XX.NNDMA <{allow_different_in_out_shapes, is_out_of_order, port = 0 : i64}>
-    // CHECK: inputs(%1 : memref<1x1x2x3xf16, #NHWC, @DDR>)
-    // CHECK: outputs(%7, %8, %9, %10 : memref<1x16x2x3xf16, #NHWC, [@CMX_NN, 0]>, memref<1x16x2x3xf16, #NHWC, [@CMX_NN, 1]>, memref<1x16x2x3xf16, #NHWC, [@CMX_NN, 2]>, memref<1x16x2x3xf16, #NHWC, [@CMX_NN, 3]>)
-    // CHECK: previousDMA(%6 : !VPURegMapped.Index<0:0:0>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>)
+    // CHECK: inputs([[NI_BUF_1]] : memref<1x1x2x3xf16, #NHWC, @DDR>)
+    // CHECK: outputs([[CMX_BUF_0B]], [[CMX_BUF_1B]], [[CMX_BUF_2B]], [[CMX_BUF_3B]] : memref<1x16x2x3xf16, #NHWC, [@CMX_NN, 0]>, memref<1x16x2x3xf16, #NHWC, [@CMX_NN, 1]>, memref<1x16x2x3xf16, #NHWC, [@CMX_NN, 2]>, memref<1x16x2x3xf16, #NHWC, [@CMX_NN, 3]>)
+    // CHECK: previousDMA([[DMA0_T3]] : !VPURegMapped.Index<0:0:0>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>)
     // CHECK: dma_transaction(#VPUMI40XX.ExpandDMATransaction<inputType = memref<1x1x2x3xf16, #NHWC, @DDR>, outputType = !VPUIP.DistributedBuffer<1x16x2x3xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64,
     // CHECK{LITERAL}: uniform_distributed_segments, compute_shapes = [[1, 16, 2, 3], [1, 16, 2, 3], [1, 16, 2, 3], [1, 16, 2, 3]], compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
     // CHECK{LITERAL}: memory_shapes = [[1, 16, 2, 3], [1, 16, 2, 3], [1, 16, 2, 3], [1, 16, 2, 3]], memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]}>,

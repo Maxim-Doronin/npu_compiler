@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true enable-sw-kernel-fifo-per-shave-engine=false" --add-sw-kernel-instruction-prefetch="minimum-shave-start-time-for-prefetch=5000" %s | FileCheck %s
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true enable-sw-kernel-fifo-per-shave-engine=false" --add-sw-kernel-instruction-prefetch="minimum-shave-start-time-for-prefetch=5000" %s | FileCheck %s
+// REQUIRES: platform-NPU5010
 // Specify how dedicated SW FIFOs are used so that when defaults change,
 // it would not impact the cost and order of allocation of prefetch ops to tiles.
 
@@ -65,17 +65,21 @@ module @prefetchSingleKernel attributes {config.compilationMode = #config.compil
       }
       }
 
-      // CHECK: VPURT.Task updates(%0 : !VPURT.Barrier)
+      // CHECK: [[BAR_0:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+      // CHECK: [[BAR_1:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+      // CHECK: [[BAR_2:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+      // CHECK: [[BAR_3:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+      // CHECK: VPURT.Task updates([[BAR_0]] : !VPURT.Barrier)
       // CHECK-NEXT: VPUIP.SyncDMA
-      // CHECK: VPURT.Task updates(%1 : !VPURT.Barrier)
+      // CHECK: VPURT.Task updates([[BAR_1]] : !VPURT.Barrier)
       // CHECK-NEXT:    VPUIP.SW.Kernel {kernelElfName = "softmax", resultSegmentSizes = array<i32: 0, 0, 0>} @VPU.SW::@cache_prefetch inputs() outputs() on tile 0
-      // CHECK: VPURT.Task waits(%0 : !VPURT.Barrier) updates(%2 : !VPURT.Barrier) {
+      // CHECK: VPURT.Task waits([[BAR_0]] : !VPURT.Barrier) updates([[BAR_2]] : !VPURT.Barrier) {
       // CHECK-NEXT:    VPUIP.NNDMA <{port = 0
-      // CHECK: VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier)
+      // CHECK: VPURT.Task waits([[BAR_0]] : !VPURT.Barrier) updates([[BAR_1]] : !VPURT.Barrier)
       // CHECK-NEXT:    VPUIP.NNDMA <{port = 1
-      // CHECK: VPURT.Task waits(%2 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier)
+      // CHECK: VPURT.Task waits([[BAR_2]] : !VPURT.Barrier) updates([[BAR_1]] : !VPURT.Barrier)
       // CHECK-NEXT:    VPUIP.NNDMA <{port = 0
-      // CHECK: VPURT.Task waits(%1 : !VPURT.Barrier) updates(%3 : !VPURT.Barrier)
+      // CHECK: VPURT.Task waits([[BAR_1]] : !VPURT.Barrier) updates([[BAR_3]] : !VPURT.Barrier)
       // CHECK-NEXT:    VPUIP.SW.Kernel
 
       return %arg0 : memref<1x3x62x62xui8, @DDR>
@@ -164,33 +168,37 @@ module @prefetchMultipleKernels attributes {config.compilationMode = #config.com
       }
       }
 
-      // CHECK: VPURT.Task updates(%0 : !VPURT.Barrier)
+      // CHECK: [[BAR_0:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+      // CHECK: [[BAR_1:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+      // CHECK: [[BAR_2:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+      // CHECK: [[BAR_3:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+      // CHECK: VPURT.Task updates([[BAR_0]] : !VPURT.Barrier)
       // CHECK-NEXT: VPUIP.SyncDMA
 
-      // CHECK: VPURT.Task updates(%1 : !VPURT.Barrier)
+      // CHECK: VPURT.Task updates([[BAR_1]] : !VPURT.Barrier)
       // CHECK-NEXT: VPUIP.SW.Kernel {kernelElfName = "softmax", resultSegmentSizes = array<i32: 0, 0, 0>} @VPU.SW::@cache_prefetch inputs() outputs() on tile 0
 
-      // CHECK: VPURT.Task updates(%1 : !VPURT.Barrier)
+      // CHECK: VPURT.Task updates([[BAR_1]] : !VPURT.Barrier)
       // CHECK-NEXT: VPUIP.SW.Kernel {kernelElfName = "convert", resultSegmentSizes = array<i32: 0, 0, 0>} @VPU.SW::@cache_prefetch inputs() outputs() on tile 1
 
-      // CHECK: VPURT.Task updates(%1 : !VPURT.Barrier)
+      // CHECK: VPURT.Task updates([[BAR_1]] : !VPURT.Barrier)
       // CHECK-NEXT: VPUIP.SW.Kernel {kernelElfName = "topk", resultSegmentSizes = array<i32: 0, 0, 0>} @VPU.SW::@cache_prefetch inputs() outputs() on tile 0
 
-      // CHECK: VPURT.Task updates(%1 : !VPURT.Barrier)
+      // CHECK: VPURT.Task updates([[BAR_1]] : !VPURT.Barrier)
       // CHECK-NEXT: VPUIP.SW.Kernel {kernelElfName = "eltwise_min", resultSegmentSizes = array<i32: 0, 0, 0>} @VPU.SW::@cache_prefetch inputs() outputs() on tile 1
 
-      // CHECK: VPURT.Task waits(%0 : !VPURT.Barrier) updates(%2 : !VPURT.Barrier)
+      // CHECK: VPURT.Task waits([[BAR_0]] : !VPURT.Barrier) updates([[BAR_2]] : !VPURT.Barrier)
       // CHECK-NEXT:    VPUIP.NNDMA <{port = 0
-      // CHECK: VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier)
+      // CHECK: VPURT.Task waits([[BAR_0]] : !VPURT.Barrier) updates([[BAR_1]] : !VPURT.Barrier)
       // CHECK-NEXT:    VPUIP.NNDMA <{port = 1
-      // CHECK: VPURT.Task waits(%2 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier)
+      // CHECK: VPURT.Task waits([[BAR_2]] : !VPURT.Barrier) updates([[BAR_1]] : !VPURT.Barrier)
       // CHECK-NEXT:    VPUIP.NNDMA <{port = 0
 
       // check sw ops
-      // CHECK: VPURT.Task waits(%1 : !VPURT.Barrier) updates(%3 : !VPURT.Barrier)
-      // CHECK: VPURT.Task waits(%1 : !VPURT.Barrier) updates(%3 : !VPURT.Barrier)
-      // CHECK: VPURT.Task waits(%1 : !VPURT.Barrier) updates(%3 : !VPURT.Barrier)
-      // CHECK: VPURT.Task waits(%1 : !VPURT.Barrier) updates(%3 : !VPURT.Barrier)
+      // CHECK: VPURT.Task waits([[BAR_1]] : !VPURT.Barrier) updates([[BAR_3]] : !VPURT.Barrier)
+      // CHECK: VPURT.Task waits([[BAR_1]] : !VPURT.Barrier) updates([[BAR_3]] : !VPURT.Barrier)
+      // CHECK: VPURT.Task waits([[BAR_1]] : !VPURT.Barrier) updates([[BAR_3]] : !VPURT.Barrier)
+      // CHECK: VPURT.Task waits([[BAR_1]] : !VPURT.Barrier) updates([[BAR_3]] : !VPURT.Barrier)
 
       return %arg0 : memref<1x3x62x62xui8, @DDR>
     }

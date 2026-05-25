@@ -39,11 +39,11 @@ VPURT::TaskQueueType getQueueType(mlir::async::ExecuteOp execOp) {
 
 AllocationType getAllocationType(mlir::async::ExecuteOp execOp, bool hasValidDep) {
     // skip memory movement ops
-    if (VPUIP::isDmaDataInOp(execOp)) {
+    if (VPUIP::isDmaDDR2CMX(execOp)) {
         return AllocationType::DATA_IN;
     }
 
-    if (hasValidDep && VPUIP::isDmaDataOutOp(execOp)) {
+    if (hasValidDep && VPUIP::isDmaCMX2DDR(execOp)) {
         // valid dependency needed for DMA->DMA patterns
         return AllocationType::DATA_OUT;
     }
@@ -67,7 +67,8 @@ std::pair<SmallVector<mlir::Value>, SmallVector<mlir::Value>> getOperationBuffer
         return bufNDType.getMemoryKind() == VPU::MemoryKind::CMX_NN;
     };
 
-    auto updateBufferStorage = [&](const SmallVector<mlir::Value>& buffers, SmallVector<mlir::Value>& bufferStorage) {
+    auto updateBufferStorage = [&](const SmallVector<mlir::Value>& buffers, SmallVector<mlir::Value>& bufferStorage,
+                                   mlir::DenseSet<mlir::Value>& cache) {
         bufferStorage.reserve(bufferStorage.size() + buffers.size());
         for (const auto& buffer : buffers) {
             if (!isTargetMemType(buffer)) {
@@ -75,21 +76,33 @@ std::pair<SmallVector<mlir::Value>, SmallVector<mlir::Value>> getOperationBuffer
             }
             const auto& roots = aliasInfo.getRoots(buffer);
             if (roots.size() == 1 && roots.front() == buffer) {
+                if (cache.count(buffer)) {
+                    continue;
+                }
+                cache.insert(buffer);
                 bufferStorage.push_back(buffer);
             } else {
+                if (cache.count(aliasInfo.getRoot(buffer))) {
+                    continue;
+                }
+                cache.insert(aliasInfo.getRoot(buffer));
                 bufferStorage.push_back(aliasInfo.getRoot(buffer));
             }
         }
     };
 
     auto* bodyBlock = execOp.getBody();
+
+    mlir::DenseSet<mlir::Value> inBuffersCache;
+    mlir::DenseSet<mlir::Value> outBuffersCache;
+
     for (auto& innerOp : bodyBlock->getOperations()) {
         if (auto layerOp = mlir::dyn_cast<VPUIP::LayerOpInterface>(innerOp)) {
             auto inputs = VPUIP::getInputsSanitized(layerOp);
             auto outputs = layerOp.getOutputs();
 
-            updateBufferStorage(inputs, inBuffers);
-            updateBufferStorage(outputs, outBuffers);
+            updateBufferStorage(inputs, inBuffers, inBuffersCache);
+            updateBufferStorage(outputs, outBuffers, outBuffersCache);
         }
     }
 
@@ -173,13 +186,12 @@ OpAllocationInfo createAllocInfo(size_t opIdx, AsyncDepsInfo& depsInfo, AliasesI
  *   for: every iteration in the loop
  *       get global deps and cons for the iteration
  *       for every other iteration in the loop
- *           compare global deps and cons with current iteration
+ *           compare local buffer counts with current iteration
  *           if they match add other iteration to matching iterations
  *       create compute region from matching iterations
  *
  *   Matching criteria considerations:
- *       - the same global dependencies
- *       - the same global consumers
+ *       - the same number of local buffers (raw and deduplicated)
  *       - no dependency-consumer conflicts (max dep < min con)
  *
  *   Limitations and assumptions:
@@ -223,6 +235,18 @@ std::unordered_map<size_t, ComputeRegionVec> createInnerLoopsFromIterations(Arra
                 continue;
             }
             for (const auto& con : depsInfo.getConsumerOps(op.opIdx)) {
+                if (VPUIP::isDmaDDR2DDR(depsInfo.getExecuteOpAtIndex(con))) {
+                    // TODO (E#203341): optimize pattern:
+
+                    //   COMPUTE         COMPUTE
+                    //     |                |
+                    // DMA(CMX2DDR)     DMA(CMX2DDR)
+                    //      \            /
+                    //       DMA(DDR2DDR)
+
+                    // with loop logic such DDR2DDR DMAs cause stalls
+                    return {};
+                }
                 if (loopBodyOpsIdxs.count(con) == 0) {
                     loopGlobalCons.insert(con);
                 }
@@ -234,6 +258,26 @@ std::unordered_map<size_t, ComputeRegionVec> createInnerLoopsFromIterations(Arra
     auto getGlobalDeps = [&](size_t iterationIdx) {
         VPUX_THROW_UNLESS(iterationIdx < cachedGlobalDeps.size(), "Invalid loop iteration index {0}", iterationIdx);
         return cachedGlobalDeps[iterationIdx];
+    };
+
+    auto getGlobalDepsForLoop = [&](const std::vector<LoopBody>& loop, const std::set<size_t>& matchingIters) {
+        // Collect all op indices across merged iterations
+        llvm::DenseSet<size_t> loopOps;
+        for (const auto& iteration : loop) {
+            for (const auto& op : iteration) {
+                loopOps.insert(op.opIdx);
+            }
+        }
+        // Reuse cached per-iteration global deps, filter out cross-iteration references
+        llvm::DenseSet<size_t> loopGlobalDeps;
+        for (auto iterIdx : matchingIters) {
+            for (auto dep : cachedGlobalDeps[iterIdx]) {
+                if (loopOps.count(dep) == 0) {
+                    loopGlobalDeps.insert(dep);
+                }
+            }
+        }
+        return loopGlobalDeps;
     };
 
     auto getGlobalCons = [&](size_t iterationIdx) {
@@ -248,6 +292,14 @@ std::unordered_map<size_t, ComputeRegionVec> createInnerLoopsFromIterations(Arra
             }
         }
         VPUX_THROW("No compute op in loop");
+    };
+
+    auto getDedupBufferCount = [](ArrayRef<mlir::Value> buffers) -> size_t {
+        mlir::DenseSet<mlir::Value> uniqueBuffers;
+        for (const auto& buf : buffers) {
+            uniqueBuffers.insert(buf);
+        }
+        return uniqueBuffers.size();
     };
 
     log.trace("Creating compute regions from iterations = {0}", loop.size());
@@ -290,17 +342,19 @@ std::unordered_map<size_t, ComputeRegionVec> createInnerLoopsFromIterations(Arra
                 log.trace("skip otherIdx {0} different number of local buffers", otherIdx);
                 continue;
             }
-            const auto otherLoopGlobalDeps = getGlobalDeps(otherIdx);
-            // all matching iterations must have the same global dependencies
-            if (iterationDeps != otherLoopGlobalDeps) {
+
+            // Use deduplicated counts to handle repeated operands that alias the same buffer.
+            const auto currentDedupInCount = getDedupBufferCount(computeAlloc.inBuffers);
+            const auto currentDedupOutCount = getDedupBufferCount(computeAlloc.outBuffers);
+            const auto otherDedupInCount = getDedupBufferCount(otherComputeAlloc.inBuffers);
+            const auto otherDedupOutCount = getDedupBufferCount(otherComputeAlloc.outBuffers);
+            if (currentDedupInCount != otherDedupInCount || currentDedupOutCount != otherDedupOutCount) {
+                log.trace(
+                        "skip otherIdx {0} different dedup local buffers, current in/out {1}/{2}, other in/out {3}/{4}",
+                        otherIdx, currentDedupInCount, currentDedupOutCount, otherDedupInCount, otherDedupOutCount);
                 continue;
             }
-            const auto otherLoopGlobalCons = getGlobalCons(otherIdx);
-            // all matching iterations must have the same global consumers
-            if (iterationGlobalCons != otherLoopGlobalCons) {
-                log.trace("skip otherIdx {0} different global consumers", otherIdx);
-                continue;
-            }
+
             // loops can be merged
             matchingIterations.insert(otherIdx);
         }
@@ -323,9 +377,6 @@ std::unordered_map<size_t, ComputeRegionVec> createInnerLoopsFromIterations(Arra
             mergedIterations.push_back(std::move(tempIteration));
         }
 
-        SmallVector<size_t> globalDeps(iterationDeps.begin(), iterationDeps.end());
-        SmallVector<size_t> globalCons(iterationGlobalCons.begin(), iterationGlobalCons.end());
-
         // Insert inplace of first compute
         size_t insertionPoint = std::numeric_limits<size_t>::max();
         for (auto& op : mergedIterations[0]) {
@@ -334,17 +385,19 @@ std::unordered_map<size_t, ComputeRegionVec> createInnerLoopsFromIterations(Arra
             }
         }
 
+        const auto loopGlobalDeps = getGlobalDepsForLoop(mergedIterations, matchingIterations);
         // Ensure loop inserted after all deps
         if (lastDependOpIdx != iterationDeps.end()) {
             insertionPoint = std::max(insertionPoint, *lastDependOpIdx);
         }
+        SmallVector<size_t> globalDeps = {loopGlobalDeps.begin(), loopGlobalDeps.end()};
+        llvm::sort(globalDeps);
 
         // Create compute region
         const auto iterations = matchingIterations.size();
         log.nest().debug("Created sub-loop with iterations = {0}", iterations);
         auto schedulingLoop = makeSchedulingLoopFromIterations(mergedIterations, LoopType::Tiling);
-        computeRegions[insertionPoint].emplace_back(std::move(schedulingLoop), std::move(globalDeps),
-                                                    std::move(globalCons));
+        computeRegions[insertionPoint].emplace_back(std::move(schedulingLoop), std::move(globalDeps));
     }  // end current iteration loop
 
     return computeRegions;
@@ -387,8 +440,14 @@ void createTiledOpDepsConsDescriptor(ArrayRef<size_t> tiles, AsyncDepsInfo& deps
             }
             processed.insert(conIdx);
 
-            const auto execOp = depsInfo.getExecuteOpAtIndex(conIdx);
             const auto deps = depsInfo.getOpDeps(conIdx);
+
+            auto maxDep = std::max_element(deps.begin(), deps.end());
+            // ensure data out fully unlocked at this stage
+            if (maxDep != deps.end() && *maxDep > opIdx) {
+                continue;
+            }
+            const auto execOp = depsInfo.getExecuteOpAtIndex(conIdx);
             const auto allocationType = getAllocationType(execOp, hasNonDmaDependency(deps, nonDmaOps));
             if (allocationType != AllocationType::DATA_OUT) {
                 // include data out ops
@@ -418,14 +477,19 @@ void createTiledOpDepsConsDescriptor(ArrayRef<size_t> tiles, AsyncDepsInfo& deps
         }
     }
 
-    // re-create loops without shared ops
+    // re-create loops without global-shared ops
+    // An op appearing in all iterations (global-shared) is factored out of the iteration body
+    // so that createInnerLoopsFromIterations treats it as a global dependency. Partially-shared
+    // ops (appearing in more than one but not all iterations) are kept inside their iteration
+    // bodies so that createInnerLoopsFromIterations can use them for correct matching:
+    // iterations sharing a partially-shared op (e.g., a weight DMA used by one C-tile's
+    // H-tile group) will match on that kept op, while iterations with different partially-shared
+    // ops form separate loops.
     SmallVector<std::pair<size_t, SmallVector<size_t>>> filteredTilesWithDataDepsCons;
     for (const auto& iterationBody : tilesWithDataDepsCons) {
         SmallVector<size_t> newLoopBody;
         for (const auto& op : iterationBody.second) {
-            if (loopOpCounts[op] != 1) {
-                VPUX_THROW_WHEN(op == iterationBody.first, "Compute op {0} count {1} is shared between iterations", op,
-                                loopOpCounts[op]);
+            if (loopOpCounts[op] == tilesWithDataDepsCons.size()) {
                 continue;
             }
             newLoopBody.push_back(op);

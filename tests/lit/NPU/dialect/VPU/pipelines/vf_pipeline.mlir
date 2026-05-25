@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --vertical-fusion="vf-outlining-instance-threshold=0 vf-outlining-instance-threshold=0" %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --vertical-fusion="vf-outlining-instance-threshold=0 vf-outlining-instance-threshold=0" %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 
 module @Do_not_Canocalize_VF_op_with_outline {

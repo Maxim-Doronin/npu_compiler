@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --convert-VPUMI40XX-to-VPUASM %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --convert-VPUMI40XX-to-VPUASM %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
@@ -215,7 +215,7 @@ module @"resnet-320-pytorch" {
     %759 = VPUMI40XX.Bootstrap inputs(%691 : <0:0:0>) -> !VPURegMapped.Index<0:0:0>
     %miV = VPUMI40XX.MappedInferenceVersion(11 _ 4 _ 10) -> !VPURegMapped.Index<0:0:0>
     %766 = VPUMI40XX.MappedInference dmas((%734, %745), (%746, %747) : (!VPURegMapped.Index<0:0:0>, !VPURegMapped.Index<0:1:0>), (!VPURegMapped.Index<1:0:0>, !VPURegMapped.Index<1:1:0>)) invariants(%706, %709 : !VPURegMapped.Index<0:0:0>, !VPURegMapped.Index<1:0:0>) variants(%712, %715 : !VPURegMapped.Index<0:0:0>, !VPURegMapped.Index<1:0:0>) actKernelRanges((%698, %771), (%700) : (!VPURegMapped.Index<0:0:0>, !VPURegMapped.Index<0:1:0>), (!VPURegMapped.Index<1:0:0>)) actKernelInvocations((%702, %773), (%704) : (!VPURegMapped.Index<0:0:0>, !VPURegMapped.Index<0:1:0>), (!VPURegMapped.Index<1:0:0>)) barriers(%691 : !VPURegMapped.Index<0:0:0>) workItemTasks(%749 : !VPURegMapped.Index<0:0:0>) bootstrapBarriers(%759 : !VPURegMapped.Index<0:0:0>) actShaveRt(%748 : !VPURegMapped.Index<0:0:0>) dmaHwpBase(%648 : memref<16xui32, [@CMX_NN, 0]>) dmaCount([[11, 1], [1, 1]]) invariantCount([3, 3]) variantCount([3, 3]) actKernelRangesCount([[2, 2], [2, 0]]) actKernelInvocationsCount([[2, 1], [2, 0]]) mediaCount(0) barrierCount(7) workItemCount(10) bootstrapBarriersCount(7) bootstrapWorkItemsCount(4) finalBarrierId(6) mappedInferenceVersion(%miV : !VPURegMapped.Index<0:0:0>) -> !VPURegMapped.Index<0:0:0>
-    ELF.ABIVersion {sym_name = "LoaderABIVersion"}
+    ELF.ABIVersion
     VPUMI40XX.OpRanges
   }
 }

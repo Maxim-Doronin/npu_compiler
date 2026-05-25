@@ -17,7 +17,9 @@ def VPU_AffineReshapeOp :
             "AffineReshape",
             [
                 VPU_ViewLikeOpInterface,
-                DeclareOpInterfaceMethods<VPU_DistributedCastOpInterface>
+                DeclareOpInterfaceMethods<VPU_DistributedCastOpInterface>,
+                DeclareOpInterfaceMethods<VPU_TilingViewLikeOpInterface,
+                    ["backInferTilingStrategy", "backInferTilingDim", "inferTilingDim", "inferTilingStrategy"]>
             ]
         > {
     let summary = "AffineReshape VPU layer";
@@ -32,6 +34,12 @@ def VPU_AffineReshapeOp :
     let results = (outs
         AnyTypeOf<[AnyRankedTensor, VPU_SparseTensor, VPU_DistributedTensor]>:$output
     );
+
+    let extraClassDeclaration = [{
+        bool isSupportedTilingDim(DimArrRef tilingDims);
+        bool isSupportedTilingDimWithRestrictions(Dim tilingDim);
+        bool isSupportedOutTile(const TileInfo& outTile);
+    }] # baseExtraClassDeclaration;
 
     let checkInferredDimsOrder = 1;
     let checkInferredMemSpace = 1;

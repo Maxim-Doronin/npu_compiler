@@ -56,7 +56,7 @@ class FakeQuantizeLayerTest_SW_NPU4000 : public FakeQuantizeLayerTest_SW_NPU3720
 class ShaveCodeGenFakeQuantizeLayerTest_SW : public FakeQuantizeLayerTest_SW_NPU4000 {
     void configure_model() override {
         configuration[ov::intel_npu::compilation_mode_params.name()] =
-                "enable-shave-code-gen=true enable-convert-quantize-ops-to-nce=false merge-fake-quant=false";
+                "enable-shave-code-gen=true enable-convert-quantize-ops-to-nce=false disabled-passes=merge-fake-quant";
     }
 };
 

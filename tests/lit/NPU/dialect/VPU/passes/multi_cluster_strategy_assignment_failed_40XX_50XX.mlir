@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: not vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --multi-cluster-strategy-assignment %s 2>&1 | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: not vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --multi-cluster-strategy-assignment %s 2>&1 | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 config.Resources 2 of @NCE at 1.700000e+03 MHz {
     config.ExecutorResource 1 of @DPU

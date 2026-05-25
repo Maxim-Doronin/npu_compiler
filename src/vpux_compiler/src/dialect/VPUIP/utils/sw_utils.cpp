@@ -205,7 +205,6 @@ void createRuntimeKernelDefinition(mlir::ModuleOp module, const Logger& log, vpu
 
     static constexpr int64_t defaultStackSize = 4096;
 
-    // as for now all arches have 2 shaves per tile
     constexpr int nShavePerTile = 2;
     auto tilesUsed = VPUIP::getNumTilesUsed(module);
     auto maxShaves = tilesUsed * nShavePerTile;
@@ -462,6 +461,18 @@ bool isDpuShaveKernelType(VPURT::TaskOp taskOp) {
         return false;
     }
     return true;
+}
+
+// Check if SwKernelOp uses DMA exclusively to access Input/Output data
+bool isIoDmaSwKernel(VPUIP::SwKernelOp swKernelOp) {
+    try {
+        SmallString kernelEntryName = getSwKernelEntryName(swKernelOp);
+        return llvm::is_contained(SW_KERNELS_IO_DMA, kernelEntryName);
+    } catch (...) {
+        // - cache_flush/invalidate ops which don't have IOs or entry point
+        // - phony SW ops from LIT tests
+        return false;
+    }
 }
 
 bool isStridedMemPermuteSupported(VPUIP::SwKernelOp swKernelOp) {
@@ -829,26 +840,37 @@ InputTiling backInferRoPESwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const v
     // The Cosine and Sine operations offer flexibility in channel configuration:
     // - Channels: You can choose to match the input's number of channels or set it to 1
     // - Height: Unlike channels, the height for Cosine and Sine operations can differ from the input height
+    // - Width: For PAIRWISE mode, cos/sin have half the width of the input
     if (cosTile.shape[Dim(1)] > 1) {
-        if (cosTile.shape[Dim(2)] != inTile.shape[Dim(2)]) {
+        if (cosTile.shape[Dim(2)] != inTile.shape[Dim(2)] || cosTile.shape[Dim(3)] != inTile.shape[Dim(3)]) {
             cosTile.shape[Dim(1)] = inTile.shape[Dim(1)];
             sinTile.shape[Dim(1)] = inTile.shape[Dim(1)];
             sinTile.offsets[Dim(1)] = inTile.offsets[Dim(1)];
             cosTile.offsets[Dim(1)] = inTile.offsets[Dim(1)];
+            sinTile.axis[Dim(1)] = inTile.axis[Dim(1)];
+            cosTile.axis[Dim(1)] = inTile.axis[Dim(1)];
         } else {
             cosTile = inTile;
             sinTile = inTile;
         }
     } else {
-        cosTile.shape[Dim(2)] = inTile.shape[Dim(2)];
-        sinTile.shape[Dim(2)] = inTile.shape[Dim(2)];
-        sinTile.offsets[Dim(2)] = inTile.offsets[Dim(2)];
-        cosTile.offsets[Dim(2)] = inTile.offsets[Dim(2)];
+        if (cosTile.shape[Dim(2)] > 1) {
+            cosTile.shape[Dim(2)] = inTile.shape[Dim(2)];
+            sinTile.shape[Dim(2)] = inTile.shape[Dim(2)];
+            sinTile.offsets[Dim(2)] = inTile.offsets[Dim(2)];
+            cosTile.offsets[Dim(2)] = inTile.offsets[Dim(2)];
+            sinTile.axis[Dim(2)] = inTile.axis[Dim(2)];
+            cosTile.axis[Dim(2)] = inTile.axis[Dim(2)];
+        }
 
-        cosTile.shape[Dim(0)] = inTile.shape[Dim(0)];
-        sinTile.shape[Dim(0)] = inTile.shape[Dim(0)];
-        sinTile.offsets[Dim(0)] = inTile.offsets[Dim(0)];
-        cosTile.offsets[Dim(0)] = inTile.offsets[Dim(0)];
+        if (cosTile.shape[Dim(0)] > 1) {
+            cosTile.shape[Dim(0)] = inTile.shape[Dim(0)];
+            sinTile.shape[Dim(0)] = inTile.shape[Dim(0)];
+            sinTile.offsets[Dim(0)] = inTile.offsets[Dim(0)];
+            cosTile.offsets[Dim(0)] = inTile.offsets[Dim(0)];
+            sinTile.axis[Dim(0)] = inTile.axis[Dim(0)];
+            cosTile.axis[Dim(0)] = inTile.axis[Dim(0)];
+        }
     }
 
     return TilingInfo{{std::move(inTile), std::move(cosTile), std::move(sinTile)}};
@@ -929,7 +951,7 @@ InputTiling backInferSDPASwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const v
     return inTiles;
 }
 
-void adjustSDPAExtendedAuxiliaryBroadcastTile(TileInfo& maskTile, const TileInfo& qTile) {
+void adjustAttentionAuxiliaryBroadcastTile(TileInfo& maskTile, const TileInfo& qTile) {
     bool is2DMask = maskTile.shape[Dims4D::Act::H] != 1;
     if (is2DMask) {
         maskTile.shape[Dims4D::Act::H] = qTile.shape[Dims4D::Act::H];
@@ -947,8 +969,8 @@ void adjustSDPAExtendedAuxiliaryBroadcastTile(TileInfo& maskTile, const TileInfo
     }
 }
 
-InputTiling backInferSDPAExtendedSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const vpux::TileInfo& outputTile,
-                                                   Logger log) {
+InputTiling backInferAttentionSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const vpux::TileInfo& outputTile,
+                                                Logger log) {
     auto swKernelRuns = swKernelOp.getBody().getOps<VPUIP::SwKernelRun>();
     VPUX_THROW_UNLESS(std::distance(swKernelRuns.begin(), swKernelRuns.end()) == 1,
                       "SwKernelOp has already been tiled at '{0}'", swKernelOp);
@@ -957,6 +979,7 @@ InputTiling backInferSDPAExtendedSwKernelInputTile(VPUIP::SwKernelOp swKernelOp,
     TileInfo inQTile(getShape(inputs[0]));
     TileInfo inKTile(getShape(inputs[1]));
     TileInfo inVTile(getShape(inputs[2]));
+    bool isMQA = inQTile.shape[Dims4D::Act::C] > inKTile.shape[Dims4D::Act::C] && inKTile.shape[Dims4D::Act::C] == 1;
 
     inQTile.shape[Dims4D::Act::H] = outputTile.shape[Dims4D::Act::H];
     inQTile.shape[Dims4D::Act::C] = outputTile.shape[Dims4D::Act::C];
@@ -967,13 +990,15 @@ InputTiling backInferSDPAExtendedSwKernelInputTile(VPUIP::SwKernelOp swKernelOp,
 
     inKTile.shape[Dims4D::Act::N] = outputTile.shape[Dims4D::Act::N];
     inKTile.offsets[Dims4D::Act::N] = outputTile.offsets[Dims4D::Act::N];
-    inKTile.offsets[Dims4D::Act::C] = outputTile.offsets[Dims4D::Act::C];
-    inKTile.shape[Dims4D::Act::C] = outputTile.shape[Dims4D::Act::C];
-
-    inVTile.shape[Dims4D::Act::C] = outputTile.shape[Dims4D::Act::C];
     inVTile.shape[Dims4D::Act::N] = outputTile.shape[Dims4D::Act::N];
-    inVTile.offsets[Dims4D::Act::C] = outputTile.offsets[Dims4D::Act::C];
     inVTile.offsets[Dims4D::Act::N] = outputTile.offsets[Dims4D::Act::N];
+
+    if (isMQA == false) {
+        inKTile.offsets[Dims4D::Act::C] = outputTile.offsets[Dims4D::Act::C];
+        inKTile.shape[Dims4D::Act::C] = outputTile.shape[Dims4D::Act::C];
+        inVTile.shape[Dims4D::Act::C] = outputTile.shape[Dims4D::Act::C];
+        inVTile.offsets[Dims4D::Act::C] = outputTile.offsets[Dims4D::Act::C];
+    }
 
     // InputQ, inputK and InputV are mandatory
     InputTiling inTiles = TilingInfo{{std::move(inQTile), std::move(inKTile), std::move(inVTile)}};
@@ -985,24 +1010,35 @@ InputTiling backInferSDPAExtendedSwKernelInputTile(VPUIP::SwKernelOp swKernelOp,
     const auto inputsMask = mlir::cast<mlir::IntegerAttr>(attrsD[1]).getInt();
     const auto hasAttentionMask = static_cast<bool>(inputsMask & (1 << 3));
     const auto hasScale = static_cast<bool>(inputsMask & (1 << 4));
-    const auto hasBias = static_cast<bool>(inputsMask & (1 << 5));
+    const auto isSinkLayout =
+            static_cast<bool>(inputsMask & (1 << 9));  // Sink kernel uses bit 9 for output; original kernel uses bit 8
+    const auto hasSink = isSinkLayout ? static_cast<bool>(inputsMask & (1 << 5)) : false;
+    const auto hasBias =
+            isSinkLayout ? static_cast<bool>(inputsMask & (1 << 6)) : static_cast<bool>(inputsMask & (1 << 5));
     const auto attentionMaskIndex = 3;
     if (hasAttentionMask) {
         TileInfo unknownTile(getShape(swKernelOp->getOperand(attentionMaskIndex)));
-        adjustSDPAExtendedAuxiliaryBroadcastTile(unknownTile, inTiles.tiles[0]);
+        adjustAttentionAuxiliaryBroadcastTile(unknownTile, inTiles.tiles[0]);
         inTiles.tiles.push_back(unknownTile);
     }
     if (hasScale) {
         auto scaleIndex = attentionMaskIndex + hasAttentionMask;
         TileInfo unknownTile(getShape(swKernelOp->getOperand(scaleIndex)));
-        adjustSDPAExtendedAuxiliaryBroadcastTile(unknownTile, inTiles.tiles[0]);
+        adjustAttentionAuxiliaryBroadcastTile(unknownTile, inTiles.tiles[0]);
         inTiles.tiles.push_back(unknownTile);
     }
 
+    if (hasSink) {
+        const auto sinkIndex = attentionMaskIndex + hasAttentionMask + hasScale;
+        TileInfo sinkTile(getShape(swKernelOp->getOperand(sinkIndex)));
+        adjustAttentionAuxiliaryBroadcastTile(sinkTile, inTiles.tiles[0]);
+        inTiles.tiles.push_back(sinkTile);
+    }
+
     if (hasBias) {
-        auto biasIndex = attentionMaskIndex + hasAttentionMask + hasScale;
+        auto biasIndex = attentionMaskIndex + hasAttentionMask + hasScale + hasSink;
         TileInfo unknownTile(getShape(swKernelOp->getOperand(biasIndex)));
-        adjustSDPAExtendedAuxiliaryBroadcastTile(unknownTile, inTiles.tiles[0]);
+        adjustAttentionAuxiliaryBroadcastTile(unknownTile, inTiles.tiles[0]);
         inTiles.tiles.push_back(unknownTile);
     }
 
@@ -1830,19 +1866,39 @@ InputTiling backInferMvn1SumSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, cons
 
     SmallVector<int64_t> splitInShape(outH, baseSize);
 
-    // keep first shave indices equal for correct unroll cmx input buffer offsets
-    // Distribute on first shave if largeNumb is greater than outH / 2
-    int64_t startIdx = (largeNumb > outH / 2) ? 0 : 1;
-    int64_t idx = startIdx;
-    for (int64_t replaced = 0; replaced < largeNumb; replaced++) {
-        splitInShape[idx] += 1;
-        idx += 2;
+    // keep first (N-1) shaves indices equal for correct unroll cmx input buffer offsets
 
-        // Distribute remaining values to the second shave
-        if (idx >= outH) {
-            idx = 1;
+    const auto numShaves = config::getNumOfEnginesOnTile(swKernelOp, config::ExecutorKind::SHAVE_ACT);
+    VPUX_THROW_WHEN(numShaves <= 0, "Number of SHAVE engines must be greater than zero");
+
+    const auto numEqualShaves = numShaves - 1;
+    const auto tilesPerShave = outH / numShaves;
+    const auto lastShaveId = numShaves - 1;
+
+    auto addExtrasToLastShave = [&](auto numExtras) {
+        for (auto i = 0; i < numExtras; i++) {
+            auto tileOffset = i % tilesPerShave;
+            auto idx = lastShaveId + (tileOffset * numShaves);
+            splitInShape[idx] += 1;
+        }
+    };
+
+    const auto maxForLastShaveOnly = outH - tilesPerShave;
+    auto lastShaveExtras = largeNumb;
+
+    if (largeNumb > maxForLastShaveOnly) {
+        lastShaveExtras = largeNumb - (numEqualShaves * tilesPerShave);
+
+        for (auto shave = 0; shave < numEqualShaves; shave++) {
+            auto idx = shave;
+            for (auto tile = 0; tile < tilesPerShave; tile++) {
+                splitInShape[idx] += 1;
+                idx += numShaves;
+            }
         }
     }
+
+    addExtrasToLastShave(lastShaveExtras);
 
     SmallVector<int64_t> splitInOffset(outH);
     splitInOffset[0] = 0;
@@ -1857,13 +1913,17 @@ InputTiling backInferMvn1SumSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, cons
         inTileShapeH = splitInShape[outTileOffsetH];
         inTileOffsetH = splitInOffset[outTileOffsetH];
     } else {
-        const auto isLastShaveData = (outTileOffsetH + outTileShapeH == outH);
-        int64_t firstShaveSize = std::accumulate(splitInShape.begin(), splitInShape.end(), 0,
-                                                 [index = 0](int64_t acc, int64_t val) mutable {
-                                                     return (index++ % 2 == 0) ? acc + val : acc;
-                                                 });
-        inTileShapeH = isLastShaveData ? inH - firstShaveSize : firstShaveSize;
-        inTileOffsetH = isLastShaveData ? firstShaveSize : 0;
+        int64_t shaveId = outTileOffsetH / outTileShapeH;
+
+        inTileShapeH = std::accumulate(splitInShape.begin(), splitInShape.end(), 0,
+                                       [index = 0, shaveId, numShaves](int64_t acc, int64_t val) mutable {
+                                           return (index++ % numShaves == shaveId) ? acc + val : acc;
+                                       });
+
+        inTileOffsetH = std::accumulate(splitInShape.begin(), splitInShape.end(), 0,
+                                        [index = 0, shaveId, numShaves](int64_t acc, int64_t val) mutable {
+                                            return (index++ % numShaves < shaveId) ? acc + val : acc;
+                                        });
     }
 
     inputTile.shape[Dims4D::Act::H] = inTileShapeH;
@@ -2018,12 +2078,12 @@ InputTiling backInferSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const Small
         return backInferGatherElementsSwKernelInputTile(swKernelOp, outputTile, log);
     } else if (kernelEntryName == "rms_norm") {
         return backInferRMSSwKernelInputTile(swKernelOp, outputTile, log);
-    } else if (kernelEntryName == "rope") {
+    } else if (kernelEntryName == "rope" || kernelEntryName == "rope_ilv" || kernelEntryName == "rope_pairwise") {
         return backInferRoPESwKernelInputTile(swKernelOp, outputTile, log);
     } else if (kernelEntryName == "sdpa") {
         return backInferSDPASwKernelInputTile(swKernelOp, outputTile, log);
-    } else if (kernelEntryName == "sdpa_extended") {
-        return backInferSDPAExtendedSwKernelInputTile(swKernelOp, outputTile, log);
+    } else if (kernelEntryName == "attention") {
+        return backInferAttentionSwKernelInputTile(swKernelOp, outputTile, log);
     } else if (kernelEntryName == "pad") {
         return backInferPadSwKernelInputTile(swKernelOp, outputTile, log);
     } else if (kernelEntryName == "mvn1_sum") {
@@ -2210,9 +2270,10 @@ SmallVector<vpux::NDTypeInterface> getSwKernelTiledTypes(VPUIP::SwKernelOp swKer
                kernelEntryName == "eltwise_div" || kernelEntryName == "prelu_fp16" ||
                kernelEntryName == "eltwise_greater" || kernelEntryName == "eltwise_less" ||
                kernelEntryName == "eltwise_sub" || kernelEntryName == "eltwise_add" ||
-               kernelEntryName == "eltwise_select" || kernelEntryName == "eltwise_bitwise_or" ||
-               kernelEntryName == "eltwise_bitwise_and" || kernelEntryName == "eltwise_bitwise_not" ||
-               kernelEntryName == "eltwise_bitwise_xor") {
+               kernelEntryName == "eltwise_squared_difference" || kernelEntryName == "eltwise_select" ||
+               kernelEntryName == "eltwise_bitwise_or" || kernelEntryName == "eltwise_bitwise_and" ||
+               kernelEntryName == "eltwise_bitwise_not" || kernelEntryName == "eltwise_bitwise_xor" ||
+               kernelEntryName == "eltwise_bitwise_right_shift" || kernelEntryName == "eltwise_bitwise_left_shift") {
         // For SW Eltwise Op with multi inputs
         // Only the input which does not need broadcast and output will be tiled
         SmallVector<vpux::NDTypeInterface> tiledTypes;
@@ -2257,7 +2318,7 @@ SmallVector<vpux::NDTypeInterface> getSwKernelTiledTypes(VPUIP::SwKernelOp swKer
         }
 
         return {inputType, outputType};
-    } else if (kernelEntryName == "rope") {
+    } else if (kernelEntryName == "rope" || kernelEntryName == "rope_ilv" || kernelEntryName == "rope_pairwise") {
         const auto inputType = mlir::cast<vpux::NDTypeInterface>(swKernelOp->getOperand(0).getType());
         const auto cosType = mlir::cast<vpux::NDTypeInterface>(swKernelOp->getOperand(1).getType());
         const auto sinType = mlir::cast<vpux::NDTypeInterface>(swKernelOp->getOperand(2).getType());
@@ -2391,6 +2452,19 @@ mlir::SymbolRefAttr createCacheHandlingFunction(mlir::MLIRContext* ctx, OpBuilde
     }
 
     return functionSymbol;
+}
+
+// Check whether SwKernelOp dispatches dynamic DMAs.
+bool isSwKernelUsingDma(VPUIP::SwKernelOp swKernelOp) {
+    // Ignore cache_flush_invalidate/cache_flush ops which don't have IOs
+    if (swKernelOp.getInputs().empty() || swKernelOp.getOutputBuffs().empty()) {
+        return false;
+    }
+    auto kernelEntryName = getSwKernelEntryName(swKernelOp);
+    if (llvm::find(SW_KERNELS_USING_DMA, kernelEntryName) != SW_KERNELS_USING_DMA.end()) {
+        return true;
+    }
+    return false;
 }
 
 }  // namespace VPUIP

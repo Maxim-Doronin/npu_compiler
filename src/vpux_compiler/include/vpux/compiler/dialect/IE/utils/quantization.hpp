@@ -147,7 +147,7 @@ mlir::FailureOr<double> getQuantizedSplatConstant(mlir::Value input);
 int64_t getMaximumQuantizationLevels(int64_t currentLevels, mlir::Operation* op);
 
 bool isNCEOpCandidatesWithWeights(mlir::Operation* op);
-bool keepIntTypeForSIWeightsAsInput(mlir::Operation* op);
+bool keepIntTypeForSIWeightsAsInputOrConst(mlir::Operation* op);
 bool isQuantizationSupported(IE::QuantizeOp quantizeOp, mlir::Operation* mainOp,
                              IE::TypeComparisonMode elemComparisonMode);
 bool isInputQuantizationSupported(mlir::Value activationInput, mlir::Value filterInput);

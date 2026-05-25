@@ -76,7 +76,7 @@ TEST_F(MLIR_SymbolTable, ReplaceAllSymbolUses) {
 
     constexpr llvm::StringLiteral inputIR = R"(
         module @test {
-        ELF.Main @ELFMain {
+        ELF.Main {
 
         ELF.CreateSection @taskBuff aligned(64) secType(SHT_PROGBITS) secFlags(SHF_EXECINSTR) secLocation(<DDR>) {
         }
@@ -93,10 +93,10 @@ TEST_F(MLIR_SymbolTable, ReplaceAllSymbolUses) {
         }
     )";
 
-    auto module = mlir::parseSourceString<mlir::ModuleOp>(inputIR, &ctx);
-    ASSERT_TRUE(module.get() != nullptr);
+    auto moduleOp = mlir::parseSourceString<mlir::ModuleOp>(inputIR, &ctx);
+    ASSERT_TRUE(moduleOp.get() != nullptr);
 
-    auto elfMain = module.get().lookupSymbol<vpux::ELF::MainOp>("ELFMain");
+    auto elfMain = *moduleOp.get().getOps<vpux::ELF::MainOp>().begin();
     ASSERT_TRUE(elfMain != nullptr);
 
     auto taskBuffSection = elfMain.lookupSymbol<vpux::ELF::DataSectionOp>("taskBuff");

@@ -10,15 +10,22 @@
 #include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/slice_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
+#include "vpux/compiler/dialect/const/utils/sub_byte.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
+#include <mlir/Dialect/Quant/IR/QuantTypes.h>
 #include <mlir/IR/PatternMatch.h>
+#include <mlir/IR/Value.h>
+#include <mlir/Support/LLVM.h>
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
+#include <climits>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_ADJUSTMEMPERMUTEAROUNDOP
@@ -194,6 +201,9 @@ mlir::LogicalResult AdjustForEltwise::matchAndRewrite(IE::LayerOpInterface origO
     if (!origOp->hasTrait<IE::EltwiseOp>()) {
         return matchFailed(rewriter, origOp, "LayerOp is not Eltwise");
     }
+    if (mlir::isa_and_present<IE::DynamicDequantizeOp>(origOp)) {
+        return matchFailed(rewriter, origOp, "DynamicDequantizeOp should not adjust MemPermute");
+    }
 
     const auto outType = mlir::cast<vpux::NDTypeInterface>(origOp->getResult(0).getType());
     const auto rank = outType.getRank();
@@ -214,7 +224,7 @@ mlir::LogicalResult AdjustForEltwise::matchAndRewrite(IE::LayerOpInterface origO
     if (auto iface = mlir::dyn_cast<IE::LayoutInfoOpInterface>(origOp.getOperation())) {
         auto orderInfo = iface.getLayoutInfo();
         orderInfo.setInput(0, newOrder);
-        iface.inferLayoutInfo(orderInfo, /*seOpsEnabled=*/false, /*seExperimentalOpsEnabled=*/false);
+        iface.inferLayoutInfo(orderInfo);
         if (orderInfo.getInput(0) != newOrder || orderInfo.getOutput(0) != newOrder) {
             return matchFailed(rewriter, origOp, "New order could not be supported");
         }
@@ -744,6 +754,103 @@ mlir::LogicalResult AdjustForNCEEltwise<ConcreteOp>::matchAndRewrite(ConcreteOp 
 }
 
 //
+// AdjustForDynamicDequantize
+//
+// This pattern tries to move the permutes before DynamicDequantizeOp.
+class AdjustForDynamicDequantize final : public mlir::OpRewritePattern<IE::DynamicDequantizeOp> {
+public:
+    AdjustForDynamicDequantize(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpRewritePattern<IE::DynamicDequantizeOp>(ctx), _log(log) {
+        setDebugName("AdjustForDynamicDequantize");
+    }
+
+public:
+    mlir::LogicalResult matchAndRewrite(IE::DynamicDequantizeOp origOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+mlir::LogicalResult AdjustForDynamicDequantize::matchAndRewrite(IE::DynamicDequantizeOp origOp,
+                                                                mlir::PatternRewriter& rewriter) const {
+    _log.trace("[{0}] Got '{1}' at '{2}'", getDebugName(), origOp->getName(), origOp->getLoc());
+
+    if (!origOp->hasOneUse()) {
+        _log.trace("DynamicDequantizeOp has multiple uses");
+        return mlir::failure();
+    }
+
+    auto outputPermuteOp = mlir::dyn_cast_if_present<IE::MemPermuteOp>(*origOp->getUsers().begin());
+    if (outputPermuteOp == nullptr) {
+        _log.trace("No MemPermuteOp found");
+        return mlir::failure();
+    }
+
+    mlir::Value dynamicDequantizeInput = origOp.getInput();
+    auto dynamicDequantizeInType = mlir::cast<vpux::NDTypeInterface>(dynamicDequantizeInput.getType());
+
+    while (mlir::isa_and_present<IE::ViewLikeOpInterface>(dynamicDequantizeInput.getDefiningOp())) {
+        dynamicDequantizeInput = dynamicDequantizeInput.getDefiningOp()->getOperand(0);
+    }
+
+    if (!mlir::isa_and_present<mlir::BlockArgument>(dynamicDequantizeInput)) {
+        _log.trace("DynamicDequantizeOp input is not a BlockArgument");
+        return mlir::failure();
+    }
+
+    auto quantizedType =
+            mlir::dyn_cast_if_present<mlir::quant::QuantizedType>(dynamicDequantizeInType.getElementType());
+    const auto bitWidth = quantizedType.getStorageTypeIntegralWidth();
+    if (!vpux::Const::isSubByte(bitWidth)) {
+        _log.trace("SubByte quantization is required");
+        return mlir::failure();
+    }
+
+    const auto inputDynDequantShape = getShape(origOp.getInput());
+
+    if (inputDynDequantShape.size() != 4) {
+        _log.trace("Only support 4D input shape for DynamicDequantizeOp");
+        return mlir::failure();
+    }
+
+    const auto elementsInOneByte = CHAR_BIT / bitWidth;
+
+    const auto isNAlign =
+            inputDynDequantShape[Dims4D::Act::N] == 1 || inputDynDequantShape[Dims4D::Act::N] % elementsInOneByte == 0;
+    const auto isCAlign =
+            inputDynDequantShape[Dims4D::Act::C] == 1 || inputDynDequantShape[Dims4D::Act::C] % elementsInOneByte == 0;
+    const auto isHAlign =
+            inputDynDequantShape[Dims4D::Act::H] == 1 || inputDynDequantShape[Dims4D::Act::H] % elementsInOneByte == 0;
+    const auto isWAlign =
+            inputDynDequantShape[Dims4D::Act::W] == 1 || inputDynDequantShape[Dims4D::Act::W] % elementsInOneByte == 0;
+    if (!isNAlign || !isCAlign || !isHAlign || !isWAlign) {
+        _log.trace("Not beneficial moving MemPermute up due to non-aligned shape");
+        return mlir::failure();
+    }
+
+    // Add permutes to inputs
+    auto index{0};  // Initialize a counter for unique identifiers
+    for (auto& inputOperand : origOp->getOpOperands()) {
+        auto inMemPermuteOp = rewriter.create<IE::MemPermuteOp>(
+                appendLoc(origOp->getLoc(), "input_permute" + std::to_string(index)), inputOperand.get(),
+                outputPermuteOp.getDstOrder(), outputPermuteOp.getMemPerm());
+        rewriter.replaceUsesWithIf(inputOperand.get(), inMemPermuteOp->getResult(0), [&](mlir::OpOperand& operand) {
+            return operand.getOwner() == origOp;
+        });
+        index++;
+    }
+
+    rewriter.modifyOpInPlace(origOp, [&] {
+        vpux::inferReturnTypes(origOp, vpux::InferShapedTypeMode::ALL);
+    });
+
+    rewriter.replaceAllUsesWith(outputPermuteOp.getOutput(), origOp.getOutput());
+    rewriter.eraseOp(outputPermuteOp);
+
+    return mlir::success();
+}
+
+//
 // AdjustMemPermuteAroundOpPass
 //
 
@@ -759,6 +866,8 @@ private:
 
 void AdjustMemPermuteAroundOpPass::safeRunOnFunc() {
     auto& ctx = getContext();
+    auto func = getOperation();
+    auto arch = config::getArch(func);
 
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<AdjustForEltwise>(&ctx, _log);
@@ -766,10 +875,13 @@ void AdjustMemPermuteAroundOpPass::safeRunOnFunc() {
     patterns.add<AdjustForConvert>(&ctx, _log);
     patterns.add<AdjustForSoftmax>(&ctx, _log);
     patterns.add<AdjustForConcat>(&ctx, _log);
+    // E#208387 NPU37XX doesn't expect sub-byte storage type
+    if (arch >= config::ArchKind::NPU40XX) {
+        patterns.add<AdjustForDynamicDequantize>(&ctx, _log);
+    }
     patterns.add<AdjustForNCEEltwise<IE::AddOp>>(&ctx, _log);
     IE::MemPermuteOp::getCanonicalizationPatterns(patterns, &ctx);
 
-    auto func = getOperation();
     if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
         signalPassFailure();
     }

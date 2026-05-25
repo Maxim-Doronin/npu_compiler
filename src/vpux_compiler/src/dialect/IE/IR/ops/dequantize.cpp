@@ -26,3 +26,13 @@ mlir::LogicalResult vpux::IE::DequantizeOp::inferReturnTypeComponents(
     inferredReturnShapes.emplace_back(inType.getShape(), dstElemType, outDesc);
     return mlir::success();
 }
+
+//
+// ShaveCodeGenSupportedOpInterface
+//
+
+bool vpux::IE::DequantizeOp::shouldJITCompile() {
+    auto inType = getInput().getType().getElementType();
+
+    return mlir::isa<mlir::quant::UniformQuantizedType, mlir::quant::UniformQuantizedPerAxisType>(inType);
+}

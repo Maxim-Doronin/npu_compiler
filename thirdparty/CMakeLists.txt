@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2022-2025 Intel Corporation.
+# Copyright (C) 2022-2026 Intel Corporation.
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -30,22 +30,12 @@ endif()
 
 set(BUILD_SHARED_LIBS OFF)
 
-#
-# LLVM/MLIR
-#
-if(NOT ENABLE_PREBUILT_LLVM_MLIR_LIBS)
-    set_llvm_flags()
-    add_subdirectory(llvm-project/llvm EXCLUDE_FROM_ALL)
-    set(MLIR_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/llvm-project/mlir/include")
-    set(MLIR_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/llvm-project/llvm/tools/mlir/include")
-    include_directories(SYSTEM ${MLIR_SOURCE_DIR} ${MLIR_BINARY_DIR})
+if(FORCE_CCACHE_FOR_NPU_THIRDPARTY)
+    find_program(CCACHE_PROGRAM NAMES ccache REQUIRED)
+    message(STATUS "FORCE_CCACHE_FOR_NPU_THIRDPARTY is ON, using ccache for thirdparty dependencies builds")
+    set(CMAKE_C_COMPILER_LAUNCHER   "${CCACHE_PROGRAM}")
+    set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
 endif()
-
-#
-# flatbuffers
-#
-
-include(flatbuffers.cmake)
 
 #
 # npu_elf
@@ -62,6 +52,11 @@ if (ENABLE_NPU_MONO)
 else()
     # Legacy no-monorepo scenario
     add_subdirectory(elf EXCLUDE_FROM_ALL)
+    # elf lib is distributed exernally, therefore place it together with other artifacts in OV bin directory
+    if(OV_ARCHIVE_OUTPUT_DIRECTORY)
+        set_target_properties(npu_elf PROPERTIES
+            ARCHIVE_OUTPUT_DIRECTORY ${OV_ARCHIVE_OUTPUT_DIRECTORY})
+    endif()
     target_include_directories(npu_elf PRIVATE
         "${PROJECT_SOURCE_DIR}/src/vpux_compiler/include/vpux/compiler/NPU37XX/dialect/NPUReg37XX/firmware_headers/details"
         "${PROJECT_SOURCE_DIR}/src/vpux_compiler/include/vpux/compiler/NPU40XX/dialect/NPUReg40XX/firmware_headers/details")
@@ -78,3 +73,29 @@ set(VPUNN_OPT_LEGACY_ZTILING ON CACHE BOOL "" FORCE)
 set(VPUNN_OPT_LEGACY_DMA_TH_4 ON CACHE BOOL "" FORCE)
 set(VPUNN_OPT_LEGACY_DMA_TH_5 OFF CACHE BOOL "" FORCE)
 add_subdirectory(vpucostmodel EXCLUDE_FROM_ALL)
+
+
+# remove Intel specific global compile definitions to prevent them affecting thirdparty targets below (especially LLVM/MLIR)
+get_directory_property(dir_defs COMPILE_DEFINITIONS)
+list(FILTER dir_defs EXCLUDE REGEX "^INTEL_")
+list(FILTER dir_defs EXCLUDE REGEX "OV_NATIVE_PARENT_PROJECT_ROOT_DIR") # OV global compile definition
+set_directory_properties(PROPERTIES COMPILE_DEFINITIONS "${dir_defs}")
+
+
+#
+# LLVM/MLIR
+#
+
+if(NOT ENABLE_PREBUILT_LLVM_MLIR_LIBS)
+    set_llvm_flags()
+    add_subdirectory(llvm-project/llvm EXCLUDE_FROM_ALL)
+    set(MLIR_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/llvm-project/mlir/include")
+    set(MLIR_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/llvm-project/llvm/tools/mlir/include")
+    include_directories(SYSTEM ${MLIR_SOURCE_DIR} ${MLIR_BINARY_DIR})
+endif()
+
+#
+# flatbuffers
+#
+
+include(flatbuffers.cmake)

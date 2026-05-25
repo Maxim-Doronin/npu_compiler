@@ -199,6 +199,11 @@ SpecializedContentSetup<T> SpecializedContentSetup<T>::interpolate(mlir::ArrayAt
     return addTransformation(Const::InterpolateAttr::get(axes, sizes, mode, coordMode, nearestMode, antialias,
                                                          padsBegin, padsEnd, cubeCoeff));
 }
+template <typename T>
+SpecializedContentSetup<T> SpecializedContentSetup<T>::gatherElements(mlir::IntegerAttr axisAttr,
+                                                                      mlir::DenseElementsAttr indicesAttr) {
+    return addTransformation(Const::GatherElementsAttr::get(axisAttr, indicesAttr));
+}
 
 // Note: this lists explicit template instantiations. we know exactly how many
 // versions of this template should exist in the compiler, so we can hide

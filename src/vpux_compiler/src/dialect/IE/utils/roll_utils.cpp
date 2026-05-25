@@ -56,7 +56,8 @@ RollShiftAndAxes adjustSpatialShiftAxes(ArrayRef<int64_t> shiftRef, ArrayRef<int
 }  // namespace
 
 mlir::FailureOr<RollShiftAndAxes> vpux::IE::getShiftAndAxesForRollOp(mlir::Location loc, mlir::Value shiftValue,
-                                                                     mlir::Value axesValue, ShapeRef inputShape) {
+                                                                     mlir::Value axesValue, ShapeRef inputShape,
+                                                                     bool adjustSpatial) {
     // Get shift
     auto shiftsOrFail = parseIntVector(loc, shiftValue);
     if (mlir::failed(shiftsOrFail)) {
@@ -87,6 +88,9 @@ mlir::FailureOr<RollShiftAndAxes> vpux::IE::getShiftAndAxesForRollOp(mlir::Locat
                    [&](const auto shift, const auto axis) {
                        return shift < 0 ? shift + inputShape[Dim(axis)] : shift;
                    });
+    if (adjustSpatial) {
+        return adjustSpatialShiftAxes(std::move(positiveShift), std::move(positiveAxes));
+    }
 
-    return adjustSpatialShiftAxes(std::move(positiveShift), std::move(positiveAxes));
+    return RollShiftAndAxes(std::move(positiveShift), std::move(positiveAxes));
 }

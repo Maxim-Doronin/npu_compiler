@@ -20,7 +20,7 @@
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include <mlir/IR/PatternMatch.h>
-#include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Transforms/WalkPatternRewriteDriver.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_CONVERTREORDERTOPERMUTEQUANTIZE
@@ -32,9 +32,51 @@ using namespace vpux;
 
 namespace {
 
+bool hasQuantizedAvgPoolUserToPropagate(IE::ReorderOp reorder);
+bool canConvertEltwisePatternToMaxPool(IE::ReorderOp reorder, config::ArchKind arch, int64_t numClusters, Logger log);
+
+bool shouldConvertReorderOp(IE::ReorderOp reorder, config::ArchKind arch, int64_t numClusters, Logger log) {
+    auto inType = mlir::cast<vpux::NDTypeInterface>(reorder.getInput().getType());
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(reorder.getOutput().getType());
+    const auto inOrder = inType.getDimsOrder();
+    const auto outOrder = outType.getDimsOrder();
+
+    if (isTrivialReorder(reorder)) {
+        log.trace("Skip trivial reorder");
+        return false;
+    }
+
+    const auto origMemPerm = vpux::getPermutationFromOrders(inOrder, outOrder, reorder->getContext());
+    if (IE::canConvertToNCHWInOrderWithPermuteCast(inType, origMemPerm) && outOrder == DimsOrder::NHWC) {
+        // There is a chance to convert reorderOp to permuteQuantizeOp after inserting a permuteCastOp for input
+        inType = inType.changeDimsOrder(DimsOrder::NCHW);
+    }
+
+    if (!IE::isLegalReorderLikeToPermuteQuantize(inType, outType, log)) {
+        log.trace("Can not convert to PermuteQuantize");
+        return false;
+    }
+    if (hasQuantizedAvgPoolUserToPropagate(reorder)) {
+        log.trace("PermuteQuantize can not be propagated through avgpool");
+        return false;
+    }
+
+    // Check pattern: EltwiseOp -> PermuteCast -> Reorder
+    // If this pattern can be converted to EltwiseOp -> MaxPool by later passes,
+    // block Reorder to PermuteQuantize conversion to enable data spilling optimization between EltwiseOp and MaxPool
+    if (canConvertEltwisePatternToMaxPool(reorder, arch, numClusters, log)) {
+        log.trace("Block conversion: Eltwise->PermuteCast->Reorder can be converted to MaxPool at {0}",
+                  reorder->getLoc());
+        return false;
+    }
+
+    return true;
+}
+
 class FusePermuteRewrite final : public mlir::OpRewritePattern<IE::ReorderOp> {
 public:
-    FusePermuteRewrite(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<IE::ReorderOp>(ctx), _log(log) {
+    FusePermuteRewrite(mlir::MLIRContext* ctx, config::ArchKind arch, int64_t numClusters, Logger log)
+            : mlir::OpRewritePattern<IE::ReorderOp>(ctx), _arch(arch), _numClusters(numClusters), _log(log) {
         setDebugName("FusePermuteRewrite");
     }
 
@@ -42,10 +84,16 @@ public:
     mlir::LogicalResult matchAndRewrite(IE::ReorderOp origOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
+    config::ArchKind _arch;
+    int64_t _numClusters;
     Logger _log;
 };
 
 mlir::LogicalResult FusePermuteRewrite::matchAndRewrite(IE::ReorderOp origOp, mlir::PatternRewriter& rewriter) const {
+    if (!shouldConvertReorderOp(origOp, _arch, _numClusters, _log)) {
+        return mlir::failure();
+    }
+
     _log.trace("[{0}] Got '{1}' at '{2}'", getDebugName(), origOp->getName(), origOp->getLoc());
 
     auto inOrder = DimsOrder::fromValue(origOp.getInput());
@@ -92,7 +140,6 @@ public:
 
 private:
     void safeRunOnFunc() final;
-    bool isSupportedReorder(IE::ReorderOp reorder, config::ArchKind arch, int64_t numClusters, Logger log) const;
 };
 
 bool hasQuantizedAvgPoolUserToPropagate(IE::ReorderOp reorder) {
@@ -149,65 +196,16 @@ bool canConvertEltwisePatternToMaxPool(IE::ReorderOp reorder, config::ArchKind a
                                       numClusters, "ConvertReorderToPermuteQuantize", arch, log.nest());
 }
 
-bool ConvertReorderToPermuteQuantizePass::isSupportedReorder(IE::ReorderOp reorder, config::ArchKind arch,
-                                                             int64_t numClusters, Logger log) const {
-    auto inType = mlir::cast<vpux::NDTypeInterface>(reorder.getInput().getType());
-    const auto outType = mlir::cast<vpux::NDTypeInterface>(reorder.getOutput().getType());
-    const auto inOrder = inType.getDimsOrder();
-    const auto outOrder = outType.getDimsOrder();
-
-    if (isTrivialReorder(reorder)) {
-        log.trace("Skip trivial reorder");
-        return false;
-    }
-
-    const auto origMemPerm = vpux::getPermutationFromOrders(inOrder, outOrder, reorder->getContext());
-    if (IE::canConvertToNCHWInOrderWithPermuteCast(inType, origMemPerm) && outOrder == DimsOrder::NHWC) {
-        // There is a chance to convert reorderOp to permuteQuantizeOp after inserting a permuteCastOp for input
-        inType = inType.changeDimsOrder(DimsOrder::NCHW);
-    }
-
-    if (!IE::isLegalReorderLikeToPermuteQuantize(inType, outType, log)) {
-        log.trace("Can not convert to PermuteQuantize");
-        return false;
-    }
-    if (hasQuantizedAvgPoolUserToPropagate(reorder)) {
-        log.trace("PermuteQuantize can not be propagated through avgpool");
-        return false;
-    }
-
-    // Check pattern: EltwiseOp -> PermuteCast -> Reorder
-    // If this pattern can be converted to EltwiseOp -> MaxPool by later passes,
-    // block Reorder to PermuteQuantize conversion to enable data spilling optimization between EltwiseOp and MaxPool
-    if (canConvertEltwisePatternToMaxPool(reorder, arch, numClusters, log)) {
-        log.trace("Block conversion: Eltwise->PermuteCast->Reorder can be converted to MaxPool at {0}",
-                  reorder->getLoc());
-        return false;
-    }
-
-    return true;
-}
-
 void ConvertReorderToPermuteQuantizePass::safeRunOnFunc() {
     auto func = getOperation();
     const auto arch = config::getArch(func);
     const auto numClusters = config::getTileExecutor(func).getCount();
-
-    const auto isLegalReorder = [&](IE::ReorderOp reorder) -> bool {
-        return !isSupportedReorder(reorder, arch, numClusters, _log);
-    };
     auto& ctx = getContext();
-    mlir::ConversionTarget target(ctx);
-    target.addDynamicallyLegalOp<IE::ReorderOp>(isLegalReorder);
-    target.addLegalOp<IE::PermuteQuantizeOp>();
-    target.addLegalOp<IE::PermuteCastOp>();
 
     mlir::RewritePatternSet patterns(&ctx);
-    patterns.add<FusePermuteRewrite>(&ctx, _log);
+    patterns.add<FusePermuteRewrite>(&ctx, arch, numClusters, _log);
 
-    if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
-        signalPassFailure();
-    }
+    walkAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

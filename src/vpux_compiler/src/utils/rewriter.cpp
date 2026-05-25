@@ -8,9 +8,11 @@
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/types.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/core/IR/dialect.hpp"
 #include "vpux/compiler/dialect/core/IR/memref_attr.hpp"
+#include "vpux/compiler/dialect/core/IR/ops.hpp"
 #include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
@@ -22,6 +24,7 @@
 #include "vpux/utils/core/checked_cast.hpp"
 #include "vpux/utils/profiling/location.hpp"
 
+#include <llvm/ADT/STLExtras.h>
 #include <mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h>
 #include <mlir/Dialect/Bufferization/IR/Bufferization.h>
 #include <mlir/Dialect/Bufferization/IR/BufferizationTypeInterfaces.h>
@@ -34,6 +37,7 @@
 #include <llvm/ADT/TypeSwitch.h>
 #include <mlir/Dialect/SCF/IR/SCF.h>
 #include <mlir/Dialect/Tensor/IR/Tensor.h>
+#include <mlir/Interfaces/DataLayoutInterfaces.h>
 #include <iterator>
 
 using namespace vpux;
@@ -523,7 +527,16 @@ mlir::bufferization::OneShotBufferizationOptions vpux::getOneShotBufferizationOp
         return nullptr;
     };
     options.functionArgTypeConverterFn = [](mlir::bufferization::TensorLikeType tensorLike, mlir::Attribute,
-                                            mlir::func::FuncOp, const mlir::bufferization::BufferizationOptions&) {
+                                            mlir::func::FuncOp funcOp,
+                                            const mlir::bufferization::BufferizationOptions&) {
+        auto topModuleOp = getTopParentOpOfType<mlir::ModuleOp>(funcOp);
+        if (config::getCompilationMode(topModuleOp) == config::CompilationMode::HostCompile &&
+            !config::isPureHostCompileFunc(funcOp)) {
+            if (auto rankedType = mlir::dyn_cast<mlir::RankedTensorType>(tensorLike)) {
+                return mlir::cast<mlir::bufferization::BufferLikeType>(
+                        mlir::bufferization::getMemRefTypeWithFullyDynamicLayout(rankedType, nullptr));
+            }
+        }
         return mlir::cast<mlir::bufferization::BufferLikeType>(vpux::getBufferType(tensorLike));
     };
     options.opFilter.allowDialect<mlir::bufferization::BufferizationDialect, mlir::memref::MemRefDialect,

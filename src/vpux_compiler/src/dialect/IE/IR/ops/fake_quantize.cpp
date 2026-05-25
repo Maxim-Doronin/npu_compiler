@@ -27,7 +27,7 @@ mlir::LogicalResult vpux::IE::FakeQuantizeOp::verify() {
         if (!lowFpType.has_value()) {
             return errorAt(*this, "Missing both levels and low precision floating type");
         }
-        if (!isLowFpType(lowFpType.value()) && !mlir::isa<vpux::type::QuantileFloatType>(lowFpType.value())) {
+        if (!isLowFpType(lowFpType.value()) && !mlir::isa<vpux::type::QuantileType>(lowFpType.value())) {
             return errorAt(*this, "Unsupported low floating point type {0}", *lowFpType);
         }
     } else {

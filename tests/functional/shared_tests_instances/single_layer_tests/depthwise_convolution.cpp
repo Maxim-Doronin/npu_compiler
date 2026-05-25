@@ -26,6 +26,12 @@ TEST_P(DepthwiseConvolutionLayerTest_HW, NPU4000) {
     run(Platform::NPU4000);
 }
 
+TEST_P(DepthwiseConvolutionSCFTilingLayerTest_HW, NPU4000) {
+    rel_threshold = 0.01;
+    setDefaultHardwareMode();
+    run(Platform::NPU4000);
+}
+
 TEST_P(DepthwiseConvolutionLayerTest_HW, NPU5010) {
     rel_threshold = 0.01;
     setDefaultHardwareMode();
@@ -108,4 +114,5 @@ INSTANTIATE_TEST_SUITE_P(smoke_DepthwiseConvolution2D_2048_channels, DepthwiseCo
 INSTANTIATE_TEST_SUITE_P(smoke_DepthwiseConvolution2D_64_channels_tiling, DepthwiseConvolutionSCFTilingLayerTest_HW,
                          combineDepthwiseConv2D(64, 300, 300),
                          DepthwiseConvolutionSCFTilingLayerTest_HW::getTestCaseName);
+
 }  // namespace

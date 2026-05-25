@@ -9,6 +9,7 @@
 #include "vpux/compiler/conversion/passes/VPUIP2VPUMI40XX/buffer_conversion.hpp"
 #include "vpux/compiler/core/attributes/stride_reqs.hpp"
 #include "vpux/compiler/core/bounded_buffer.hpp"
+#include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
@@ -162,10 +163,13 @@ sw_params::DataType getDataTypeFromMlirType(mlir::Type type) {
         }
     } else if (auto qType = mlir::dyn_cast<mlir::quant::QuantizedType>(type)) {
         const auto isSigned = qType.isSigned();
-        auto bitWidth = qType.getStorageTypeIntegralWidth();
-        auto isQuantileType =
-                mlir::isa<mlir::quant::QuantileQuantizedType, mlir::quant::QuantileQuantizedPerAxisType>(qType);
         auto storageType = qType.getStorageType();
+        auto isQuantileType = mlir::isa<vpux::type::QuantileType>(storageType);
+        // Unwrap QuantileType to get the actual integer storage type for bitwidth
+        if (const auto qType = mlir::dyn_cast<vpux::type::QuantileType>(storageType)) {
+            storageType = qType.getStorageType();
+        }
+        auto bitWidth = storageType.getIntOrFloatBitWidth();
         auto isFloatStorage = mlir::isa<mlir::FloatType>(storageType);
 
         switch (bitWidth) {
@@ -465,9 +469,11 @@ void createComputeOpSwKernel(VPUIP::SwKernelOp swKernelOp, mlir::OpBuilder build
 
     auto paramsVector = createKernelParams(swKernelOp, isJitCompiled);
     auto paramsData = getIntArrayAttr(ctx, paramsVector);
+    auto skipDescIds = swKernelOp.getSkipDescIds().value_or(nullptr);
+
     auto kernelParamsOp = builder.create<VPUMI40XX::KernelParamsOp>(
             swKernelOp.getLoc(), indexType, swKernelOp.getInputs(), actKernalParamResults, dynInputShapesRange,
-            dynOutputShapesRange, swKernelELF, paramsData, isOutputBroadcasted, isJitCompiled);
+            dynOutputShapesRange, swKernelELF, paramsData, isOutputBroadcasted, isJitCompiled, skipDescIds);
 
     builder.create<VPUMI40XX::ActKernelInvocationOp>(swKernelOp.getLoc(), indexType,
                                                      nullptr,             // taskLocation
@@ -482,6 +488,10 @@ void createComputeOpSwKernel(VPUIP::SwKernelOp swKernelOp, mlir::OpBuilder build
                                                      nullptr,                       // enqueueBarrier
                                                      parentTaskOp.getWlmPageAttr()  // wlmPageAttr
     );
+    if (swKernelOp->hasAttr(VPUIP::LOGICAL_TASK_INDEX_ATTR_NAME)) {
+        auto logicalIndex = swKernelOp->getAttr(VPUIP::LOGICAL_TASK_INDEX_ATTR_NAME);
+        kernelParamsOp->setAttr(VPUIP::LOGICAL_TASK_INDEX_ATTR_NAME, logicalIndex);
+    }
 }
 
 std::string stringifyCacheSWKernelType(VPU::ActShaveTaskType type) {
@@ -532,14 +542,16 @@ void createCacheOpSwKernel(VPUIP::SwKernelOp swKernelOp, mlir::OpBuilder builder
             mlir::SymbolRefAttr::get(ctx, swKernelTaskTypeLeaf.strref()), parentTaskOp.getWlmPageAttr());
 
     auto kernelParamsData = getIntArrayAttr(ctx, SmallVector<uint8_t>{0xFF});
+    auto skipDescIds = swKernelOp.getSkipDescIds().value_or(nullptr);
 
-    auto kernelParamsOp =
-            builder.create<VPUMI40XX::KernelParamsOp>(swKernelOp.getLoc(), indexType,
-                                                      mlir::ValueRange(),                // inputs
-                                                      mlir::ValueRange(),                // results
-                                                      SmallVector<mlir::ValueRange>(0),  // dynInputShapes
-                                                      SmallVector<mlir::ValueRange>(0),  // dynOutputShapes
-                                                      mlir::StringAttr::get(ctx, swKernelType), kernelParamsData);
+    auto kernelParamsOp = builder.create<VPUMI40XX::KernelParamsOp>(
+            swKernelOp.getLoc(), indexType,
+            mlir::ValueRange(),                // inputs
+            mlir::ValueRange(),                // results
+            SmallVector<mlir::ValueRange>(0),  // dynInputShapes
+            SmallVector<mlir::ValueRange>(0),  // dynOutputShapes
+            mlir::StringAttr::get(ctx, swKernelType), kernelParamsData, /*isOutputBroadcasted*/ false,
+            /*isJitCompiled*/ false, skipDescIds);
 
     builder.create<VPUMI40XX::ActKernelInvocationOp>(swKernelOp.getLoc(), indexType,
                                                      nullptr,             // taskLocation

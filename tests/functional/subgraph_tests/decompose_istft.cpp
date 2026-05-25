@@ -101,9 +101,6 @@ public:
         function = std::make_shared<ov::Model>(ov::ResultVector{result}, ov::ParameterVector{signalParam},
                                                "DecomposeISTFTTest");
     }
-    void configure_model() override {
-        configuration[ov::intel_npu::compilation_mode_params.name()] = "convert-precision-to-fp16=false";
-    }
 };
 
 TEST_P(DecomposeISTFTTest, NPU4000_HW) {
@@ -117,17 +114,22 @@ TEST_P(DecomposeISTFTTest, NPU5010_HW) {
 }
 
 // {{signal}, {window}, frame_size, frame_step, signal_length, center, normalized}
-const std::vector<ISTFTParams> baseParams = {{{2, 3, 2}, {2}, 2, 1, 4, false, false},
-                                             {{2, 2, 2}, {2}, 2, 1, 3, false, false},
-                                             {{33, 33, 2}, {64}, 64, 16, 576, true, false},
-                                             {{2, 3, 3, 2}, {4}, 4, 2, 8, false, true},
-                                             // signal_length < default
-                                             {{2, 2, 4, 2}, {2}, 2, 1, 4, false, false},
-                                             // signal_length > default
-                                             {{3, 3, 2}, {4}, 4, 2, 9, false, false},
-                                             // signal_length omitted
-                                             {{3, 4, 2}, {4}, 4, 2, std::nullopt, false, true}};
+const std::vector<ISTFTParams> baseParams = {
+        {{2, 3, 2}, {2}, 2, 1, 4, false, false},
+        {{2, 2, 2}, {2}, 2, 1, 3, false, false},
+        {{33, 33, 2}, {64}, 64, 16, 576, true, false},
+        {{2, 3, 3, 2}, {4}, 4, 2, 8, false, true},
+        // signal_length < default
+        {{2, 2, 4, 2}, {2}, 2, 1, 4, false, false},
+        // signal_length > default
+        {{3, 3, 2}, {4}, 4, 2, 9, false, false},
+        // signal_length omitted
+        {{3, 4, 2}, {4}, 4, 2, std::nullopt, false, true},
+        {{1, 11, 12001, 2}, {20}, 20, 5, std::nullopt, true, false},
+};
 
+// VPU.NCE.Convolution operations only support FP16/BF16, not FP32
+// Without automatic FP16 conversion, compilation fails with precision mismatch errors
 const std::vector<ov::element::Type> netPrecisions = {ov::element::f32, ov::element::f16};
 
 INSTANTIATE_TEST_SUITE_P(precommit_DecomposeISTFT, DecomposeISTFTTest,

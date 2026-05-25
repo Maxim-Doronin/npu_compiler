@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
@@ -43,27 +44,22 @@ mlir::Type typeTo4D(const mlir::Type type) {
 
     // Update axis in per-axis quantization
     auto elemType = origType.getElementType();
-    if (auto perAxisType = mlir::dyn_cast<mlir::quant::QuantileQuantizedPerAxisType>(elemType)) {
+    if (auto perAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(elemType)) {
         const auto origQuantAxis = perAxisType.getQuantizedDimension();
         VPUX_THROW_WHEN(origQuantAxis <= 0, "Quantization over batch is not supported.");
         const auto newQuantAxis = origQuantAxis - 1;
-
-        elemType = mlir::quant::QuantileQuantizedPerAxisType::get(
-                perAxisType.getFlags(), perAxisType.getStorageType(), perAxisType.getQuantileType(),
-                perAxisType.getExpressedType(), perAxisType.getQuantiles(), perAxisType.getScales(),
-                perAxisType.getZeroPoints(), newQuantAxis, perAxisType.getStorageTypeMin(),
-                perAxisType.getStorageTypeMax());
-    } else if (auto perAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(elemType)) {
-        const auto origQuantAxis = perAxisType.getQuantizedDimension();
-        VPUX_THROW_WHEN(origQuantAxis <= 0, "Quantization over batch is not supported.");
-        const auto newQuantAxis = origQuantAxis - 1;
-
-        elemType = mlir::quant::UniformQuantizedPerAxisType::get(
-                perAxisType.getFlags(), perAxisType.getStorageType(), perAxisType.getExpressedType(),
-                perAxisType.getScales(), perAxisType.getZeroPoints(), newQuantAxis, perAxisType.getStorageTypeMin(),
-                perAxisType.getStorageTypeMax());
+        if (const auto quantileStorage = mlir::dyn_cast<vpux::type::QuantileType>(perAxisType.getStorageType())) {
+            elemType = mlir::quant::UniformQuantizedPerAxisType::get(
+                    perAxisType.getFlags(), quantileStorage, perAxisType.getExpressedType(), perAxisType.getScales(),
+                    perAxisType.getZeroPoints(), newQuantAxis, perAxisType.getStorageTypeMin(),
+                    perAxisType.getStorageTypeMax());
+        } else {
+            elemType = mlir::quant::UniformQuantizedPerAxisType::get(
+                    perAxisType.getFlags(), perAxisType.getStorageType(), perAxisType.getExpressedType(),
+                    perAxisType.getScales(), perAxisType.getZeroPoints(), newQuantAxis, perAxisType.getStorageTypeMin(),
+                    perAxisType.getStorageTypeMax());
+        }
     }
-
     const auto newTypeComponents =
             TypeComponents().setShape(newShape).setDimsOrder(newOrder).setStrides(newStrides).setElementType(elemType);
     return origType.changeTypeComponents(newTypeComponents);

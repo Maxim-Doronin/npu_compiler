@@ -15,7 +15,6 @@ add_tool_target(
     LINK_LIBRARIES
         flatbuffers
         openvino::gflags_nothreads_static
-        npu_llvm_utils
         npu_profiling_utils
         openvino::runtime::dev
         npu_profiling_schema

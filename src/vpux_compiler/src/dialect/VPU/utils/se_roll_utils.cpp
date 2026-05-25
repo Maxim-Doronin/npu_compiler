@@ -4,92 +4,10 @@
 //
 
 #include "vpux/compiler/dialect/VPU/utils/se_roll_utils.hpp"
-#include "vpux/compiler/dialect/IE/utils/roll_utils.hpp"
 #include "vpux/compiler/dialect/VPU/IR/se_attributes.hpp"
-#include "vpux/compiler/dialect/VPU/utils/conv_utils.hpp"
-#include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 
 using namespace vpux;
 using namespace VPU;
-
-namespace {
-bool isSupportedSEPRollImpl(mlir::Operation* op, NDTypeInterface inputType, NDTypeInterface outputType,
-                            ArrayRef<int64_t> axes, mlir::MLIRContext* ctx, LogCb logCb, bool checkLayout,
-                            bool /*checkChannelAlignment*/, bool supportsInputActCompression) {
-    const auto inputShape = inputType.getShape();
-    if (inputShape.size() != 4 || outputType.getRank() != 4) {
-        logCb(formatv("Only 4D inputs are supported, got {0} dimensions", inputShape.size()));
-        return false;
-    }
-
-    if (axes.size() != 2) {
-        logCb(formatv("{0} dimensions to roll", axes.size()));
-        return false;
-    }
-    if (axes[0] != Dims4D::Act::H.ind() || axes[1] != Dims4D::Act::W.ind()) {
-        logCb(formatv("it's not spatial rolling"));
-        return false;
-    }
-
-    const int64_t KY = 1;
-    const int64_t KX = 1;
-
-    auto weightShape = Shape(SmallVector<int64_t>{inputShape[Dims4D::Act::C], inputShape[Dims4D::Act::C], KY, KX});
-    mlir::Type elemType = mlir::Float16Type::get(ctx);
-    if (mlir::isa<mlir::quant::QuantizedType>(inputType.getElementType())) {
-        elemType = mlir::quant::UniformQuantizedType::get(
-                /*flags=*/0, /*storageType=*/getUInt8Type(ctx), /*expressedType=*/mlir::Float16Type::get(ctx),
-                /*scale=*/static_cast<double>(1.0f), /*zeroPoint=*/0, /*storageTypeMin=*/0, /*storageTypeMax=*/255);
-    }
-    const auto tensorAttr = vpux::getTensorAttr(ctx, DimsOrder::OYXI, nullptr);
-    const auto weightsType =
-            mlir::cast<vpux::NDTypeInterface>(mlir::RankedTensorType::get(weightShape.raw(), elemType, tensorAttr));
-
-    const int64_t SY = 1;
-    const int64_t SX = 1;
-
-    PadInfo pads(0, 0, 0, 0);
-    const auto dilations = SmallVector<int64_t>{1, 1};
-
-    return VPU::isNCEConvSupported(op, inputType, weightsType, outputType, dilations, KY, KX, SY, SX, pads, checkLayout,
-                                   /*checkChannelAlignment*/ true, logCb, supportsInputActCompression);
-}
-
-}  // namespace
-
-bool VPU::isSupportedSEPRoll(IE::RollOp op, vpux::LogCb logCb, bool checkLayout, bool checkChannelAlignment,
-                             bool supportsInputActCompression) {
-    const auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getData().getType());
-    const auto outputType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
-
-    const auto inputShape = inputType.getShape();
-    auto shiftAndAxesOrFail = IE::getShiftAndAxesForRollOp(op.getLoc(), op.getShift(), op.getAxes(), inputShape);
-    if (mlir::failed(shiftAndAxesOrFail)) {
-        return false;
-    }
-    const auto shiftAndAxes = shiftAndAxesOrFail.value();
-    const auto axes = shiftAndAxes.axes;
-
-    return isSupportedSEPRollImpl(op.getOperation(), inputType, outputType, axes, op.getContext(), logCb, checkLayout,
-                                  checkChannelAlignment, supportsInputActCompression);
-}
-
-bool VPU::isSupportedSEPRoll(VPU::RollOp op, vpux::LogCb logCb, bool checkLayout, bool checkChannelAlignment,
-                             bool supportsInputActCompression) {
-    const auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getData().getType());
-    const auto outputType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
-
-    const auto inputShape = inputType.getShape();
-    auto shiftAndAxesOrFail = IE::getShiftAndAxesForRollOp(op.getLoc(), op.getShift(), op.getAxes(), inputShape);
-    if (mlir::failed(shiftAndAxesOrFail)) {
-        return false;
-    }
-    const auto shiftAndAxes = shiftAndAxesOrFail.value();
-    const auto axes = shiftAndAxes.axes;
-
-    return isSupportedSEPRollImpl(op.getOperation(), inputType, outputType, axes, op.getContext(), logCb, checkLayout,
-                                  checkChannelAlignment, supportsInputActCompression);
-}
 
 DimArr VPU::getRollSEPConvTilingOrder(VPU::SERollAttr seAttr) {
     const auto shift = parseIntArrayAttr<int64_t>(seAttr.getShift());

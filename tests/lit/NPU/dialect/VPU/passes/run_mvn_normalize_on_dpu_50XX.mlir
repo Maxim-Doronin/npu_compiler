@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --run-mvn-normalize-on-dpu %s | FileCheck %s
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --run-mvn-normalize-on-dpu %s | FileCheck %s
+// REQUIRES: platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
@@ -59,7 +59,7 @@ func.func @ReplaceMVN1NormalizeWithMaxPool(%arg0: tensor<1x512x64x64xf32>) -> te
     // CHECK-DAG:    [[CST_NEG:%.+]] = const.Declare tensor<1x512x1x1xf16, {order = #NHWC}> = dense<-1.000000e+00> : tensor<1x512x1x1xf16>
 
     // CHECK:        [[ELTWISE:%.+]] = VPU.NCE.Eltwise([[SLICE_MEAN]], [[CST_NEG]])
-    // CHECK-SAME:       {op_type = #VPU.eltwise_type<MULTIPLY>
+    // CHECK-SAME:       op_type = #VPU.eltwise_type<MULTIPLY>
 
     // CHECK:        [[CONVERT_3:%.+]] = VPU.Convert([[ELTWISE]]) {dstElemType = f32}
     // CHECK-SAME:       : tensor<1x512x1x1xf16, {order = #NHWC}> -> tensor<1x512x1x1xf32, {order = #NHWC}>

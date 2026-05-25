@@ -14,8 +14,6 @@
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/Support/Timing.h>
 
-#include <transformations/utils/utils.hpp>
-
 namespace vpux {
 namespace ELFNPU37XX {
 

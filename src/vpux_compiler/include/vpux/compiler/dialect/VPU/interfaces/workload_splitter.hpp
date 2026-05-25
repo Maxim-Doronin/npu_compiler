@@ -13,8 +13,6 @@
 namespace vpux {
 namespace VPU {
 
-constexpr std::array<int64_t, 3> supportedChannelsDW = {64, 32, 16};
-
 class WorkloadSplitter {
 public:
     WorkloadSplitter(mlir::func::FuncOp funcOp, ArrayRef<int64_t> supportedChannelsForDW, vpux::Logger log);
@@ -31,6 +29,8 @@ protected:
     SmallVector<Shape> getPerClusterShapesWhenSOK(VPU::NCEOpInterface nceOp);
     mlir::DenseSet<int64_t> getWorkloadsChannels(const mlir::DenseSet<mlir::Operation*>& nceOps,
                                                  bool skipLastWorkload = false);
+    SmallVector<int64_t> filterSupportedChannelsBySmallKernelOptimization(mlir::Operation* nceOp,
+                                                                          ArrayRef<int64_t> supportedChannels);
     mlir::DenseSet<mlir::Operation*> findConsumerOps(mlir::Value value);
     mlir::DenseSet<mlir::Operation*> findProducerNCEOps(mlir::Value value);
     mlir::DenseSet<mlir::Operation*> findProducersForConsumers(

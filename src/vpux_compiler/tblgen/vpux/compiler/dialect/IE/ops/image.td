@@ -83,7 +83,8 @@ def IE_InterpolateOp :
         IE_LayerOp<
             "Interpolate",
             [
-                AttrSizedOperandSegments
+                AttrSizedOperandSegments,
+                DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>
             ]
         > {
     let summary = "InferenceEngine Interpolate layer";
@@ -111,6 +112,7 @@ def IE_InterpolateOp :
     );
     let hasFolder = 1;
     let hasCanonicalizer = 1;
+    let hasVerifier = 1;
 
     let elemComparisonModes = [IE_TypeComparisonMode_ALLOW_MIXED_PRECISION, IE_TypeComparisonMode_ALLOW_DIFFERENT_QUANT];
 }
@@ -192,7 +194,8 @@ def IE_YuvToRgbOp :
         IE_LayerOp<
             "YuvToRgb",
             [
-                AttrSizedOperandSegments
+                AttrSizedOperandSegments,
+                DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>
             ]
         > {
     let summary = "InferenceEngine NV12/I420 to RGB/BGR layer";
@@ -203,7 +206,8 @@ def IE_YuvToRgbOp :
         Optional<4DTensorOf<[UI8, F16, F32, F64]>>:$input3,
 
         IE_ColorFmtAttr:$inFmt,
-        IE_ColorFmtAttr:$outFmt
+        IE_ColorFmtAttr:$outFmt,
+        OptionalAttr<F32Attr>:$scale
     );
 
     let results = (outs

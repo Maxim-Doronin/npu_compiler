@@ -10,6 +10,7 @@
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPU/IR/types.hpp"
 #include "vpux/compiler/dialect/VPU/utils/auto_padding_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/clustered_op_interface_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/conv_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/dilated_utils.hpp"
@@ -389,36 +390,8 @@ bool VPU::NCEDepthConvolutionOp::isOperationSplitOverHeightCompatible(const vpux
         }
     }
 
-    auto outputShape = ShapeRef(oriOutputTile.shape);
-    auto offset = ShapeRef(oriOutputTile.offsets);
-    auto axis = ShapeRef(oriOutputTile.axis);
-    if (outputShape.empty()) {
-        outputShape = getBoundedShape(getOutput());
-    }
-    vpux::TileInfo outputTile{outputShape, offset, axis, oriOutputTile.isCompletedTile};
-    if (!VPU::isOperationSplitOverHeightCompatible(getOperation(), outputTile)) {
-        return false;
-    }
-
-    auto nceOp = mlir::cast<VPU::NCEDepthConvolutionOp>(getOperation());
-    Shape inputShape = getShape(nceOp.getInput()).toValues();
-    auto inputType = mlir::cast<vpux::NDTypeInterface>(nceOp.getInput().getType());
-    // If has custom output shape, infer the input shape
-    if (outputShape != getBoundedShape(nceOp->getResult(0))) {
-        VPUX_THROW_WHEN(offset.empty() || axis.empty(),
-                        "Offsets and axis must have value when create TileInfo. Loc: {0}", nceOp->getLoc());
-        outputTile.isCompletedTile = true;
-        auto computerShape = nceOp.backInferTileInfo(outputTile, Logger::global());
-        inputShape = computerShape.tiles.front().shape;
-        auto inputOffset = computerShape.tiles.front().offsets;
-        inputType = inputType.extractDenseTile(inputOffset, inputShape);
-    }
-
-    auto moduleOp = nceOp->getParentOfType<mlir::ModuleOp>();
-    auto tileOp = config::getTileExecutor(moduleOp);
-    const auto numTiles = tileOp.getCount();
-
-    return isSOHSupportedByDPU(inputType, inputShape, numTiles, true, config::getArch(nceOp.getOperation()));
+    return VPU::isNCEOpSplitOverHeightCompatible(getOperation(), getInput(), getBoundedShape(getOutput()),
+                                                 oriOutputTile, true);
 }
 
 bool VPU::NCEDepthConvolutionOp::isOperationSplitOverWidthCompatible(ShapeRef outputShape, ShapeRef offset,
@@ -486,49 +459,19 @@ vpux::NDTypeInterface vpux::VPU::NCEDepthConvolutionOp::getDistributedTypeForOpO
     auto clusteredOp = mlir::cast<VPU::ClusteredOpInterface>(getOperation());
     auto origOp = mlir::cast<VPU::NCEDepthConvolutionOp>(getOperation());
     const auto strategy = clusteredOp.getMultiClusterStrategy().value();
-    auto outputTensorType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
-    auto numClusters = VPU::getOptimalNumClusters(clusteredOp, outputTensorType.getShape(), strategy);
-    auto* ctx = clusteredOp->getContext();
+    auto filterType = mlir::cast<vpux::NDTypeInterface>(origOp.getFilter().getType());
+    const auto channelSize = filterType.getShape()[Dims4D::Filter::OC];
 
     if (operand.get() == origOp.getInput()) {
-        mlir::ArrayAttr activationAlignmentAttr = nullptr;
-        const auto activationTensorDistributionMode = getActivationTensorDistributionMode(clusteredOp, strategy);
-        const auto activationTensorNumTiles =
-                getIntArrayAttr(ctx, getActivationTensorNumTiles(clusteredOp, numClusters, strategy));
-        const auto activationAlignment = getActivationTensorAlignment(clusteredOp, numClusters, strategy);
-        if (activationAlignment.has_value()) {
-            activationAlignmentAttr = getIntArrayAttr(ctx, activationAlignment.value());
-        }
-        return getDistributedTypeFromInput(clusteredOp, origOp.getInput(), activationTensorDistributionMode,
-                                           activationTensorNumTiles, activationAlignmentAttr, strategy,
-                                           hasExplicitDistributedAttr, siblingsAnalysis);
+        return VPU::getDistributedActivationTypeForOpOperand(clusteredOp, origOp.getInput(), strategy,
+                                                             hasExplicitDistributedAttr, siblingsAnalysis);
     } else if (operand.get() == origOp.getFilter()) {
-        auto filterType = mlir::cast<vpux::NDTypeInterface>(origOp.getFilter().getType());
-        mlir::ArrayAttr weightAlignmentAttr = nullptr;
-        const auto weightAlignment = getWeightsTensorAlignment(strategy);
-        if (weightAlignment.has_value()) {
-            weightAlignmentAttr = getIntArrayAttr(ctx, weightAlignment.value());
-        }
-        const auto weightsTensorDistributionMode = getWeightsTensorDistributionMode(strategy);
-        const auto weightsTensorNumTiles =
-                getIntArrayAttr(ctx, getWeightsTensorNumTiles(clusteredOp, filterType, numClusters, strategy));
-        return getDistributedTypeFromInput(clusteredOp, origOp.getFilter(), weightsTensorDistributionMode,
-                                           weightsTensorNumTiles, weightAlignmentAttr, strategy,
-                                           hasExplicitDistributedAttr, siblingsAnalysis);
+        return VPU::getDistributedWeightsTypeForOpOperand(clusteredOp, origOp.getFilter(), strategy,
+                                                          hasExplicitDistributedAttr, siblingsAnalysis, channelSize);
     } else if (operand.get() == origOp.getWeightsTable() || operand.get() == origOp.getWeightTableScale() ||
                operand.get() == origOp.getWeightTableBias()) {
-        auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
-        mlir::ArrayAttr weightAlignmentAttr = nullptr;
-        const auto weightsTableTensorDistributionMode = getWeightsTensorDistributionMode(strategy);
-        const auto weightsTableTensorNumTiles =
-                getIntArrayAttr(ctx, getWeightsTableTensorNumTiles(clusteredOp, outputType, numClusters, strategy));
-        const auto weightAlignment = getWeightsTensorAlignment(strategy);
-        if (weightAlignment.has_value()) {
-            weightAlignmentAttr = getIntArrayAttr(ctx, weightAlignment.value());
-        }
-        return getDistributedTypeFromInput(clusteredOp, operand.get(), weightsTableTensorDistributionMode,
-                                           weightsTableTensorNumTiles, weightAlignmentAttr, strategy,
-                                           hasExplicitDistributedAttr, siblingsAnalysis);
+        return VPU::getDistributedWeightsTypeForOpOperand(clusteredOp, operand.get(), strategy,
+                                                          hasExplicitDistributedAttr, siblingsAnalysis, channelSize);
     }
     VPUX_THROW("Failed to compute distributed type for op {0}", clusteredOp);
     return nullptr;

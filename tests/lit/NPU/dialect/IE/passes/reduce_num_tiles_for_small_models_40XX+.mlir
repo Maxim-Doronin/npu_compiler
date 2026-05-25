@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW allow-custom-values=true" --reduce-num-tiles-for-small-models %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW allow-custom-values=true" --reduce-num-tiles-for-small-models %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL: @NoMultiplyNumClustersRemained
 module @NoMultiplyNumClustersRemained {

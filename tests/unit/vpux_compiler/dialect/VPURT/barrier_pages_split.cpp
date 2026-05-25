@@ -1185,7 +1185,7 @@ TEST_F(BarrierPagesSplitTests, LegalizeGraphWithLongDepOnTaskWaitBarrierSideWith
 
 /**
  * HW FIFO (DMA): t0 t2 t4 t5
- * HW FIFO (DPU): t1 t3
+ * HW FIFO (DPU): t1 t3 t6
  *
  * ------   t0
  *          |
@@ -1202,8 +1202,8 @@ TEST_F(BarrierPagesSplitTests, LegalizeGraphWithLongDepOnTaskWaitBarrierSideWith
  * Page1    t4
  *          |
  *          b3
- *          |
- * ------   t5
+ *          | \
+ * ------   t5  t6
  *          |
  * Page2    b4
  * ------
@@ -1218,7 +1218,8 @@ std::tuple<BarrierInfoMaps, size_t, BarrierInfoMaps> graphWithLastTaskOnFifoInPa
             {},   // task 2
             {2},  // task 3
             {3},  // task 4
-            {4}   // task 5
+            {4},  // task 5
+            {},   // task 6
     };
 
     barrierMapsConfig.taskWaitBarriers = {
@@ -1227,7 +1228,8 @@ std::tuple<BarrierInfoMaps, size_t, BarrierInfoMaps> graphWithLastTaskOnFifoInPa
             {1},  // task 2
             {1},  // task 3
             {2},  // task 4
-            {3}   // task 5
+            {3},  // task 5
+            {3}   // task 6
     };
 
     fillProducersAndConsumers(barrierMapsConfig);
@@ -1236,7 +1238,7 @@ std::tuple<BarrierInfoMaps, size_t, BarrierInfoMaps> graphWithLastTaskOnFifoInPa
     const VPURT::TaskQueueType dpuType{config::ExecutorKind::DPU, 0};
 
     barrierMapsConfig.taskQueueTypeMap[dmaType] = {0, 2, 4, 5};
-    barrierMapsConfig.taskQueueTypeMap[dpuType] = {1, 3};
+    barrierMapsConfig.taskQueueTypeMap[dpuType] = {1, 3, 6};
 
     size_t pageSize = 2;
 
@@ -1248,7 +1250,8 @@ std::tuple<BarrierInfoMaps, size_t, BarrierInfoMaps> graphWithLastTaskOnFifoInPa
             {2},  // task 2
             {2},  // task 3
             {3},  // task 4
-            {4}   // task 5
+            {4},  // task 5
+            {4}   // task 6
     };
 
     expectedBarrierMapsConfig.taskWaitBarriers = {
@@ -1257,7 +1260,8 @@ std::tuple<BarrierInfoMaps, size_t, BarrierInfoMaps> graphWithLastTaskOnFifoInPa
             {1},  // task 2
             {1},  // task 3
             {2},  // task 4
-            {3}   // task 5
+            {3},  // task 5
+            {3}   // task 6
     };
     fillProducersAndConsumers(expectedBarrierMapsConfig);
 
@@ -1275,8 +1279,9 @@ TEST_F(BarrierPagesSplitTests, LegalizeGraphWithLastTaskOnFifoInPageWithNoUpdate
     EXPECT_TRUE(barrierPagesSplitHandlerTest.areBoundaryTasksFromNeighborPagesDependent());
 
     auto lastTaskTypePerPageWithNoUpdBar = barrierPagesSplitHandlerTest.getLastTasksOnFifoPerPageWithNoUpdBar();
-    ASSERT_TRUE(!lastTaskTypePerPageWithNoUpdBar.empty());
+    ASSERT_EQ(lastTaskTypePerPageWithNoUpdBar.size(), 2);
     EXPECT_EQ(lastTaskTypePerPageWithNoUpdBar[0], 2);
+    EXPECT_EQ(lastTaskTypePerPageWithNoUpdBar[1], 6);
 
     barrierPagesSplitHandlerTest.addUpdateBarriersForLastTaskOnFifoInPage(lastTaskTypePerPageWithNoUpdBar);
 
@@ -1287,8 +1292,9 @@ TEST_F(BarrierPagesSplitTests, LegalizeGraphWithLastTaskOnFifoInPageWithNoUpdate
     EXPECT_EQ(page0BoundaryTasks[1], 3);
 
     auto page1BoundaryTasks = barrierPagesSplitHandlerTest.getFirstAndLastBoundaryTasksForPage(1);
-    ASSERT_EQ(page1BoundaryTasks.size(), 1);
+    ASSERT_EQ(page1BoundaryTasks.size(), 2);
     EXPECT_EQ(page1BoundaryTasks[0], 5);
+    EXPECT_EQ(page1BoundaryTasks[1], 6);
 
     EXPECT_NO_THROW(barrierPagesSplitHandlerTest.verifyTaskBarrierPagesAreValid());
     EXPECT_NO_THROW(barrierPagesSplitHandlerTest.verifyNoCyclicDeps());
@@ -4363,9 +4369,9 @@ TEST_F(BarrierPagesSplitTests, CheckEnqueueOfDpuNotAtStartBarrier) {
  *            |
  *  Page1     t3
  *            |
- *            b3
- *            |
- * ------     t4
+ *            b3 (PID3)  <- enqueue t7 DPU after barrier b3. Enqueue t8 DPU together
+ *            |             as there are required dependencies from b3, which is previous
+ * ------     t4            barrier instance of b6 - wait barrier of t8, to t7
  *            |
  *            b4
  *            |
@@ -4375,7 +4381,7 @@ TEST_F(BarrierPagesSplitTests, CheckEnqueueOfDpuNotAtStartBarrier) {
  *            |  \
  * ------     t6 t7
  *            |  /
- *            b6
+ *            b6 (PID3)
  *  Page3     |
  *            t8
  *            |
@@ -4422,7 +4428,7 @@ std::tuple<BarrierInfoMaps, size_t, SmallVector<size_t>, BarrierInfoMaps> graphT
 
     size_t pageSize = 2;
 
-    SmallVector<size_t> barrierToPidVec = {0, 1, 2, 3, 0, 1, 2, 3};
+    SmallVector<size_t> barrierToPidVec = {0, 1, 2, 3, 0, 1, 3, 2};
 
     BarrierInfoMaps expectedBarrierMapsConfig;
 

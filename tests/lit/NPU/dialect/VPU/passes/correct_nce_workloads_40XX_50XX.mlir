@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --correct-NCE-workloads %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --correct-NCE-workloads %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -471,4 +471,31 @@ func.func @DepthConvWithoutL1aOpt(%arg0: !Input_CMX) -> !Output_CMX {
     // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 1856, 0, 0] outSizes [1, 64, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
     // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 1920, 0, 0] outSizes [1, 64, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
     // CHECK-NEXT:     VPU.DPU.Workload outOffsets [0, 1984, 0, 0] outSizes [1, 64, 24, 42] pad [1, 1, 1, 1] <CUBOID_16x16> attributes {cluster_id = 1 : i64}
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @AvgPoolWithSmallKernelOpt
+func.func @AvgPoolWithSmallKernelOpt(%arg0: tensor<1x128x56x56xf16, {order = #NHWC}>) -> tensor<1x128x56x56xf16, {order = #NHWC}> {
+    %0 = VPU.Copy(%arg0) {out_mem_space = [@CMX_NN, 0]} : tensor<1x128x56x56xf16, {order = #NHWC}> -> tensor<1x128x56x56xf16, {mem_space = [@CMX_NN, 0], order = #NHWC}>
+    %1 = VPU.NCE.AveragePool(%0) {
+        kernel_size = [3, 3],
+        pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
+        ppe = #VPU.PPEStub<>,
+        strides = [1, 1]
+    } -> tensor<1x128x56x56xf16, {mem_space = [@CMX_NN, 0], order = #NHWC}> {
+        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 128, 56, 56] pad [1, 1, 1, 1] <CUBOID_16x16>
+    }
+    %2 = VPU.Copy(%1) : tensor<1x128x56x56xf16, {mem_space = [@CMX_NN, 0], order = #NHWC}>
+        -> tensor<1x128x56x56xf16, {order = #NHWC}>
+
+    return %2 : tensor<1x128x56x56xf16, {order = #NHWC}>
+
+    // CHECK:       VPU.NCE.AveragePool
+    // CHECK:         VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 32, 56, 56] pad [1, 1, 1, 1] <CUBOID_16x16>
+    // CHECK-NEXT:    VPU.DPU.Workload outOffsets [0, 32, 0, 0] outSizes [1, 32, 56, 56] pad [1, 1, 1, 1] <CUBOID_16x16>
+    // CHECK-NEXT:    VPU.DPU.Workload outOffsets [0, 64, 0, 0] outSizes [1, 32, 56, 56] pad [1, 1, 1, 1] <CUBOID_16x16>
+    // CHECK-NEXT:    VPU.DPU.Workload outOffsets [0, 96, 0, 0] outSizes [1, 32, 56, 56] pad [1, 1, 1, 1] <CUBOID_16x16>
 }

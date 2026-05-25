@@ -13,22 +13,35 @@
 namespace vpux {
 namespace VPU {
 
-bool checkForQuantization(mlir::Operation* op, mlir::Operation* postOp) {
-    auto isFakeQuantizeOpInput = mlir::dyn_cast_or_null<IE::FakeQuantizeOp>(op->getOperand(0).getDefiningOp());
-    auto isFakeQuantizeOpOutput = true;
-    for (auto user : postOp->getUsers()) {
+static bool checkIfUsersFakeQuantize(mlir::Operation* op) {
+    for (auto user : op->getUsers()) {
         if (!mlir::isa<IE::FakeQuantizeOp>(user)) {
-            isFakeQuantizeOpOutput = false;
-            break;
+            return false;
         }
     }
 
+    return true;
+}
+
+bool checkForQuantization(mlir::Operation* op, mlir::Type type) {
     // since FusePostOps is called also after LowPrecisionPipeline
-    const auto operandType = mlir::cast<vpux::NDTypeInterface>(postOp->getOperand(0).getType());
-    const auto isQuantizedElemType = mlir::isa<mlir::quant::QuantizedType>(operandType.getElementType());
+    const auto isQuantizedElemType = mlir::isa<mlir::quant::QuantizedType>(type);
+
+    auto isFakeQuantizeOpInput = mlir::dyn_cast_or_null<IE::FakeQuantizeOp>(op->getOperand(0).getDefiningOp());
+    auto isFakeQuantizeOpOutput = checkIfUsersFakeQuantize(op);
 
     return (isFakeQuantizeOpOutput && isFakeQuantizeOpInput) || isQuantizedElemType;
-};
+}
+
+bool checkForQuantization(mlir::Operation* op, mlir::Operation* postOp) {
+    const auto operandType = mlir::cast<vpux::NDTypeInterface>(postOp->getOperand(0).getType());
+    // since FusePostOps is called also after LowPrecisionPipeline
+    const auto isQuantizedElemType = mlir::isa<mlir::quant::QuantizedType>(operandType.getElementType());
+
+    auto isFakeQuantizeOpInput = mlir::dyn_cast_or_null<IE::FakeQuantizeOp>(op->getOperand(0).getDefiningOp());
+    auto isFakeQuantizeOpOutput = checkIfUsersFakeQuantize(postOp);
+    return (isFakeQuantizeOpOutput && isFakeQuantizeOpInput) || isQuantizedElemType;
+}
 
 bool hasPerChannelQuantizedOutput(mlir::Operation* op) {
     for (auto user : op->getUsers()) {

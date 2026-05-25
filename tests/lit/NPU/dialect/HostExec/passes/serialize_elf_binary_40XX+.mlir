@@ -3,13 +3,13 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --vpu-arch=%arch% --serialize-elf-to-binary %s | FileCheck %s
-// REQUIRES: dev-build && (arch-NPU40XX || arch-NPU50XX)
+// RUN: vpux-opt --split-input-file --platform=%platform% --serialize-elf-to-binary %s | FileCheck %s
+// REQUIRES: dev-build && (platform-NPU4000 || platform-NPU5010)
 
 // CHECK-LABEL: @StaticEltwiseNHWC
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-module @StaticEltwiseNHWC attributes {config.arch = #config.arch_kind<NPU40XX>, config.revisionID = #config.revision_id<REVISION_NONE>, config.compilationMode = #config.compilation_mode<HostCompile>, config.elf_version = #config.version<1:0:0>} {
+module @StaticEltwiseNHWC attributes {config.revisionID = #config.revision_id<REVISION_NONE>, config.compilationMode = #config.compilation_mode<HostCompile>, config.elf_version = #config.version<1:0:0>} {
   config.PipelineOptions @Options {
     config.Option @config.EnableExtraStaticShapeOps : true
     config.Option @config.EnableAdaptiveStripping : false
@@ -48,7 +48,7 @@ module @StaticEltwiseNHWC attributes {config.arch = #config.arch_kind<NPU40XX>, 
   } outputsInfo : {
     DataInfo "output" : tensor<1x16x720x1000xf16>
   }
-  module @OneDMAWithoutAttributes attributes {config.arch = #config.arch_kind<NPU40XX>, config.revisionID = #config.revision_id<REVISION_NONE>, config.compilationMode = #config.compilation_mode<DefaultHW>, config.elf_version = #config.version<1:0:0>} {
+  module @OneDMAWithoutAttributes attributes {config.platform = #config.platform<NPU4000>, config.revisionID = #config.revision_id<REVISION_NONE>, config.compilationMode = #config.compilation_mode<DefaultHW>, config.elf_version = #config.version<1:0:0>} {
   config.PipelineOptions @Options {
     config.Option @config.EnableExtraStaticShapeOps : true
     config.Option @config.EnableAdaptiveStripping : false
@@ -91,14 +91,16 @@ module @StaticEltwiseNHWC attributes {config.arch = #config.arch_kind<NPU40XX>, 
       }
     }
   }
-  VPUASM.IOBindings inputDeclarations : {
+  VPUASM.InputBindings inputDeclarations : {
     VPUASM.DeclareBuffer @input_0_buffDecl !VPUASM.Buffer< "NetworkInput"[0] <0> : memref<1x90x1000x16xf16> :  swizzling(0)>
-  } outputDeclarations : {
+  }
+  VPUASM.OutputBindings outputDeclarations : {
     VPUASM.DeclareBuffer @output_0_buffDecl !VPUASM.Buffer< "NetworkOutput"[0] <0> : memref<1x90x1000x16xf16> :  swizzling(0)>
-  } profilingBuffDeclarations : {
+  }
+  VPUASM.ProfilingBindings profilingDeclarations : {
   }
   func.func @main1() {
-    ELF.Main @ELFMain {
+    ELF.Main {
       ELF.CreateLogicalSection @program.metadata.cmx aligned(1) secType(VPU_SHT_CMX_METADATA) secFlags("SHF_NONE") secLocation(<CMX_NN>) {
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DMA_0_0_0 idx(!VPURegMapped.Index<0:0:0>) <DMA> {offset = 59904 : ui64}
       }
@@ -564,8 +566,8 @@ module @StaticEltwiseNHWC attributes {config.arch = #config.arch_kind<NPU40XX>, 
   // CHECK:   func.func private @main1(memref<1x90x1000x16xf16>, memref<1x90x1000x16xf16>) -> memref<1x90x1000x16xf16>
   // CHECK:   }
   // CHECK:   func.func @main([[ARG_0:%[^:]+]]: memref<1x720x1000x16xf16>, [[ARG_1:%[^:]+]]: memref<1x720x1000x16xf16>) -> memref<1x720x1000x16xf16> {
-  // CHECK:   [[IN0:%.+]] = builtin.unrealized_conversion_cast %subview : memref<1x90x1000x16xf16, strided<[11520000, 16000, 16, 1], offset: ?>> to memref<1x90x1000x16xf16>
-  // CHECK:   [[OUT0:%.+]] = builtin.unrealized_conversion_cast %subview_0 : memref<1x90x1000x16xf16, strided<[11520000, 16000, 16, 1], offset: ?>> to memref<1x90x1000x16xf16>
-  // CHECK:   [[RESULT:%.+]] = Core.NestedCall @OneDMAWithoutAttributes::@main1([[IN0]], %4) : (memref<1x90x1000x16xf16>, memref<1x90x1000x16xf16>) -> memref<1x90x1000x16xf16>
+  // CHECK:   [[IN0:%.+]] = builtin.unrealized_conversion_cast {{%[^:]+}}: memref<1x90x1000x16xf16, strided<[11520000, 16000, 16, 1], offset: ?>> to memref<1x90x1000x16xf16>
+  // CHECK:   [[OUT0:%.+]] = builtin.unrealized_conversion_cast {{%[^:]+}}: memref<1x90x1000x16xf16, strided<[11520000, 16000, 16, 1], offset: ?>> to memref<1x90x1000x16xf16>
+  // CHECK:   [[RESULT:%.+]] = Core.NestedCall @OneDMAWithoutAttributes::@main1([[IN0]], [[OUT0]]) : (memref<1x90x1000x16xf16>, memref<1x90x1000x16xf16>) -> memref<1x90x1000x16xf16>
   // CHECK:   async.yield [[OUT0]] : memref<1x90x1000x16xf16>
 }

@@ -194,12 +194,13 @@ mlir::LogicalResult SymbolizationPattern<SourceOp>::matchAndRewrite(SourceOp op,
     }
 
     auto symbol = moveOpToSection(symRes.newOp, *_sectionMap, rewriter);
-    if (symbol != mlir::SymbolRefAttr()) {
+    if (symbol != nullptr) {
         (*_mapper)[op.getResult()] = symbol;
-    }
-    for (auto& attr : symRes.refsToUpdate) {
-        symRes.newOp->setAttr(
-                attr, ELF::cloneSectionSymbol(symbol, mlir::cast<mlir::SymbolRefAttr>(symRes.newOp->getAttr(attr))));
+
+        for (auto& attr : symRes.refsToUpdate) {
+            symRes.newOp->setAttr(attr, ELF::cloneSectionSymbol(
+                                                symbol, mlir::cast<mlir::SymbolRefAttr>(symRes.newOp->getAttr(attr))));
+        }
     }
 
     return mlir::success();

@@ -159,91 +159,12 @@ mlir::SymbolRefAttr NPUReg50XX::NNDMAOp::getOutputSymbol() {
     return mlir::cast<mlir::SymbolRefAttr>(getOutputBuffs()[0]);
 }
 
-vpux::Byte NPUReg50XX::NNDMAOp::getStrideValue(size_t strideIdx, bool isInput) {
-    auto descriptor = getProperties().getDescriptor();
-    uint32_t strideValue = 0;
-    switch (strideIdx) {
-    case 0: {
-        strideValue =
-                isInput ? descriptor.read<Fields::dma_stride_src_1>() : descriptor.read<Fields::dma_stride_dst_1>();
-        break;
-    }
-    case 1: {
-        strideValue =
-                isInput ? descriptor.read<Fields::dma_stride_src_2>() : descriptor.read<Fields::dma_stride_dst_2>();
-        break;
-    }
-    case 2: {
-        strideValue =
-                isInput ? descriptor.read<Fields::dma_stride_src_3>() : descriptor.read<Fields::dma_stride_dst_3>();
-        break;
-    }
-    case 3: {
-        strideValue =
-                isInput ? descriptor.read<Fields::dma_stride_src_4>() : descriptor.read<Fields::dma_stride_dst_4>();
-        break;
-    }
-    case 4: {
-        strideValue =
-                isInput ? descriptor.read<Fields::dma_stride_src_5>() : descriptor.read<Fields::dma_stride_dst_5>();
-        break;
-    }
-    default:
-        VPUX_THROW("stride index {0} out of bounds", strideIdx);
-        break;
-    }
-
-    return vpux::Byte(strideValue);
-}
-
-uint32_t NPUReg50XX::NNDMAOp::getShapeValue(size_t shapeIdx, bool isInput) {
-    auto descriptor = getProperties().getDescriptor();
-    uint32_t shapeValue = 0;
-    switch (shapeIdx) {
-    case 0: {
-        shapeValue = isInput ? descriptor.read<Fields::dma_dim_size_src_1>() + 1
-                             : descriptor.read<Fields::dma_dim_size_dst_1>() + 1;
-        break;
-    }
-    case 1: {
-        shapeValue = isInput ? descriptor.read<Fields::dma_dim_size_src_2>() + 1
-                             : descriptor.read<Fields::dma_dim_size_dst_2>() + 1;
-        break;
-    }
-    case 2: {
-        shapeValue = isInput ? descriptor.read<Fields::dma_dim_size_src_3>() + 1
-                             : descriptor.read<Fields::dma_dim_size_dst_3>() + 1;
-        break;
-    }
-    case 3: {
-        shapeValue = isInput ? descriptor.read<Fields::dma_dim_size_src_4>() + 1
-                             : descriptor.read<Fields::dma_dim_size_dst_4>() + 1;
-        break;
-    }
-    case 4: {
-        shapeValue = isInput ? descriptor.read<Fields::dma_dim_size_src_5>() + 1
-                             : descriptor.read<Fields::dma_dim_size_dst_5>() + 1;
-        break;
-    }
-    default:
-        VPUX_THROW("shape index {0} out of bounds", shapeIdx);
-        break;
-    }
-
-    return shapeValue;
-}
-
-int64_t NPUReg50XX::NNDMAOp::getWidthValue(bool isInput) {
-    auto descriptor = getProperties().getDescriptor();
-    return isInput ? descriptor.read<Fields::dma_width_src>() : descriptor.read<Fields::dma_width_dst>();
-}
-
 void NPUReg50XX::NNDMAOp::build(mlir::OpBuilder&, mlir::OperationState& state, mlir::StringAttr symName,
                                 vpux::NPUReg50XX::Descriptors::DMARegister&& descriptor, mlir::SymbolRefAttr input,
                                 mlir::ArrayAttr outputBuffs, mlir::SymbolRefAttr nextLink,
                                 mlir::SymbolRefAttr actCompressionSizeEntry,
                                 mlir::SymbolRefAttr actCompressionSparsityMap, mlir::SymbolRefAttr indices,
-                                VPUIP::GatherAddressingModeAttr addressingMode) {
+                                VPUIP::GatherAddressingModeAttr addressingMode, mlir::SymbolRefAttr taskLocation) {
     auto& props = state.getOrAddProperties<Properties>();
 
     props.sym_name = symName;
@@ -255,4 +176,5 @@ void NPUReg50XX::NNDMAOp::build(mlir::OpBuilder&, mlir::OperationState& state, m
     props.act_compression_sparsity_map = actCompressionSparsityMap;
     props.indices = indices;
     props.addressing_mode = addressingMode;
+    props.task_location = taskLocation;
 }

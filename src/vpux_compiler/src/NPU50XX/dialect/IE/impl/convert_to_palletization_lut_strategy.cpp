@@ -4,6 +4,8 @@
 //
 
 #include "vpux/compiler/NPU50XX/dialect/IE/impl/convert_to_palletization_lut_strategy.hpp"
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"
+#include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/IE/interfaces/common_rewriters/convert_to_palletization_lut.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
@@ -25,7 +27,8 @@ mlir::quant::QuantizedType changeWeightTypeToLUT(mlir::quant::QuantizedType orig
 
     const bool isActFp16 = actType.isF16();
     const bool isActFp8 = isFloat8Quantized(actType);
-    if (!(isActFp16 || isActFp8)) {
+    const bool isActInt8 = isInt8Quantized(actType);
+    if (!(isActFp16 || isActFp8 || isActInt8)) {
         return nullptr;
     }
 
@@ -33,7 +36,7 @@ mlir::quant::QuantizedType changeWeightTypeToLUT(mlir::quant::QuantizedType orig
     const auto bitWidth = storageTypeInt.getWidth();
     VPUX_THROW_UNLESS(bitWidth > 0 && bitWidth <= 4, "Unsupported bitWidth '{0}'", bitWidth);
 
-    const auto getShiftedLUTUniformType = [isActFp16,
+    const auto getShiftedLUTUniformType = [isActFp16, isActInt8,
                                            bitWidth](mlir::quant::QuantizedType wgtType) -> SmallVector<double> {
         // The legality checks on the weight type ensure that in case of PerAxis quantized types, all the zp have
         // the same value, so we can just take the head zero point
@@ -54,7 +57,7 @@ mlir::quant::QuantizedType changeWeightTypeToLUT(mlir::quant::QuantizedType orig
 
         // Interpreting integer weights with their unsigned encodings (for instance -7 i4 is 4'b1001,
         // which can be interpreted as 9 as u4 and used as an unsigned index to the LUT)
-        if (isActFp16) {
+        if (isActFp16 || isActInt8) {
             for (int64_t wgtVal = originalWeightStorageTypeMin; wgtVal <= originalWeightStorageTypeMax; ++wgtVal) {
                 const unsigned unsignedTableIdx = static_cast<unsigned>(wgtVal & bitMask);
                 quantileLUT[unsignedTableIdx] = static_cast<double>(wgtVal - zeroPoint);
@@ -80,24 +83,30 @@ mlir::quant::QuantizedType changeWeightTypeToLUT(mlir::quant::QuantizedType orig
     // representation of values around 0 (and all integers between -16 and +16 can be represented)
     // In both u4 and i4 wgt storageType, the range of possible values when subtracting (wgt - zp) goes from
     // -15 to +16 which is fully representable in F8E4M3FN format
-    mlir::FloatType newQuantileType;
+    mlir::Type newQuantileType;
     if (isActFp16) {
         newQuantileType = mlir::Float16Type::get(ctx);
-    } else {
+    } else if (isActFp8) {
         newQuantileType = mlir::Float8E4M3FNType::get(ctx);
+    } else if (isActInt8) {
+        newQuantileType = mlir::IntegerType::get(ctx, 8, mlir::IntegerType::Signed);
+    } else {
+        VPUX_THROW("Unsupported activation type '{0}'", actType);
     }
 
     if (const auto uniformType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(originWeightType)) {
-        return mlir::quant::QuantileQuantizedType::get(0, newStorageIntegerType, newQuantileType,
-                                                       uniformType.getExpressedType(),
-                                                       getShiftedLUTUniformType(uniformType), uniformType.getScale(),
-                                                       /*zp=*/0, newStorageIntegerTypeMin, newStorageIntegerTypeMax);
+        const auto newStorageQuantileType = vpux::type::QuantileType::get(ctx, newStorageIntegerType, newQuantileType,
+                                                                          getShiftedLUTUniformType(uniformType));
+        return mlir::quant::UniformQuantizedType::get(0, newStorageQuantileType, uniformType.getExpressedType(),
+                                                      uniformType.getScale(), 0, newStorageIntegerTypeMin,
+                                                      newStorageIntegerTypeMax);
 
     } else if (const auto perAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(originWeightType)) {
+        const auto newStorageQuantileType = vpux::type::QuantileType::get(ctx, newStorageIntegerType, newQuantileType,
+                                                                          getShiftedLUTUniformType(perAxisType));
         const SmallVector<int64_t> newZeroPoints(perAxisType.getZeroPoints().size(), 0);
-        return mlir::quant::QuantileQuantizedPerAxisType::get(
-                0, newStorageIntegerType, newQuantileType, perAxisType.getExpressedType(),
-                getShiftedLUTUniformType(perAxisType), perAxisType.getScales(), newZeroPoints,
+        return mlir::quant::UniformQuantizedPerAxisType::get(
+                0, newStorageQuantileType, perAxisType.getExpressedType(), perAxisType.getScales(), newZeroPoints,
                 perAxisType.getQuantizedDimension(), newStorageIntegerTypeMin, newStorageIntegerTypeMax);
     }
 
@@ -117,8 +126,8 @@ void ConvertToPalletizationLUTStrategy::addPatterns(mlir::RewritePatternSet& pat
 }
 
 bool isLegalOp(mlir::Operation* convOp) {
-    // only fp16 and quant.uniform<f8E4M3FN:..., ...> or quant.uniform<f8E5M2:..., ...> are supported as activations
-    // types for this pass
+    // only fp16 and quant.uniform<f8E4M3FN:..., ...> or quant.uniform<f8E5M2:..., ...>  or quant.uniform<i8:..., ...>
+    // are supported as activations types for this pass
     auto inputDequantOp = mlir::dyn_cast_or_null<IE::DequantizeOp>(convOp->getOperand(0).getDefiningOp());
     const auto actType =
             inputDequantOp == nullptr
@@ -127,8 +136,9 @@ bool isLegalOp(mlir::Operation* convOp) {
 
     const bool isActFp16 = actType.isF16();
     const bool isActFp8 = isFloat8Quantized(actType);
+    const bool isActInt8 = isInt8Quantized(actType);
 
-    if (!(isActFp16 || isActFp8)) {
+    if (!(isActFp16 || isActFp8 || isActInt8)) {
         return true;
     }
     auto filterOp = convOp->getOperand(1).getDefiningOp<IE::DequantizeOp>();

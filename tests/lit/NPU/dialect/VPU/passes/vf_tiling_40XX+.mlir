@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --vertical-fusion-tiling %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW" --vertical-fusion-tiling %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -146,8 +146,7 @@ func.func @TileEltwiseChain(%arg0: tensor<1x64x56x56xf16, {order = #NHWC}>) -> t
     return %0 : tensor<1x256x56x56xf16, {order = #NHWC}>
 
 
-    // CHECK: [[SLICEARG0TILE0:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 0, 0] [1, 64, 56, 31]
-    // CHECK: [[SLICE0TILE0:%.+]] = VPU.Slice [[SLICEARG0TILE0]] [0, 0, 0, 0] [1, 64, 56, 30]
+    // CHECK: [[SLICE0TILE0:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 0, 0] [1, 64, 56, 30]
     // CHECK: [[CONV0TILE0:%.+]] = VPU.NCE.Convolution([[SLICE0TILE0]]
     // CHECK: [[SLICE1ARG0TILE0:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 0, 0] [1, 64, 56, 31]
     // CHECK: [[CONV1TILE0:%.+]] = VPU.NCE.Convolution([[SLICE1ARG0TILE0]],
@@ -165,8 +164,7 @@ func.func @TileEltwiseChain(%arg0: tensor<1x64x56x56xf16, {order = #NHWC}>) -> t
     // CHECK: [[SLICE1TILE0:%.+]] = VPU.Slice [[ELTWISE1TILE0]] [0, 0, 0, 0] [1, 256, 56, 28]
     // CHECK: [[ELTWISE2TILE0:%.+]] = VPU.NCE.Eltwise([[CONV9TILE0]], [[SLICE1TILE0]])
 
-    // CHECK: [[SLICEARG0TILE1:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 0, 25] [1, 64, 56, 31]
-    // CHECK: [[SLICE0TILE1:%.+]] = VPU.Slice [[SLICEARG0TILE1]] [0, 0, 0, 1] [1, 64, 56, 30]
+    // CHECK: [[SLICE0TILE1:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 0, 26] [1, 64, 56, 30]
     // CHECK: [[CONV0TILE1:%.+]] = VPU.NCE.Convolution([[SLICE0TILE1]]
     // CHECK: [[SLICE1ARG0TILE1:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 0, 25] [1, 64, 56, 31]
     // CHECK: [[CONV1TILE1:%.+]] = VPU.NCE.Convolution([[SLICE1ARG0TILE1]],
@@ -251,8 +249,7 @@ func.func @main(%arg0: tensor<1x128x68x120xf16, {order = #NHWC}>, %arg1: tensor<
     // CHECK: [[SLICE_ARG0_0:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 0, 0] [1, 128, 68, 27]
     // CHECK: VPU.NCE.Convolution
     // CHECK: [[CONV_1:%.+]] = VPU.NCE.Convolution
-    // CHECK: [[SLICE_ARG0_1:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 0, 0] [1, 128, 68, 27]
-    // CHECK: [[SLICE_0:%.+]] = VPU.Slice [[SLICE_ARG0_1]] [0, 0, 0, 0] [1, 128, 68, 26]
+    // CHECK: [[SLICE_0:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 0, 0] [1, 128, 68, 26]
     // CHECK: [[ELTWISE_0:%.+]] = VPU.NCE.Eltwise([[CONV_1]], [[SLICE_0]])
     // CHECK: [[GROUP_SPARSE_0:%.+]] = VPU.GroupSparseTensor([[ELTWISE_0]]
     // CHECK: [[CONV_2:%.+]] = VPU.NCE.Convolution([[GROUP_SPARSE_0]]

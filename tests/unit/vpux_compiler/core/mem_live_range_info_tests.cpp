@@ -54,7 +54,7 @@ TEST_F(MLIR_MemLiveRangeInfo, GetInputOutputAndAllBuffers) {
                 %t2, %r2:2 = async.execute [%t0] (%r0 as %arg0 : !async.value<memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 0]>>)
                         -> (!async.value<memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 1]>>, !async.value<memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 2]>>)
                         attributes {VPUIP.executor = @DPU, VPUIP.num_units = 1 : i64, "async-deps-index" = 2 : i64} {
-                    %1 = VPUIP.NCEClusterTask <{
+                    %1 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
                             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                             kernel_size = [1, 1],
                             kernel_strides = [1, 1],
@@ -71,7 +71,7 @@ TEST_F(MLIR_MemLiveRangeInfo, GetInputOutputAndAllBuffers) {
                         }
                         PPE : {
                         }
-                    %2 = VPUIP.NCEClusterTask <{
+                    %2 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
                             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                             kernel_size = [1, 1],
                             kernel_strides = [1, 1],
@@ -93,7 +93,7 @@ TEST_F(MLIR_MemLiveRangeInfo, GetInputOutputAndAllBuffers) {
 
                 %t3, %r3 = async.execute [%t1, %t2] (%r2#0 as %arg0 : !async.value<memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 1]>>, %r1 as %arg1 : !async.value<memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 3]>>)
                         -> !async.value<memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 4]>> attributes {VPUIP.executor = @DPU, VPUIP.num_units = 1 : i64, "async-deps-index" = 3 : i64} {
-                    %0 = VPUIP.NCEClusterTask <{
+                    %0 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
                             task_type = #VPUIP.nce_task_type<ELTWISE>
                         }>
                         input(%arg0 : memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 1]>)
@@ -113,7 +113,7 @@ TEST_F(MLIR_MemLiveRangeInfo, GetInputOutputAndAllBuffers) {
 
                 %t4, %r4 = async.execute [%t1, %t3] (%r2#1 as %arg0 : !async.value<memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 2]>>, %r3 as %arg1 : !async.value<memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 4]>>)
                         -> !async.value<memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 5]>> attributes {VPUIP.executor = @DPU, VPUIP.num_units = 1 : i64, "async-deps-index" = 4 : i64} {
-                    %0 = VPUIP.NCEClusterTask <{
+                    %0 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
                             task_type = #VPUIP.nce_task_type<ELTWISE>
                         }>
                         input(%arg0 : memref<1x32x96x96xf16, #NHWC, [@CMX_NN, 2]>)
@@ -360,4 +360,194 @@ TEST_F(MLIR_MemLiveRangeInfo, IsBufferUsedByOp) {
     EXPECT_TRUE(liveRangeInfo.isBufferUsedByOp(buf0, execOps[1])) << "buf0 should be used by second exec op (as input)";
     EXPECT_FALSE(liveRangeInfo.isBufferUsedByOp(buf1, execOps[0])) << "buf1 should NOT be used by first exec op";
     EXPECT_TRUE(liveRangeInfo.isBufferUsedByOp(buf1, execOps[1])) << "buf1 should be used by second exec op";
+}
+
+TEST_F(MLIR_MemLiveRangeInfo, HasRemainingUsers_ReturnsTrueWhenUsersExist) {
+    mlir::MLIRContext ctx(registry);
+    ctx.loadDialect<vpux::VPUIP::VPUIPDialect>();
+
+    constexpr StringLiteral inputIR = R"(
+        #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+        module @test {
+            func.func @main(%arg0: memref<1x16x32x32xf16, #NHWC>) -> memref<1x16x32x32xf16, #NHWC> {
+                %buf0 = memref.alloc() : memref<1x16x32x32xf16, #NHWC>
+                %buf1 = memref.alloc() : memref<1x16x32x32xf16, #NHWC>
+
+                %token_0, %result_0 = async.execute -> !async.value<memref<1x16x32x32xf16, #NHWC>>
+                        attributes {VPUIP.executor = @DMA_NN} {
+                    %0 = VPUIP.NNDMA inputs(%arg0 : memref<1x16x32x32xf16, #NHWC>)
+                                     outputs(%buf0 : memref<1x16x32x32xf16, #NHWC>)
+                        -> memref<1x16x32x32xf16, #NHWC>
+                    async.yield %0 : memref<1x16x32x32xf16, #NHWC>
+                }
+
+                %token_1, %result_1 = async.execute [%token_0]
+                        (%result_0 as %input: !async.value<memref<1x16x32x32xf16, #NHWC>>)
+                        -> !async.value<memref<1x16x32x32xf16, #NHWC>>
+                        attributes {VPUIP.executor = @DMA_NN} {
+                    %0 = VPUIP.NNDMA inputs(%input : memref<1x16x32x32xf16, #NHWC>)
+                                     outputs(%buf1 : memref<1x16x32x32xf16, #NHWC>)
+                        -> memref<1x16x32x32xf16, #NHWC>
+                    async.yield %0 : memref<1x16x32x32xf16, #NHWC>
+                }
+
+                %final_result = async.await %result_1 : !async.value<memref<1x16x32x32xf16, #NHWC>>
+                return %final_result : memref<1x16x32x32xf16, #NHWC>
+            }
+        }
+    )";
+
+    auto module = mlir::parseSourceString<mlir::ModuleOp>(inputIR, &ctx);
+    ASSERT_TRUE(module.get() != nullptr);
+
+    auto func = module.get().lookupSymbol<mlir::func::FuncOp>("main");
+    ASSERT_TRUE(func != nullptr);
+
+    vpux::AliasesInfo aliasInfo(func);
+    vpux::MemLiveRangeInfo liveRangeInfo(func, aliasInfo);
+
+    mlir::Value buf0;
+    func.walk([&](mlir::memref::AllocOp allocOp) {
+        if (!buf0) {
+            buf0 = allocOp.getResult();
+        }
+    });
+    ASSERT_TRUE(buf0);
+
+    // buf0 is used by both exec ops (written by first, read by second)
+    EXPECT_TRUE(liveRangeInfo.hasRemainingUsers(buf0)) << "buf0 should have remaining users";
+}
+
+TEST_F(MLIR_MemLiveRangeInfo, HasRemainingUsers_ReturnsFalseAfterAllErased) {
+    mlir::MLIRContext ctx(registry);
+    ctx.loadDialect<vpux::VPUIP::VPUIPDialect>();
+
+    constexpr StringLiteral inputIR = R"(
+        #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+        module @test {
+            func.func @main(%arg0: memref<1x16x32x32xf16, #NHWC>) -> memref<1x16x32x32xf16, #NHWC> {
+                %buf0 = memref.alloc() : memref<1x16x32x32xf16, #NHWC>
+                %buf1 = memref.alloc() : memref<1x16x32x32xf16, #NHWC>
+
+                %token_0, %result_0 = async.execute -> !async.value<memref<1x16x32x32xf16, #NHWC>>
+                        attributes {VPUIP.executor = @DMA_NN} {
+                    %0 = VPUIP.NNDMA inputs(%arg0 : memref<1x16x32x32xf16, #NHWC>)
+                                     outputs(%buf0 : memref<1x16x32x32xf16, #NHWC>)
+                        -> memref<1x16x32x32xf16, #NHWC>
+                    async.yield %0 : memref<1x16x32x32xf16, #NHWC>
+                }
+
+                %token_1, %result_1 = async.execute [%token_0]
+                        (%result_0 as %input: !async.value<memref<1x16x32x32xf16, #NHWC>>)
+                        -> !async.value<memref<1x16x32x32xf16, #NHWC>>
+                        attributes {VPUIP.executor = @DMA_NN} {
+                    %0 = VPUIP.NNDMA inputs(%input : memref<1x16x32x32xf16, #NHWC>)
+                                     outputs(%buf1 : memref<1x16x32x32xf16, #NHWC>)
+                        -> memref<1x16x32x32xf16, #NHWC>
+                    async.yield %0 : memref<1x16x32x32xf16, #NHWC>
+                }
+
+                %final_result = async.await %result_1 : !async.value<memref<1x16x32x32xf16, #NHWC>>
+                return %final_result : memref<1x16x32x32xf16, #NHWC>
+            }
+        }
+    )";
+
+    auto module = mlir::parseSourceString<mlir::ModuleOp>(inputIR, &ctx);
+    ASSERT_TRUE(module.get() != nullptr);
+
+    auto func = module.get().lookupSymbol<mlir::func::FuncOp>("main");
+    ASSERT_TRUE(func != nullptr);
+
+    vpux::AliasesInfo aliasInfo(func);
+    vpux::MemLiveRangeInfo liveRangeInfo(func, aliasInfo);
+
+    mlir::Value buf0;
+    func.walk([&](mlir::memref::AllocOp allocOp) {
+        if (!buf0) {
+            buf0 = allocOp.getResult();
+        }
+    });
+    ASSERT_TRUE(buf0);
+
+    llvm::SmallVector<mlir::async::ExecuteOp> execOps;
+    func.walk([&](mlir::async::ExecuteOp execOp) {
+        execOps.push_back(execOp);
+    });
+    ASSERT_EQ(execOps.size(), 2);
+
+    // Erase all users of buf0
+    liveRangeInfo.eraseUser(buf0, execOps[0]);
+    liveRangeInfo.eraseUser(buf0, execOps[1]);
+
+    EXPECT_FALSE(liveRangeInfo.hasRemainingUsers(buf0)) << "buf0 should have no remaining users after erasing all";
+}
+
+TEST_F(MLIR_MemLiveRangeInfo, HasRemainingUsers_PartialErase) {
+    mlir::MLIRContext ctx(registry);
+    ctx.loadDialect<vpux::VPUIP::VPUIPDialect>();
+
+    constexpr StringLiteral inputIR = R"(
+        #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+        module @test {
+            func.func @main(%arg0: memref<1x16x32x32xf16, #NHWC>) -> memref<1x16x32x32xf16, #NHWC> {
+                %buf0 = memref.alloc() : memref<1x16x32x32xf16, #NHWC>
+                %buf1 = memref.alloc() : memref<1x16x32x32xf16, #NHWC>
+
+                %token_0, %result_0 = async.execute -> !async.value<memref<1x16x32x32xf16, #NHWC>>
+                        attributes {VPUIP.executor = @DMA_NN} {
+                    %0 = VPUIP.NNDMA inputs(%arg0 : memref<1x16x32x32xf16, #NHWC>)
+                                     outputs(%buf0 : memref<1x16x32x32xf16, #NHWC>)
+                        -> memref<1x16x32x32xf16, #NHWC>
+                    async.yield %0 : memref<1x16x32x32xf16, #NHWC>
+                }
+
+                %token_1, %result_1 = async.execute [%token_0]
+                        (%result_0 as %input: !async.value<memref<1x16x32x32xf16, #NHWC>>)
+                        -> !async.value<memref<1x16x32x32xf16, #NHWC>>
+                        attributes {VPUIP.executor = @DMA_NN} {
+                    %0 = VPUIP.NNDMA inputs(%input : memref<1x16x32x32xf16, #NHWC>)
+                                     outputs(%buf1 : memref<1x16x32x32xf16, #NHWC>)
+                        -> memref<1x16x32x32xf16, #NHWC>
+                    async.yield %0 : memref<1x16x32x32xf16, #NHWC>
+                }
+
+                %final_result = async.await %result_1 : !async.value<memref<1x16x32x32xf16, #NHWC>>
+                return %final_result : memref<1x16x32x32xf16, #NHWC>
+            }
+        }
+    )";
+
+    auto module = mlir::parseSourceString<mlir::ModuleOp>(inputIR, &ctx);
+    ASSERT_TRUE(module.get() != nullptr);
+
+    auto func = module.get().lookupSymbol<mlir::func::FuncOp>("main");
+    ASSERT_TRUE(func != nullptr);
+
+    vpux::AliasesInfo aliasInfo(func);
+    vpux::MemLiveRangeInfo liveRangeInfo(func, aliasInfo);
+
+    mlir::Value buf0;
+    func.walk([&](mlir::memref::AllocOp allocOp) {
+        if (!buf0) {
+            buf0 = allocOp.getResult();
+        }
+    });
+    ASSERT_TRUE(buf0);
+
+    llvm::SmallVector<mlir::async::ExecuteOp> execOps;
+    func.walk([&](mlir::async::ExecuteOp execOp) {
+        execOps.push_back(execOp);
+    });
+    ASSERT_EQ(execOps.size(), 2);
+
+    // Erase only one user
+    liveRangeInfo.eraseUser(buf0, execOps[0]);
+
+    // Still has the second user
+    EXPECT_TRUE(liveRangeInfo.hasRemainingUsers(buf0)) << "buf0 should still have remaining users after partial erase";
+
+    // Erase second user
+    liveRangeInfo.eraseUser(buf0, execOps[1]);
+    EXPECT_FALSE(liveRangeInfo.hasRemainingUsers(buf0)) << "buf0 should have no remaining users after full erase";
 }

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --deduce-dynamic-mi %s | FileCheck %s
-// REQUIRES: dev-build && arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --deduce-dynamic-mi %s | FileCheck %s
+// REQUIRES: dev-build && platform-NPU5010
 
 module @setDynMi {
   net.NetworkInfo entryPoint : @main inputsInfo : {
@@ -13,7 +13,7 @@ module @setDynMi {
     DataInfo "output_0" : tensor<1x2x3x4xf16>
   }
   func.func @main() {
-    ELF.Main @ELFMain {
+    ELF.Main {
       ELF.CreateSection @note.MappedInferenceVersion aligned(64) secType(SHT_NOTE) secFlags("SHF_NONE") secLocation(<DDR>) {
         NPUReg50XX.MappedInferenceVersion(11 _ 5 _ 0) {sym_name = "MappedInferenceVersion_0_0"}
       }

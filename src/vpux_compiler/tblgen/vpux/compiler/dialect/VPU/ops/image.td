@@ -129,6 +129,7 @@ def VPU_InterpolateOp :
                 DeclareOpInterfaceMethods<VPU_TilingBuilderOpInterface>,
                 DeclareOpInterfaceMethods<VPU_SWOpInterface>,
                 DeclareOpInterfaceMethods<VPU_ClusteredOpInterface>,
+                DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>,
                 AttrSizedOperandSegments,
                 DeclareOpInterfaceMethods<VPU_VerticalFusionOpInterface>
             ]
@@ -195,6 +196,54 @@ def VPU_InterpolateOp :
 
     let elemComparisonModes = [IE_TypeComparisonMode_ALLOW_MIXED_PRECISION, IE_TypeComparisonMode_ALLOW_DIFFERENT_QUANT,
                                IE_TypeComparisonMode_ALLOW_GROUPED_OUTPUT, IE_TypeComparisonMode_ALLOW_DISTRIBUTED_OUTPUT];
+}
+
+def VPU_InterpolateDMAOp :
+        VPU_LayerOp<
+            "InterpolateDMA",
+            [
+                DeclareOpInterfaceMethods<VPU_SWOpInterface>,
+                DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>,
+                AttrSizedOperandSegments,
+                VPU_BoundsRepresentationInterface
+            ]
+        > {
+    let summary = "Interpolate with scale as runtime parameter VPU layer";
+
+    let description = [{
+        Interpolate where scale factors are runtime parameters. Output shape
+        upper bound is derived from INTERPOLATE_SCALES_BOUND. Only spatial axes
+        (H, W) are supported. Data stays in DDR.
+        TODO: SHAVE kernels use DMA to fetch data into CMX. Multi-cluster and
+        multi-shave distribution is handled at runtime by the SHAVE kernel via
+        tile_id and shave_id parameters.
+
+        The \`coordinates\` and \`lambdas\` are pre-allocated buffers that the
+        SHAVE kernel overwrites at runtime with values derived from actual scales.
+    }];
+
+    let arguments = (ins
+        AnyTypeOf<[RankedTensorOf<[UI8, F16, F32, quant_QuantizedType]>, VPU_DistributedTensor]>:$input,
+        AnyTypeOf<[RankedTensorOf<[F16, F32]>, VPU_DistributedTensor]>:$scales,
+        Optional<AnyTypeOf<[RankedTensorOf<[SI32]>, VPU_DistributedTensor]>>:$coordinates,
+        Optional<AnyTypeOf<[RankedTensorOf<[F16]>, VPU_DistributedTensor]>>:$lambdas,
+
+        I64ArrayAttr:$axes_attr,
+        IE_InterpolateAttr:$attr,
+
+        DefaultValuedAttr<VPU_BoundsRepresentationAttr, "vpux::VPU::BoundsRepresentation::BOUNDS">:$bounds_representation
+    );
+
+    let results = (outs
+        AnyTypeOf<[RankedTensorOf<[UI8, F16, F32, quant_QuantizedType]>, VPU_DistributedTensor]>:$output
+    );
+
+    let extraClassDeclaration = [{
+        bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers, Byte reservedMem);
+        bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers);
+    }] # baseExtraClassDeclaration;
+
+    let elemComparisonModes = [IE_TypeComparisonMode_ALLOW_MIXED_PRECISION, IE_TypeComparisonMode_ALLOW_DIFFERENT_QUANT];
 }
 
 
@@ -278,7 +327,8 @@ def VPU_YuvToRgbOp :
                 DeclareOpInterfaceMethods<VPU_TilingBuilderOpInterface>,
                 AttrSizedOperandSegments,
                 DeclareOpInterfaceMethods<VPU_SWOpInterface>,
-                DeclareOpInterfaceMethods<VPU_ClusteredOpInterface>
+                DeclareOpInterfaceMethods<VPU_ClusteredOpInterface>,
+                DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>
             ]
         > {
     let summary = "InferenceEngine NV12/I420 to RGB/BGR layer";
@@ -290,6 +340,7 @@ def VPU_YuvToRgbOp :
 
         IE_ColorFmtAttr:$inFmt,
         IE_ColorFmtAttr:$outFmt,
+        OptionalAttr<F32Attr>:$scale,
 
         OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy
     );
@@ -304,20 +355,23 @@ def VPU_YuvToRgbOp :
             "::mlir::Value":$input2,
             "::mlir::Value":$input3,
             "vpux::IE::ColorFmtAttr":$inFmt,
-            "vpux::IE::ColorFmtAttr":$outFmt
+            "vpux::IE::ColorFmtAttr":$outFmt,
+            "::mlir::FloatAttr":$scale
         )>,
 
         OpBuilder<(ins
             "::mlir::Value":$input1,
             "::mlir::Value":$input2,
             "vpux::IE::ColorFmtAttr":$inFmt,
-            "vpux::IE::ColorFmtAttr":$outFmt
+            "vpux::IE::ColorFmtAttr":$outFmt,
+            "::mlir::FloatAttr":$scale
         )>,
 
         OpBuilder<(ins
             "::mlir::Value":$input1,
             "vpux::IE::ColorFmtAttr":$inFmt,
-            "vpux::IE::ColorFmtAttr":$outFmt
+            "vpux::IE::ColorFmtAttr":$outFmt,
+            "::mlir::FloatAttr":$scale
         )>,
     ];
 

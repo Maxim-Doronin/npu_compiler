@@ -138,6 +138,10 @@ INSTANTIATE_TEST_SUITE_P(smoke_MatMulMixedPrecisionOneICSplitOneOCSplit, MatMulM
 
 class MatMulMixedPrecisionTestOutputQuantized : public MatMulMixedPrecisionTestCommon {
 public:
+    void configure_model() override {
+        configuration[ov::intel_npu::compilation_mode_params.name()] = "fuse-outstanding-dequant=false";
+    }
+
     void SetUp() override {
         const auto inputShape = std::get<0>(GetParam());
         const auto weightsShape = std::get<1>(GetParam());

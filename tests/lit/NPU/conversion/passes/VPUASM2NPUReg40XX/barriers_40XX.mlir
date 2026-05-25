@@ -3,10 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --convert-VPUASM-to-NPUReg40XX %s | FileCheck %s
-// REQUIRES: dev-build && arch-NPU40XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --convert-VPUASM-to-NPUReg40XX %s | FileCheck %s
+// REQUIRES: dev-build && platform-NPU4000
 
-module @OneDMAWithoutAttributes attributes {config.arch = #config.arch_kind<NPU40XX>} {
+module @OneDMAWithoutAttributes attributes {config.platform = #config.platform<NPU4000>} {
   config.ExecutorResource 1 of @M2I
   config.ExecutorResource 1 of @DMA_NN
   config.Resources 6 of @NCE at 6.000000e+02 MHz
@@ -16,7 +16,7 @@ module @OneDMAWithoutAttributes attributes {config.arch = #config.arch_kind<NPU4
     DataInfo "output_0" : tensor<1x2x3x4xf16>
   }
   func.func @main() {
-    ELF.Main @ELFMain {
+    ELF.Main {
       VPUASM.ConfigureBarrier @ConfigureBarrier_0_0 idx(!VPURegMapped.Index<0:0:0>) workItemIdx(!VPURegMapped.Index<0:0:0>) (0) => (-1) counts(3 : 1)
       VPUASM.ConfigureBarrier @ConfigureBarrier_0_1 idx(!VPURegMapped.Index<0:0:1>) (17) => (12) counts(34 : 43)
       VPUASM.ManagedBarrier @ConfigureBarrier_0_2 idx(!VPURegMapped.Index<0:0:2>) workItemIdx(!VPURegMapped.Index<0:0:999>) (0) => (-1) counts(4 : 5)

@@ -710,7 +710,7 @@ def VPU_ReverseOp :
         VPU_LayerOp<
             "Reverse",
             [
-                DeclareOpInterfaceMethods<VPU_TilingBuilderOpInterface>,
+                DeclareOpInterfaceMethods<VPU_TilingBuilderOpInterface, ["getMaxNumTiles"]>,
                 DeclareOpInterfaceMethods<VPU_SWOpInterface>,
                 DeclareOpInterfaceMethods<VPU_ClusteredOpInterface, ["isOperationSplitOverBatchCompatible"]>
             ]
@@ -751,7 +751,7 @@ def VPU_ReverseSequenceOp :
         VPU_LayerOp<
             "ReverseSequence",
             [
-                DeclareOpInterfaceMethods<VPU_TilingBuilderOpInterface>,
+                DeclareOpInterfaceMethods<VPU_TilingBuilderOpInterface, ["getMaxNumTiles"]>,
                 DeclareOpInterfaceMethods<VPU_SWOpInterface>,
                 DeclareOpInterfaceMethods<VPU_ClusteredOpInterface>
             ]
@@ -918,7 +918,8 @@ def VPU_SliceOp :
             "Slice",
             [
                 VPU_ViewLikeOpInterface,
-                DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>
+                DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>,
+                DeclareOpInterfaceMethods<VPU_TilingViewLikeOpInterface>
             ]
         > {
     let summary = "Extract single slice from ranked tensor or distributed tensor";
@@ -954,6 +955,7 @@ def VPU_SliceOp :
 
     let extraClassDeclaration = [{
                 mlir::Value getSource() { return getInput(); }
+                bool isVFSupported();
     }] # baseExtraClassDeclaration;
 }
 

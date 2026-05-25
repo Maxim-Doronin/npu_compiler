@@ -12,7 +12,7 @@
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
-#include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Transforms/WalkPatternRewriteDriver.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_CONVERTSPACE2DEPTHLAYER
@@ -57,6 +57,11 @@ private:
 
 mlir::LogicalResult ConvertSpace2DepthLayerPass::Space2DepthLayerConverter::matchAndRewrite(
         IE::SpaceToDepthOp origOp, mlir::PatternRewriter& rewriter) const {
+    const bool canSkipConversion = VPUIP::isLegalAndBeneficialConvertToDMA(origOp.getOperation(), _log);
+    if (canSkipConversion) {
+        return mlir::failure();
+    }
+
     const auto ctx = rewriter.getContext();
 
     const auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
@@ -134,21 +139,10 @@ mlir::LogicalResult ConvertSpace2DepthLayerPass::Space2DepthLayerConverter::matc
 void ConvertSpace2DepthLayerPass::safeRunOnFunc() {
     auto& ctx = getContext();
 
-    auto func = getOperation();
-
-    mlir::ConversionTarget target(ctx);
-    target.addDynamicallyLegalOp<IE::SpaceToDepthOp>([&](IE::SpaceToDepthOp spaceToDepthOp) {
-        return VPUIP::isLegalAndBeneficialConvertToDMA(spaceToDepthOp.getOperation(), _log);
-    });
-    target.addLegalOp<IE::ReshapeOp>();
-    target.addLegalOp<IE::TransposeOp>();
-
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<Space2DepthLayerConverter>(&ctx, _log);
 
-    if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
-        signalPassFailure();
-    }
+    walkAndApplyPatterns(getOperation(), std::move(patterns));
 }
 
 }  // namespace

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --fuse-outstanding-dequant %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --fuse-outstanding-dequant %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 !qElemType = !quant.uniform<u8:f16, 0.0025215686274509803>
 
@@ -743,4 +743,128 @@ func.func @SliceFromBlockArgWithDequantNoRemoval(%arg0: tensor<1x16x48x48x!qElem
   // CHECK-SAME:    tensor<1x16x32x32xf16> -> tensor<1x16x32x32xf16>
 
   // CHECK:       return [[VAL2]] : tensor<1x16x32x32xf16>
+}
+
+// -----
+
+!qElemType = !quant.uniform<u8:f16, 0.39215686274509803>
+
+// CHECK-LABEL: func.func @AvgPoolWithPostOpOutstandingDequantNoRemoval
+// CHECK-SAME:    ([[INPUT:%.+]]: tensor<1x16x16x16xf16>) -> tensor<1x16x8x8xf16>
+func.func @AvgPoolWithPostOpOutstandingDequantNoRemoval(%arg0: tensor<1x16x16x16xf16>) -> tensor<1x16x8x8xf16> {
+  %0 = IE.Quantize(%arg0) {dstElemType = !qElemType} : tensor<1x16x16x16xf16> -> tensor<1x16x16x16x!qElemType>
+  %1 = IE.AvgPool(%0) {exclude_pads, kernel_size = [2, 2], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.Gelu<>, rounding_type = #IE.rounding_type<FLOOR>, strides = [2, 2]} : tensor<1x16x16x16x!qElemType> -> tensor<1x16x8x8x!qElemType>
+  %2 = IE.Dequantize(%1) {dstElemType = f16} : tensor<1x16x8x8x!qElemType> -> tensor<1x16x8x8xf16>
+  return %2 : tensor<1x16x8x8xf16>
+
+  // CHECK:       [[VAL0:%.+]] = IE.Quantize([[INPUT]]) {
+  // CHECK-SAME:    dstElemType = !qElemType
+  // CHECK-SAME:  } : tensor<1x16x16x16xf16> -> tensor<1x16x16x16x!qElemType>
+
+  // CHECK:       [[VAL1:%.+]] = IE.AvgPool([[VAL0]]) {
+  // CHECK-SAME:    exclude_pads, kernel_size = [2, 2], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.Gelu<>, rounding_type = #IE.rounding_type<FLOOR>, strides = [2, 2]
+  // CHECK-SAME:  } : tensor<1x16x16x16x!qElemType> -> tensor<1x16x8x8x!qElemType>
+
+  // CHECK:       [[VAL2:%.+]] = IE.Dequantize([[VAL1]]) {
+  // CHECK-SAME:    dstElemType = f16
+  // CHECK-SAME:  } : tensor<1x16x8x8x!qElemType> -> tensor<1x16x8x8xf16>
+
+  // CHECK:       return [[VAL2]] : tensor<1x16x8x8xf16>
+}
+
+// -----
+
+!qElemType = !quant.uniform<u8:f16, 0.045763225181429994>
+
+// CHECK-LABEL: func.func @ConvWithReluPostOpAndDequantize
+// CHECK-SAME:    ([[INPUT:%.+]]: tensor<151x768x1x1xf16>) -> tensor<151x1536x1x1xf16>
+func.func @ConvWithReluPostOpAndDequantize(%arg0: tensor<151x768x1x1xf16>) -> tensor<151x1536x1x1xf16> {
+  %weights = const.Declare tensor<1536x768x1x1xf16> = dense<1.0> : tensor<1536x768x1x1xf16>
+  %bias = const.Declare tensor<1x1536x1x1xf16> = dense<0.5> : tensor<1x1536x1x1xf16>
+
+  %0 = IE.Convolution(%arg0, %weights, %bias) {
+    dilations = [1, 1],
+    pads_begin = [0, 0],
+    pads_end = [0, 0],
+    post_op = #IE.Relu<>,
+    strides = [1, 1]
+  } : tensor<151x768x1x1xf16>, tensor<1536x768x1x1xf16>, tensor<1x1536x1x1xf16> -> tensor<151x1536x1x1x!qElemType>
+
+  %1 = IE.Dequantize(%0) {
+    dstElemType = f16
+  } : tensor<151x1536x1x1x!qElemType> -> tensor<151x1536x1x1xf16>
+
+  return %1 : tensor<151x1536x1x1xf16>
+
+  // CHECK-DAG:  [[WEIGHTS:%.+]] = const.Declare tensor<1536x768x1x1xf16> = dense<1.000000e+00> :
+  // CHECK-SAME:   tensor<1536x768x1x1xf16>
+  // CHECK-DAG:  [[BIAS:%.+]] = const.Declare tensor<1x1536x1x1xf16> = dense<5.000000e-01> :
+  // CHECK-SAME:   tensor<1x1536x1x1xf16>
+
+  // CHECK:      [[VAL0:%.+]] = IE.Convolution([[INPUT]], [[WEIGHTS]], [[BIAS]]) {
+  // CHECK-SAME:   dilations = [1, 1],
+  // CHECK-SAME:   pads_begin = [0, 0],
+  // CHECK-SAME:   pads_end = [0, 0],
+  // CHECK-SAME:   post_op = #IE.Relu<>,
+  // CHECK-SAME:   strides = [1, 1]
+  // CHECK-SAME: } : tensor<151x768x1x1xf16>, tensor<1536x768x1x1xf16>, tensor<1x1536x1x1xf16> -> tensor<151x1536x1x1xf16>
+
+  // CHECK-NOT:  IE.Dequantize
+  // CHECK:      [[VAL1:%.+]] = IE.ReLU([[VAL0]]) :
+  // CHECK-SAME:   tensor<151x1536x1x1xf16> -> tensor<151x1536x1x1xf16>
+
+  // CHECK:      return [[VAL1]] : tensor<151x1536x1x1xf16>
+}
+
+// -----
+
+!qElemType = !quant.uniform<u8:f16, 0.12009554844276578:255>
+
+// CHECK-LABEL: func.func @MaxPoolDequantize
+// CHECK-SAME:    ([[INPUT:%.+]]: tensor<4x64x200x63x!qElemType>) -> tensor<4x64x1x1xf16>
+func.func @MaxPoolDequantize(%arg0: tensor<4x64x200x63x!qElemType>) -> tensor<4x64x1x1xf16> {
+  %0 = IE.MaxPool(%arg0) {kernel_size = [8, 7], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [8, 7]} : tensor<4x64x200x63x!qElemType> -> tensor<4x64x25x9x!qElemType>
+  %1 = IE.MaxPool(%0) {kernel_size = [5, 9], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [5, 9]} : tensor<4x64x25x9x!qElemType> -> tensor<4x64x5x1x!qElemType>
+  %2 = IE.MaxPool(%1) {kernel_size = [5, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [5, 1]} : tensor<4x64x5x1x!qElemType> -> tensor<4x64x1x1x!qElemType>
+  %3 = IE.Dequantize(%2) {dstElemType = f16} : tensor<4x64x1x1x!qElemType> -> tensor<4x64x1x1xf16>
+
+  return %3 : tensor<4x64x1x1xf16>
+
+  // CHECK:       [[VAL0:%.+]] = IE.MaxPool([[INPUT]]) {
+  // CHECK-SAME:    kernel_size = [8, 7]
+  // CHECK-SAME:  } : tensor<4x64x200x63x!qElemType> -> tensor<4x64x25x9x!qElemType>
+
+  // CHECK:       [[VAL1:%.+]] = IE.MaxPool([[VAL0]]) {
+  // CHECK-SAME:    kernel_size = [5, 9]
+  // CHECK-SAME:  } : tensor<4x64x25x9x!qElemType> -> tensor<4x64x5x1x!qElemType>
+
+  // CHECK:       [[VAL2:%.+]] = IE.MaxPool([[VAL1]]) {
+  // CHECK-SAME:    kernel_size = [5, 1]
+  // CHECK-SAME:  } : tensor<4x64x5x1x!qElemType> -> tensor<4x64x1x1x!qElemType>
+
+  // CHECK:       [[VAL3:%.+]] = IE.Dequantize([[VAL2]]) {
+  // CHECK-SAME:    dstElemType = f16
+  // CHECK-SAME:  } : tensor<4x64x1x1x!qElemType> -> tensor<4x64x1x1xf16>
+
+  // CHECK:       return [[VAL3]] : tensor<4x64x1x1xf16>
+}
+
+// -----
+
+!qElemType = !quant.uniform<i8:f16, 1.000000e+00>
+!qElemType1 = !quant.uniform<u8:f16, 0.012968034837760177:121>
+
+// CHECK-LABEL: func.func @FuseWithClampLowZeroAndOutputNotQuantized
+// CHECK-SAME:    ([[ARG0:%.+]]: tensor<1x384x20x20xf16>) -> tensor<1x384x20x20xf16>
+func.func @FuseWithClampLowZeroAndOutputNotQuantized(%arg0: tensor<1x384x20x20xf16>) -> tensor<1x384x20x20xf16> {
+    %cst = const.Declare tensor<384x384x1x1x!qElemType> = dense<1> : tensor<384x384x1x1xsi8>
+
+    %0 = IE.Convolution(%arg0, %cst) {clamp = {max = 1.671716570854187 : f64, min = 0.0 : f64}, dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x384x20x20xf16>, tensor<384x384x1x1x!qElemType> -> tensor<1x384x20x20x!qElemType1>
+    %1 = IE.Dequantize(%0) {dstElemType = f16} : tensor<1x384x20x20x!qElemType1> -> tensor<1x384x20x20xf16>
+    return %1 : tensor<1x384x20x20xf16>
+
+    // CHECK: [[CST:%.+]] = const.Declare tensor<384x384x1x1x!qElemType> = dense<1> : tensor<384x384x1x1xsi8>
+    // CHECK: [[CONV:%.+]] = IE.Convolution([[ARG0]], [[CST]]) {clamp = {max = 1.671716570854187 : f64, min = 0.000000e+00 : f64}, dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x384x20x20xf16>, tensor<384x384x1x1x!qElemType> -> tensor<1x384x20x20xf16>
+
+    // CHECK: return [[CONV]] : tensor<1x384x20x20xf16>
 }

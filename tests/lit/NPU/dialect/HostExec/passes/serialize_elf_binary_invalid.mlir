@@ -3,15 +3,15 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --vpu-arch=%arch% --serialize-elf-to-binary %s | FileCheck %s
-// REQUIRES: dev-build && (arch-NPU40XX || arch-NPU50XX)
+// RUN: vpux-opt --split-input-file --platform=%platform% --serialize-elf-to-binary %s | FileCheck %s
+// REQUIRES: dev-build && (platform-NPU4000 || platform-NPU5010)
 
 // CHECK-LABEL: @StaticEltwiseNHWC
 // expected-error {{IOBindingsOp not found in module: OneDMAWithoutAttributes}}
 // expected-error@+1 {{Failed to get FuncType: 'main1'}}
 // expected-error@+2 {{Failed to serialize '@OneDMAWithoutAttributes::@main1'}}
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-module @StaticEltwiseNHWC attributes {config.arch = #config.arch_kind<NPU40XX>, config.revisionID = #config.revision_id<REVISION_NONE>, config.compilationMode = #config.compilation_mode<HostCompile>} {
+module @StaticEltwiseNHWC attributes {config.revisionID = #config.revision_id<REVISION_NONE>, config.compilationMode = #config.compilation_mode<HostCompile>} {
   config.PipelineOptions @Options {
     config.Option @config.EnableExtraStaticShapeOps : true
     config.Option @config.EnableAdaptiveStripping : false
@@ -50,7 +50,7 @@ module @StaticEltwiseNHWC attributes {config.arch = #config.arch_kind<NPU40XX>, 
   } outputsInfo : {
     DataInfo "output" : tensor<1x16x720x1000xf16>
   }
-  module @OneDMAWithoutAttributes attributes {config.arch = #config.arch_kind<NPU40XX>, config.revisionID = #config.revision_id<REVISION_NONE>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+  module @OneDMAWithoutAttributes attributes {config.platform = #config.platform<NPU4000>, config.revisionID = #config.revision_id<REVISION_NONE>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
   config.PipelineOptions @Options {
     config.Option @config.EnableExtraStaticShapeOps : true
     config.Option @config.EnableAdaptiveStripping : false
@@ -94,7 +94,7 @@ module @StaticEltwiseNHWC attributes {config.arch = #config.arch_kind<NPU40XX>, 
     }
   }
   func.func @main1() {
-    ELF.Main @ELFMain {
+    ELF.Main {
       ELF.CreateLogicalSection @program.metadata.cmx aligned(1) secType(VPU_SHT_CMX_METADATA) secFlags("SHF_NONE") secLocation(<CMX_NN>) {
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DMA_0_0_0 idx(!VPURegMapped.Index<0:0:0>) <DMA> {offset = 59904 : ui64}
       }

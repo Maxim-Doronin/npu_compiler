@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt %s --split-input-file --init-compiler="vpu-arch=%arch%" --verify-diagnostics
-// REQUIRES: arch-NPU37XX || arch-NPU40XX
+// RUN: vpux-opt %s --split-input-file --init-compiler="platform=%platform%" --verify-diagnostics
+// REQUIRES: platform-NPU3720 || platform-NPU4000
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @NceConvMaxKernelSize

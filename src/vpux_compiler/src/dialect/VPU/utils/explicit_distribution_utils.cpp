@@ -335,16 +335,6 @@ VPU::DistributionInfo VPU::getExplicitDistrNativeForSliceLikeOps(
             "Cannot apply Slice-like Op on input with explicit memory/compute shapes/offsets with DistributionMode {0}",
             mode);
 
-    // For Overlapped, if slice axis is clustering axis, per cluster shapes/offsets need to be computed taking into
-    // consideration Slice/Subview's neighbour ops, which cannot be done with information available here; the calling
-    // pass should fill the correct information in this scenario
-    VPUX_THROW_WHEN(
-            mode == VPU::DistributionMode::OVERLAPPED &&
-                    VPU::isSegmentedOverlappedAxisSameAsSliceAxis(distributionWithProperAlignment.getNumTiles(),
-                                                                  originShape, sliceShape),
-            "Overlapped clustering axis is the same as Slice/Subview axis; cannot infer per cluster shapes/offsets "
-            "without compute op information");
-
     const auto getDistribution = [&](ArrayRef<SmallVector<int64_t>> perClusterShapesAttr,
                                      ArrayRef<SmallVector<int64_t>> perClusterOffsetsAttr) -> VPU::DistributionInfo {
         // Slice/SubviewOp is not a "compute" op, so compute shapes/offsets have no reason to be different
@@ -412,11 +402,10 @@ VPU::DistributionInfo vpux::VPU::getSegmentedExplicitDistrNativeForSliceLikeOps(
         const VPU::DistributionInfo& distribution, ArrayRef<int64_t> sliceOutputShape,
         ArrayRef<SmallVector<int64_t>> explicitShapes) {
     const auto mode = distribution.getDistributionMode();
-    // Explicit DistributedAttr can be inferred in any case that has full tensor
-    // in all cluster (i.e. if mode contains DUPLICATED or MULTICASTED).
-    VPUX_THROW_UNLESS(mode == VPU::DistributionMode::SEGMENTED,
-                      "Cannot get SEGMENTED explicit distribution for Slice-like op with DistributionMode {0}",
-                      distribution.getDistributionMode());
+    // Explicit DistributedAttr can be inferred for tiled modes (SEGMENTED, OVERLAPPED) where the tensor is sliced
+    // across clusters, or for modes with full tensor in all clusters (DUPLICATED, MULTICASTED).
+    VPUX_THROW_UNLESS((mode == VPU::DistributionMode::SEGMENTED || mode == VPU::DistributionMode::OVERLAPPED),
+                      "Cannot get explicit distribution for Slice-like op with DistributionMode {0}", mode);
 
     auto hasSameDimSize = llvm::all_of(explicitShapes, [&](const auto& shape) {
         return shape.size() == sliceOutputShape.size();
@@ -431,12 +420,17 @@ VPU::DistributionInfo vpux::VPU::getSegmentedExplicitDistrNativeForSliceLikeOps(
         });
         if (sliceOnCurrentDim) {
             VPUX_THROW_UNLESS(sliceDim == -1, "Only support explicit shapes on single dim");
-            auto sumDimSize = std::accumulate(explicitShapes.begin(), explicitShapes.end(), 0,
-                                              [&](const int64_t sum, const auto& shape) {
-                                                  return sum + shape[i];
-                                              });
-            VPUX_THROW_UNLESS(sumDimSize == sliceOutputShape[i], "explicit shapes {0} don't match shape {1}",
-                              explicitShapes, sliceOutputShape);
+
+            // The sum check is valid only for SEGMENTED mode. OVERLAPPED explicit shapes on the sliced axis may
+            // include halo regions, so the accumulated per-cluster size does not have to match the slice output.
+            if (mode == VPU::DistributionMode::SEGMENTED) {
+                auto sumDimSize = std::accumulate(explicitShapes.begin(), explicitShapes.end(), int64_t(0),
+                                                  [&](const int64_t sum, const auto& shape) {
+                                                      return sum + shape[i];
+                                                  });
+                VPUX_THROW_UNLESS(sumDimSize == sliceOutputShape[i], "explicit shapes {0} don't match shape {1}",
+                                  explicitShapes, sliceOutputShape);
+            }
             sliceDim = i;
         }
     }

@@ -18,6 +18,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/reduce.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
+#include "vpux/compiler/dialect/IE/utils/interpolate_utils.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/data_movement.hpp"
@@ -271,6 +272,18 @@ mlir::LogicalResult GRUCellRewrite::matchAndRewrite(IE::GRUCellOp origOp, mlir::
 
 mlir::LogicalResult InterpolateRewrite::matchAndRewrite(IE::InterpolateOp origOp,
                                                         mlir::PatternRewriter& rewriter) const {
+    // Scale-as-parameter path: lower to VPU::InterpolateDMAOp
+    if (IE::isScalesAsParameter(origOp.getScales(), origOp.getScalesAttr())) {
+        _log.trace("Found Interpolate with scales as parameter '{0}'", origOp->getLoc());
+
+        const auto outputType = origOp.getOutput().getType();
+        rewriter.replaceOpWithNewOp<VPU::InterpolateDMAOp>(origOp, outputType, origOp.getInput(), origOp.getScales(),
+                                                           /*coordinates=*/nullptr, /*lambdas=*/nullptr,
+                                                           origOp.getAxesAttrAttr(), origOp.getAttrAttr());
+
+        return mlir::success();
+    }
+
     rewriter.replaceOpWithNewOp<VPU::InterpolateOp>(
             origOp, origOp.getType(), origOp.getInput(), origOp.getSizes(), origOp.getScales(), origOp.getAxes(),
             /*coordinates*/ nullptr, /* lambdas */ nullptr, origOp.getSizesAttrAttr(), origOp.getScalesAttrAttr(),
@@ -293,6 +306,24 @@ mlir::LogicalResult TopKRewrite::matchAndRewrite(IE::TopKOp origOp, mlir::Patter
                                              origOp.getAxisAttr(), origOp.getModeAttr(), origOp.getSortAttr(),
                                              origOp.getElementTypeAttr(), /*multiClusterStrategy=*/nullptr);
 
+    return mlir::success();
+}
+
+//
+// AtanRewrite
+//
+
+mlir::LogicalResult AtanRewrite::matchAndRewrite(IE::AtanOp origOp, mlir::PatternRewriter& rewriter) const {
+    _log.trace("Found Atan Operation '{0}'", origOp->getLoc());
+    auto input = origOp.getInput();
+
+    auto opWithDma = mlir::dyn_cast<IE::LayerWithDmaInterface>(origOp.getOperation());
+    if (opWithDma && opWithDma.isSupported()) {
+        rewriter.replaceOpWithNewOp<VPU::AtanDmaOp>(origOp, input);
+        return mlir::success();
+    }
+
+    rewriter.replaceOpWithNewOp<VPU::AtanOp>(origOp, input);
     return mlir::success();
 }
 
@@ -711,6 +742,7 @@ void ConvertLayers2VPUPass::safeRunOnFunc() {
     patterns.add<GRUCellRewrite>(&ctx, _log);
     patterns.add<ExperimentalDetectronROIFeatureExtractorRewrite>(&ctx, _log);
     patterns.add<TopKRewrite>(&ctx, _log);
+    patterns.add<AtanRewrite>(&ctx, _log);
     patterns.add<MaxPool8Rewrite>(&ctx, _log);
     patterns.add<TransposedConvRewrite>(&ctx, _log);
     patterns.add<NormalizeL2Rewrite>(&ctx, _log);

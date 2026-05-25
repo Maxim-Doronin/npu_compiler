@@ -86,11 +86,6 @@ struct DefaultHWOptionsDeviceBase : public virtual vpux::DefaultHWOptionsBase {
                             "experiments."),
                     ::llvm::cl::values(
                             clEnumValN(WorkloadManagementBarrierProgrammingMode::LEGACY, "LEGACY", "Legacy Mode"),
-                            clEnumValN(WorkloadManagementBarrierProgrammingMode::NO_BARRIER_DMAS_SCHEDULED,
-                                       "NO_BARRIER_DMAS_SCHEDULED", "RT handles barrier programming"),
-                            clEnumValN(WorkloadManagementBarrierProgrammingMode::INITIAL_BARRIER_DMAS_SCHEDULED,
-                                       "INITIAL_BARRIER_DMAS_SCHEDULED",
-                                       "Compiler generates DMA to program initial barriers"),
                             clEnumValN(WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED,
                                        "ALL_BARRIER_DMAS_SCHEDULED", "Compiler generates DMAs to program all barriers"),
                             clEnumValN(WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED_4K,
@@ -101,8 +96,6 @@ struct DefaultHWOptionsDeviceBase : public virtual vpux::DefaultHWOptionsBase {
             *this, "model-identifier",
             llvm::cl::desc("Unique identifier for the compiled model, used for debugging and troubleshooting"),
             llvm::cl::init(0)};
-    BoolOption enableDpuFromShaveControl{*this, "enable-dpu-from-shave-control",
-                                         llvm::cl::desc("Enable Dpu from shave control"), llvm::cl::init(true)};
 
     BoolOption enableRunMVNNormalizeOnDPU{*this, "enable-run-mvn-normalize-on-dpu",
                                           llvm::cl::desc("Enable RunMVNNormalizeOnDPU pass on DPU"),

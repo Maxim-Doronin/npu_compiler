@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --lower-VPUIP-to-ELF %s | FileCheck %s
-// REQUIRES: arch-NPU40XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --lower-VPUIP-to-ELF %s | FileCheck %s
+// REQUIRES: platform-NPU4000
 //
 
 module @Test {
@@ -67,7 +67,7 @@ func.func @main(%1: memref<1x1x1x32xf16>, %2: memref<1x1x1x32xf16>) -> memref<1x
     %b3 = VPURT.ConfigureBarrier<5> <{isFinalBarrier}> -> !VPURT.Barrier
 
     VPURT.Task {
-        VPUIP.FetchDMA {is_out_of_order, port = 0 : i64} inputs(%dummy_buf : memref<0x0x0x0xi32, @DDR>) outputs(%dummy_buf : memref<0x0x0x0xi32, @DDR>) fetch_dma(<<SHAVE_ACT>, tile = 0 : i64, list = 0 : i64, group = 0 : i64>) -> memref<0x0x0x0xi32, @DDR>
+        VPUIP.FetchDMA {is_out_of_order, port = 0 : i64} inputs(%dummy_buf : memref<0x0x0x0xi32, @DDR>) outputs(%dummy_buf : memref<0x0x0x0xi32, @DDR>) fetch_dma(<<SHAVE_ACT>, tile = 0 : i64, list = 0 : i64, fetchType = <DescriptorGroup>, group = 0 : i64>) -> memref<0x0x0x0xi32, @DDR>
     }
 
     VPURT.Task updates(%b0 : !VPURT.Barrier) {

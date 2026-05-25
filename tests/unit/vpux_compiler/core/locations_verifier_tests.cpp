@@ -6,7 +6,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
 #include "vpux/compiler/dialect/core/transforms/passes.hpp"
-#include "vpux/compiler/init.hpp"
+#include "vpux/compiler/init/dialects_registry.hpp"
 #include "vpux/compiler/locverif/locations_verifier.hpp"
 
 #include "common/utils.hpp"

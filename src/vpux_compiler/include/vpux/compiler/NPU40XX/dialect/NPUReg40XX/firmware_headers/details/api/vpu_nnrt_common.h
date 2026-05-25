@@ -1,22 +1,17 @@
 /* SPDX-License-Identifier: MIT */
 /*
- * Copyright (c) 2022-2025, Intel Corporation.
+ * Copyright (c) 2022-2026, Intel Corporation.
  */
 
 // clang-format off
 
 /**
  * @file
- * @brief Contains structs that are common between the workload management and non workload management APIs.
+ * @brief Contains VpuTaskReference used in loader API and in the mapped inference.
  */
 
 #ifndef VPU_NNRT_COMMON_H
 #define VPU_NNRT_COMMON_H
-
-/**
- * @addtogroup NNRT
- * @{
- */
 
 /*
  * IMPORTANT:
@@ -46,18 +41,12 @@
 #error Define alignment macro
 #endif
 
-namespace nn_public {
+/**
+ * @addtogroup NNRT
+ * @{
+ */
 
-// base resources
-constexpr uint32_t VPU_MAX_TILES = 6;
-constexpr uint32_t VPU_BARRIERS_PER_GROUP = 16;
-constexpr uint32_t VPU_DPU_PER_TILE = 1;
-constexpr uint32_t VPU_SNN_PER_TILE = VPU_DPU_PER_TILE;
-constexpr uint32_t VPU_SNN_TOTAL = VPU_SNN_PER_TILE * VPU_MAX_TILES;
-constexpr uint32_t VPU_AS_PER_TILE = 2;
-// On NPU4-6, there is only one physical DMA engine, but it is logically split into two interfaces.
-constexpr uint32_t VPU_MAX_DMA_ENGINES = 2;
-constexpr uint32_t VPU_AS_TOTAL = VPU_AS_PER_TILE * VPU_MAX_TILES;
+namespace nn_public {
 
 #pragma pack(push, 1)
 
@@ -99,72 +88,35 @@ struct VPU_ALIGNED_STRUCT(8) VpuTaskReference {
 static_assert(sizeof(VpuTaskReference<uint32_t>) == 40, "VpuTaskReference size != 40");
 
 /**
- * @brief Contains runtime configuration for the Shaves
+ * @brief VpuTaskReference specialization for void type
+ *
+ * Identical layout. Used for opaque indirection with deferred type resolution
+ * @see VpuTaskReference
  */
-struct VPU_ALIGNED_STRUCT(8) VpuNNShaveRuntimeConfigs {
-    uint64_t reserved;
-    /**
-     * @brief The entrypoint address.
-     */
-    uint64_t runtime_entry;
-    /**
-     * @brief The window base address.
-     */
-    uint64_t act_rt_window_base;
-    /**
-     * @brief The addresses of the stacks (one per shave) in DDR.
-     * If the stacks are not in DDR then this field is ignored.
-     */
-    uint32_t stack_frames[VPU_AS_TOTAL];
-    /**
-     * @brief The size of the stacks in bytes.
-     */
-    uint32_t stack_size;
-    /**
-     * @brief Unused
-     */
-    uint32_t code_window_buffer_size;
-    /**
-     * @brief Bitmask of performance metrics to be collected.
-     */
-    uint32_t perf_metrics_mask;
-    /**
-     * @brief The version of the runtime embedded in this blob.
-     */
-    uint32_t runtime_version;
-    /**
-     * @brief Unused
-     */
-    uint8_t use_schedule_embedded_rt;
-    /**
-     * @brief Unused
-     */
-    VpuHWPStatMode dpu_perf_mode;
-    uint8_t pad1_[6];
+template <>
+struct VPU_ALIGNED_STRUCT(8) VpuTaskReference<void> {
+    uint64_t reserved1;
+    uint64_t reserved2;
+    uint64_t reserved3;
+    uint64_t address;
+    uint64_t count;
+
+    void *data() { return reinterpret_cast<void *>(address); }
+    const void *data() const { return reinterpret_cast<void *>(address); }
+
+    uint64_t size() const { return count; };
+
+    template <typename T>
+    VpuTaskReference<T> &as() {
+        return reinterpret_cast<VpuTaskReference<T> &>(*this);
+    }
+    template <typename T>
+    const VpuTaskReference<T> &as() const {
+        return reinterpret_cast<const VpuTaskReference<T> &>(*this);
+    }
 };
 
-static_assert(sizeof(VpuNNShaveRuntimeConfigs) == 96, "VpuNNShaveRuntimeConfigs size != 96");
-
-/**
- * @brief Contains the resource requirements for the inference.
- */
-struct VPU_ALIGNED_STRUCT(4) VpuResourceRequirements {
-    /**
-     * @brief Amount of CMX memory required per tile.
-     */
-    uint32_t nn_slice_length_;
-    uint8_t deprecated_[6]; // Deprecated member, do not reuse until next API major version update
-    /**
-     * @brief Number of tiles.
-     */
-    uint8_t nn_slice_count_;
-    /**
-     * @brief Unused.
-     */
-    uint8_t nn_barriers_;
-};
-
-static_assert(sizeof(VpuResourceRequirements) == 12, "VpuResourceRequirements size != 12");
+static_assert(sizeof(VpuTaskReference<void>) == 40, "VpuTaskReference size != 40");
 
 #pragma pack(pop)
 

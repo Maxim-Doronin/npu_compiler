@@ -102,7 +102,9 @@ def NPUReg50XX_NNDMAOp : NPUReg50XX_ExecutableTaskOpWithProperties<"NNDMA", [
         OptionalAttr<SymbolRefAttr>:$act_compression_size_entry,
         OptionalAttr<SymbolRefAttr>:$act_compression_sparsity_map,
         OptionalAttr<SymbolRefAttr>:$indices,
-        OptionalAttr<VPUIP_GatherAddressingMode>:$addressing_mode
+        OptionalAttr<VPUIP_GatherAddressingMode>:$addressing_mode,
+        OptionalAttr<SymbolRefAttr>:$task_location,
+        OptionalAttr<SymbolRefAttr>:$releaseDesc
     );
 
     let skipDefaultBuilders = 1;
@@ -116,7 +118,8 @@ def NPUReg50XX_NNDMAOp : NPUReg50XX_ExecutableTaskOpWithProperties<"NNDMA", [
             "mlir::SymbolRefAttr":$act_compression_size_entry,
             "mlir::SymbolRefAttr":$act_compression_sparsity_map,
             "mlir::SymbolRefAttr":$indices,
-            "VPUIP::GatherAddressingModeAttr":$addressing_mode
+            "VPUIP::GatherAddressingModeAttr":$addressing_mode,
+            "mlir::SymbolRefAttr":$task_location
         )>
     ];
 }
@@ -609,7 +612,8 @@ def MappedInferenceVersionOp :
                 DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize"]>,
                 DeclareOpInterfaceMethods<ELF_BinarySizeOpInterface, ["getBinarySize", "getAlignmentRequirements"]>,
                 Symbol,
-                DeclareOpInterfaceMethods<VPURegMapped_SerializedVersionInterface>
+                DeclareOpInterfaceMethods<VPURegMapped_SerializedVersionInterface>,
+                VPURegMapped_MIVersionInterface
             ]
         > {
     let summary = "Represents a versioning mechanism for Mapped Inference";

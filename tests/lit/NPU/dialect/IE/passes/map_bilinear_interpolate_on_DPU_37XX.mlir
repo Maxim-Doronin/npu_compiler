@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --mlir-print-elementsattrs-with-hex-if-larger 8192 --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --map-bilinear-interpolate-on-dpu %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --mlir-print-elementsattrs-with-hex-if-larger 8192 --init-compiler="platform=%platform% compilation-mode=DefaultHW" --map-bilinear-interpolate-on-dpu %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 
 // CHECK-LABEL: @MapBilinearPytorchHalfPixelInterpolateOnDPU

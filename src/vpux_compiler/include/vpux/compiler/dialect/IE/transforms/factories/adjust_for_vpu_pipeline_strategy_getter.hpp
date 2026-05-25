@@ -18,16 +18,9 @@ namespace vpux::IE {
 
 class AdjustForVPUPipelineStrategy final : public IDynamicRewriterStrategy {
 public:
-    explicit AdjustForVPUPipelineStrategy(bool enableFuseClamp): _enableFuseClamp(enableFuseClamp) {
-    }
-
     void registerRewriters(RewriterRegistry& registry, Logger& log) const override;
-
-private:
-    bool _enableFuseClamp = false;
 };
 
-std::unique_ptr<IDynamicRewriterStrategy> createAdjustForVPUPipelineStrategy(mlir::func::FuncOp funcOp,
-                                                                             bool enableFuseClamp = false);
+std::unique_ptr<IDynamicRewriterStrategy> createAdjustForVPUPipelineStrategy(mlir::func::FuncOp funcOp);
 
 }  // namespace vpux::IE

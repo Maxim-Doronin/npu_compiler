@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --fuse-softmax-convert --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --fuse-softmax-convert --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU5010
 
 // CHECK-LABEL: @FuseSoftmaxConvert
 // CHECK-SAME:  ([[ARG0:%.+]]: tensor<1x548x600xf32>)

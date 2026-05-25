@@ -2,9 +2,9 @@
 // Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
-// RUN: vpux-opt %s --split-input-file --init-compiler="vpu-arch=%arch%" \
+// RUN: vpux-opt %s --split-input-file --init-compiler="platform=%platform%" \
 // RUN:     --lower-math-to-shave-intrinsics | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 module @Foo {
   module @VPU.SW {

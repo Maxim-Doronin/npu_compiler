@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-translate --vpu-arch=%arch% --import-IE ./shape_of.xml | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-translate --platform=%platform% --import-IE ./shape_of.xml | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 // CHECK: module @shape_of {
 // CHECK:   func.func @main([[ARG_0:%[^:]+]]: tensor<1x8x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 8, 384, 384]> : tensor<4xsi64>, order = #NCHW}>)

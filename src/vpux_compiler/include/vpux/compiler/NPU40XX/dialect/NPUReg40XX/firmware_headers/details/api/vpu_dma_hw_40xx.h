@@ -1,10 +1,9 @@
 /* SPDX-License-Identifier: MIT */
 /*
- * Copyright (c) 2022-2023, Intel Corporation.
+ * Copyright (c) 2022-2026, Intel Corporation.
  */
 
 // clang-format off
-
 /**
  * @brief VPU DMA public header file.
  *
@@ -32,6 +31,7 @@
 #define DMA_DESC_LRA_WID (1)
 #define DMA_DESC_SRA_WID (1)
 #define DMA_DESC_DRA_WID (1)
+#define DMA_DESC_NUM_DIM_WID (3)
 
 // Engine ID enum
 typedef enum {
@@ -263,7 +263,7 @@ typedef union {
 
 // Descriptor configuration fields struct
 typedef struct {
-    uint64_t num_dim : 3;                           // Number of dimensions enabled on descriptor
+    uint64_t num_dim : DMA_DESC_NUM_DIM_WID;        // Number of dimensions enabled on descriptor
     uint64_t int_en : 1;                            // Interrupt enable
     uint64_t int_id : DMA_DESC_CFG_INT_ID_WID;      // Interrupt ID [0,127] for physical, [128,255] for virtual
     uint64_t src_burst_length : 4;                  // Number of consecutive accesses requests

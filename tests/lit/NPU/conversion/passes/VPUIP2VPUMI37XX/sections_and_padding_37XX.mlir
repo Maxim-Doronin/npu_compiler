@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --init-compiler="vpu-arch=%arch%" %s
+// RUN: vpux-opt --init-compiler="platform=%platform%" %s
 // this test can only be (correctly) run manually until E#48620 is solved
-// REQUIRES: arch-NPU37XX
+// REQUIRES: platform-NPU3720
 
 module @Test {
 

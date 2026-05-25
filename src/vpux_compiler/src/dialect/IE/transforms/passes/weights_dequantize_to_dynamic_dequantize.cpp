@@ -15,7 +15,7 @@ void vpux::IE::registerWeightsDequantizeToDynamicDequantizeRewriters(RewriterReg
                                                                      ArrayRef<mlir::PatternBenefit> benefitLevels,
                                                                      size_t index, mlir::func::FuncOp func,
                                                                      Logger log) {
-    auto& strategyFactory = IE::getIEStrategyFactory(func.getContext());
+    const auto& strategyFactory = IE::getIEStrategyFactory(func.getContext());
     auto strategy = strategyFactory->getWeightsDequantizeToDynamicDequantizeStrategy(benefitLevels, index);
     strategy->registerRewriters(registry, log);
 }

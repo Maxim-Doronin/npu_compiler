@@ -3,10 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-translate --vpu-arch=%arch% --export-ELF %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-translate --platform=%platform% --export-ELF %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
-module @Test attributes {config.arch = #config.arch_kind<NPU37XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+module @Test attributes {config.platform = #config.platform<NPU3720>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
   config.Resources 2 of @NCE at 1.300000e+03 MHz {
     config.MemoryResource 1784217 bytes of @CMX_NN_FragmentationAware
     config.MemoryResource 1982464 bytes of @CMX_NN {config.bandwidth = 32 : i64, config.derateFactor = 1.000000e+00 : f64}

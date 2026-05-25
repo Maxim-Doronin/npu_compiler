@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/core/developer_build_utils.hpp"
 #include "vpux/compiler/dialect/HostExec/transforms/passes.hpp"
+#include "vpux/utils/core/developer_build_utils.hpp"
 
 #include "vpux/compiler/dialect/ELF/IR/export.hpp"
 #include "vpux/compiler/dialect/ELFNPU37XX/export.hpp"
@@ -43,24 +43,30 @@ private:
 };
 
 mlir::FunctionType constructFunctionType(mlir::ModuleOp moduleOp, net::NetworkInfoOp netInfo, Logger& log) {
-    auto ioBindings = VPUASM::IOBindingsOp::getFromModule(moduleOp);
-    if (ioBindings == nullptr) {
-        log.error("IOBindingsOp not found in module: {0}", moduleOp.getName());
+    auto inputBindings = VPUASM::InputBindingsOp::getFromModule(moduleOp);
+    if (inputBindings == nullptr) {
+        log.error("InputBindingsOp not found in module: {0}", moduleOp.getName());
+        return nullptr;
+    }
+
+    auto outputBindings = VPUASM::OutputBindingsOp::getFromModule(moduleOp);
+    if (outputBindings == nullptr) {
+        log.error("OutputBindingsOp not found in module: {0}", moduleOp.getName());
         return nullptr;
     }
 
     llvm::SmallVector<mlir::Type> funcArgs, outArgs;
-    if ((netInfo.getOutputsDataInfo().size() != ioBindings.getNetOutputsCount()) ||
-        (netInfo.getInputsDataInfo().size() != ioBindings.getNetInputsCount())) {
-        log.error("Mismatch between NetworkInfoOp and IOBindingsOp info");
+    if ((netInfo.getOutputsDataInfo().size() != outputBindings.getNetOutputsCount()) ||
+        (netInfo.getInputsDataInfo().size() != inputBindings.getNetInputsCount())) {
+        log.error("Mismatch between NetworkInfoOp and IO Bindings operations info");
         return nullptr;
     }
 
-    for (auto inDeclBuffer : ioBindings.getInputDeclarationsOps()) {
+    for (auto inDeclBuffer : inputBindings.getInputDeclarationsOps()) {
         funcArgs.push_back(mlir::cast<NDTypeInterface>(inDeclBuffer.getBufferType().getMemref()));
     }
 
-    for (auto outDeclBuffer : ioBindings.getOutputDeclarationsOps()) {
+    for (auto outDeclBuffer : outputBindings.getOutputDeclarationsOps()) {
         funcArgs.push_back(mlir::cast<NDTypeInterface>(outDeclBuffer.getBufferType().getMemref()));
         outArgs.push_back(mlir::cast<NDTypeInterface>(outDeclBuffer.getBufferType().getMemref()));
     }

@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "npu_driver_compiler.h"
 #include "vcl_tests_common.h"
 
 #include <stdint.h>
@@ -248,4 +249,94 @@ INSTANTIATE_TEST_SUITE_P(SingleThreadCompilation, VCLAllocatorSingleThreadTest, 
                          VCLAllocatorSingleThreadTest::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(SingleThreadCompilation, VCLAllocator2SingleThreadTest, params,
+                         VCLAllocatorSingleThreadTest::getTestCaseName);
+
+class VCLAllocator3SingleThreadTest : public VCLTestsUtils::VCLTestsCommon {
+public:
+    vcl_result_t run(const std::string& options);
+};
+
+vcl_result_t VCLAllocator3SingleThreadTest::run(const std::string& options) {
+    vcl_result_t ret = VCL_RESULT_SUCCESS;
+
+    vcl_compiler_desc_t compilerDesc;
+    compilerDesc.version.major = VCL_COMPILER_VERSION_MAJOR;
+    compilerDesc.version.minor = VCL_COMPILER_VERSION_MINOR;
+    compilerDesc.debugLevel = VCL_LOG_INFO;
+    vcl_device_desc_t deviceDesc = {sizeof(vcl_device_desc_t), 0x643e, 3, 5};
+    vcl_compiler_handle_t compiler = nullptr;
+    ret = vclCompilerCreate(&compilerDesc, &deviceDesc, &compiler, nullptr);
+    if (ret != VCL_RESULT_SUCCESS) {
+        printErrorInfo("Failed to create compiler! Result: 0x", ret);
+        return ret;
+    }
+
+    vcl_compiler_properties_t compilerProp;
+    ret = vclCompilerGetProperties(compiler, &compilerProp);
+    if (ret != VCL_RESULT_SUCCESS) {
+        printErrorInfo("Failed to query compiler props! Result: 0x", ret);
+        vclCompilerDestroy(compiler);
+        return ret;
+    }
+    std::cout << "\n############################################\n\n";
+    std::cout << " Current compiler info:\n"
+              << " ID: " << compilerProp.id << "\n"
+              << " Version: " << compilerProp.version.major << "." << compilerProp.version.minor << "\n"
+              << "\tSupported opsets: " << compilerProp.supportedOpsets << "\n";
+    std::cout << "\n############################################\n\n";
+
+    uint8_t* blob = nullptr;
+    uint64_t blobSize = 0;
+    uint8_t* compatibilityReqBuffer = nullptr;
+    uint64_t compatibilityReqSize = 0;
+
+    vcl_executable_desc_t exeDesc = {getModelIR().data(), getModelIRSize(), options.c_str(), options.size() + 1};
+    vcl_allocator2_t allocator;
+    allocator.allocate = VCLTestsUtils::allocateBlob2;
+    allocator.deallocate = VCLTestsUtils::deallocateBlob2;
+
+    ret = vclAllocatedExecutableCreate3(compiler, exeDesc, &allocator, &blob, &blobSize, &compatibilityReqBuffer,
+                                        &compatibilityReqSize);
+    if (ret != VCL_RESULT_SUCCESS || blob == nullptr || blobSize == 0 || compatibilityReqBuffer == nullptr ||
+        compatibilityReqSize == 0) {
+        printErrorInfo("Failed to create executable via vclAllocatedExecutableCreate3! Result: 0x", ret);
+        if (compatibilityReqBuffer != nullptr) {
+            allocator.deallocate(&allocator, compatibilityReqBuffer);
+        }
+        if (blob != nullptr) {
+            allocator.deallocate(&allocator, blob);
+        }
+        vclCompilerDestroy(compiler);
+        return ret != VCL_RESULT_SUCCESS ? ret : VCL_RESULT_ERROR_UNKNOWN;
+    }
+
+    ret = vclGetCompilerIsOptionSupported(compiler, "COMPATIBILITY_CHECK",
+                                          reinterpret_cast<const char*>(compatibilityReqBuffer));
+    if (ret != VCL_RESULT_SUCCESS) {
+        printErrorInfo("vclGetCompilerIsOptionSupported failed! Result: 0x", ret);
+        allocator.deallocate(&allocator, compatibilityReqBuffer);
+        allocator.deallocate(&allocator, blob);
+        vclCompilerDestroy(compiler);
+        return ret;
+    }
+
+    allocator.deallocate(&allocator, compatibilityReqBuffer);
+    allocator.deallocate(&allocator, blob);
+
+    ret = vclCompilerDestroy(compiler);
+    if (ret != VCL_RESULT_SUCCESS) {
+        printErrorInfo("Failed to destroy compiler! Result: 0x", ret);
+        return ret;
+    }
+    return ret;
+}
+
+TEST_P(VCLAllocator3SingleThreadTest, compileModelWithCompatibilityString) {
+    EXPECT_EQ(run(getNetOptions()), VCL_RESULT_SUCCESS);
+}
+
+INSTANTIATE_TEST_SUITE_P(smoke_SingleThreadCompilation, VCLAllocator3SingleThreadTest, smokeParams,
+                         VCLAllocatorSingleThreadTest::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(SingleThreadCompilation, VCLAllocator3SingleThreadTest, params,
                          VCLAllocatorSingleThreadTest::getTestCaseName);

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: env OV_NPU_LOG_LEVEL=LOG_INFO env IE_NPU_LOG_FILTER=dump-statistics-of-ie-ops vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --dump-statistics-of-ie-ops -o /dev/null %s 2>&1 | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: env OV_NPU_LOG_LEVEL=LOG_INFO env IE_NPU_LOG_FILTER=dump-statistics-of-ie-ops vpux-opt --split-input-file --init-compiler="platform=%platform%" --dump-statistics-of-ie-ops -o /dev/null %s 2>&1 | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 !qElemType = !quant.uniform<u8:f16, 1.0:128>
 
@@ -151,4 +151,46 @@ module @PerAxisConvert {
     // CHECK:       IE.Convert - 4 (57.14%)
     // CHECK:         f16 -> i8 - 1 (14.29%)
     // CHECK:         i8 -> qtype<i8:f16:0, per-axis> - 3 (42.86%)
+}
+
+// -----
+
+#NC = affine_map<(d0, d1) -> (d0, d1)>
+#CN = affine_map<(d0, d1) -> (d1, d0)>
+
+module @TrivialOps {
+    net.NetworkInfo entryPoint : @init inputsInfo : {
+        DataInfo "input" : tensor<2x2xui8>
+    } outputsInfo : {
+        DataInfo "output" : tensor<2x2xui8>
+    }
+
+    func.func @init(%ov1: tensor<2x2xui8, {order = #CN}>) -> tensor<2x2xui8, {order = #CN}> {
+        %transpose = IE.Transpose(%ov1) {order_value = #NC}
+            : tensor<2x2xui8, {order = #CN}> -> tensor<2x2xui8, {order = #CN}>
+        %reorder = IE.Reorder(%transpose) {dstOrder = #CN}
+            : tensor<2x2xui8, {order = #CN}> -> tensor<2x2xui8, {order = #CN}>
+        %mempermute = IE.MemPermute(%reorder) {dst_order = #CN, mem_perm = #NC}
+            : tensor<2x2xui8, {order = #CN}> -> tensor<2x2xui8, {order = #CN}>
+
+        %transpose_computational = IE.Transpose(%ov1) {order_value = #CN}
+            : tensor<2x2xui8, {order = #CN}> -> tensor<2x2xui8, {order = #CN}>
+        %reorder_computational = IE.Reorder(%transpose_computational) {dstOrder = #NC}
+            : tensor<2x2xui8, {order = #CN}> -> tensor<2x2xui8>
+        %mempermute_computational = IE.MemPermute(%reorder_computational)
+            {dst_order = #CN, mem_perm = #CN}
+            : tensor<2x2xui8> -> tensor<2x2xui8, {order = #CN}>
+        return %mempermute_computational : tensor<2x2xui8, {order = #CN}>
+    }
+
+    // CHECK:   IE dialect statistics:
+    // CHECK:   IE - 6
+    // CHECK:    Non-computational - 3 (50.00%)
+    // CHECK:      IE.MemPermute - 1 (16.67%)
+    // CHECK:      IE.Reorder - 1 (16.67%)
+    // CHECK:      IE.Transpose - 1 (16.67%)
+    // CHECK:    Computational - 3 (50.00%)
+    // CHECK:      IE.MemPermute - 1 (16.67%)
+    // CHECK:      IE.Reorder - 1 (16.67%)
+    // CHECK:      IE.Transpose - 1 (16.67%)
 }

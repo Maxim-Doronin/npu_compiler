@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --deduce-dynamic-mi %s | FileCheck %s
-// REQUIRES: dev-build && arch-NPU40XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --deduce-dynamic-mi %s | FileCheck %s
+// REQUIRES: dev-build && platform-NPU4000
 
 
 module @setDynMi {
@@ -14,7 +14,7 @@ module @setDynMi {
     DataInfo "output_0" : tensor<1x2x3x4xf16>
   }
   func.func @main() {
-    ELF.Main @ELFMain {
+    ELF.Main {
       ELF.CreateSection @note.MappedInferenceVersion aligned(64) secType(SHT_NOTE) secFlags("SHF_NONE") secLocation(<DDR>) {
         NPUReg40XX.MappedInferenceVersion(11 _ 4 _ 10) {sym_name = "MappedInferenceVersion_0_0"}
       }
@@ -147,7 +147,7 @@ module @setDynMi {
     DataInfo "output_0" : tensor<1x2x3x4xf16>
   }
   func.func @main() {
-    ELF.Main @ELFMain {
+    ELF.Main {
       ELF.CreateSection @program.workItem aligned(64) secType(SHT_PROGBITS) secFlags("SHF_ALLOC|SHF_EXECINSTR") secLocation(<DDR>) {
           NPUReg40XX.WorkItem descriptor = <
           WorkItem {
@@ -306,7 +306,7 @@ module @setDynMi {
     DataInfo "output_0" : tensor<1x2x3x4xf16>
   }
   func.func @main() {
-    ELF.Main @ELFMain {
+    ELF.Main {
       ELF.CreateSection @program.workItem aligned(64) secType(SHT_PROGBITS) secFlags("SHF_ALLOC|SHF_EXECINSTR") secLocation(<DDR>) {
         NPUReg40XX.WorkItem descriptor = <
           WorkItem {
@@ -458,7 +458,7 @@ module @setDynMi {
     DataInfo "output_0" : tensor<1x2x3x4xf16>
   }
   func.func @main() {
-    ELF.Main @ELFMain {
+    ELF.Main {
       ELF.CreateSection @program.workItem aligned(64) secType(SHT_PROGBITS) secFlags("SHF_ALLOC|SHF_EXECINSTR") secLocation(<DDR>) {
         NPUReg40XX.WorkItem descriptor = <
           WorkItem {

@@ -68,7 +68,7 @@ bool isIdentityAvgPoolWithPPE(IE::AvgPoolOp avgPoolOp) {
     const auto clamp = avgPoolOp.getClampAttr();
 
     // TODO: E#159161 What about other post-ops?
-    if (clamp == nullptr && !mlir::isa_and_nonnull<IE::ReluAttr, IE::LeakyReluAttr, IE::ClampAttr>(postOp)) {
+    if (clamp == nullptr && !mlir::isa_and_nonnull<IE::ReluAttr, IE::LeakyReluAttr>(postOp)) {
         return false;
     }
 
@@ -135,14 +135,11 @@ mlir::LogicalResult rewritePostOp(const Logger& _log, IE::AvgPoolOp avgPoolOp, m
 mlir::LogicalResult rewritePostOps(const Logger& _log, IE::AvgPoolOp avgPoolOp, mlir::PatternRewriter& rewriter,
                                    IE::LayerWithPostOpInterface producerOp) {
     const auto postOpAttr = avgPoolOp.getPostOpAttr();
-    if (!mlir::isa_and_present<IE::ClampAttr, IE::LeakyReluAttr, IE::ReluAttr>(postOpAttr)) {
+    if (!mlir::isa_and_present<IE::LeakyReluAttr, IE::ReluAttr>(postOpAttr)) {
         return mlir::success();  // Success by default, nothing happened
     }
 
-    if (const auto clamp = mlir::dyn_cast<IE::ClampAttr>(postOpAttr)) {
-        return rewritePostOp<IE::ClampOp>(_log, avgPoolOp, rewriter, producerOp, avgPoolOp->getLoc(),
-                                          avgPoolOp.getInput(), clamp.getMin(), clamp.getMax());
-    } else if (const auto lrelu = mlir::dyn_cast<IE::LeakyReluAttr>(postOpAttr)) {
+    if (const auto lrelu = mlir::dyn_cast<IE::LeakyReluAttr>(postOpAttr)) {
         return rewritePostOp<IE::LeakyReluOp>(_log, avgPoolOp, rewriter, producerOp, avgPoolOp->getLoc(),
                                               avgPoolOp.getInput(), lrelu.getNegativeSlope());
     }
@@ -156,17 +153,29 @@ mlir::LogicalResult rewriteClamp(const Logger& _log, IE::AvgPoolOp avgPoolOp, ml
         return mlir::success();  // Success by default, nothing happened
     }
 
-    const auto min = clampAttr.getAs<mlir::FloatAttr>("min");
-    const auto max = clampAttr.getAs<mlir::FloatAttr>("max");
+    auto min = clampAttr.getAs<mlir::FloatAttr>("min").getValueAsDouble();
+    auto max = clampAttr.getAs<mlir::FloatAttr>("max").getValueAsDouble();
+    if (const auto producerClamp = producerOp.getClampAttr()) {
+        min = std::max(min, producerClamp.getAs<mlir::FloatAttr>("min").getValueAsDouble());
+        max = std::min(max, producerClamp.getAs<mlir::FloatAttr>("max").getValueAsDouble());
+    }
 
-    auto clampOp = rewriter.create<IE::ClampOp>(avgPoolOp->getLoc(), avgPoolOp.getInput(), min, max);
+    const auto clampOp = rewriter.create<IE::ClampOp>(avgPoolOp->getLoc(), avgPoolOp.getInput(),
+                                                      vpux::getFPAttr(avgPoolOp.getContext(), min),
+                                                      vpux::getFPAttr(avgPoolOp.getContext(), max));
     const auto isSupported = producerOp.isSupportedClampOp(clampOp, [&](const auto& msg) {
         _log.trace("{0}", msg.str());
     });
     rewriter.eraseOp(clampOp);
 
     if (isSupported) {
-        producerOp.setClampAttr(avgPoolOp.getClampAttr());
+        const auto maxName = mlir::StringAttr::get(avgPoolOp.getContext(), "max");
+        const auto minName = mlir::StringAttr::get(avgPoolOp.getContext(), "min");
+        const auto maxAttr = mlir::NamedAttribute(maxName, vpux::getFPAttr(avgPoolOp.getContext(), max));
+        const auto minAttr = mlir::NamedAttribute(minName, vpux::getFPAttr(avgPoolOp.getContext(), min));
+        const auto dictAttr = mlir::DictionaryAttr::get(avgPoolOp.getContext(), {maxAttr, minAttr});
+        producerOp.setClampAttr(dictAttr);
+
         avgPoolOp.removeClampAttr();
         return mlir::success();
     } else {
@@ -197,8 +206,7 @@ mlir::LogicalResult FuseIdentityAvgPoolWithPostOp::matchAndRewrite(IE::AvgPoolOp
         return mlir::failure();
     }
 
-    if ((producerOp.getPostOp() != nullptr && avgPoolOp.getPostOpAttr() != nullptr) ||
-        (producerOp.getClampAttr() != nullptr && avgPoolOp.getClampAttr() != nullptr)) {
+    if (producerOp.getPostOp() != nullptr && avgPoolOp.getPostOpAttr() != nullptr) {
         _log.nest().trace("avgPoolOp producer already has post-processing!");
         return mlir::failure();
     }

@@ -314,6 +314,9 @@ std::optional<Shape> vpux::VPUIP::getPermuteDMAInputShape(NDTypeInterface inType
         } else if (mergedMemPerm == DimsOrder::HCWN.toAffineMap(inType.getContext())) {
             // Check for permute pattern: [d0, d1, d2, d3] -> [d2, d1, d3, d0]
             return Shape{newInputShape[Dim(2)], newInputShape[Dim(1)], newInputShape[Dim(3)], newInputShape[Dim(0)]};
+        } else if (mergedMemPerm == DimsOrder::CNWH.toAffineMap(inType.getContext())) {
+            // Check for permute pattern: [d0, d1, d2, d3] -> [d1, d0, d3, d2]
+            return Shape{newInputShape[Dim(1)], newInputShape[Dim(0)], newInputShape[Dim(3)], newInputShape[Dim(2)]};
         } else {
             return std::nullopt;
         }
@@ -450,7 +453,7 @@ bool vpux::VPUIP::isSplitNeededForPermuteDMA(vpux::NDTypeInterface inType, mlir:
     return mergedPerm == DimsOrder::WHC.toAffineMap(ctx) || mergedPerm == DimsOrder::NHCW.toAffineMap(ctx) ||
            mergedPerm == DimsOrder::HCNW.toAffineMap(ctx) || mergedPerm == DimsOrder::NWHC.toAffineMap(ctx) ||
            mergedPerm == DimsOrder::CWNH.toAffineMap(ctx) || mergedPerm == DimsOrder::HNWC.toAffineMap(ctx) ||
-           mergedPerm == DimsOrder::HCWN.toAffineMap(ctx);
+           mergedPerm == DimsOrder::HCWN.toAffineMap(ctx) || mergedPerm == DimsOrder::CNWH.toAffineMap(ctx);
 }
 
 SmallVector<DimArr> vpux::VPUIP::getPermuteDMAOutputMergedDimList(vpux::NDTypeInterface outputType,

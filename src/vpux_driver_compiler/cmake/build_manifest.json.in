@@ -1,0 +1,8 @@
+{
+    "openvino_version": "@MANIFEST_OPENVINO_VERSION@",
+    "openvino_sha": "@MANIFEST_OPENVINO_SHA@",
+    "npu_compiler_version": "@MANIFEST_NPU_COMPILER_VERSION@",
+    "npu_compiler_sha": "@MANIFEST_NPU_COMPILER_SHA@",
+    "llvm_version": "@MANIFEST_LLVM_VERSION@",
+    "tbb_version": "@MANIFEST_TBB_VERSION@"
+}

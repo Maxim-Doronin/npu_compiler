@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/VPU/IR/ops/internal.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/function_outlining_splitter.hpp"
+#include "vpux/compiler/dialect/VPU/utils/outlining_utils.hpp"
 #include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
@@ -51,10 +52,18 @@ private:
 
     void buildCallOps(mlir::ModuleOp moduleOp, ArrayRef<SmallVector<FuncInfo>> funcsInfo,
                       ArrayRef<OutliningInstance> outlinedTargets) override;
+
+    void updateMainFuncOp(mlir::ModuleOp moduleOp, ArrayRef<OutliningInstance> outlinedTargets) override;
+
+private:
+    SmallVector<SmallVector<FuncInfo>> _funcsInfo;
 };
 
 void VerticalFusionOutliner::buildFuncOps(mlir::ModuleOp moduleOp, ArrayRef<SmallVector<FuncInfo>> funcsInfo,
                                           ArrayRef<OutliningInstance> outlinedTargets) {
+    // Store funcsInfo for later use in updateMainFuncOp
+    _funcsInfo = SmallVector<SmallVector<FuncInfo>>(funcsInfo.begin(), funcsInfo.end());
+
     auto netFunc = net::getMainFunc(moduleOp);
 
     auto builder = mlir::OpBuilder(moduleOp.getBodyRegion());
@@ -141,6 +150,10 @@ void VerticalFusionOutliner::buildCallOps(mlir::ModuleOp moduleOp, ArrayRef<Smal
             ret.setOperand(i, oldToNewArgMap[ret.getOperand(i)]);
         }
     });
+}
+
+void VerticalFusionOutliner::updateMainFuncOp(mlir::ModuleOp moduleOp, ArrayRef<OutliningInstance> outlinedTargets) {
+    VPU::removeUnusedConstantOutputs(moduleOp, _funcsInfo, outlinedTargets, getLogger());
 }
 
 }  // namespace outliner

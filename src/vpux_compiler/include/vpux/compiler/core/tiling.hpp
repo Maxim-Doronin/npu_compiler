@@ -189,7 +189,8 @@ mlir::FailureOr<OutputTiling> fillDividedTilesYuvToRgbOp(ShapeRef divisors, Shap
 
 // fill tiles taken into consideration restrictions of every operation in the list.
 // This function is used for VF tile size calculation
-mlir::FailureOr<OutputTiling> fillDividedTiles(ArrayRef<mlir::Operation*> operations, ShapeRef divisors, ShapeRef shape,
+mlir::FailureOr<OutputTiling> fillDividedTiles(mlir::Operation* lastOp, ArrayRef<mlir::Operation*> targetOps,
+                                               ShapeRef divisors, ShapeRef shape,
                                                const std::function<bool(mlir::Operation*)>& isOpNeedDynAlignment);
 
 bool isSpatialFirstNestedTiling(mlir::Operation* op, ShapeRef divisors);
@@ -291,6 +292,14 @@ struct TilingInfo final {
     }
 
     explicit TilingInfo(ArrayRef<TileInfo> tiles, PadInfo pads): tiles(tiles.begin(), tiles.end()), pads(pads) {
+    }
+
+    bool operator==(const TilingInfo& other) const {
+        return tiles == other.tiles && pads == other.pads;
+    }
+
+    bool operator!=(const TilingInfo& other) const {
+        return !(*this == other);
     }
 };
 
@@ -485,7 +494,7 @@ SmallVector<Strides> adaptStrides(ShapeRef origShape, StridesRef origStrides, Ar
 SmallVector<int64_t> getMinNumTiles(mlir::Operation* op);
 
 SmallVector<int64_t> getMaxNumTiles(mlir::Operation* op, bool checkMinimalWidthAndHeight = false,
-                                    bool checkWorkloadEfficiency = false);
+                                    bool checkWorkloadEfficiency = false, ArrayRef<int64_t> maxTilesPerDim = {});
 
 //
 // EltwiseOp
@@ -496,10 +505,8 @@ InputTiling backInferEltwiseTile(mlir::Operation* op, const vpux::TileInfo& outp
 // SWLayer
 
 mlir::FailureOr<OutputTiling> getSWLayerTilingStrategyWithTileDimOrder(mlir::Operation* op, TilingMode& tilingMode,
-                                                                       DimArrRef tileDimOrder, Logger log,
-                                                                       ArrayRef<int64_t> maxTilesPerDim = {});
-mlir::FailureOr<OutputTiling> getSWLayerTilingStrategy(mlir::Operation* op, TilingMode tilingMode, Logger log,
-                                                       ArrayRef<int64_t> maxTilesPerDim = {});
+                                                                       DimArrRef tileDimOrder, Logger log);
+mlir::FailureOr<OutputTiling> getSWLayerTilingStrategy(mlir::Operation* op, TilingMode tilingMode, Logger log);
 
 InputTiling getSWLayerInputTiles(mlir::Operation* op, const vpux::TileInfo& outputTile);
 SmallVector<int64_t> getMaxNumTilesWithAxesExclusion(mlir::Operation* op, ArrayRef<int64_t> axes);

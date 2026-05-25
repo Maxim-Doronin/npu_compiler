@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --reassociate-multiply %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --reassociate-multiply %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL: func.func @ReassociateMultiply
 // CHECK-SAME:  ([[INPUT0:%.+]]: tensor<1x32x1x1xf16>, [[INPUT1:%.+]]: tensor<1x32x1024x96xf16>)

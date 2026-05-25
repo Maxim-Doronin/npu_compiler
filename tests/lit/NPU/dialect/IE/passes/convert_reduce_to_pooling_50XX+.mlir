@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW enable-is-reduce-supported=true" --convert-reduce-to-pooling %s | FileCheck %s
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW enable-is-reduce-supported=true" --convert-reduce-to-pooling %s | FileCheck %s
+// REQUIRES: platform-NPU5010
 
 // CHECK-LABEL:    func.func @DoNotConvertReduceMeanToPoolingOnChannelAxis
 // CHECK-SAME:     ([[INPUT:%.+]]: tensor<256x7x7xf16>)

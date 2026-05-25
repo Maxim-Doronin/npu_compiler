@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/core/tiling.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/image.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
@@ -54,12 +55,18 @@ vpux::InputTiling vpux::VPU::GridSampleOp::backInferTileInfo(const vpux::TileInf
     inputTile.offsets[Dims4D::Act::N] = outputTile.offsets[Dims4D::Act::N];
     inputTile.offsets[Dims4D::Act::C] = outputTile.offsets[Dims4D::Act::C];
 
+    inputTile.axis[Dims4D::Act::N] = outputTile.axis[Dims4D::Act::N];
+    inputTile.axis[Dims4D::Act::C] = outputTile.axis[Dims4D::Act::C];
+
     gridTile.shape[Dims4D::Act::N] = outputTile.shape[Dims4D::Act::N];
-    gridTile.shape[Dim(1)] = outputTile.shape[Dims4D::Act::H];
-    gridTile.shape[Dim(2)] = outputTile.shape[Dims4D::Act::W];
+    gridTile.shape[Dims4D::Act::C] = outputTile.shape[Dims4D::Act::H];
+    gridTile.shape[Dims4D::Act::H] = outputTile.shape[Dims4D::Act::W];
     gridTile.offsets[Dims4D::Act::N] = outputTile.offsets[Dims4D::Act::N];
-    gridTile.offsets[Dim(1)] = outputTile.offsets[Dims4D::Act::H];
-    gridTile.offsets[Dim(2)] = outputTile.offsets[Dims4D::Act::W];
+    gridTile.offsets[Dims4D::Act::C] = outputTile.offsets[Dims4D::Act::H];
+    gridTile.offsets[Dims4D::Act::H] = outputTile.offsets[Dims4D::Act::W];
+    gridTile.axis[Dims4D::Act::N] = outputTile.axis[Dims4D::Act::N];
+    gridTile.axis[Dims4D::Act::C] = outputTile.axis[Dims4D::Act::H];
+    gridTile.axis[Dims4D::Act::H] = outputTile.axis[Dims4D::Act::W];
 
     return InputTiling{{inputTile, gridTile}};
 }
@@ -68,44 +75,7 @@ void vpux::VPU::GridSampleOp::adjustAttrs(const TilingInfo& /*inputTiling*/, con
 }
 
 mlir::FailureOr<OutputTiling> vpux::VPU::GridSampleOp::getTilingStrategy(TilingMode tilingMode, Logger log) {
-    auto op = this->getOperation();
-    auto tilingInfo = mlir::dyn_cast<VPU::TilingInfoOpInterface>(op);
-
-    const auto outputType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
-    const auto outputShape = outputType.getShape();
-
-    Shape nTilesOnDimforGridSample(outputShape.size(), 1);
-    tilingMode = TilingMode::ISOLATED;
-    const auto tilingModeToCheck = tilingMode;
-
-    // Prioritize outer-most dimensions
-    auto tileDimPriority = outputType.getDimsOrder().toPermutation();
-
-    auto tileDimIter = tileDimPriority.begin();
-    auto dimToTile = *tileDimIter;
-
-    const auto isSupportedTileSize = [op, &tilingInfo, outputShape, log](ShapeRef nTilesOnDim,
-                                                                         TilingMode tilingMode) -> bool {
-        const auto tiles = fillDividedTiles(op, nTilesOnDim, outputShape);
-        if (mlir::failed(tiles)) {
-            return false;
-        }
-        return tilingInfo.isSupportedTiling(tiles.value(), tilingMode, log);
-    };
-
-    while (!isSupportedTileSize(nTilesOnDimforGridSample, tilingModeToCheck)) {
-        if (nTilesOnDimforGridSample[dimToTile] >= outputShape[dimToTile]) {
-            dimToTile = *(++tileDimIter);
-            if (tileDimIter == tileDimPriority.end()) {
-                VPUX_THROW("Unsupported dim to tile: {0}", dimToTile);
-            }
-        } else {
-            ++nTilesOnDimforGridSample[dimToTile];
-        }
-    }
-
-    auto origTiles = fillDividedTiles(op, nTilesOnDimforGridSample, outputShape);
-    return origTiles;
+    return vpux::getSWLayerTilingStrategy(this->getOperation(), tilingMode, log);
 }
 
 void vpux::VPU::GridSampleOp::build(::mlir::OpBuilder& odsBuilder, ::mlir::OperationState& odsState,
@@ -132,13 +102,16 @@ bool vpux::VPU::GridSampleOp::checkStrategyCompatibility(VPU::MultiClusterStrate
            strategy == VPU::MultiClusterStrategy::SplitOverBatch;
 }
 
-bool vpux::VPU::GridSampleOp::isOperationSplitOverBatchCompatible(ShapeRef) {
+bool vpux::VPU::GridSampleOp::isOperationSplitOverBatchCompatible(ShapeRef shape) {
     const auto inputShape = getShape(getInput());
     const auto gridShape = getShape(getGrid());
     const auto inputBatchSize = inputShape[Dims4D::Act::N];
     const auto gridBatchSize = gridShape[Dims4D::Act::N];
 
-    return inputBatchSize > 1 && inputBatchSize == gridBatchSize;
+    // When shape is empty (strategy assignment), check op-level eligibility using the input batch size.
+    // When shape is a candidate tile shape (tiling check), verify the tile has N > 1.
+    const auto batchSize = (shape == ShapeRef()) ? inputBatchSize : shape[Dims4D::Act::N];
+    return batchSize > 1 && inputBatchSize == gridBatchSize;
 }
 
 vpux::VPU::DistributionInfo vpux::VPU::GridSampleOp::getExplicitDistributionInfoAttr(

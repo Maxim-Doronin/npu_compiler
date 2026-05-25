@@ -494,9 +494,9 @@ mlir::LogicalResult prepareDequantizeSwap(optimization::TransformAttrPos dequant
 Const::CastElemTypeAttr tryFusingConsecutiveCasts(Const::CastElemTypeAttr currTransformation,
                                                   Const::CastElemTypeAttr prevTransformation) {
     const bool castToQuantizedType =
-            mlir::isa<mlir::quant::QuantizedType, vpux::type::QuantileFloatType>(currTransformation.getElemType());
+            mlir::isa<mlir::quant::QuantizedType, vpux::type::QuantileType>(currTransformation.getElemType());
     const bool castToQuantizedTypePrev =
-            mlir::isa<mlir::quant::QuantizedType, vpux::type::QuantileFloatType>(prevTransformation.getElemType());
+            mlir::isa<mlir::quant::QuantizedType, vpux::type::QuantileType>(prevTransformation.getElemType());
     // E#151161: fusing cast-to-quantized-type is complicated: it requires (at
     // least) expressed type modification which doesn't always agree with
     // further transformations (e.g. one could have fused casts, followed by

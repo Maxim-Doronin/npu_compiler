@@ -76,8 +76,8 @@ bool isOutputActTypeSupported(vpux::NDTypeInterface type, int64_t alignment, Log
 Byte getWeightsTableSize(int64_t OC);
 
 SmallVector<Byte> getWeightsTableSize(mlir::Operation* op, int64_t OC, mlir::Value weightsTable,
-                                      mlir::Value weightTableScale, mlir::Value weightTableBias,
-                                      mlir::Value weightTableZeroPoints);
+                                      mlir::Value weightTableDataPointer, mlir::Value weightTableScale,
+                                      mlir::Value weightTableBias, mlir::Value weightTableZeroPoints);
 
 mlir::LogicalResult getWeightTableBuffers(mlir::Operation* op, SmallVector<Byte>& buffers, int64_t OC);
 
@@ -102,10 +102,12 @@ mlir::LogicalResult isSupported(mlir::Operation* op, Logger log = Logger::global
 //
 // Check if small kernel optimization is supported
 //
-bool doesWorkloadSupportSmallKernelOpt([[maybe_unused]] config::ArchKind arch, int64_t KX, int64_t SX,
-                                       ArrayRef<int64_t> workloadOutSz, bool isFp16Input, [[maybe_unused]] int64_t KY,
-                                       [[maybe_unused]] int64_t padLeft);
-bool isSmallKernelOptimizationSupported(const config::ArchKind arch, mlir::Operation* op);
+bool doesWorkloadSupportSmallKernelOpt(mlir::Operation* op, const int64_t KX, const int64_t SX,
+                                       ArrayRef<int64_t> workloadOutSz, bool isFp16Input, const int64_t KY,
+                                       const int64_t padLeft);
+bool doesOpSupportSmallKernelOptimization(mlir::Operation* op);
+bool isSmallKernelOptimizationSupported(mlir::Operation* op);
+bool isSparseWorkloadEligibleForSmallKernelOpt(mlir::Operation* op, ArrayRef<int64_t> supportedChannels);
 
 //
 // Verify kernel utils

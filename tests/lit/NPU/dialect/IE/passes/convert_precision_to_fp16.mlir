@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-precision-to-fp16 --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --convert-precision-to-fp16 --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 //
 // The 'convert-precision-to-fp16' pass:
@@ -421,16 +421,20 @@ func.func @main(%arg0: tensor<1x1024xf16>) -> tensor<1x1024xf16> {
     %2 = IE.BitwiseAnd(%0, %1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1024xi8>, tensor<1x1024xi8> -> tensor<1x1024xi8>
     %3 = IE.BitwiseOr(%0, %2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1024xi8>, tensor<1x1024xi8> -> tensor<1x1024xi8>
     %4 = IE.BitwiseXor(%0, %3) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1024xi8>, tensor<1x1024xi8> -> tensor<1x1024xi8>
-    %5 = IE.Convert(%4) {dstElemType = f16} : tensor<1x1024xi8> -> tensor<1x1024xf16>
-    return %5 : tensor<1x1024xf16>
+    %5 = IE.BitwiseRightShift(%0, %4) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1024xi8>, tensor<1x1024xi8> -> tensor<1x1024xi8>
+    %6 = IE.BitwiseLeftShift(%0, %5) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1024xi8>, tensor<1x1024xi8> -> tensor<1x1024xi8>
+    %7 = IE.Convert(%6) {dstElemType = f16} : tensor<1x1024xi8> -> tensor<1x1024xf16>
+    return %7 : tensor<1x1024xf16>
     // CHECK:       [[CONVER:%.+]] = IE.Convert([[ARG0]]) {dstElemType = i8} : tensor<1x1024xf16> -> tensor<1x1024xi8>
 
     // CHECK:       [[BITWISENOT:%.+]] = IE.BitwiseNot([[CONVER]]) : tensor<1x1024xi8> -> tensor<1x1024xi8>
     // CHECK:       [[BITWISEAND:%.+]] = IE.BitwiseAnd([[CONVER]], [[BITWISENOT]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1024xi8>, tensor<1x1024xi8> -> tensor<1x1024xi8>
     // CHECK:       [[BITWISEOR:%.+]] = IE.BitwiseOr([[CONVER]], [[BITWISEAND]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1024xi8>, tensor<1x1024xi8> -> tensor<1x1024xi8>
     // CHECK:       [[BITWISEXOR:%.+]] = IE.BitwiseXor([[CONVER]], [[BITWISEOR]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1024xi8>, tensor<1x1024xi8> -> tensor<1x1024xi8>
+    // CHECK:       [[BITWISERIGHTSHIFT:%.+]] = IE.BitwiseRightShift([[CONVER]], [[BITWISEXOR]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1024xi8>, tensor<1x1024xi8> -> tensor<1x1024xi8>
+    // CHECK:       [[BITWISELEFTSHIFT:%.+]] = IE.BitwiseLeftShift([[CONVER]], [[BITWISERIGHTSHIFT]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1024xi8>, tensor<1x1024xi8> -> tensor<1x1024xi8>
 
-    // CHECK:       [[CONVER1:%.+]] = IE.Convert([[BITWISEXOR]]) {dstElemType = f16} : tensor<1x1024xi8> -> tensor<1x1024xf16>
+    // CHECK:       [[CONVER1:%.+]] = IE.Convert([[BITWISELEFTSHIFT]]) {dstElemType = f16} : tensor<1x1024xi8> -> tensor<1x1024xf16>
     // CHECK:       return [[CONVER1]] : tensor<1x1024xf16>
 
 }
@@ -529,44 +533,6 @@ func.func @main(%arg0: tensor<1x1024xi8>, %arg1: tensor<1x1024xsi32>) -> tensor<
     // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
     // CHECK-SAME:      tensor<1x1024xf16>, tensor<1xsi32>, tensor<1x1024xsi32> -> tensor<1x1024xsi32>
     // CHECK:     return [[SELECT]] : tensor<1x1024xsi32>
-}
-
-}
-
-// -----
-
-// CHECK-LABEL: @SelectOpSi64ToFP16
-module @SelectOpSi64ToFP16 {
-
-net.NetworkInfo
-    entryPoint : @main
-    inputsInfo : {
-        // CHECK: DataInfo "flag" : tensor<1x1024xi8>
-        // CHECK: DataInfo "data" : tensor<1x1024xsi64>
-        DataInfo "flag" : tensor<1x1024xi8>
-        DataInfo "data" : tensor<1x1024xsi64>
-    }
-    outputsInfo : {
-        // CHECK: DataInfo "out" : tensor<1x1024xsi64>
-        DataInfo "out" : tensor<1x1024xsi64>
-    }
-
-// CHECK: @main([[ARG0:[^:]+]]: tensor<1x1024xf16>, [[ARG1:[^:]+]]: tensor<1x1024xsi64>)
-// CHECK:  -> tensor<1x1024xsi64>
-func.func @main(%arg0: tensor<1x1024xi8>, %arg1: tensor<1x1024xsi64>) -> tensor<1x1024xsi64> {
-    %cst = const.Declare tensor<1xsi64> = dense<256> : tensor<1xsi64>
-    %0 = IE.Select(%arg0, %cst, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1024xi8>, tensor<1xsi64>, tensor<1x1024xsi64> -> tensor<1x1024xsi64>
-    return %0 : tensor<1x1024xsi64>
-
-    // CHECK-DAG: [[FLAG_CONST:%.+]] = const.Declare tensor<1xf16> = dense<256> : tensor<1xsi64>, [#const.CastElemType<f16>]
-    // CHECK:     [[CONVERT_DATA:%.+]] = IE.Convert([[ARG1]])
-    // CHECK-SAME:      {dstElemType = f16} : tensor<1x1024xsi64> -> tensor<1x1024xf16>
-    // CHECK:     [[SELECT:%.+]] = IE.Select([[ARG0]], [[FLAG_CONST]], [[CONVERT_DATA]])
-    // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
-    // CHECK-SAME:      tensor<1x1024xf16>, tensor<1xf16>, tensor<1x1024xf16> -> tensor<1x1024xf16>
-    // CHECK:     [[CONVERT_OUT:%.+]] = IE.Convert([[SELECT]])
-    // CHECK-SAME:      {dstElemType = si64} : tensor<1x1024xf16> -> tensor<1x1024xsi64>
-    // CHECK:     return [[CONVERT_OUT]] : tensor<1x1024xsi64>
 }
 
 }
@@ -1122,5 +1088,69 @@ module @keepFP32OnlyPrecisionSensitiveOps {
 		// CHECK:       [[OUT:%.+]] = IE.Divide([[CST16]], [[CLAMP]])
         // CHECK-SAME:  {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1xf16>, tensor<1x1000xf16> -> tensor<1x1000xf16>
         // CHECK:       return [[OUT]] : tensor<1x1000xf16>
+    }
+}
+
+// -----
+
+// CHECK-LABEL: @NotConvertI64ClampToFP16
+module @NotConvertI64ClampToFP16 {
+    net.NetworkInfo
+        entryPoint : @main
+        inputsInfo : {
+            // CHECK: DataInfo "input" : tensor<6x2xsi64>
+            DataInfo "input" : tensor<6x2xsi64>
+        }
+        outputsInfo : {
+            // CHECK: DataInfo "output" : tensor<6x2x512xf32>
+            DataInfo "output" : tensor<6x2x512xf32>
+        }
+
+    // CHECK: func.func @main([[ARG0:[^:]+]]: tensor<6x2xsi64>) -> tensor<6x2x512xf16>
+    func.func @main(%arg0: tensor<6x2xsi64>) -> tensor<6x2x512xf32> {
+        %cst = const.Declare tensor<12068x512xf32> = dense<1.0> : tensor<12068x512xf32>
+        %0 = IE.Clamp(%arg0) {max = 9.2233720368547758E+18 : f64, min = 0.000000e+00 : f64} : tensor<6x2xsi64> -> tensor<6x2xsi64>
+        %1 = IE.Gather(%cst, %0) {axis_value = 0 : i64, batch_dims = 0 : i64, indices_rank = 2 : i64} : tensor<12068x512xf32>, tensor<6x2xsi64> -> tensor<6x2x512xf32>
+
+        return %1 : tensor<6x2x512xf32>
+
+        // CHECK-DAG:   [[CST:%.+]] = const.Declare tensor<12068x512xf16> = dense<1.000000e+00> : tensor<12068x512xf32>, [#const.CastElemType<f16>]
+        // CHECK:       [[CLAMP:%.+]] = IE.Clamp([[ARG0]]) {max = 9.2233720368547758E+18 : f64, min = 0.000000e+00 : f64} : tensor<6x2xsi64> -> tensor<6x2xsi64>
+        // CHECK:       [[GATHER:%.+]] = IE.Gather([[CST]], [[CLAMP]]) {axis_value = 0 : i64, batch_dims = 0 : i64, indices_rank = 2 : i64} : tensor<12068x512xf16>, tensor<6x2xsi64> -> tensor<6x2x512xf16>
+
+        // CHECK:       return [[GATHER]] : tensor<6x2x512xf16>
+    }
+}
+
+// -----
+
+// CHECK-LABEL: @NotConvertI64ClampToFP16WithAffineReshape
+module @NotConvertI64ClampToFP16WithAffineReshape {
+    net.NetworkInfo
+        entryPoint : @main
+        inputsInfo : {
+            // CHECK: DataInfo "input" : tensor<6x2xsi64>
+            DataInfo "input" : tensor<6x2xsi64>
+        }
+        outputsInfo : {
+            // CHECK: DataInfo "output" : tensor<12x512xf32>
+            DataInfo "output" : tensor<12x512xf32>
+        }
+
+    // CHECK: func.func @main([[ARG0:[^:]+]]: tensor<6x2xsi64>) -> tensor<12x512xf16>
+    func.func @main(%arg0: tensor<6x2xsi64>) -> tensor<12x512xf32> {
+        %cst = const.Declare tensor<12068x512xf32> = dense<1.0> : tensor<12068x512xf32>
+        %0 = IE.Clamp(%arg0) {max = 9.2233720368547758E+18 : f64, min = 0.000000e+00 : f64} : tensor<6x2xsi64> -> tensor<6x2xsi64>
+        %1 = IE.AffineReshape(%0) {dim_mapping = [[0], [0]], shape_value = [12]} : tensor<6x2xsi64> -> tensor<12xsi64>
+        %2 = IE.Gather(%cst, %1) {axis_value = 0 : i64, batch_dims = 0 : i64, indices_rank = 1 : i64} : tensor<12068x512xf32>, tensor<12xsi64> -> tensor<12x512xf32>
+
+        return %2 : tensor<12x512xf32>
+
+        // CHECK-DAG:   [[CST:%.+]] = const.Declare tensor<12068x512xf16> = dense<1.000000e+00> : tensor<12068x512xf32>, [#const.CastElemType<f16>]
+        // CHECK:       [[CLAMP:%.+]] = IE.Clamp([[ARG0]]) {max = 9.2233720368547758E+18 : f64, min = 0.000000e+00 : f64} : tensor<6x2xsi64> -> tensor<6x2xsi64>
+        // CHECK:       [[AFFINE_RESHAPE:%.+]] = IE.AffineReshape([[CLAMP]])
+        // CHECK:       [[GATHER:%.+]] = IE.Gather([[CST]], [[AFFINE_RESHAPE]]) {axis_value = 0 : i64, batch_dims = 0 : i64, indices_rank = 1 : i64} : tensor<12068x512xf16>, tensor<12xsi64> -> tensor<12x512xf16>
+
+        // CHECK:       return [[GATHER]] : tensor<12x512xf16>
     }
 }

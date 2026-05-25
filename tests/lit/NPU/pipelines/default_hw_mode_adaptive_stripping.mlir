@@ -10,8 +10,8 @@
 /// stderr should be: <Pass-Options-Parser>: no such option enable-adaptive-stripping
 
 // XFAIL: *
-// RUN: vpux-opt --vpu-arch=%arch% --default-hw-mode="enable-adaptive-stripping" %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --platform=%platform% --default-hw-mode="enable-adaptive-stripping" %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 /// This is a dummy module with a dummy function to run the LIT test and expect a fail with
 /// enable-adaptive-stripping passed through default-hw-mode

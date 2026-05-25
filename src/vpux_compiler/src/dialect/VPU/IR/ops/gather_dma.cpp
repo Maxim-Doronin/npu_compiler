@@ -94,8 +94,11 @@ mlir::FailureOr<OutputTiling> vpux::VPU::GatherDMAOp::getTilingStrategy(TilingMo
         auto getStorageBitWidth = [](mlir::Type elemType) -> std::optional<uint32_t> {
             return mlir::TypeSwitch<mlir::Type, std::optional<uint32_t>>(elemType)
                     .Case<mlir::quant::UniformQuantizedType, mlir::quant::UniformQuantizedPerAxisType,
-                          vpux::type::QuantileFloatType, mlir::quant::QuantileQuantizedType,
-                          mlir::quant::QuantileQuantizedPerAxisType>([](auto quantType) {
+                          vpux::type::QuantileType>([](auto quantType) {
+                        if (auto quantileStorage =
+                                    mlir::dyn_cast<vpux::type::QuantileType>(quantType.getStorageType())) {
+                            return mlir::cast<mlir::IntegerType>(quantileStorage.getStorageType()).getWidth();
+                        }
                         return mlir::cast<mlir::IntegerType>(quantType.getStorageType()).getWidth();
                     })
                     .Default([](mlir::Type type) -> std::optional<uint32_t> {

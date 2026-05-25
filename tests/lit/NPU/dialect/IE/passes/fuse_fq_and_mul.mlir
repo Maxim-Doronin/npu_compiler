@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --fuse-fq-and-mul="fuse-fq-and-mul-with-non-const-input=true" %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --fuse-fq-and-mul="fuse-fq-and-mul-with-non-const-input=true" %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL: @FuseFQAndMulAtConstWeightsAndMulLhsIsActivation
 // CHECK-SAME: [[INPUT:%.+]]: tensor<1x288x20x20xf32>

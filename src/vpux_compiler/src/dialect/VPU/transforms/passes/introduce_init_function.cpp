@@ -98,12 +98,12 @@ class InitSpecificMetaInfoLogger : public InitSpecificLoggerBase {
     static double percentify(vpux::Byte n, vpux::Byte m);
 
 public:
-    InitSpecificMetaInfoLogger(mlir::ModuleOp moduleOp);
+    InitSpecificMetaInfoLogger(mlir::ModuleOp moduleOp, bool skipViewLikeOnly);
     void analyzeInitFunction(mlir::func::FuncOp) override;
     void print(const Logger&) override;
 };
 
-InitSpecificMetaInfoLogger::InitSpecificMetaInfoLogger(mlir::ModuleOp moduleOp) {
+InitSpecificMetaInfoLogger::InitSpecificMetaInfoLogger(mlir::ModuleOp moduleOp, bool skipViewLikeOnly) {
     // Note: to collect *all* OV-imported weights, use blob manager (backing
     // container for dense_resource<>).
     const auto& manager = mlir::DenseResourceElementsHandle::getManagerInterface(moduleOp.getContext());
@@ -144,7 +144,7 @@ InitSpecificMetaInfoLogger::InitSpecificMetaInfoLogger(mlir::ModuleOp moduleOp) 
         }
 
         // if suitable, recorded into used constants
-        if (VPU::isSuitableForWeightsSeparation(constOp)) {
+        if (VPU::isSuitableForWeightlessCompilation(constOp, skipViewLikeOnly)) {
             if (auto* info = _usedOvConstants(attr)) {
                 info->count++;
                 info->size += vpux::getExpectedBufferSize(attr.getType());
@@ -154,8 +154,9 @@ InitSpecificMetaInfoLogger::InitSpecificMetaInfoLogger(mlir::ModuleOp moduleOp) 
 
         // if not suitable, but trivial, recorded into unused constants
         // otherwise - unsupported
-        auto* weightsCategory =
-                VPU::isTrivialForWeightsSeparation(constOp) ? &_unusedOvConstants : &_unsupportedOvConstants;
+        auto* weightsCategory = VPU::isTrivialForWeightsSeparation(constOp, skipViewLikeOnly)
+                                        ? &_unusedOvConstants
+                                        : &_unsupportedOvConstants;
         if (auto* info = (*weightsCategory)(attr)) {
             info->count++;
             info->size += vpux::getExpectedBufferSize(constOp.getContentAttr().getType());
@@ -194,8 +195,9 @@ void InitSpecificMetaInfoLogger::print(const Logger& log) {
     generalStats.info("Size percentage of *used* constants: {0:P}",
                       percentify(_usedOvConstants->size, _ovConstants->size));
 
-    generalStats.info("Generated schedule's total I/O size: {0:F} KB",
-                      toKb(_currentInitInputs.size + _currentInitOutputs.size));
+    generalStats.info("Generated schedule's total I/O size: {0:F} KB ({1:F} KB inputs + {2:F} KB outputs)",
+                      toKb(_currentInitInputs.size + _currentInitOutputs.size), toKb(_currentInitInputs.size),
+                      toKb(_currentInitOutputs.size));
 
     generalStats.info("");  // dummy line
     generalStats.info("[1]: available unique weights - weights that come from original model and are used in the "
@@ -342,6 +344,7 @@ class MainFunctionUpdater final : public VPU::CallChainTree::Visitor {
     Logger _log;
     mlir::DenseMap<mlir::func::FuncOp, WsArgumentCache> _argCaches;
     VPU::FuncOpVisitor _hasSeenThisFunction;
+    VPU::IsWorthyToCollect _isWorthy;
 
     // Appends new function arguments of callee to the caller's arguments.
     // During weights separation, a function's inner constants become inputs.
@@ -393,7 +396,8 @@ class MainFunctionUpdater final : public VPU::CallChainTree::Visitor {
     }
 
 public:
-    MainFunctionUpdater(const Logger& log, mlir::ModuleOp moduleOp): _log(log) {
+    MainFunctionUpdater(const Logger& log, mlir::ModuleOp moduleOp, VPU::IsWorthyToCollect isWorthy)
+            : _log(log), _isWorthy(std::move(isWorthy)) {
         moduleOp.walk([&](mlir::func::FuncOp funcOp) {
             _argCaches.insert({funcOp, WsArgumentCache(funcOp)});
         });
@@ -408,7 +412,7 @@ public:
         // when visiting the function, update IR inside the current function
         // according to the main schedule transformations.
         _log.trace("Visiting {0} to update main schedule", currOp.getSymName());
-        const auto constants = VPU::collectMoveWorthyConstants(_log, currOp);
+        const auto constants = VPU::collectMoveWorthyConstants(_log, currOp, _isWorthy);
 
         // in main we only care about input boundary - "quantization" has to be
         // done on input arguments to restore real types.
@@ -591,8 +595,11 @@ IntroduceInitFunctionPass::SplitSlice IntroduceInitFunctionPass::collectSplitsAc
     // when generating init, acknowledge init part and memory limit
     assert(_mode == Mode::GenerateInit && "Init generation only happens in gen-init");
     VPUX_THROW_WHEN(splits.empty(), "Cannot generate empty init schedule");
-    // Note: sort "globally" to prepare for slicing
-    llvm::sort(splits);
+    // Note: sort "globally" to prepare for slicing; use stable sort to not
+    // shuffle "equal" elements; this plays nicely into the IR-based ordering
+    // since WeightsSeparationInfo already "orders" data based on the IR
+    // structure.
+    std::stable_sort(splits.begin(), splits.end());
 
     auto slicedSplits = VPU::sliceAccordingToMemoryLimit(_log, splits, _memoryLimit);
     VPUX_THROW_WHEN((_initPart < 0 || _initPart >= checked_cast<int64_t>(slicedSplits.size())),
@@ -606,7 +613,9 @@ WsArgumentCache IntroduceInitFunctionPass::updateMainAndOutlinedFunctions(mlir::
                                                                           const VPU::CallChainTree& tree) {
     // Traverse the call-chain tree, eagerly converting all constant operations
     // into VPU IR ops inside of the main / any outlined functions.
-    MainFunctionUpdater mainUpdater(_log, moduleOp);
+    MainFunctionUpdater mainUpdater(_log, moduleOp, [](Const::DeclareOp constOp) {
+        return VPU::isSuitableForWeightlessCompilation(constOp, /*skipViewLikeOnly=*/true);
+    });
     tree.apply(mainUpdater);
 
     return mainUpdater.takeArgCache(mainFuncOp);
@@ -730,7 +739,10 @@ void IntroduceInitFunctionPass::safeRunOnModule() {
     }
 
     auto [netInfo, mainFuncOp] = net::getFromModule(moduleOp);
-    const auto& wsAnalysis = getAnalysis<VPU::WeightsSeparationInfo>();
+
+    auto infoOpt = getCachedAnalysis<VPU::WeightsSeparationInfo>();
+    VPUX_THROW_UNLESS(infoOpt.has_value(), "VPU::WeightsSeparationInfo analysis must be cached");
+    const auto& wsAnalysis = infoOpt->get();
 
     auto tree = VPU::getOutliningRepresentation(mainFuncOp);
 
@@ -743,7 +755,7 @@ void IntroduceInitFunctionPass::safeRunOnModule() {
 
     auto statisticsLogger = [&]() -> std::unique_ptr<InitSpecificLoggerBase> {
         if (_log.isActive(LogLevel::Info)) {
-            return std::make_unique<InitSpecificMetaInfoLogger>(moduleOp);
+            return std::make_unique<InitSpecificMetaInfoLogger>(moduleOp, /*skipViewLikeOnly=*/true);
         }
         return std::make_unique<InitSpecificNullLogger>();
     }();

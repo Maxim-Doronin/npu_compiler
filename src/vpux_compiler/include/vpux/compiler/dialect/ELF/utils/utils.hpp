@@ -11,6 +11,8 @@
 #include "vpux_headers/platform.hpp"
 
 #include <mlir/Dialect/Func/IR/FuncOps.h>
+#include <mlir/IR/BuiltinAttributes.h>
+#include <mlir/IR/SymbolTable.h>
 
 using namespace vpux;
 
@@ -137,12 +139,57 @@ std::pair<uint8_t, uint8_t> reduceWaitMaskTo8bit(uint64_t waitMask);
 mlir::MemRefType getLinearMemrefType(mlir::MLIRContext* ctx, int64_t memrefSize, mlir::Type dataType,
                                      VPU::MemoryKind memKind);
 
+// if `op` does not implement ELF::WrappableOpInterface - do nothing and return nullptr
+// otherwise, moves `op` into a corresponding ELF section, that is created if necessary
+//
+// if `op` is not a `Symbol`, given ELF section ops can contain only operations of the same type
+// the `op` cannot reference other `Symbol` ops in the same section (there are no `Symbol` ops there)
+// then there are no references to be updated after original op symbolization (that produced the `op`)
+// returns nullptr in this case
+//
+// otherwise, returns symbol reference in format of @section_name::@symbol_name
+// to allow caller to update `op`'s symbol references to other `Symbol` ops in the section
+mlir::SymbolRefAttr moveOpToSection(mlir::Operation* op, mlir::OpBuilder& builder);
+
+// moveOpToSection overload with optimized ELF section lookup via `sectionMap`
 using SectionMapper = typename std::unordered_map<ELF::SectionSignature, ELF::ElfSectionInterface>;
 mlir::SymbolRefAttr moveOpToSection(mlir::Operation* op, SectionMapper& sectionMap, mlir::OpBuilder& builder);
+
 mlir::SymbolRefAttr cloneSectionSymbol(mlir::SymbolRefAttr from, mlir::SymbolRefAttr to);
 
 void insertELFMain(mlir::func::FuncOp netFunc);
 size_t getOpBinarySize(vpux::NDTypeInterface type);
+
+// lookup operation that defines `symbol` in scope of ELF.Main that defines `from`
+// note: mlir::SymbolTable::lookupNearestSymbolFrom limits the scope at the closest `SymbolTable` parent
+mlir::Operation* lookupNearestSymbolFrom(mlir::Operation* from, mlir::StringAttr symbol);
+mlir::Operation* lookupNearestSymbolFrom(mlir::Operation* from, mlir::SymbolRefAttr symbol);
+
+// collect all uses of `symbol` inside `from`, including regions of nested `SymbolTable` operations
+// assumes nested `SymbolTable` operations have no nested regions on their own
+// note: mlir::SymbolTable::getSymbolUses will not recurse into nested `SymbolTable` operations
+mlir::SmallVector<mlir::SymbolTable::SymbolUse> getSymbolUses(mlir::Operation* symbol, ELF::MainOp from);
+
+/*
+    Canonical form is a form in which we preserve strides of the argument. Legalization pass
+    allows for reshapes that expand/contract original shape with unit dimensions. Below function
+    will go over DMA buffer strides and recover compatible DMA shapes and strides from them by
+    comparing them to argument type. For example consider below case
+    argumentShape 5x10x1xf16
+    argumentStrides [10, 1, 1] note: final stride of 50 is not returned by getStrides
+    dmaShape 1x5x1x5xf16
+    dmaStrides [50, 10, 10, 1] note: here we suddenly get stride of 50 since we have one extra dimension
+
+    Note the tiling on first dim of dmaShape(10 got tiled to 5). Canonical form of dmaShape and DmaStrides would be
+    canonicalDmaShape 5x5x1xf16
+    canonicalDmaStrides [50, 10, 1, 1]
+    note that in canonical form final stride of 50 is present. It's a quirk of the algorithm and isn't really needed
+    but also doesn't hurt. Also note how canonical dma strides match the strides of the argument which is exactly the
+    point.
+*/
+void getCanonicalDmaForm(MemShape& dmaBufferShape, MemStrides& dmaBufferStrides, ShapeRef argumentShape,
+                         llvm::SmallVector<int64_t>& tileOffsets, llvm::SmallVector<int64_t>& canonicalDmaShapes,
+                         llvm::SmallVector<int64_t>& canonicalDmaStrides, llvm::SmallVector<int64_t>& canonicalOffsets);
 
 }  // namespace ELF
 }  // namespace vpux

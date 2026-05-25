@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --eliminate-slice-in-softmax-matmul %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --eliminate-slice-in-softmax-matmul %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL: @EliminateSoftmaxSliceMatMul
 // CHECK-SAME:  ([[ARG0:%.+]]: tensor<1x64x1024x1025xf16>, [[ARG1:%.+]]: tensor<1x64x64x1024xf16>)

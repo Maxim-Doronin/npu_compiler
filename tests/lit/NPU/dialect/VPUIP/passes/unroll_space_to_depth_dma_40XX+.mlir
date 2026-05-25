@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --unroll-space-to-depth-dma %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --unroll-space-to-depth-dma %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 #HWC = affine_map<(d0, d1, d2) -> (d1, d2, d0)>
 

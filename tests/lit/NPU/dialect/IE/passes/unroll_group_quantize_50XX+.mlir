@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --unroll-group-quantize %s | FileCheck %s
-// REQUIRES: arch-NPU50XX
-// COM: F8 is only supported on NPU50+, no need to run these tests on all arches.
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --unroll-group-quantize %s | FileCheck %s
+// REQUIRES: platform-NPU5010
+// COM: F8 is only supported on NPU50+, no need to run these tests on all platforms.
 
 // CHECK-LABEL: @UnrollThreeAxesF8E4M3FN
 // CHECK-SAME:    [[INPUT:%.+]]: tensor<1x2x2x32xf16>

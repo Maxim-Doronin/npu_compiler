@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt  --split-input-file --init-compiler="vpu-arch=%arch%" --fuse-segmented-dma  %s | FileCheck %s
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt  --split-input-file --init-compiler="platform=%platform%" --fuse-segmented-dma  %s | FileCheck %s
+// REQUIRES: platform-NPU5010
 
 !DummyT = memref<1x3x224x224xf16, @DDR>
 

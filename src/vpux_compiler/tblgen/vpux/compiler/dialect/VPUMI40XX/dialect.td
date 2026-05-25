@@ -61,11 +61,11 @@ def VPUMI40XX_Dialect : Dialect {
         depends on its architecture dependency:
             - If architecture-dependent, it should be duplicated in the NPUReg* dialect.
             - Otherwise, it can remain in the VPUASM dialect.
-        - If an op serves only as a utility for compilation and is not involved in the lowering
-        pass logic, it should be placed in the VPURegMapped dialect. For example, the **TaskBufferLayoutOp**
-        operation is placed in the VPURegMapped dialect because it is only used to create task location buffers in the
-        VPUMI40XX dialect's `CreateResolveTaskLocationPass`. Since it is an architecture-agnostic operation and only
-        partially involved in the lowering pass, so it is appropriate to include it in the VPURegMapped dialect.
+        - If an op serves only as a utility for compilation and is not involved in the lowering 
+        pass logic, it should be placed in the VPURegMapped dialect. For example, the **ExecutionGroupOp** 
+        operation is placed in the VPURegMapped dialect because it is used only to group tasks that are fetched into CMX together. During compilation,
+        it is used with VPUMI40XX dialect passes (e.g. group-exec-ops). Since it is an architecture-agnostic operation and only 
+        partially involved in the lowering pass (it does not get lowered to VPUASM), it is appropriate to include it in the VPURegMapped dialect.
     }];
 
     let name = "VPUMI40XX";

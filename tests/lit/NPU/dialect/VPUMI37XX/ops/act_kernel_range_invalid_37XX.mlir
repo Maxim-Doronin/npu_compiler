@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --verify-diagnostics --init-compiler="vpu-arch=%arch%" %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --verify-diagnostics --init-compiler="platform=%platform%" %s
+// REQUIRES: platform-NPU3720
 
 module @Test {
 net.NetworkInfo entryPoint : @AssignFullKernelPath inputsInfo :  {

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --unroll-distributed-ops --canonicalize  %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --unroll-distributed-ops --canonicalize  %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
@@ -133,7 +133,7 @@ func.func @UnrollNceSoHOutputOverlapped(%input: !Input_DDR, %output: !Output_DDR
 
     // Cluster tiling
     VPURT.Task waits(%bar0: !VPURT.Barrier) updates(%bar1: !VPURT.Barrier) {
-        %1:2 = VPUIP.NCEClusterTask <{
+        %1:2 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 1, 0, 0, 0, 0>} <{
                     kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
                     kernel_size = [3, 3],
                     kernel_strides = [1, 1],
@@ -332,7 +332,7 @@ func.func @UnrollNceSoHOutputOverlapped(%input: !Input_DDR, %output: !Output_DDR
     //CHECK:        VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier) {
     //CHECK:          VPUIP.NCEClusterTask <{
     //CHECK-SAME:           kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 0 : i64>,
-    //CHECK-SAME:           kernel_size = [3, 3], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>
+    //CHECK-SAME:           kernel_size = [3, 3], kernel_strides = [1, 1]
     //CHECK-SAME:       }> input([[IN1_CMX]] : memref<1x16x12x33xf16, #NHWC, [@CMX_NN, 0]>)
     //CHECK-SAME:           input_sparsity_map([[IN_SPARSE_MAP_1]] : memref<1x16x12x33xi1, #NHWC, [@CMX_NN, 0]>)
     //CHECK-SAME:           input_storage_element_table([[IN_SE_TABLE_1]] : memref<1x16x12x33xi32, #NHWC, [@CMX_NN, 0]>)
@@ -357,7 +357,7 @@ func.func @UnrollNceSoHOutputOverlapped(%input: !Input_DDR, %output: !Output_DDR
     //CHECK:        VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier) {
     //CHECK:          VPUIP.NCEClusterTask <{
     //CHECK-SAME:           kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 0 : i64>,
-    //CHECK-SAME:           kernel_size = [3, 3], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>
+    //CHECK-SAME:           kernel_size = [3, 3], kernel_strides = [1, 1]
     //CHECK-SAME:       }> input([[IN2_CMX]] : memref<1x16x13x33xf16, #NHWC, [@CMX_NN, 1]>)
     //CHECK-SAME:           input_sparsity_map([[IN_SPARSE_MAP_2]] : memref<1x16x13x33xi1, #NHWC, [@CMX_NN, 1]>)
     //CHECK-SAME:           input_storage_element_table([[IN_SE_TABLE_2]] : memref<1x16x13x33xi32, #NHWC, [@CMX_NN, 1]>)
@@ -384,7 +384,7 @@ func.func @UnrollNceSoHOutputOverlapped(%input: !Input_DDR, %output: !Output_DDR
     //CHECK:        VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier) {
     //CHECK:          VPUIP.NCEClusterTask <{
     //CHECK-SAME:           kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 1 : i64>,
-    //CHECK-SAME:           kernel_size = [3, 3], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>
+    //CHECK-SAME:           kernel_size = [3, 3], kernel_strides = [1, 1]
     //CHECK-SAME:       }> input([[IN3_CMX]] : memref<1x16x12x33xf16, #NHWC, [@CMX_NN, 2]>)
     //CHECK-SAME:           input_sparsity_map([[IN_SPARSE_MAP_3]] : memref<1x16x12x33xi1, #NHWC, [@CMX_NN, 2]>)
     //CHECK-SAME:           input_storage_element_table([[IN_SE_TABLE_3]] : memref<1x16x12x33xi32, #NHWC, [@CMX_NN, 2]>)
@@ -512,7 +512,7 @@ func.func @OmitHaloRegionsForEqualMemView(%arg0: memref<1x3x224x224xf16, @DDR>,
         updates(%WAIT_QUANTIZE : !VPURT.Barrier)
         attributes {isTrailingSWLayer = false} {
 
-        %31 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 4294967300 : i64} <{
+        %31 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 4294967300 : i64, resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
             is_permute_quantize,
             is_superdense,
             task_type = #VPUIP.nce_task_type<ELTWISE>
@@ -734,7 +734,8 @@ func.func @UnrollNceOutputOverlappedHaloOverNonadjacentCluster() -> memref<1x784
   %CONV_OUTPUT = VPURT.DeclareBuffer <CMX_NN> <576> -> !OutputDistributed
   %OUTPUT = VPURT.DeclareBuffer <DDR> <0> -> memref<1x784x32x6xf16, #NWCH, @DDR>
   VPURT.Task updates(%BAR0 : !VPURT.Barrier) {
-    %1 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 4751 : i64} <{is_permute_quantize, task_type = #VPUIP.nce_task_type<ELTWISE>}>
+    %1 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 4751 : i64, resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>}
+     <{is_permute_quantize, task_type = #VPUIP.nce_task_type<ELTWISE>}>
       input(%CONV_INPUT : !InputDistributed)
       weights(%CONV_INPUT : !InputDistributed)
       parent_input(%CONV_INPUT : !InputDistributed)
@@ -817,7 +818,7 @@ func.func @UnrollNceOutputOverlappedHaloOverNonadjacentCluster() -> memref<1x784
   //CHECK: [[COPY_OUT2:%.+]] = VPURT.DeclareBuffer <DDR> <100352> -> memref<1x784x32x3xf16, #NWCH, @DDR>
   //CHECK: [[COPY_OUT3:%.+]] = VPURT.DeclareBuffer <DDR> <150528> -> memref<1x784x32x3xf16, #NWCH, @DDR>
   //CHECK:              VPURT.Task updates([[BAR0]] : !VPURT.Barrier) {
-  //CHECK:                  VPUIP.NCEClusterTask <{is_permute_quantize, task_type = #VPUIP.nce_task_type<ELTWISE>}>
+  //CHECK:                  VPUIP.NCEClusterTask <{is_permute_quantize
   //CHECK-SAME:                 input([[IN0]] : memref<1x784x32x2xf16, #NHWC, [@CMX_NN, 0]>)
   //CHECK-SAME:                 weights([[WEIGHT0]] : memref<1x784x32x2xf16, #NHWC, [@CMX_NN, 0]>)
   //CHECK:                      output_ITI_buff([[OUT1]] : !VPUIP.ITIBuffer<
@@ -831,7 +832,7 @@ func.func @UnrollNceOutputOverlappedHaloOverNonadjacentCluster() -> memref<1x784
   //CHECK:                      }
   //CHECK:               }
   //CHECK:              VPURT.Task updates([[BAR0]] : !VPURT.Barrier) {
-  //CHECK:                  VPUIP.NCEClusterTask <{is_permute_quantize, task_type = #VPUIP.nce_task_type<ELTWISE>}>
+  //CHECK:                  VPUIP.NCEClusterTask <{is_permute_quantize
   //CHECK-SAME:                 input([[IN1]] : memref<1x784x32x2xf16, #NHWC, [@CMX_NN, 1]>)
   //CHECK-SAME:                 weights([[WEIGHT1]] : memref<1x784x32x2xf16, #NHWC, [@CMX_NN, 1]>)
   //CHECK:                      output_ITI_buff([[OUT0]], [[OUT2]], [[OUT3]]
@@ -844,7 +845,7 @@ func.func @UnrollNceOutputOverlappedHaloOverNonadjacentCluster() -> memref<1x784
   //CHECK:                      }
   //CHECK:               }
   //CHECK:              VPURT.Task updates([[BAR0]] : !VPURT.Barrier) {
-  //CHECK:                  VPUIP.NCEClusterTask <{is_permute_quantize, task_type = #VPUIP.nce_task_type<ELTWISE>}>
+  //CHECK:                  VPUIP.NCEClusterTask <{is_permute_quantize
   //CHECK-SAME:                 input([[IN2]] : memref<1x784x32x1xf16, #NHWC, [@CMX_NN, 2]>)
   //CHECK-SAME:                 weights([[WEIGHT2]] : memref<1x784x32x1xf16, #NHWC, [@CMX_NN, 2]>)
   //CHECK:                      output_ITI_buff([[OUT3]] : !VPUIP.ITIBuffer<
@@ -858,7 +859,7 @@ func.func @UnrollNceOutputOverlappedHaloOverNonadjacentCluster() -> memref<1x784
   //CHECK:                      }
   //CHECK:               }
   //CHECK:              VPURT.Task updates([[BAR0]] : !VPURT.Barrier) {
-  //CHECK:                  VPUIP.NCEClusterTask <{is_permute_quantize, task_type = #VPUIP.nce_task_type<ELTWISE>}>
+  //CHECK:                  VPUIP.NCEClusterTask <{is_permute_quantize
   //CHECK-SAME:                 input([[IN3]] : memref<1x784x32x1xf16, #NHWC, [@CMX_NN, 3]>)
   //CHECK-SAME:                 weights([[WEIGHT3]] : memref<1x784x32x1xf16, #NHWC, [@CMX_NN, 3]>)
   //CHECK-SAME:                 parent_input([[IN3]] : memref<1x784x32x1xf16, #NHWC, [@CMX_NN, 3]>)

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --ungroup-bounded-buffers %s
-//  | FileCheck %s REQUIRES: arch-NPU40XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --ungroup-bounded-buffers %s | FileCheck %s
+// REQUIRES: platform-NPU4000
 
 // CHECK-LABEL: UngroupBoundedBuffersforConvertDMA
 func.func @UngroupBoundedBuffersforConvertDMA(%arg0: memref<1x18x15xf32, @DDR>, %arg1: memref<3xsi32, @DDR>, %arg2: memref<1x18x15xf16, @DDR>, %arg3: memref<3xsi32, @DDR>)->(!VPUIP.BoundedBuffer<data = memref<1x18x15xf16, @DDR>, dynamic_shape = memref<3xsi32, @DDR>>) {
@@ -63,11 +63,11 @@ func.func @ProcessBuffers(%arg0: !VPUIP.BoundedBuffer<data=memref<1x1x35x512xf16
 
     return %8, %alloc_10, %alloc_11 : !VPUIP.BoundedBuffer<data=memref<1x1x35x128xf16, [@CMX_NN, 0]>, dynamic_shape=memref<4xsi32, [@CMX_NN, 0]>>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>
 
-    // CHECK: [[GROUP:%.+]] = VPUIP.GroupBoundedBuffer(%alloc_7, %alloc_8) : memref<1x1x35x128xf16, [@CMX_NN, 0]>, memref<4xsi32, [@CMX_NN, 0]> -> !VPUIP.BoundedBuffer<data=memref<1x1x35x128xf16, [@CMX_NN, 0]>, dynamic_shape=memref<4xsi32, [@CMX_NN, 0]>>
+    // CHECK: [[GROUP:%.+]] = VPUIP.GroupBoundedBuffer({{%.+}}, {{%.+}}) : memref<1x1x35x128xf16, [@CMX_NN, 0]>, memref<4xsi32, [@CMX_NN, 0]> -> !VPUIP.BoundedBuffer<data=memref<1x1x35x128xf16, [@CMX_NN, 0]>, dynamic_shape=memref<4xsi32, [@CMX_NN, 0]>>
     // CHECK: [[ALLOC_0:%.+]] = memref.alloc() : memref<1x1x1x128xf16, [@CMX_NN, 0]>
     // CHECK: [[ALLOC_1:%.+]] = memref.alloc() : memref<1x1x1x128xf16, [@CMX_NN, 0]>
     // CHECK: [[DATA:%.+]], [[DYN_SHAPE:%.+]] = VPUIP.UngroupBoundedBuffer([[GROUP]]) : !VPUIP.BoundedBuffer<data=memref<1x1x35x128xf16, [@CMX_NN, 0]>, dynamic_shape=memref<4xsi32, [@CMX_NN, 0]>> -> memref<1x1x35x128xf16, [@CMX_NN, 0]>, memref<4xsi32, [@CMX_NN, 0]>
-    // CHECK: %results:3, [[DYN_OUT_SHAPES:%.+]] = VPUIP.SW.Kernel {dynamicInputShapesMap = array<i32: 0, -1, -1, -1, -1>, dynamicOutputShapesMap = array<i32: 0, -1, -1>, resultSegmentSizes = array<i32: 3, 1, 0>} @VPU.SW::@builtin_LSTMSequence inputs({{%[^ ]+}} as [[ARG_5:%[^:]+]]: memref<1x1x35x512xf16, [@CMX_NN, 0]>, {{%[^ ]+}} as [[ARG_6:%[^:]+]]: memref<1x1x1x128xf16, [@CMX_NN, 0]>, {{%[^ ]+}} as [[ARG_7:%[^:]+]]: memref<1x1x1x128xf16, [@CMX_NN, 0]>, {{%[^ ]+}} as [[ARG_8:%[^:]+]]: memref<1x4x128x128xf16, #NWHC, [@CMX_NN, 0]>, {{%[^ ]+}} as [[ARG_9:%[^:]+]]: memref<1x1x1x2xsi32, [@CMX_NN, 0]>) dynamicInputShapes({{%[^ ]+}} : memref<4xsi32, [@CMX_NN, 0]>) outputs([[DATA]] as [[ARG_10:%[^:]+]]: memref<1x1x35x128xf16, [@CMX_NN, 0]>, [[ALLOC_0]] as [[ARG_11:%[^:]+]]: memref<1x1x1x128xf16, [@CMX_NN, 0]>, [[ALLOC_1]] as [[ARG_12:%[^:]+]]: memref<1x1x1x128xf16, [@CMX_NN, 0]>) dynamicOutputShapes([[DYN_SHAPE]] : memref<4xsi32, [@CMX_NN, 0]>) on tile 0 -> (memref<1x1x35x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<4xsi32, [@CMX_NN, 0]>){
+    // CHECK: VPUIP.SW.Kernel {dynamicInputShapesMap = array<i32: 0, -1, -1, -1, -1>, dynamicOutputShapesMap = array<i32: 0, -1, -1>, resultSegmentSizes = array<i32: 3, 1, 0>} @VPU.SW::@builtin_LSTMSequence inputs({{%.+}} as [[ARG_5:%[^:]+]]: memref<1x1x35x512xf16, [@CMX_NN, 0]>, {{%.+}} as [[ARG_6:%[^:]+]]: memref<1x1x1x128xf16, [@CMX_NN, 0]>, {{%.+}} as [[ARG_7:%[^:]+]]: memref<1x1x1x128xf16, [@CMX_NN, 0]>, {{%.+}} as [[ARG_8:%[^:]+]]: memref<1x4x128x128xf16, #NWHC, [@CMX_NN, 0]>, {{%.+}} as [[ARG_9:%[^:]+]]: memref<1x1x1x2xsi32, [@CMX_NN, 0]>) dynamicInputShapes({{%.+}} : memref<4xsi32, [@CMX_NN, 0]>) outputs([[DATA]] as [[ARG_10:%[^:]+]]: memref<1x1x35x128xf16, [@CMX_NN, 0]>, [[ALLOC_0]] as [[ARG_11:%[^:]+]]: memref<1x1x1x128xf16, [@CMX_NN, 0]>, [[ALLOC_1]] as [[ARG_12:%[^:]+]]: memref<1x1x1x128xf16, [@CMX_NN, 0]>) dynamicOutputShapes([[DYN_SHAPE]] : memref<4xsi32, [@CMX_NN, 0]>) on tile 0 -> (memref<1x1x35x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<4xsi32, [@CMX_NN, 0]>){
     // CHECK{LITERAL}: VPUIP.SW.Kernel.run {attrs = [[-9223372036854775808, 1023], 1]}
     // CHECK: ([[ARG_5]], [[ARG_6]], [[ARG_7]], [[ARG_8]], [[ARG_9]], [[ARG_10]], [[ARG_11]], [[ARG_12]]) : memref<1x1x35x512xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<1x4x128x128xf16, #NWHC, [@CMX_NN, 0]>, memref<1x1x1x2xsi32, [@CMX_NN, 0]>, memref<1x1x35x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>, memref<1x1x1x128xf16, [@CMX_NN, 0]>
     // CHECK: }

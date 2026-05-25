@@ -52,7 +52,7 @@ or by adding the same command in `initCommands` section for every confuguration 
             "request": "launch",
             "program": "~/src/openvino/bin/intel64/RelWithDebInfo/vpux-opt",
             "args": [
-                "--vpu-arch=NPU40XX",
+                "--platform=NPU4000",
                 "--mlir-disable-threading",
                 "--host-compile",
                 "path_to_file.mlir"

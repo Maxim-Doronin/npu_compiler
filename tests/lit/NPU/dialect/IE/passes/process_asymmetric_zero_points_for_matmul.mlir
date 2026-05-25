@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --process-asymmetric-zero-points-for-matmul="matmul-mixed-precision-decomposition-ratio=0.5" --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --process-asymmetric-zero-points-for-matmul="matmul-mixed-precision-decomposition-ratio=0.5" --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 !qElemType = !quant.uniform<i8:f16, 2.000000e+00>
 // CHECK-LABEL: @FixZeroPointForMatmul

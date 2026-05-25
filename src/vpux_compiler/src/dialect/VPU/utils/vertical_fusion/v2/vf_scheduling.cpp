@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/dialect/IE/utils/slice_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/tile_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v2/vertical_fusion_scheduler_interface.hpp"
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v2/vertical_fusion_utils.hpp"
@@ -102,25 +103,13 @@ VPUNNCostParameters VFScheduling::fillInCostParam(mlir::Operation* operation,
  *   is scheduled before another parent operation in the block. It also calculates memory requirements to ensure
  *   they fit within the available CMX memory.
  */
-bool hasPrefetchedDMA(mlir::Operation* operation, mlir::BlockArgument arg, VFConfig& config,
+bool hasPrefetchedDMA(mlir::Operation* operation, int64_t operandIdx, mlir::BlockArgument arg, VFConfig& config,
                       const VPUNNCostParameters& parameters, const bool isInput) {
     if (operation->hasTrait<VPU::EltwiseOp>() && operation->getNumOperands() > 1) {
-        auto getOperandIdx = [&]() {
-            auto uses = arg.getUses();
-            for (auto& use : uses) {
-                if (use.getOwner() == operation) {
-                    return use.getOperandNumber();
-                }
-            }
-            VPUX_THROW("Cannot find the operand index for {0}", operation->getLoc());
-        };
-
         auto vfOp = operation->getParentOfType<VPU::VerticalFusionOp>();
         auto curParentOp = vfOp->getOperand(arg.getArgNumber()).getDefiningOp<VPU::VerticalFusionOp>();
-
-        auto operandIdx = getOperandIdx();
         auto otherOperandIdx = operandIdx == 0 ? 1 : 0;
-        if (auto otherOperandblockArg = mlir::dyn_cast<mlir::BlockArgument>(operation->getOperand(otherOperandIdx))) {
+        if (auto otherOperandblockArg = getVFBlockArgument(operation->getOperand(otherOperandIdx))) {
             auto otherParentOp =
                     vfOp->getOperand(otherOperandblockArg.getArgNumber()).getDefiningOp<VPU::VerticalFusionOp>();
             if (curParentOp != nullptr && otherParentOp != nullptr && curParentOp->isBeforeInBlock(otherParentOp)) {
@@ -147,7 +136,8 @@ bool hasPrefetchedDMA(mlir::Operation* operation, mlir::BlockArgument arg, VFCon
 
     auto nceOp = mlir::dyn_cast<VPU::NCEOpInterface>(operation);
 
-    if (nceOp != nullptr && (arg != nceOp.getWeightsOperand() && arg != nceOp->getOperand(0))) {
+    if (nceOp != nullptr &&
+        (arg != getVFBlockArgument(nceOp.getWeightsOperand()) && arg != getVFBlockArgument(nceOp->getOperand(0)))) {
         return false;
     }
 
@@ -159,7 +149,7 @@ bool hasPrefetchedDMA(mlir::Operation* operation, mlir::BlockArgument arg, VFCon
         return false;
     }
 
-    return arg == nceOp.getWeightsOperand();
+    return arg == getVFBlockArgument(nceOp.getWeightsOperand());
 }
 
 bool VFScheduling::isSharedWeightsSupported(VFConfig& config) const {
@@ -249,6 +239,39 @@ void VFScheduling::correctInputPrefetchingCost(StrategyCost& /*prefetchCost*/, m
                                                const size_t /*index*/) const {
 }
 
+std::optional<StrategyCost> VFScheduling::getViewLikeOpDMACost(
+        mlir::Operation* operation, VFConfig& config, const TilingOperationStorage::UPtr& tilingInfo, size_t tileIdx,
+        const std::unique_ptr<VPU::LayerVPUNNCost>& costFunction) const {
+    auto getDataType = [](mlir::Value value) {
+        auto type = mlir::cast<vpux::NDTypeInterface>(value.getType());
+        if (auto sparseType = mlir::dyn_cast<VPU::SparseTensorType>(type)) {
+            type = mlir::cast<vpux::NDTypeInterface>(sparseType.getData());
+        }
+        return type;
+    };
+    auto inType = getDataType(operation->getOperand(0));
+    auto outType = getDataType(operation->getResult(0));
+    if (inType.getTotalAllocSize() == outType.getTotalAllocSize()) {
+        return std::nullopt;
+    }
+
+    // View op can't get distributed type directly. Use the clustered consumer to calculate the DMA cost.
+    auto userToOperand = findFirstNonViewUser(operation);
+    if (!userToOperand.has_value()) {
+        return std::nullopt;
+    }
+    auto user = userToOperand->first;
+    auto operandIdx = userToOperand->second;
+
+    auto userCostParameters = fillInCostParam(user, tilingInfo, tileIdx);
+    auto userTileTypes =
+            config.getOperationTypes(user, userCostParameters._tiling[0], userCostParameters._operandsTiling[0]);
+    VPUX_THROW_WHEN(operandIdx >= static_cast<int64_t>(userTileTypes.size()), "Invalid operand index {0} for user {1}",
+                    operandIdx, user->getLoc());
+    auto userTileType = userTileTypes[operandIdx];
+    return costFunction->getSpillingTypeCost(userTileType, userCostParameters._tiling[0].axis);
+}
+
 StrategyCost VFScheduling::getCost(VFConfig& config, int64_t tilesNumber,
                                    const TilingOperationStorage::UPtr& tilingInfo,
                                    const std::unique_ptr<VPU::LayerVPUNNCost>& costFunction) const {
@@ -288,8 +311,8 @@ StrategyCost VFScheduling::getPrefetchingCost(mlir::Operation* operation, VFConf
             continue;
         }
 
-        if (auto blockArg = mlir::dyn_cast<mlir::BlockArgument>(inputOperand)) {
-            if (hasPrefetchedDMA(operation, blockArg, config, parameters, isInput)) {
+        if (auto blockArg = getVFBlockArgument(inputOperand)) {
+            if (hasPrefetchedDMA(operation, input.index(), blockArg, config, parameters, isInput)) {
                 prefetchedCost += costFunction->getSpillingTypeCost(
                         config.getOperationTypes(operation, parameters._tiling[0],
                                                  parameters._operandsTiling[0])[input.index()],
@@ -312,8 +335,9 @@ VFLinearContainer VFScheduling::calculateLinearTimeIntervals(
     DenseMap<mlir::Operation*, StrategyCost> isolatedOperCost;
     _log.trace("Calculate linear cost for merged VF at {0} with tiles number {1}, op number {2}",
                config.getSubgraph().getLoc(), tilesNumber, config.getOperationsForTiling().size());
+
     for (auto index : irange(tilesNumber)) {
-        for (auto item : config.getOperationsForTiling() | indexed) {
+        for (auto item : config.getVFOperations() | indexed) {
             auto lastEndTime = fullCost;
             auto opIndex = item.index();
             auto op = item.value();
@@ -322,6 +346,20 @@ VFLinearContainer VFScheduling::calculateLinearTimeIntervals(
                 _log.warning("No tiling information for VF op at '{0}'", op->getLoc());
                 linearTimeIntervals.invalidate();
                 return linearTimeIntervals;
+            }
+
+            if (auto viewOp = mlir::dyn_cast<VPU::TilingViewLikeOpInterface>(op)) {
+                // The view op has different input and output tile size, which means it will be converted to copy
+                // after tiling. And the copy should be taken into account when calculating the cost of the VF.
+                // Currently only view ops like slice ops will meet this condition. And the Spill write and read DMA
+                // pairs will be further optimized into a single CMX2CMX DMA instead.
+                auto copyCost = getViewLikeOpDMACost(op, config, tilingInfo, index, costFunction);
+                if (copyCost.has_value()) {
+                    linearTimeIntervals.addDMA(op, index, lastEndTime, copyCost.value());
+                    lastEndTime += copyCost.value();
+                    fullCost += copyCost.value();
+                }
+                continue;
             }
 
             // isolated operation cost

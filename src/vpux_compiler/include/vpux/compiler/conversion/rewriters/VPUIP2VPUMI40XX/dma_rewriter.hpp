@@ -116,4 +116,10 @@ struct EnqueueDMARewriter : DMARewriterBase<VPUIP::EnqueueDMAOp> {
                                         mlir::ConversionPatternRewriter& rewriter) const override;
 };
 
+struct SkipDMARewriter : DMARewriterBase<VPUIP::SkipDMAOp> {
+    using DMARewriterBase::DMARewriterBase;
+    mlir::LogicalResult matchAndRewrite(VPUIP::SkipDMAOp skipDMAOp, OpAdaptor adaptor,
+                                        mlir::ConversionPatternRewriter& rewriter) const override;
+};
+
 }  // namespace vpux::vpuip2vpumi40xx

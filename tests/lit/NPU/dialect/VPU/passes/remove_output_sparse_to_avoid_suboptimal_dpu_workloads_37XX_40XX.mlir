@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW allow-custom-values=true" --remove-output-sparse-to-avoid-suboptimal-dpu-workloads %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW allow-custom-values=true" --remove-output-sparse-to-avoid-suboptimal-dpu-workloads %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>

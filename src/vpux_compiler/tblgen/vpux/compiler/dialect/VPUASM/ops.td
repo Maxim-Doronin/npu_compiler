@@ -167,114 +167,82 @@ def VPUASM_DeclareTaskBufferOp :
     }];
 }
 
-//
-// Ops
-//
 
-//
-// IOBindings
-//
-
-def VPUASM_IOBindingsOp:
-        VPUASM_Op<"IOBindings",
-            [
-                IsolatedFromAbove,
-                HasParent<"mlir::ModuleOp">,
-                NoRegionArguments
-            ]
-            #GraphRegionNoTerminator.traits
-        > {
-    let summary = "Mapped inference level I/O Network description";
-
+def VPUASM_InputBindingsOp : VPUASM_Op<"InputBindings", [
+    IsolatedFromAbove,
+    HasParent<"mlir::ModuleOp">,
+    NoRegionArguments,
+    SymbolTable
+] #GraphRegionNoTerminator.traits> {
+    let summary = "Mapped inference level Network Inputs description";
     let description = [{
-        This operation is bound to the main MLIR module and explicitly encapsulates the I/O information that the network will
+        This operation is bound to the main MLIR module and explicitly encapsulates network inputs information that the network will
         work with at buffer and location level.
     }];
-
-    let regions = (region
-        SizedRegion<1>:$inputDeclarations,
-        SizedRegion<1>:$outputDeclarations,
-        SizedRegion<1>:$profilingBuffDeclarations
-    );
-
+    let regions = (region SizedRegion<1>:$inputDeclarations);
     let extraClassDeclaration = [{
         size_t getNetInputsCount();
         vpux::SmallVector<vpux::VPUASM::DeclareBufferOp, 1> getInputDeclarationsOps();
 
-        size_t getNetOutputsCount();
-        vpux::SmallVector<vpux::VPUASM::DeclareBufferOp, 1> getOutputDeclarationsOps();
-
-        size_t getProfilingBuffsCount();
-        vpux::SmallVector<vpux::VPUASM::DeclareBufferOp, 1> getProfilingBuffDeclarationsOps();
-
-        static VPUASM::IOBindingsOp getFromModule(
-            mlir::ModuleOp module
-        );
+        static VPUASM::InputBindingsOp getFromModule(mlir::ModuleOp moduleOp);
     }];
-
-    let builders = [
-        OpBuilder<
-            (ins)
-        >
-    ];
-
+    let builders = [OpBuilder<(ins)>];
     let skipDefaultBuilders = 1;
-
     let assemblyFormat = [{
         attr-dict
         `inputDeclarations` `:` $inputDeclarations
-        `outputDeclarations` `:` $outputDeclarations
-        `profilingBuffDeclarations` `:` $profilingBuffDeclarations
     }];
 }
 
-//
-// MappedInferenceOp_37XX
-//
+def VPUASM_OutputBindingsOp : VPUASM_Op<"OutputBindings", [
+    IsolatedFromAbove,
+    HasParent<"mlir::ModuleOp">,
+    NoRegionArguments,
+    SymbolTable
+] #GraphRegionNoTerminator.traits> {
+    let summary = "Mapped inference level Network Outputs description";
+    let description = [{
+        This operation is bound to the main MLIR module and explicitly encapsulates network outputs information that the network will
+        work with at buffer and location level.
+    }];
+    let regions = (region SizedRegion<1>:$outputDeclarations);
+    let extraClassDeclaration = [{
+        size_t getNetOutputsCount();
+        vpux::SmallVector<vpux::VPUASM::DeclareBufferOp, 1> getOutputDeclarationsOps();
 
-def VPUASM_MappedInferenceOp_37XX :
-        VPUASM_Instruction<"MappedInference_37XX",
-            [
-                DeclareOpInterfaceMethods<ELF_BinarySizeOpInterface, ["getBinarySize", "getAlignmentRequirements"]>
-            ]
-        > {
-    let summary = "Task representing the MappedInference structure on 37XX";
-
-    let arguments = (ins
-        SymbolNameAttr:$sym_name,
-        OptionalAttr<SymbolRefArrayAttr>:$dmaTasks,
-        OptionalAttr<SymbolRefAttr>:$invariantTasks,
-        OptionalAttr<SymbolRefAttr>:$variantTasks,
-        OptionalAttr<SymbolRefAttr>:$actKernelRanges,
-        OptionalAttr<SymbolRefAttr>:$actKernelInvocations,
-        OptionalAttr<SymbolRefAttr>:$barrierTasks,
-        OptionalAttr<SymbolRefAttr>:$actShaveRt,
-        OptionalAttr<SymbolRefArrayAttr>:$actShaveStacks,
-        I64ArrayAttr:$dmaCount,
-        UI32Attr:$invariantCount,
-        UI32Attr:$variantCount,
-        UI32Attr:$actKernelRangesCount,
-        UI32Attr:$actKernelInvocationsCount,
-        UI32Attr:$barrierCount
-    );
-
+        static VPUASM::OutputBindingsOp getFromModule(mlir::ModuleOp moduleOp);
+    }];
+    let builders = [OpBuilder<(ins)>];
+    let skipDefaultBuilders = 1;
     let assemblyFormat = [{
-    attr-dict
-        $sym_name `:`
-        (`dmas` `(` $dmaTasks^ `)`)?
-        (`invariants` `(` $invariantTasks^ `)`)?
-        (`variants` `(` $variantTasks^ `)`)?
-        (`actKernelRanges` `(` $actKernelRanges^ `)`)?
-        (`actKernelInvocations` `(` $actKernelInvocations^ `)`)?
-        (`barriers` `(` $barrierTasks^ `)`)?
-        (`actShaveRt` `(` $actShaveRt^ `)`)?
-        (`actShaveStacks` `(` $actShaveStacks^ `)`)?
-        `dmaCount` `(` $dmaCount `)`
-        `invariantCount` `(` $invariantCount `)`
-        `variantCount` `(` $variantCount `)`
-        `actKernelRangesCount` `(` $actKernelRangesCount `)`
-        `actKernelInvocationsCount` `(` $actKernelInvocationsCount `)`
-        `barrierCount` `(` $barrierCount `)`
+        attr-dict
+        `outputDeclarations` `:` $outputDeclarations
+    }];
+}
+
+def VPUASM_ProfilingBindingsOp : VPUASM_Op<"ProfilingBindings", [
+    IsolatedFromAbove,
+    HasParent<"mlir::ModuleOp">,
+    NoRegionArguments,
+    SymbolTable
+] #GraphRegionNoTerminator.traits> {
+    let summary = "Mapped inference level Network Profiling description";
+    let description = [{
+        This operation is bound to the main MLIR module and explicitly encapsulates network profiling information that the network will
+        work with at buffer and location level.
+    }];
+    let regions = (region SizedRegion<1>:$profilingDeclarations);
+    let extraClassDeclaration = [{
+        size_t getNetProfilingCount();
+        vpux::SmallVector<vpux::VPUASM::DeclareBufferOp, 1> getProfilingDeclarationsOps();
+
+        static VPUASM::ProfilingBindingsOp getFromModule(mlir::ModuleOp moduleOp);
+    }];
+    let builders = [OpBuilder<(ins)>];
+    let skipDefaultBuilders = 1;
+    let assemblyFormat = [{
+        attr-dict
+        `profilingDeclarations` `:` $profilingDeclarations
     }];
 }
 
@@ -339,16 +307,16 @@ def VPUASM_MappedInferenceOp :
     }];
 }
 
-def VPUASM_StackFramesOp :
-        VPUASM_Instruction<"StackFrames",
+def VPUASM_StackFrameAddrsOp :
+        VPUASM_Instruction<"StackFrameAddrs",
             [
                 DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize"]>,
                 DeclareOpInterfaceMethods<ELF_BinarySizeOpInterface, ["getBinarySize", "getAlignmentRequirements"]>
             ]
         > {
-    let summary = "Shave stack frames addresses in CMX memory";
+    let summary = "Shave stack frames addresses in either CMX or DDR memory";
     let description = [{
-        This is an array of shave stack frames addresses in the CMX memory. Pointer to this array is used to avoid the risk of losing
+        This is an array of shave stack frames addresses in memory. Pointer to this array is used to avoid the risk of losing
         backwards compatibility, which would occur if the number of shaves per tile changed. In that case, when the array size is
         fixed the size of the backend structures would need to be adjusted.
     }];
@@ -384,7 +352,7 @@ def VPUASM_NNrtConfigOp :
         UnitProp:$isActKernelInvocations,
         OptionalAttr<SymbolRefAttr>:$actShaveRt,
         OptionalAttr<SymbolRefArrayAttr>:$actShaveStacks,
-        OptionalAttr<SymbolRefAttr>:$stackFrames,
+        OptionalAttr<SymbolRefAttr>:$stackFrameAddrs,
         OptionalAttr<SymbolRefAttr>:$dmaHwpBase,
         OptionalAttr<SymbolRefAttr>:$hwpWorkpointCfg
     );
@@ -629,7 +597,9 @@ def VPUASM_NNDMAOp :
         OptionalAttr<IntAttr>:$dma_hwp_id,
         OptionalAttr<I64ArrayAttr>:$tile_indexes,
         OptionalAttr<SymbolRefAttr>:$indices,
-        OptionalAttr<VPUIP_GatherAddressingMode>:$addressing_mode
+        OptionalAttr<VPUIP_GatherAddressingMode>:$addressing_mode,
+        OptionalAttr<VPUIP_SkipDMAAttr>:$skip_dma,
+        OptionalAttr<VPUIP_FetchDMAAttr>:$fetch_dma
     );
 
     let extraClassDeclaration = [{
@@ -743,10 +713,10 @@ def VPUASM_DeclareKernelDataOp :
 }
 
 //
-// ShaveStackFrameOp
+// ShaveStackFrameBuffOp
 //
 
-def VPUASM_ShaveStackFrameOp :
+def VPUASM_ShaveStackFrameBuffOp :
         VPUASM_Memory<"ActShaveRtStack",
             [
                 DeclareOpInterfaceMethods<ELF_WrappableOpInterface>,
@@ -755,7 +725,7 @@ def VPUASM_ShaveStackFrameOp :
                 DeclareOpInterfaceMethods<ELF_BufferLocationInterface, ["getMemorySection"]>
             ]
         > {
-    let summary = "Declaration of Act Shave stack frames buffers";
+    let summary = "Declaration of Act Shave stack frames buffers allocated in DDR";
 
     let arguments = (ins
         SymbolNameAttr:$sym_name,
@@ -825,7 +795,9 @@ def VPUASM_KernelParamsOp :
         IntArrayProp<IntProp<"uint8_t">>:$outputStridesBinaryVector,
 
         UnitProp:$is_output_broadcasted,
-        UnitProp:$isJitCompiled
+        UnitProp:$isJitCompiled,
+        OptionalAttr<ArrayAttr>:$skipDescIds,
+        OptionalAttr<SymbolRefArrayAttr>:$releaseDesc
     );
 
     let skipDefaultBuilders = 1;
@@ -845,7 +817,8 @@ def VPUASM_KernelParamsOp :
             "SmallVector<uint8_t>&&":$outputStridesBinaryVector,
 
             "bool":$is_output_broadcasted,
-            "bool":$isJitCompiled
+            "bool":$isJitCompiled,
+            "mlir::ArrayAttr":$skipDescIds
         )>
     ];
 
@@ -860,6 +833,7 @@ def VPUASM_KernelParamsOp :
         `dynamicInputShapes` `(` $dynamicInputShapes `)`
         `dynamicOutputShapes` `(` $dynamicOutputShapes `)`
         `kernel_type` `(` $kernel_type `)`
+        (`releaseDesc` $releaseDesc^ )?
         attr-dict
         prop-dict
     }];
@@ -1105,7 +1079,7 @@ def VPUASM_DPUInvariantOp :
         OptionalAttr<VPUIP_SparsityConfigAttr>:$sparsity_config,
         OptionalAttr<VPUIP_DynamicScaleConfigAttr>:$dynamic_scale_config,
         OptionalAttr<VPUIP_LocalRegionAttr>:$local_region,
-        OptionalAttr<VPUIP_S2DConfigAttr>:$s2d_config,
+        OptionalAttr<VPU_S2DD2SConfigAttr>:$s2dd2s_config,
 
         UI64Attr:$start_after,
         UI64Attr:$clean_after,
@@ -1316,20 +1290,14 @@ def VPUASM_SymbolizeValueOp :
     }];
 }
 
-//
-// Network Metadtata Op
-//
-
-def VPUASM_NetworkMetadataOp :
-        VPUASM_Op<"NetworkMetadata",
-            [
-                DeclareOpInterfaceMethods<ELF_BinarySizeOpInterface, ["getBinarySize", "getAlignmentRequirements"]>,
-                DeclareOpInterfaceMethods<ELF_WrappableOpInterface>,
-                VPUASM_IndexedTaskInterface,
-                IsolatedFromAbove,
-                Symbol
-            ]
-        > {
+def VPUASM_NetworkMetadataOp : VPUASM_Op<"NetworkMetadata", [
+    DeclareOpInterfaceMethods<ELF_BinarySizeOpInterface, ["getBinarySize", "getAlignmentRequirements"]>,
+    DeclareOpInterfaceMethods<ELF_WrappableOpInterface>,
+    VPUASM_IndexedTaskInterface,
+    IsolatedFromAbove,
+    // E-207808: re-consider if this op must be a `Symbol`
+    Symbol
+]> {
     let summary = "Network Metadata Op";
 
     let arguments = (ins
@@ -1346,20 +1314,14 @@ def VPUASM_NetworkMetadataOp :
     }];
 }
 
-//
-// Profiling Metadata Op
-//
-
-def VPUASM_ProfilingMetadataOp :
-        VPUASM_Op<"ProfilingMetadata",
-            [
-                DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize"]>,
-                DeclareOpInterfaceMethods<ELF_BinarySizeOpInterface, ["getBinarySize", "getAlignmentRequirements"]>,
-                DeclareOpInterfaceMethods<ELF_WrappableOpInterface>,
-                IsolatedFromAbove,
-                Symbol
-            ]
-        > {
+def VPUASM_ProfilingMetadataOp : VPUASM_Op<"ProfilingMetadata", [
+    DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize"]>,
+    DeclareOpInterfaceMethods<ELF_BinarySizeOpInterface, ["getBinarySize", "getAlignmentRequirements"]>,
+    DeclareOpInterfaceMethods<ELF_WrappableOpInterface>,
+    IsolatedFromAbove,
+    // E-207822: re-consider if this op must be a `Symbol`
+    Symbol
+]> {
     let summary = "Profiling Metadata Op";
 
     let arguments = (ins

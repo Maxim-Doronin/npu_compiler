@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --init-compiler="vpu-arch=%arch% allow-custom-values=true" --split-input-file --dispatched-inliner %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --init-compiler="platform=%platform% allow-custom-values=true" --split-input-file --dispatched-inliner %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 module @CallChain {
     config.Resources 6 of @NCE at 1.700000e+03 MHz
@@ -65,6 +65,10 @@ func.func @cmx_declare_buffer_main(%arg0: tensor<2x3x64x64xf16>, %arg1: tensor<2
     }
     return %arg0 : tensor<2x3x64x64xf16>
 
+        // CHECK:  [[UNKN_VAR:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+        // CHECK:  [[UNKN_VAR:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+        // CHECK:  [[UNKN_VAR:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+        // CHECK:  [[CALL_1_BAR:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
         // CHECK:  [[SLICE_0_VAR_0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x3x64x64xf16, [@CMX_NN, 0]>
         // CHECK:  [[SLICE_0_VAR_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> memref<1x3x64x64xf16, [@CMX_NN, 1]>
         // CHECK:  [[SLICE_0_VAR_2:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
@@ -83,7 +87,7 @@ func.func @cmx_declare_buffer_main(%arg0: tensor<2x3x64x64xf16>, %arg1: tensor<2
         // CHECK:  VPURT.Task waits([[UNKN_VAR:%.+]], [[UNKN_VAR:%.+]] : !VPURT.Barrier, !VPURT.Barrier) updates([[SLICE_1_VAR_2]] : !VPURT.Barrier) {
         // CHECK:       VPUIP.NNDMA <{port = 0 : i64}> inputs([[UNKN_VAR:%.+]] : memref<1x3x64x64xf16, @DDR>) outputs([[SLICE_1_VAR_0]] : memref<1x3x64x64xf16, [@CMX_NN, 3]>) -> memref<1x3x64x64xf16, [@CMX_NN, 3]>
         // CHECK:   }
-        // CHECK:  VPURT.Task waits([[SLICE_1_VAR_2]] : !VPURT.Barrier) updates(%7 : !VPURT.Barrier) {
+        // CHECK:  VPURT.Task waits([[SLICE_1_VAR_2]] : !VPURT.Barrier) updates([[CALL_1_BAR]] : !VPURT.Barrier) {
         // CHECK:       VPUIP.NNDMA <{port = 1 : i64}> inputs([[SLICE_1_VAR_0]] : memref<1x3x64x64xf16, [@CMX_NN, 3]>) outputs([[SLICE_1_VAR_1]] : memref<1x3x64x64xf16, [@CMX_NN, 4]>) -> memref<1x3x64x64xf16, [@CMX_NN, 4]>
         // CHECK:   }
         // CHECK:  VPURT.Task waits([[UNKN_VAR:%.+]], [[UNKN_VAR:%.+]] : !VPURT.Barrier, !VPURT.Barrier) updates([[SLICE_1_VAR_2]] : !VPURT.Barrier) {
@@ -158,6 +162,10 @@ func.func @cmx_declare_buffer_main(%arg0: tensor<2x3x64x64xf16>, %arg1: tensor<2
     }
     return %arg0 : tensor<2x3x64x64xf16>
 
+        // CHECK:  [[UNKN_VAR:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+        // CHECK:  [[UNKN_VAR:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+        // CHECK:  [[UNKN_VAR:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+        // CHECK:  [[CALL_1_BAR:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
         // CHECK:  [[SLICE_0_VAR_0:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x3x64x64xf16, [@CMX_NN, 0]>
         // CHECK:  [[SLICE_0_VAR_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> memref<1x3x64x64xf16, [@CMX_NN, 1]>
         // CHECK:  [[SLICE_0_VAR_2:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
@@ -176,7 +184,7 @@ func.func @cmx_declare_buffer_main(%arg0: tensor<2x3x64x64xf16>, %arg1: tensor<2
         // CHECK:  VPURT.Task waits([[UNKN_VAR:%.+]], [[UNKN_VAR:%.+]] : !VPURT.Barrier, !VPURT.Barrier) updates([[SLICE_1_VAR_2]] : !VPURT.Barrier) {
         // CHECK:       VPUIP.NNDMA <{port = 0 : i64}> inputs([[UNKN_VAR:%.+]] : memref<1x3x64x64xf16, @DDR>) outputs([[SLICE_1_VAR_0]] : memref<1x3x64x64xf16, [@CMX_NN, 0]>) -> memref<1x3x64x64xf16, [@CMX_NN, 0]>
         // CHECK:   }
-        // CHECK:  VPURT.Task waits([[SLICE_1_VAR_2]] : !VPURT.Barrier) updates(%7 : !VPURT.Barrier) {
+        // CHECK:  VPURT.Task waits([[SLICE_1_VAR_2]] : !VPURT.Barrier) updates([[CALL_1_BAR]] : !VPURT.Barrier) {
         // CHECK:       VPUIP.NNDMA <{port = 1 : i64}> inputs([[SLICE_1_VAR_0]] : memref<1x3x64x64xf16, [@CMX_NN, 0]>) outputs([[SLICE_1_VAR_1]] : memref<1x3x64x64xf16, [@CMX_NN, 1]>) -> memref<1x3x64x64xf16, [@CMX_NN, 1]>
         // CHECK:   }
         // CHECK:  VPURT.Task waits([[UNKN_VAR:%.+]], [[UNKN_VAR:%.+]] : !VPURT.Barrier, !VPURT.Barrier) updates([[SLICE_1_VAR_2]] : !VPURT.Barrier) {
@@ -224,7 +232,7 @@ module @HaloCMXPartitioningForReorderingTest {
         %145546 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
         %145547 = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
         VPURT.Task waits(%145546 : !VPURT.Barrier) updates(%145547 : !VPURT.Barrier) {
-          %254514 = VPUIP.NCEClusterTask <{is_superdense, task_type = #VPUIP.nce_task_type<ELTWISE>}> input(%145552 : memref<1x64x4x16xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, [@CMX_NN, 0]>) weights(%145548 :
+          %254514 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{is_superdense, task_type = #VPUIP.nce_task_type<ELTWISE>}> input(%145552 : memref<1x64x4x16xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, [@CMX_NN, 0]>) weights(%145548 :
      memref<1x64x4x16xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, [@CMX_NN, 0]>) parent_input(%145552 : memref<1x64x4x16xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, [@CMX_NN, 0]>) parent_output(%8 : !VPUIP.ITIBuffer<
               1x64x4x17xf16, {order = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>}, [@CMX_NN, 0],
               inwardHaloRegions = [
@@ -541,7 +549,7 @@ func.func @ddr_decl_buffer_main(%arg0: tensor<2x3x64x64xf16>, %arg1: tensor<2x3x
         // CHECK:  VPURT.Task waits([[UNKN_VAR:%.+]], [[UNKN_VAR:%.+]] : !VPURT.Barrier, !VPURT.Barrier) updates([[SLICE_1_VAR_2]] : !VPURT.Barrier) {
         // CHECK:       VPUIP.NNDMA <{port = 0 : i64}> inputs([[UNKN_VAR:%.+]] : memref<1x3x64x64xf16, @DDR>) outputs([[SLICE_1_VAR_0]] : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
         // CHECK:   }
-        // CHECK:  VPURT.Task waits([[SLICE_1_VAR_2]] : !VPURT.Barrier) updates(%7 : !VPURT.Barrier) {
+        // CHECK:  VPURT.Task waits([[SLICE_1_VAR_2]] : !VPURT.Barrier) updates([[CALL_1_BAR:%.+]] : !VPURT.Barrier) {
         // CHECK:       VPUIP.NNDMA <{port = 1 : i64}> inputs([[SLICE_1_VAR_0]] : memref<1x3x64x64xf16, @DDR>) outputs([[SLICE_1_VAR_1]] : memref<1x3x64x64xf16, @DDR>) -> memref<1x3x64x64xf16, @DDR>
         // CHECK:   }
     // CHECK: return [[ARG0]] : tensor<2x3x64x64xf16>

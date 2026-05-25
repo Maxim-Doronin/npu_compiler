@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --debatcher %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --debatcher %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL: @SingleInputSingleOutputBatched
 // CHECK-SAME:     [[ARG_0:%[^:]+]]: tensor<3x3x62x62xf32>

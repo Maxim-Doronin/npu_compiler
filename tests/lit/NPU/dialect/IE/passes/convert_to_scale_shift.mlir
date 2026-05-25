@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-to-scale-shift %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --convert-to-scale-shift %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL: @ConvertAddToScaleShift
 // CHECK-SAME:     [[ARG_0:%[^:]+]]: tensor<1x3x300x300xf16>
@@ -278,6 +278,25 @@ func.func @NoConvertAddToScaleShiftF32(%arg0: tensor<1x3x300x300xf32>) -> tensor
 
     // CHECK-DAG:       [[BIAS:%.+]] = const.Declare tensor<1x3x1x1xf32> = dense<2.000000e+00> : tensor<1x3x1x1xf32>
     // CHECK:       [[VAL0:%.+]] = IE.Add([[ARG_0]], [[BIAS]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3x300x300xf32>, tensor<1x3x1x1xf32> -> tensor<1x3x300x300xf32>
+    // CHECK:       return [[VAL0]]
+}
+
+
+// -----
+
+// CHECK-LABEL: @NoConvertSubtractToScaleShiftF32
+// CHECK-SAME:     [[ARG_0:%[^:]+]]: tensor<1x3x300x300xf32>
+func.func @NoConvertSubtractToScaleShiftF32(%arg0: tensor<1x3x300x300xf32>) -> tensor<1x3x300x300xf32> {
+    %bias = const.Declare tensor<1x3x1x1xf32> = dense<2.0> : tensor<1x3x1x1xf32>
+    %0 = IE.Subtract(%arg0, %bias)
+        { auto_broadcast = #IE.auto_broadcast_type<NUMPY> } :
+        tensor<1x3x300x300xf32>, tensor<1x3x1x1xf32> -> tensor<1x3x300x300xf32>
+
+    return %0 : tensor<1x3x300x300xf32>
+
+    // Non-F16 IE.Subtract must not be converted to ScaleShift.
+    // CHECK-DAG:       [[BIAS:%.+]] = const.Declare tensor<1x3x1x1xf32> = dense<2.000000e+00> : tensor<1x3x1x1xf32>
+    // CHECK:       [[VAL0:%.+]] = IE.Subtract([[ARG_0]], [[BIAS]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3x300x300xf32>, tensor<1x3x1x1xf32> -> tensor<1x3x300x300xf32>
     // CHECK:       return [[VAL0]]
 }
 
@@ -756,4 +775,20 @@ func.func @NoConvertMultiplyToScaleShiftWithDynamicShape(%arg0: tensor<1x1x1x?xf
     // CHECK-DAG:   [[CST:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<2.000000e+00> : tensor<1x1x1x1xf16>
     // CHECK:       [[MULTIPLY:%.+]] = IE.Multiply([[INPUT]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x1x?xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 1, 10]> : tensor<4xsi64>, order = #NCHW}>, tensor<1x1x1x1xf16> -> tensor<1x1x1x?xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 1, 10]> : tensor<4xsi64>, order = #NCHW}>
     // CHECK:       return [[MULTIPLY]] : tensor<1x1x1x?xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 1, 10]> : tensor<4xsi64>, order = #NCHW}>
+}
+
+// -----
+
+// CHECK-LABEL: @ConvertCOnlyMultiplyToScaleShift
+func.func @ConvertCOnlyMultiplyToScaleShift(%arg0: tensor<1x6144x1x1xf16>, %arg1: tensor<1x6144x1x1xf16>) -> tensor<1x6144x1x1xf16> {
+    %multiply = IE.Multiply(%arg0, %arg1)
+        { auto_broadcast = #IE.auto_broadcast_type<NUMPY> } :
+        tensor<1x6144x1x1xf16>, tensor<1x6144x1x1xf16> -> tensor<1x6144x1x1xf16>
+
+    return %multiply : tensor<1x6144x1x1xf16>
+
+    // Multiply with C-only shape is still converted to ScaleShift when flag enable-nce-eltwise-multiply is unset
+    // CHECK:       [[SCALE_SHIFT:%.+]] = IE.ScaleShift
+    // CHECK-NOT:   [[SCALE_SHIFT:%.+]] = IE.Multiply
+    // CHECK:       return [[SCALE_SHIFT]]
 }

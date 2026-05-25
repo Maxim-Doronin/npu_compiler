@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -69,8 +69,11 @@ namespace vpux::IE::arch50xx {
 void ExpandActivationChannelsStrategy::addTargets(mlir::ConversionTarget& target) {
     const auto isLegal = [&](mlir::Operation* op) {
         // It's sometimes beneficial to align Interpolate even when it's running on Shave
-        if (!_seOpsEnabled && mlir::isa<IE::SEOpInterface>(op) && !mlir::isa<IE::InterpolateOp>(op)) {
-            return true;
+        if (!_seOpsEnabled) {
+            if (auto seOp = mlir::dyn_cast<IE::SEOpInterface>(op);
+                seOp && !mlir::isa<IE::InterpolateOp>(op) && seOp.isSupported(emptyLogCb)) {
+                return true;
+            }
         }
 
         if (auto iface = mlir::dyn_cast<IE::AlignedChannelsOpInterface>(op)) {
@@ -99,7 +102,7 @@ void ExpandActivationChannelsStrategy::addPatterns(mlir::RewritePatternSet& patt
     patterns.add<vpux::arch50xx::ReduceRewriter<IE::ReduceMeanOp>>(ctx, _log);
     patterns.add<vpux::arch50xx::ReduceRewriter<IE::ReduceSumOp>>(ctx, _log);
     patterns.add<IE::InterpolateRewriter>(ctx, _log);
-    patterns.add<IE::SDPAExtendedRewriter>(ctx, _log);
+    patterns.add<IE::AttentionRewriter>(ctx, _log);
     patterns.add<IE::FlashSDPARewriter>(ctx, _log);
 
     if (_seOpsEnabled) {

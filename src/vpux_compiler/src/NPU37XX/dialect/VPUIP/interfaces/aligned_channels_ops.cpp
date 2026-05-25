@@ -117,7 +117,7 @@ void vpux::VPUIP::arch37xx::registerAlignedChannelsOpInterfaces(mlir::DialectReg
         IE::PadOp::attachInterface<AlignedChannelsOpModel<IE::PadOp>>(*ctx);
         IE::MatMulOp::attachInterface<AlignedChannelsOpModel<IE::MatMulOp>>(*ctx);
         IE::SoftMaxOp::attachInterface<AlignedChannelsOpModel<IE::SoftMaxOp>>(*ctx);
-        IE::SDPAExtendedOp::attachInterface<AlignedChannelsOpModel<IE::SDPAExtendedOp>>(*ctx);
+        IE::AttentionOp::attachInterface<AlignedChannelsOpModel<IE::AttentionOp>>(*ctx);
         IE::FlashSDPAOp::attachInterface<AlignedChannelsOpModel<IE::FlashSDPAOp>>(*ctx);
     });
 }

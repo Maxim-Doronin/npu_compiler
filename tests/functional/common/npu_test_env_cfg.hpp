@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -7,7 +7,7 @@
 
 #include "common/utils.hpp"
 #include "shared_test_classes/base/ov_behavior_test_utils.hpp"
-#include "vpux/utils/IE/private_properties.hpp"
+#include "vpux/utils/ov/private_properties.hpp"
 
 #include <gtest/gtest.h>
 #include <openvino/runtime/device_id_parser.hpp>

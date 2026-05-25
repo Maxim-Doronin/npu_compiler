@@ -40,8 +40,12 @@ mlir::LogicalResult ReduceToNCE<ConcreteOp>::matchAndRewrite(ConcreteOp origOp, 
     auto* ctx = origOp.getContext();
     auto axes = getIntArrayAttr(ctx, IE::extractAxes(origOp->getLoc(), origOp));
     auto ppeAttr = VPU::getPpeConfig(ctx).retrievePPEAttribute(origOp);
+
+    auto mpeEngineInterface = mlir::cast<IE::MPEEngineInfoOpInterface>(origOp.getOperation());
+    auto mpeEngineModeAttr = mlir::cast<VPU::MPEEngineAttr>(mpeEngineInterface.getMPEEngineMode());
+
     auto nceOp = rewriter.create<VPU::NCEReduceOp>(origOp->getLoc(), origOp.getType(), origOp.getInput(), axes, ppeAttr,
-                                                   VPU::ReduceTypeAttr::get(ctx, _opType),
+                                                   mpeEngineModeAttr, VPU::ReduceTypeAttr::get(ctx, _opType),
                                                    /*multiClusterStrategy=*/nullptr, origOp.getOutputPaddingAttr(),
                                                    origOp.getInputPaddingAttr());
 
@@ -110,7 +114,7 @@ void ConvertIEToVPUNCEStrategy::addPatterns(mlir::RewritePatternSet& patterns) c
     patterns.add<ConvToNCE>(ctx, _arch, _log);
     patterns.add<DepthConvToNCE>(ctx, _arch, _log);
     patterns.add<MaxPoolToNCE>(ctx, _log);
-    patterns.add<AveragePoolToNCE>(ctx, _log);
+    patterns.add<AveragePoolToNCE>(ctx, _arch, _log);
     patterns.add<PermuteQuantizeToNCEPermute>(ctx, _log);
     patterns.add<MatMulToNCE>(ctx, _arch, _log);
 

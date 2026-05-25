@@ -211,7 +211,7 @@ def VPU_DFTOp :
         VPU_LayerOp<
             "DFT",
             [
-                DeclareOpInterfaceMethods<VPU_TilingBuilderOpInterface>
+                DeclareOpInterfaceMethods<VPU_TilingBuilderOpInterface, ["getMaxNumTiles"]>
             ]
         > {
     let summary = "InferenceEngine DFT layer";
@@ -253,7 +253,7 @@ def VPU_IDFTOp :
         VPU_LayerOp<
             "IDFT",
             [
-                DeclareOpInterfaceMethods<VPU_TilingBuilderOpInterface>
+                DeclareOpInterfaceMethods<VPU_TilingBuilderOpInterface, ["getMaxNumTiles"]>
             ]
         > {
     let summary = "InferenceEngine IDFT layer";
@@ -296,7 +296,7 @@ def VPU_RDFTUncutOp :
         VPU_LayerOp<
             "RDFTUncut",
             [
-                DeclareOpInterfaceMethods<VPU_TilingBuilderOpInterface>
+                DeclareOpInterfaceMethods<VPU_TilingBuilderOpInterface, ["getMaxNumTiles"]>
             ]
         > {
     let summary = "RDFTUncut VPU layer";
@@ -323,7 +323,7 @@ def VPU_IRDFTLastAxisOp :
         VPU_LayerOp<
             "IRDFTLastAxis",
             [
-                DeclareOpInterfaceMethods<VPU_TilingBuilderOpInterface>
+                DeclareOpInterfaceMethods<VPU_TilingBuilderOpInterface, ["getMaxNumTiles"]>
             ]
         > {
     let summary = "IRDFTLastAxis VPU layer";
@@ -465,7 +465,7 @@ def VPU_SDPAOp :
             "SDPA",
             [
                 AttrSizedOperandSegments,
-                DeclareOpInterfaceMethods<VPU_TilingBuilderOpInterface>,
+                DeclareOpInterfaceMethods<VPU_TilingBuilderOpInterface, ["getMaxNumTiles"]>,
                 DeclareOpInterfaceMethods<VPU_SWOpInterface>,
                 DeclareOpInterfaceMethods<VPU_ClusteredOpInterface>,
                 DeclareOpInterfaceMethods<VPU_AuxiliaryBufferOpInterface>
@@ -509,9 +509,9 @@ def VPU_SDPAOp :
     let elemComparisonModes = [IE_TypeComparisonMode_ALLOW_DISTRIBUTED_OUTPUT];
 }
 
-def VPU_SDPAExtendedOp :
+def VPU_AttentionOp :
         VPU_LayerOp<
-            "SDPAExtended",
+            "Attention",
             [
                 AttrSizedOperandSegments,
                 DeclareOpInterfaceMethods<VPU_TilingBuilderOpInterface>,
@@ -520,14 +520,15 @@ def VPU_SDPAExtendedOp :
                 DeclareOpInterfaceMethods<VPU_AuxiliaryBufferOpInterface>
             ]
         > {
-    let summary = "SDPAExtended VPU layer";
+    let summary = "Attention VPU layer";
 
     let arguments = (ins
         AnyTypeOf<[RankedTensorOf<[F16, F32]>, VPU_DistributedTensor]>:$inputQ,
         AnyTypeOf<[RankedTensorOf<[F16, F32]>, VPU_DistributedTensor]>:$inputK,
         AnyTypeOf<[RankedTensorOf<[F16, F32]>, VPU_DistributedTensor]>:$inputV,
-        Optional<AnyTypeOf<[RankedTensorOf<[F16, F32]>, VPU_DistributedTensor]>>:$inputMask,
+        Optional<AnyTypeOf<[RankedTensorOf<[F16, F32, Bool8]>, VPU_DistributedTensor]>>:$inputMask,
         Optional<AnyTypeOf<[RankedTensorOf<[F16, F32]>, VPU_DistributedTensor]>>:$inputScale,
+        Optional<AnyTypeOf<[RankedTensorOf<[F16, F32]>, VPU_DistributedTensor]>>:$inputSink,
         Optional<AnyTypeOf<[RankedTensorOf<[F16, F32]>, VPU_DistributedTensor]>>:$inputBias,
         AnyTypeOf<[AnyRankedTensor, VPU_DistributedTensor]>:$dataStorage,
         AnyTypeOf<[AnyRankedTensor, VPU_DistributedTensor]>:$dpuStorage,
@@ -540,6 +541,7 @@ def VPU_SDPAExtendedOp :
     );
 
     let extraClassDeclaration = [{
+        static bool isSupported(vpux::IE::AttentionOp origOp);
         bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers, Byte reservedMem);
         bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers);
     }] # baseExtraClassDeclaration;
@@ -551,6 +553,7 @@ def VPU_SDPAExtendedOp :
             "::mlir::Value":$inputV,
             "::mlir::Value":$inputMask,
             "::mlir::Value":$inputScale,
+            "::mlir::Value":$inputSink,
             "::mlir::Value":$inputBias,
             "::mlir::IntegerAttr":$padSizeS
         )>
@@ -565,7 +568,7 @@ def VPU_RoPEOp :
         VPU_LayerOp<
             "RoPE",
             [
-                DeclareOpInterfaceMethods<VPU_TilingBuilderOpInterface>,
+                DeclareOpInterfaceMethods<VPU_TilingBuilderOpInterface, ["getMaxNumTiles"]>,
                 DeclareOpInterfaceMethods<VPU_SWOpInterface>,
                 DeclareOpInterfaceMethods<VPU_ClusteredOpInterface>,
             ]
@@ -576,7 +579,7 @@ def VPU_RoPEOp :
         AnyTypeOf<[RankedTensorOf<[F16, F32]>, VPU_DistributedTensor]>:$input,
         AnyTypeOf<[RankedTensorOf<[F16, F32]>, VPU_DistributedTensor]>:$input_cos,
         AnyTypeOf<[RankedTensorOf<[F16, F32]>, VPU_DistributedTensor]>:$input_sin,
-        UnitAttr:$is_interleaved,
+        IE_RoPEModeAttr:$mode,
 
         OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy
     );
@@ -596,7 +599,7 @@ def VPU_RoPEOp :
             "::mlir::Value":$input,
             "::mlir::Value":$input_cos,
             "::mlir::Value":$input_sin,
-            "::mlir::UnitAttr":$is_interleaved
+            "IE::RoPEModeAttr":$mode
         )>
     ];
 
@@ -935,7 +938,8 @@ def VPU_TopKOp :
                 DeclareOpInterfaceMethods<VPU_TilingBuilderOpInterface>,
                 DeclareOpInterfaceMethods<VPU_SWOpInterface>,
                 DeclareOpInterfaceMethods<VPU_ClusteredOpInterface>,
-                DeclareOpInterfaceMethods<VPU_AuxiliaryBufferOpInterface>
+                DeclareOpInterfaceMethods<VPU_AuxiliaryBufferOpInterface>,
+                DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>
             ]
         > {
     let summary = "TopK VPU layer";
@@ -1008,6 +1012,9 @@ def VPU_PermuteCastOp :
 
     let extraClassDeclaration = [{
         bool isVFSupported();
+        mlir::FailureOr<mlir::SmallVector<int64_t>> inferTilingStrategy(mlir::ArrayRef<int64_t> inputTilingStrategy);
+        SmallVector<int64_t> backInferTilingStrategy(mlir::ArrayRef<int64_t> outputTilingStrategy);
+        vpux::Dim backInferTilingDim(vpux::Dim outputDim);
     }] # baseExtraClassDeclaration;
 
     let arguments = (ins
@@ -1152,11 +1159,7 @@ def VPU_FlashSDPAOp :
     let results = (outs
         AnyTypeOf<[RankedTensorOf<[F16, F32, F64]>, VPU_DistributedTensor]>:$result_running_output,
         AnyTypeOf<[RankedTensorOf<[F16, F32, F64]>, VPU_DistributedTensor]>:$result_running_max,
-        AnyTypeOf<[RankedTensorOf<[F16, F32, F64]>, VPU_DistributedTensor]>:$result_running_sum,
-
-        // This output shares the same buffer as the input query
-        // and is used to preserve query tensor in CMX for multiple kernel invocations
-        AnyTypeOf<[RankedTensorOf<[F16, F32, F64]>, VPU_DistributedTensor]>:$result_query
+        AnyTypeOf<[RankedTensorOf<[F16, F32, F64]>, VPU_DistributedTensor]>:$result_running_sum
     );
 
     let extraClassDeclaration = [{

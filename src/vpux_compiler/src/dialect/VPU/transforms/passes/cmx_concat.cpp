@@ -624,7 +624,8 @@ bool InputConcatPattern::insertNCEOperation() {
                             : nullptr;
 
             return builder.create<VPU::NCEAveragePoolOp>(
-                    loc, newOperandType, newOperands[0], kernelSizeAttr, stridesAttr, padAttr, ppeAttr,
+                    loc, newOperandType, newOperands[0], /*weight_table_scale=*/nullptr, /*weight_table_bias=*/nullptr,
+                    kernelSizeAttr, stridesAttr, padAttr, ppeAttr, nullptr,
                     /*multi_cluster_strategyAttr=*/nullptr, parentOutputPaddingAttr, parentOutputPaddingAttr);
         };
 

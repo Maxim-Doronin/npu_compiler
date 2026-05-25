@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-weights-to-i4 --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --convert-weights-to-i4 --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 !qElemType = !quant.uniform<i4<-8:7>:f16:0, {0.010680671751968504,0.0081200787401574797,0.010596087598425197}>
 !qElemType1 = !quant.uniform<u4<0:15>:f16:0, {0.010680671751968504:8,0.0081200787401574797:8,0.010596087598425197:8}>
@@ -208,7 +208,7 @@ func.func @ConvertQuantizeUniformQuantU4ToI4(%arg0: tensor<16x3x1x1xf16>) -> ten
 // -----
 
 // We don't convert u4 storageElement in quant.quantile types
-!qElemType = !quant.quantile<u4:u8:f16, {0.0,16.0,32.0,48.0,64.0,80.0,96.0,112.0,128.0,144.0,160.0,176.0,192.0,208.0,224.0,240.0}:2.000000e+00:128>
+!qElemType = !quant.uniform<!QuantileType.quantile<ui4:ui8, {0.0,16.0,32.0,48.0,64.0,80.0,96.0,112.0,128.0,144.0,160.0,176.0,192.0,208.0,224.0,240.0}>:f16, 2.000000e+00:128>
 
 // CHECK-LABEL: @NotConvertQuantileU4StorageElement
 // CHECK-SAME:     ([[ARG0:%.+]]: tensor<1x3x16x16x!qElemType>)

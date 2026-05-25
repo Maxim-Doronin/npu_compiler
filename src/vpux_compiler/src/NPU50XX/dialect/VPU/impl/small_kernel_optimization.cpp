@@ -3,20 +3,15 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/dialect/VPU/transforms/factories/small_kernel_optimization.hpp"
 #include "vpux/compiler/NPU40XX/dialect/VPU/impl/small_kernel_optimization.hpp"
 #include "vpux/compiler/core/attributes/dims_order.hpp"
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
-
-#include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
-#include "vpux/compiler/dialect/config/IR/attributes.hpp"
-#include "vpux/compiler/utils/attributes.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops/dpu.hpp"
 
 using namespace vpux;
 
 namespace vpux::VPU::arch50xx {
 
-bool isSmallKernelOptimizationSupported(mlir::Operation* op, const int64_t KX, const int64_t KY, const int64_t SX,
+bool isSmallKernelOptimizationSupported(mlir::Operation* op, const int64_t KX, const int64_t KY,
                                         ArrayRef<VPU::DPUWorkloadOp> workloads) {
     // Errata E#94064: check conditions for NPU50XX, if true, optimization is disabled
     const auto forbiddenConfigurations = llvm::any_of(workloads, [](auto workload) {
@@ -29,7 +24,7 @@ bool isSmallKernelOptimizationSupported(mlir::Operation* op, const int64_t KX, c
         return false;
     }
 
-    return VPU::arch40xx::isSmallKernelOptimizationSupported(op, KX, SX, workloads);
+    return VPU::arch40xx::isSmallKernelOptimizationSupported(op, workloads);
 }
 
 bool doesWorkloadSupportSmallKernelOpt(const int64_t KX, const int64_t SX, ArrayRef<int64_t> workloadOutSz,

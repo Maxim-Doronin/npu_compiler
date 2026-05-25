@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --de-debatcher="debatching-inlining-method=host_pipeline" --canonicalize --cse --verify-diagnostics %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --de-debatcher="debatching-inlining-method=host_pipeline" --canonicalize --cse --verify-diagnostics %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 // -----
 func.func @output_shape(%arg0: tensor<?x3x?x?xf32, {bounds = #const.OpaqueI64Elements<[3, 3, 62, 62]> : tensor<4xsi64>}>) -> (tensor<4xi64>, tensor<4xi64>) {
@@ -50,7 +50,7 @@ func.func @SingleInputMultipleOutputMultiDynamicDimDeBatched(%arg0: tensor<?x3x?
     // CHECK:   [[DYN_MIN_W:%.+]] = tensor.dim [[ARG0]], [[DYN_W_IDX]] : tensor<?x3x?x?xf32, [[ANY_MATCH:{.+}]]>
     // CHECK:   [[OUTPUT_0:%.+]] = tensor.empty([[END]], [[DYN_MIN_H]], [[DYN_MIN_W]]) : tensor<?x48x?x?xf32, [[ANY_MATCH:{.+}]]>
     // CHECK:   [[OUTPUT_1:%.+]] = tensor.empty([[END]], [[DYN_MIN_H]], [[DYN_MIN_W]]) : tensor<?x48x?x?xf16, [[ANY_MATCH:{.+}]]>
-    // CHECK:   [[RET:%.+]]:2 = scf.for [[IND_VAR:%.+]] = [[BEGIN]] to %dim step [[STEP]] iter_args([[LOOP_CARRIED_0:%.+]] = [[OUTPUT_0]], [[LOOP_CARRIED_1:%.+]] = [[OUTPUT_1]]) -> (tensor<?x48x?x?xf32, [[ANY_MATCH:{.+}]]>, tensor<?x48x?x?xf16, [[ANY_MATCH:{.+}]]>) {
+    // CHECK:   [[RET:%.+]]:2 = scf.for [[IND_VAR:%.+]] = [[BEGIN]] to [[END]] step [[STEP]] iter_args([[LOOP_CARRIED_0:%.+]] = [[OUTPUT_0]], [[LOOP_CARRIED_1:%.+]] = [[OUTPUT_1]]) -> (tensor<?x48x?x?xf32, [[ANY_MATCH:{.+}]]>, tensor<?x48x?x?xf16, [[ANY_MATCH:{.+}]]>) {
     // CHECK:       [[I_SLICE:%.+]] = tensor.extract_slice [[ARG0]][[[IND_VAR]], 0, 0, 0] [1, 3, [[DYN_MIN_H]], [[DYN_MIN_W]]] [1, 1, 1, 1] : tensor<?x3x?x?xf32, [[ANY_MATCH:{.+}]]> to tensor<1x3x?x?xf32, [[ANY_MATCH:{.+}]]>
     // CHECK:       [[FUNC:%.+]]:2 = func.call @SingleInputMultipleOutputMultiDynamicDimDeBatched_Batch1([[I_SLICE]]) : (tensor<1x3x?x?xf32, [[ANY_MATCH:{.+}]]>) -> (tensor<1x48x?x?xf32, [[ANY_MATCH:{.+}]]>, tensor<1x48x?x?xf16, [[ANY_MATCH:{.+}]]>)
     // CHECK:       [[O0_DYN_H_DIM:%.+]] = tensor.dim [[LOOP_CARRIED_0]], [[DYN_H_IDX]] : tensor<?x48x?x?xf32, [[ANY_MATCH:{.+}]]>
@@ -119,7 +119,7 @@ func.func @MultipleInputMultipleOutputMultiDynamicDimDeBatched(%arg0: tensor<?x3
     // CHECK:   [[DYN_W_1:%.+]] = tensor.dim [[ARG1]], [[DYN_W_IDX]] : tensor<?x48x?x?xf32, [[ANY_MATCH:{.+}]]>
     // CHECK:   [[OUTPUT_0:%.+]] = tensor.empty([[END]], [[DYN_H_0]], [[DYN_W_0]]) : tensor<?x48x?x?xf32, [[ANY_MATCH:{.+}]]>
     // CHECK:   [[OUTPUT_1:%.+]] = tensor.empty([[DYN_N_1]], [[DYN_H_1]], [[DYN_W_1]]) : tensor<?x48x?x?xf16, [[ANY_MATCH:{.+}]]>
-    // CHECK:   [[RET:%.+]]:2 = scf.for [[IND_VAR:%.+]] = [[BEGIN]] to %dim step [[STEP]] iter_args([[LOOP_CARRIED_0:%.+]] = [[OUTPUT_0]], [[LOOP_CARRIED_1:%.+]] = [[OUTPUT_1]]) -> (tensor<?x48x?x?xf32, [[ANY_MATCH:{.+}]]>, tensor<?x48x?x?xf16, [[ANY_MATCH:{.+}]]>) {
+    // CHECK:   [[RET:%.+]]:2 = scf.for [[IND_VAR:%.+]] = [[BEGIN]] to [[END]] step [[STEP]] iter_args([[LOOP_CARRIED_0:%.+]] = [[OUTPUT_0]], [[LOOP_CARRIED_1:%.+]] = [[OUTPUT_1]]) -> (tensor<?x48x?x?xf32, [[ANY_MATCH:{.+}]]>, tensor<?x48x?x?xf16, [[ANY_MATCH:{.+}]]>) {
     // CHECK:       [[I_SLICE_0:%.+]] = tensor.extract_slice [[ARG0]][[[IND_VAR]], 0, 0, 0] [1, 3, [[DYN_H_0]], [[DYN_W_0]]] [1, 1, 1, 1] : tensor<?x3x?x?xf32, [[ANY_MATCH:{.+}]]> to tensor<1x3x?x?xf32, [[ANY_MATCH:{.+}]]>
     // CHECK:       [[I_SLICE_1:%.+]] = tensor.extract_slice [[ARG1]][[[IND_VAR]], 0, 0, 0] [1, 48, [[DYN_H_1]], [[DYN_W_1]]] [1, 1, 1, 1] : tensor<?x48x?x?xf32, [[ANY_MATCH:{.+}]]> to tensor<1x48x?x?xf32, [[ANY_MATCH:{.+}]]>
     // CHECK:       [[FUNC:%.+]]:2 = func.call @MultipleInputMultipleOutputMultiDynamicDimDeBatched_Batch1([[I_SLICE_0]], [[I_SLICE_1]]) : (tensor<1x3x?x?xf32, [[ANY_MATCH:{.+}]]>, tensor<1x48x?x?xf32, [[ANY_MATCH:{.+}]]>) -> (tensor<1x48x?x?xf32, [[ANY_MATCH:{.+}]]>, tensor<1x48x?x?xf16, [[ANY_MATCH:{.+}]]>)

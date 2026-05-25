@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/VPUIP/utils/split_cost_utils.hpp"
+#include "vpux/compiler/dialect/VPU/interfaces/strategies.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/attributes.hpp"
 
@@ -11,7 +12,7 @@
 
 using namespace vpux;
 
-int64_t VPUIP::computeSplitCost(const WorkloadSplit& split, const WorkloadCostParams& params,
+int64_t VPUIP::computeSplitCost(mlir::MLIRContext* ctx, const WorkloadSplit& split, const WorkloadCostParams& params,
                                 VPUNN::VPUCostModel& costModel, LogCb logCb) {
     std::vector<int64_t> workloadCost;
     workloadCost.reserve(split.size());
@@ -20,7 +21,8 @@ int64_t VPUIP::computeSplitCost(const WorkloadSplit& split, const WorkloadCostPa
 
     // Correct invalid input channels for depthwise workload before passing to VPUNN
     // split to produce more small and valid workloads
-    const SmallVector<int64_t> supportedChannelsDW = {64, 32, 16};
+    const auto& strategyFactory = VPU::getVPUStrategyFactory(ctx);
+    const auto supportedChannelsDW = strategyFactory->getSupportedChannelsDW();
     auto correctDepthwiseWorkloadChannel = [=](const WorkloadTile& wl) {
         auto wlChannel = std::get<0>(wl).shape[Dims4D::Act::C];
         SmallVector<int64_t> validWorkloadChannels;

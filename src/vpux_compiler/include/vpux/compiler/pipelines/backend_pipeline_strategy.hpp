@@ -5,8 +5,8 @@
 
 #pragma once
 
-#include "vpux/utils/IE/config.hpp"
 #include "vpux/utils/logger/logger.hpp"
+#include "vpux/utils/ov/config.hpp"
 
 #include <mlir/Pass/PassManager.h>
 

@@ -40,7 +40,11 @@ def FoldUnitDimReshapes : PassBase<"fold-unit-dim-reshapes", "vpux::FunctionPass
     let summary = "Removes reshape/view chains that only affect unit dimensions";
 
     let description = [{
-        Attempts to remove and simplify reshapes that only insert or remove unit dimensions.
+        AI-generated summary
+
+        Eliminates reshape operations that only add or remove unit (size-1) dimensions from
+        tensors. Folds trivial reshapes where input and output have the same number of non-unit
+        elements, simplifying the IR before SHAVE kernel code generation.
     }];
 
     let constructor = "vpux::ShaveCodeGen::createFoldUnitDimReshapesPass()";
@@ -97,8 +101,13 @@ def ShaveStackAllocation : PassBase<"shave-stack-allocation", "vpux::ModulePass"
     let summary = "Performs stack optimizations for shave";
 
     let description = [{
-       Runs post bufferization transforms (promoting tensors to stack where possible,
-       hoisting allocations, etc).
+        AI-generated summary
+
+        Optimizes memory allocation in SHAVE kernel functions:
+        - Runs buffer hoisting and PromoteBuffersToStack to move small allocations to stack
+        - Replaces remaining memref.alloc operations with function arguments (scratch buffers)
+        - Updates the kernel FuncOp signature and all GenericSwLayerOp call sites to pass the
+          new scratch buffer operands
     }];
 
     let constructor = "vpux::ShaveCodeGen::createShaveStackAllocationPass()";
@@ -188,8 +197,16 @@ def ShaveKernelSimplify : PassBase<"shave-kernel-simplify", "vpux::ModulePass"> 
     let summary = "Applies peephole optimizations to the software module";
 
     let description = [{
-        Applies peephole optimizations to the software module (a superset of
-        canonicalization).
+        AI-generated summary
+
+        Simplifies SHAVE kernel function bodies through canonical pattern application:
+        - Bubbles extract_slice ops upward through linalg operations
+          (linalg::populateBubbleUpExtractSliceOpPatterns)
+        - Swaps extract_slice with fill patterns
+          (linalg::populateSwapExtractSliceWithFillPatterns)
+        - Folds redundant tensor.empty operations
+          (tensor::populateFoldTensorEmptyPatterns)
+        Reduces temporary allocations and simplifies linalg/tensor IR before lowering.
     }];
 
     let constructor = "vpux::ShaveCodeGen::createShaveKernelSimplifyPass()";
@@ -205,7 +222,12 @@ def FlattenEltwiseKernel : PassBase<"flatten-eltwise-kernel", "vpux::ModulePass"
     let summary = "Flatten element-wise kernels";
 
     let description = [{
-        Collapses dimensions for element-wise kernels in the software module when possible.
+        AI-generated summary
+
+        Flattens multi-dimensional tensor access patterns in element-wise SHAVE kernels into
+        linear 1D iteration. Replaces nested loop structures over N-dimensional memrefs with a
+        single loop over total element count, reducing loop overhead and enabling better
+        vectorization for element-wise operations like ReLU or Add.
     }];
 
     let constructor = "vpux::ShaveCodeGen::createFlattenEltwiseKernelPass()";
@@ -237,7 +259,12 @@ def OneShotBufferizeSWKernels : PassBase<"one-shot-bufferize-sw-kernels", "vpux:
     let summary = "Bufferize outlined software kernels";
 
     let description = [{
-        Performs full one shot bufferization on outlined software kernels.
+        AI-generated summary
+
+        Applies one-shot bufferization to SHAVE software kernel functions, converting
+        tensor-based IR into memref-based IR. Transforms tensor.empty, tensor.insert_slice,
+        and other tensor operations into their buffer equivalents (memref.alloc, memref.copy),
+        preparing kernel bodies for direct memory access code generation.
     }];
 
     let constructor = "vpux::ShaveCodeGen::createOneShotBufferizeSWKernelsPass()";
@@ -245,6 +272,22 @@ def OneShotBufferizeSWKernels : PassBase<"one-shot-bufferize-sw-kernels", "vpux:
     let dependentDialects = [
         "mlir::func::FuncDialect",
         "mlir::bufferization::BufferizationDialect",
+    ];
+}
+
+def StripFuncQuantTypesCodeGen : PassBase<"strip-func-quant-types-codegen", "vpux::ModulePass"> {
+    let summary = "Strip func quant types from SCG capsules";
+
+    let description = [{
+        Removes quantization types from the signatures of ShaveCodeGen capsule functions
+        after their bodies have been lowered to linalg / bufferized operations.
+    }];
+
+    let constructor = "vpux::ShaveCodeGen::createStripFuncQuantTypesCodeGenPass()";
+
+    let dependentDialects = [
+        "mlir::func::FuncDialect",
+        "mlir::quant::QuantDialect",
     ];
 }
 

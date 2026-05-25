@@ -189,7 +189,7 @@ void ResolveDMAWithSwizzlingPass::safeRunOnFunc() {
                 appendLoc(dmaOp->getLoc(), "flat_buffer_dma"), newInputOp->getResult(0), newOutputBuff,
                 dmaOp.getPortAttr(), dmaOp.getIsOutOfOrder(), dmaOp.getIsCritical(), dmaOp.getSpillIdAttr(),
                 dmaOp.getCompressCandidate(), /*dmaHwpId=*/nullptr,
-                /*profilingMetadata=*/nullptr, dmaOp.getSplitCandidate(), /*profiling_buffer_mgmt=*/false,
+                /*profilingMetadata=*/nullptr, dmaOp.getSplitCandidateAttr(), /*profiling_buffer_mgmt=*/false,
                 dmaOp.getFusionIdAttr());
         _log.nest().trace("Create new DMA - '{0}'", newDmaOp->getLoc());
 

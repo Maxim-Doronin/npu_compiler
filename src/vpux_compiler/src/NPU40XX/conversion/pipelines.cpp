@@ -44,28 +44,11 @@ void vpux::arch40xx::buildLowerVPUIP2ELFPipeline(mlir::OpPassManager& pm,
 
     pm.addPass(VPUMI40XX::createAddPlatformInfoPass(log));
 
-    // Below VPURT WLM passes are placed in LowerVPUIP2ELF pipeline to leverage BarrierInfo
-    // working on VPURT dialect and order barriers in a way suitable for WLM. These passes can be moved to the end of
-    // VPURT
-    if (backendCompilationOptions.workloadManagementEnable &&
-        backendCompilationOptions.workloadManagementMode != WorkloadManagementMode::FWLM_V1_PAGES &&
-        backendCompilationOptions.workloadManagementMode != WorkloadManagementMode::PWLM_V0_1_PAGES) {
-        if (backendCompilationOptions.workloadManagementMode > WorkloadManagementMode::PWLM_V0_LCA) {
-            pm.addPass(VPURT::createFindWlmEnqueueBarrierPass(
-                    backendCompilationOptions.workloadManagementMode,
-                    backendCompilationOptions.workloadManagementDmaFifoType == DMAFifoType::HW, log));
-        } else {
-            pm.addPass(VPURT::createOrderBarriersForWlmPass(log));
-        }
-    }
-
     pm.addPass(createConvertVPUIP2VPUMI40XXPass(log, backendCompilationOptions.enableMemorySideCache,
-                                                backendCompilationOptions.allocateShaveStackFrames));
+                                                backendCompilationOptions.allocateDDRStackFrames));
     pm.addPass(VPUMI40XX::createSetupProfilingVPUMI40XXPass(backendCompilationOptions.enableDMAProfiling, log));
     pm.addPass(mlir::createCanonicalizerPass());
-    pm.addPass(ELF::createAddABIVersionPass(log));
-    elfSubsetPipelineVPUMI(pm, backendCompilationOptions.workloadManagementEnable,
-                           backendCompilationOptions.workloadManagementMode,
+    elfSubsetPipelineVPUMI(pm, backendCompilationOptions.workloadManagementMode,
                            backendCompilationOptions.enableDumpStatisticsOfWlmOps,
                            backendCompilationOptions.workloadManagementBarrierProgrammingMode, log);
 
@@ -75,8 +58,7 @@ void vpux::arch40xx::buildLowerVPUIP2ELFPipeline(mlir::OpPassManager& pm,
                                                                 npu40xx::NNRT_API_UD2024_44_MINOR_VERSION,
                                                                 npu40xx::NNRT_API_UD2024_44_PATCH_VERSION));
 
-    elfSubsetPipelineVPUASM(pm, backendCompilationOptions.workloadManagementEnable,
-                            backendCompilationOptions.workloadManagementDmaFifoType == DMAFifoType::HW, log);
+    elfSubsetPipelineVPUASM(pm, backendCompilationOptions.workloadManagementDmaFifoType == DMAFifoType::HW, log);
 
     pm.addPass(VPUIPDPU::createExpandDPUConfigPass(log));
     pm.addPass(ELF::createUpdateELFSectionFlagsPass(log, backendCompilationOptions.enableShaveDDRAccessOptimization));
@@ -101,94 +83,78 @@ void vpux::arch40xx::buildLowerVPUIP2ELFPipeline(mlir::OpPassManager& pm,
 //
 
 void vpux::arch40xx::elfSubsetPipelineVPUMI(
-        mlir::OpPassManager& pm, bool workloadManagementEnable, WorkloadManagementMode workloadManagementMode,
-        bool enableDumpStatisticsOfWlmOps,
+        mlir::OpPassManager& pm, WorkloadManagementMode workloadManagementMode, bool enableDumpStatisticsOfWlmOps,
         WorkloadManagementBarrierProgrammingMode workloadManagementBarrierProgrammingMode, const Logger& log) {
-    if (!workloadManagementEnable) {
-        pm.addPass(VPUMI40XX::createBarrierComputationPass(log));
-        pm.addPass(VPUMI40XX::createLinkAllOpsPass(log));
-        pm.addPass(VPUASM::createHoistInputOutputsPass(log));
-        pm.addPass(VPUMI40XX::createResolveTaskLocationPass(log));
-        pm.addPass(VPUMI40XX::reorderMappedInferenceOpsPass(log));
-    } else {
-        pm.addPass(VPUMI40XX::reorderMappedInferenceOpsPass(log));
+    pm.addPass(VPUMI40XX::reorderMappedInferenceOpsPass(log));
 
-        if (workloadManagementMode != WorkloadManagementMode::FWLM_V1_PAGES &&
-            workloadManagementMode != WorkloadManagementMode::PWLM_V0_1_PAGES) {
-            // Generate barrier dependencies in IR if WLM mode requires it
-            pm.addPass(VPUMI40XX::createBarrierTopologicalMappingPass(log));
-        }
+    pm.addPass(VPUMI40XX::createGroupExecutionOpsPass(log));
+    pm.addPass(VPUMI40XX::createConvertFetchDmasToFetchTaskOpsPass(log));
 
-        pm.addPass(VPUMI40XX::createGroupExecutionOpsPass(log));
-        if (workloadManagementMode == WorkloadManagementMode::FWLM_V1_PAGES ||
-            workloadManagementMode == WorkloadManagementMode::PWLM_V0_1_PAGES) {
-            pm.addPass(VPUMI40XX::createConvertFetchDmasToFetchTaskOpsPass(log));
-        } else {
-            pm.addPass(VPUMI40XX::createAddFetchOpsPass(log));
-        }
+    pm.addPass(VPUMI40XX::createResolveWLMTaskLocationPass(log));
+    pm.addPass(VPUMI40XX::createUnGroupExecutionOpsPass(log));
+    pm.addPass(VPUMI40XX::createPropagateFinalBarrierPass(log));
+    pm.addPass(mlir::createCanonicalizerPass());
+    pm.addPass(VPUMI40XX::createNextSameIdAssignmentPass(log));
 
-        pm.addPass(VPUMI40XX::createResolveWLMTaskLocationPass(log));
-        pm.addPass(VPUMI40XX::createUnGroupExecutionOpsPass(log));
-        pm.addPass(VPUMI40XX::createPropagateFinalBarrierPass(log));
-        pm.addPass(mlir::createCanonicalizerPass());
-        pm.addPass(VPUMI40XX::createNextSameIdAssignmentPass(log));
-
-        if (workloadManagementMode == WorkloadManagementMode::PWLM_V0_1_PAGES) {
-            pm.addPass(VPUMI40XX::createUnrollFetchTaskOpsPass(log));
-        }
-
-        if (workloadManagementMode != WorkloadManagementMode::FWLM_V1_PAGES) {
-            pm.addPass(VPUMI40XX::createAddEnqueueOpsPass(workloadManagementMode, log));
-        }
-
-        if (workloadManagementMode != WorkloadManagementMode::PWLM_V0_1_PAGES) {
-            pm.addPass(VPUMI40XX::createUnrollFetchTaskOpsPass(log));
-        }
-
-        if (workloadManagementMode > WorkloadManagementMode::PWLM_V0_1_PAGES) {
-            pm.addPass(VPUMI40XX::createAddBarrierConfigurationOps(workloadManagementMode,
-                                                                   workloadManagementBarrierProgrammingMode, log));
-        }
-
-        if (workloadManagementMode != WorkloadManagementMode::FWLM_V1_PAGES) {
-            pm.addPass(VPUMI40XX::createAddBootstrapBarriersPass(log));
-        }
-
-        pm.addPass(VPUMI40XX::createAddBootstrapWorkItemsPass(workloadManagementMode, log));
-
-        if (workloadManagementMode != WorkloadManagementMode::FWLM_V1_PAGES) {
-            pm.addPass(VPUMI40XX::createSplitEnqueueOpsPass(log));
-        }
-
-        pm.addPass(VPUMI40XX::createLinkEnqueueTargetsPass(workloadManagementMode, log));
-        if (workloadManagementMode == WorkloadManagementMode::FWLM_V1_PAGES) {
-            pm.addPass(VPUMI40XX::createUpdateEnqueueDMAInputAndOutput(log));
-        }
-        if (workloadManagementMode != WorkloadManagementMode::FWLM_V1_PAGES) {
-            pm.addPass(VPUMI40XX::createUnrollEnqueueOpsPass(log));
-        }
-
-        if (workloadManagementMode > WorkloadManagementMode::PWLM_V0_1_PAGES) {
-            pm.addPass(VPUMI40XX::createLinkEnqueueOpsForSameBarrierPass(log));
-        }
-        pm.addPass(VPUMI40XX::reorderMappedInferenceOpsPass(log));
-
-        if (enableDumpStatisticsOfWlmOps) {
-            pm.addPass(VPUMI40XX::createDumpStatisticsOfWlmOpsPass(log));
-        }
-
-        pm.addPass(VPUASM::createHoistInputOutputsPass(log));
+    if (workloadManagementMode == WorkloadManagementMode::PWLM_V0_1_PAGES) {
+        pm.addPass(VPUMI40XX::createUnrollFetchTaskOpsPass(log));
     }
+
+    if (workloadManagementMode != WorkloadManagementMode::FWLM_V1_PAGES) {
+        pm.addPass(VPUMI40XX::createAddEnqueueOpsPass(log));
+    }
+
+    if (workloadManagementMode != WorkloadManagementMode::PWLM_V0_1_PAGES) {
+        pm.addPass(VPUMI40XX::createUnrollFetchTaskOpsPass(log));
+    }
+
+    if (workloadManagementMode > WorkloadManagementMode::PWLM_V0_1_PAGES) {
+        pm.addPass(VPUMI40XX::createAddBarrierConfigurationOps(workloadManagementBarrierProgrammingMode, log));
+    }
+
+    if (workloadManagementMode != WorkloadManagementMode::FWLM_V1_PAGES) {
+        pm.addPass(VPUMI40XX::createAddBootstrapBarriersPass(log));
+    }
+
+    pm.addPass(VPUMI40XX::createAddBootstrapWorkItemsPass(workloadManagementMode, log));
+
+    if (workloadManagementMode != WorkloadManagementMode::FWLM_V1_PAGES) {
+        pm.addPass(VPUMI40XX::createSplitEnqueueOpsPass(log));
+    }
+
+    // TODO: Enable when E#197787 is implemented
+    // pm.addPass(VPUMI40XX::createUpdateFetchDMAForSkipDMAsPass(log));
+    pm.addPass(VPUMI40XX::createLinkEnqueueTargetsPass(workloadManagementMode, log));
+    if (workloadManagementMode == WorkloadManagementMode::FWLM_V1_PAGES) {
+        pm.addPass(VPUMI40XX::createUpdateEnqueueDMAInputAndOutput(log));
+    }
+    if (workloadManagementMode != WorkloadManagementMode::FWLM_V1_PAGES) {
+        pm.addPass(VPUMI40XX::createUnrollEnqueueOpsPass(log));
+    }
+
+    if (workloadManagementMode > WorkloadManagementMode::PWLM_V0_1_PAGES) {
+        pm.addPass(VPUMI40XX::createLinkEnqueueOpsForSameBarrierPass(log));
+    }
+    pm.addPass(VPUMI40XX::reorderMappedInferenceOpsPass(log));
+
+    if (enableDumpStatisticsOfWlmOps) {
+        pm.addPass(VPUMI40XX::createDumpStatisticsOfWlmOpsPass(log));
+    }
+
+    pm.addPass(VPUASM::createHoistInputOutputsPass(log));
 }
 
 //
 // buildElfSubsetPipelineVPUASM
 //
 
-void vpux::arch40xx::elfSubsetPipelineVPUASM(mlir::OpPassManager& pm, bool workloadManagementEnable,
-                                             bool disableDmaSwFifo, const Logger& log) {
-    pm.addPass(createConvertVPUMI40XX2VPUASMPass(workloadManagementEnable, log, disableDmaSwFifo));
+void vpux::arch40xx::elfSubsetPipelineVPUASM(mlir::OpPassManager& pm, bool disableDmaSwFifo, const Logger& log) {
+    pm.addPass(createConvertVPUMI40XX2VPUASMPass(log, disableDmaSwFifo));
+    pm.addPass(ELF::createAddABIVersionPass(log));
     pm.addPass(ELF::createAddELFSymbolTablePass(log));
+
+    // TODO: Enable when E#197787 is implemented
+    // pm.addPass(ELF::createFinalizeSkipDmaChainsPass(log));
     pm.addPass(ELF::createSetEntryPointPass(log));
     pm.addPass(ELF::createAddNetworkMetadataPass(log));
     pm.addPass(VPUASM::createAddProfilingSectionPass(log));

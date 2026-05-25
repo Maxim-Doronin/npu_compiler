@@ -82,7 +82,7 @@ public:
     static mlir::LogicalResult verifyChannels(IE::ReduceSumOp origOp, Logger log = Logger::global());
     static mlir::LogicalResult verifyChannels(IE::MultiplyOp origOp, Logger log = Logger::global());
     static mlir::LogicalResult verifyChannels(IE::SoftMaxOp origOp, Logger log = Logger::global());
-    static mlir::LogicalResult verifyChannels(IE::SDPAExtendedOp origOp, Logger log = Logger::global());
+    static mlir::LogicalResult verifyChannels(IE::AttentionOp origOp, Logger log = Logger::global());
     static mlir::LogicalResult verifyChannels(IE::FlashSDPAOp origOp, Logger log = Logger::global());
     static mlir::LogicalResult verifyChannels(IE::SubtractOp origOp, Logger log = Logger::global());
     static mlir::LogicalResult verifyChannels(VPU::NCEEltwiseOp origOp, Logger log = Logger::global());

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --sw-kernel-instruction-prefetch-reserve-mem-for-dummy-kernels %s | FileCheck %s
-// REQUIRES: arch-NPU40XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --sw-kernel-instruction-prefetch-reserve-mem-for-dummy-kernels %s | FileCheck %s
+// REQUIRES: platform-NPU4000
 
 module @SimpleGraphAddFirstResMem {
   config.Resources 1 of @NCE at 1.300000e+03 MHz {

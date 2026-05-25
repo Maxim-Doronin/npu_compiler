@@ -67,6 +67,15 @@ void LoopAllocator::analyzeLoopBuffers(const SchedulingLoop& schedulingLoop) {
         }
     }
 
+    // Verify buffer usage 1(local) or All(shared) and collect shared buffers
+    for (const auto& [buf, count] : bufferUseCount) {
+        VPUX_THROW_WHEN(count != 1 && count != schedulingLoop.loopBodies.size(), "Buffer has invalid use count {0}",
+                        count);
+        if (count == schedulingLoop.loopBodies.size()) {
+            _profile.sharedBuffers.insert(buf);
+        }
+    }
+
     // Build maxBufferSizes from the largest schedulingLoop iteration
     mlir::DenseSet<mlir::Value> processedBuffers;
     for (const auto& allocInfo : schedulingLoop.loopBodies[_profile.largestLoopIdx]) {
@@ -89,7 +98,25 @@ void LoopAllocator::analyzeLoopBuffers(const SchedulingLoop& schedulingLoop) {
         }
     }
 
-    // Validate buffer order and sizes for other iterations
+    // Validate buffer order and sizes
+    auto validateBuffers = [&](ArrayRef<mlir::Value> buffers, mlir::DenseSet<mlir::Value>& processedLoopBuffers,
+                               size_t& loopBufferIdx) -> void {
+        for (const auto& buf : buffers) {
+            if (processedLoopBuffers.count(buf) > 0) {
+                continue;
+            }
+            processedLoopBuffers.insert(buf);
+            auto bufSize = getAlignedBufferSize(buf);
+            VPUX_THROW_WHEN(loopBufferIdx >= maxBufferSizes.size(), "Inconsistent buffer count in loop tiling region");
+            if (maxBufferSizes[loopBufferIdx] < bufSize) {
+                // E-204825: Use Largest Buffers cross different loops as the template for allocation
+                //  instead of largest loop. Not throwing here to allow allocation to proceed.
+                _log.warning("Inconsistent buffer sizes in loop tiling region");
+            }
+            ++loopBufferIdx;
+        }
+    };
+
     for (size_t idx = 0; idx < schedulingLoop.loopBodies.size(); ++idx) {
         if (idx == _profile.largestLoopIdx) {
             continue;
@@ -100,35 +127,8 @@ void LoopAllocator::analyzeLoopBuffers(const SchedulingLoop& schedulingLoop) {
             if (allocInfo.allocationType != AllocationType::COMPUTE) {
                 continue;
             }
-            for (const auto& buf : allocInfo.inBuffers) {
-                if (processedLoopBuffers.count(buf) > 0) {
-                    continue;
-                }
-                processedLoopBuffers.insert(buf);
-                auto bufSize = getAlignedBufferSize(buf);
-                VPUX_THROW_WHEN(loopBufferIdx >= maxBufferSizes.size() || maxBufferSizes[loopBufferIdx] < bufSize,
-                                "Inconsistent buffer count OR sizes in loop tiling region");
-                ++loopBufferIdx;
-            }
-            for (const auto& buf : allocInfo.outBuffers) {
-                if (processedLoopBuffers.count(buf) > 0) {
-                    continue;
-                }
-                processedLoopBuffers.insert(buf);
-                auto bufSize = getAlignedBufferSize(buf);
-                VPUX_THROW_WHEN(loopBufferIdx >= maxBufferSizes.size() || maxBufferSizes[loopBufferIdx] < bufSize,
-                                "Inconsistent buffer count OR sizes in loop tiling region");
-                ++loopBufferIdx;
-            }
-        }
-    }
-
-    // Verify buffer usage 1(local) or All(shared) and collect shared buffers
-    for (const auto& [buf, count] : bufferUseCount) {
-        VPUX_THROW_WHEN(count != 1 && count != schedulingLoop.loopBodies.size(), "Buffer has invalid use count {0}",
-                        count);
-        if (count == schedulingLoop.loopBodies.size()) {
-            _profile.sharedBuffers.insert(buf);
+            validateBuffers(allocInfo.inBuffers, processedLoopBuffers, loopBufferIdx);
+            validateBuffers(allocInfo.outBuffers, processedLoopBuffers, loopBufferIdx);
         }
     }
 }
@@ -252,7 +252,9 @@ void LoopAllocator::validateDependencies(const ComputeRegion& computeRegion) {
             continue;
         }
         for (const auto& buf : allocInfo.outBuffers) {
-            VPUX_THROW_WHEN(_profile.sharedBuffers.count(buf) == 0, "Dependency buffer not in shared buffers");
+            if (_profile.sharedBuffers.count(buf) == 0) {
+                _log.warning("Dependency buffer {0} not in shared buffers", buf);
+            }
         }
     }
 }
@@ -328,10 +330,8 @@ void LoopAllocator::buildExternalDepsLookUp() {
         if (computeRegion.schedulingLoop == nullptr || computeRegion.schedulingLoop->type != LoopType::None) {
             continue;
         }
-        for (const auto& loopBody : computeRegion.schedulingLoop->loopBodies) {
-            for (const auto& allocation : loopBody) {
-                _externalDepsLookUp[allocation.opIdx] = allocation;
-            }
+        for (const auto& allocation : computeRegion.schedulingLoop->loopBodies[0]) {
+            _externalDepsLookUp[allocation.opIdx] = allocation;
         }
     }
 }

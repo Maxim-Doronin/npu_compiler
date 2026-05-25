@@ -54,7 +54,7 @@ private:
         processModule(getOperation());
     }
 
-    std::string composeFileName(std::string funcName) {
+    std::string composeFileName(const std::string& funcName) {
         std::string extension = ".";
         if (auto pos = _fileName.find(extension)) {
             std::string newName = _fileName;

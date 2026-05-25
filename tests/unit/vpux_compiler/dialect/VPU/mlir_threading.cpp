@@ -4,7 +4,7 @@
 //
 
 #include "common/utils.hpp"
-#include "vpux/compiler/init.hpp"
+#include "vpux/compiler/init/dialects_registry.hpp"
 
 #include "vpux/compiler/utils/loop.hpp"
 #include "vpux/utils/core/array_ref.hpp"

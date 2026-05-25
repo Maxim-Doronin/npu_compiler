@@ -21,7 +21,7 @@
 
 #include <mlir/IR/Operation.h>
 #include <mlir/Support/LLVM.h>
-#include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Transforms/WalkPatternRewriteDriver.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_SWAPCONVERTWITHSWOP
@@ -57,7 +57,58 @@ bool isReshapeKindOp(mlir::Operation* op) {
     return mlir::isa_and_nonnull<IE::TransposeOp, IE::ReshapeOp, IE::AffineReshapeOp>(op);
 }
 
+bool shouldConvertOp(IE::ConvertOp op) {
+    auto inputElemType = mlir::cast<NDTypeInterface>(op.getInput().getType()).getElementType();
+    auto outputElemType = mlir::cast<NDTypeInterface>(op.getOutput().getType()).getElementType();
+
+    auto outShape = getBoundedShape(op.getOutput());
+    if (outShape.totalSize() < EXPERIMENTAL_F32_FUSION_THRESHOLD) {
+        return false;
+    }
+
+    if (!mlir::isa<mlir::Float16Type>(inputElemType) || !mlir::isa<mlir::Float32Type>(outputElemType)) {
+        return false;
+    }
+
+    if (!op->hasOneUse()) {
+        return false;
+    }
+
+    mlir::Operation* parentOp = op.getInput().getDefiningOp();
+    if (!isReshapeKindOp(parentOp)) {
+        return false;
+    }
+    while (isReshapeKindOp(parentOp)) {
+        if (!parentOp->getResult(0).hasOneUse()) {
+            return false;
+        }
+        parentOp = parentOp->getOperand(0).getDefiningOp();
+    }
+
+    if (parentOp == nullptr || !parentOp->getResult(0).hasOneUse()) {
+        return false;
+    }
+
+    auto convertOutType = op.getOutput().getType().getElementType();
+    if (auto interpolateOp = mlir::dyn_cast<IE::InterpolateOp>(parentOp)) {
+        // Check if it's beneficial to fuse our ConvertOp into InterpolateOp
+        return IE::isFusingConvertIntoBilinearInterpolateOnDpuBeneficial(interpolateOp, convertOutType);
+    }
+
+    if (mlir::failed(VPU::NCEInvariant::isSupported(parentOp))) {
+        return false;
+    }
+
+    const auto inputShape = getBoundedShape(parentOp->getOperand(0));
+    // This will cause an error, because of EnsureNCEOpsSizeRequirementsPass.
+    return inputShape[Dims4D::Act::C] <= VPU::NCEInvariant::VPU_DIMENSION_LIMIT;
+}
+
 mlir::LogicalResult SwapSWOpWithConvert::matchAndRewrite(IE::ConvertOp origOp, mlir::PatternRewriter& rewriter) const {
+    if (!shouldConvertOp(origOp)) {
+        return mlir::failure();
+    }
+
     _log.trace("Got '{0}' at '{1}'", origOp->getName(), origOp->getLoc());
 
     const auto convertInput = origOp.getInput();
@@ -186,61 +237,10 @@ private:
 void SwapConvertWithSWOp::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
-    const auto isLegalOp = [](IE::ConvertOp op) -> bool {
-        auto inputElemType = mlir::cast<NDTypeInterface>(op.getInput().getType()).getElementType();
-        auto outputElemType = mlir::cast<NDTypeInterface>(op.getOutput().getType()).getElementType();
-
-        auto outShape = getBoundedShape(op.getOutput());
-        if (outShape.totalSize() < EXPERIMENTAL_F32_FUSION_THRESHOLD) {
-            return true;
-        }
-
-        if (!mlir::isa<mlir::Float16Type>(inputElemType) || !mlir::isa<mlir::Float32Type>(outputElemType)) {
-            return true;
-        }
-
-        if (!op->hasOneUse()) {
-            return true;
-        }
-
-        mlir::Operation* parentOp = op.getInput().getDefiningOp();
-        if (!isReshapeKindOp(parentOp)) {
-            return true;
-        }
-        while (isReshapeKindOp(parentOp)) {
-            if (!parentOp->getResult(0).hasOneUse()) {
-                return true;
-            }
-            parentOp = parentOp->getOperand(0).getDefiningOp();
-        }
-
-        if (parentOp == nullptr || !parentOp->getResult(0).hasOneUse()) {
-            return true;
-        }
-
-        auto convertOutType = op.getOutput().getType().getElementType();
-        if (auto interpolateOp = mlir::dyn_cast<IE::InterpolateOp>(parentOp)) {
-            // Check if it's beneficial to fuse our ConvertOp into InterpolateOp
-            return !IE::isFusingConvertIntoBilinearInterpolateOnDpuBeneficial(interpolateOp, convertOutType);
-        }
-
-        if (mlir::failed(VPU::NCEInvariant::isSupported(parentOp))) {
-            return true;
-        }
-
-        const auto inputShape = getBoundedShape(parentOp->getOperand(0));
-        // This will cause an error, because of EnsureNCEOpsSizeRequirementsPass.
-        return inputShape[Dims4D::Act::C] > VPU::NCEInvariant::VPU_DIMENSION_LIMIT;
-    };
-
-    mlir::ConversionTarget target(ctx);
-    target.addDynamicallyLegalOp<IE::ConvertOp>(isLegalOp);
 
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<SwapSWOpWithConvert>(&ctx, _log);
-    if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
-        signalPassFailure();
-    }
+    walkAndApplyPatterns(func, std::move(patterns));
 
     mlir::RewritePatternSet eltwisePatterns(&ctx);
     eltwisePatterns.add<SwapConvertWithEltwiseOp<IE::MultiplyOp>>(&ctx, _log);

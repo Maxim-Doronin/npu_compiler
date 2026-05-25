@@ -4,8 +4,8 @@
 //
 
 
-// RUN: vpux-opt --init-compiler="vpu-arch=%arch% workload-management-enable=true" %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --init-compiler="platform=%platform% workload-management-enable=true" %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 module @mainModule {
 }

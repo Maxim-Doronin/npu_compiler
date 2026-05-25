@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --optimize-concat-view-copies %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --optimize-concat-view-copies %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 // -----
 
@@ -99,6 +99,6 @@ func.func @FuseConcatViewOpsWithSuitableNumPlanePerCluster(
     // CHECK-SAME:      inputs([[INPUT]] : memref<1x4x480x640xf16, #NHWC, @DDR>)
     // CHECK-SAME:      outputs([[SUBVIEW_2]] : memref<1x4x480x640xf16, {order = #NHWC, strides = [2457600, 1, 5120, 8]}, @DDR>)
     // CHECK-SAME:           -> memref<1x4x480x640xf16, {order = #NHWC, strides = [2457600, 1, 5120, 8]}, @DDR>
-    // CHECK:       [[CONCAT:%.+]] = VPUIP.ConcatView inputs([[COPY_0]], [[COPY_1]], [[COPY_2]] : memref<1x4x480x320xf16, {order = #NHWC, strides = [2457600, 1, 5120, 8]}, @DDR>, memref<1x4x480x320xf16, {order = #NHWC, strides = [2457600, 1, 5120, 8]}, @DDR>, memref<1x4x480x640xf16, {order = #NHWC, strides = [2457600, 1, 5120, 8]}, @DDR>) outputs(%alloc : memref<1x8x480x640xf16, #NHWC, @DDR>) -> memref<1x8x480x640xf16, #NHWC, @DDR>
+    // CHECK:       [[CONCAT:%.+]] = VPUIP.ConcatView inputs([[COPY_0]], [[COPY_1]], [[COPY_2]] : memref<1x4x480x320xf16, {order = #NHWC, strides = [2457600, 1, 5120, 8]}, @DDR>, memref<1x4x480x320xf16, {order = #NHWC, strides = [2457600, 1, 5120, 8]}, @DDR>, memref<1x4x480x640xf16, {order = #NHWC, strides = [2457600, 1, 5120, 8]}, @DDR>) outputs([[OUTPUT_BUFF]] : memref<1x8x480x640xf16, #NHWC, @DDR>) -> memref<1x8x480x640xf16, #NHWC, @DDR>
     // CHECK:       return [[CONCAT]] : memref<1x8x480x640xf16, #NHWC, @DDR>
 }

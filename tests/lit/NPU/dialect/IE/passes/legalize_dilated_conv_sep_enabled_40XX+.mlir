@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% enable-experimental-se-ptrs-operations=true" --legalize-dilated-conv %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% enable-experimental-se-ptrs-operations=true" --legalize-dilated-conv %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL: @DontLegalizeDilatedGroupConvolution
 // CHECK-SAME: [[ARG0:%.+]]: tensor<1x3x30x30xf16>

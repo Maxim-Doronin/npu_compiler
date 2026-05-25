@@ -165,9 +165,8 @@ void BarrierOptimizationPass::safeRunOnFunc() {
 
     // Constrain executor types being optimized depending on WLM mode so as to avoid deadlocks and regressions
     // in early pWLM modes.
-    bool allowOptimizationOfAllQueueTypes =
-            _workloadManagementMode.has_value() &&
-            _workloadManagementMode.value() > WorkloadManagementMode::PWLM_V1_BARRIER_FIFO;
+    bool allowOptimizationOfAllQueueTypes = _workloadManagementMode.has_value() &&
+                                            _workloadManagementMode.value() == WorkloadManagementMode::FWLM_V1_PAGES;
 
     mlir::DenseSet<vpux::config::ExecutorKind> executors = {config::ExecutorKind::DMA_NN};
 
@@ -182,7 +181,7 @@ void BarrierOptimizationPass::safeRunOnFunc() {
     if (_considerTaskFifoDependency) {
         // First, initialize DMA queues to pre-optimize producers and consumers for the subsequent barrier merging.
         // Experiments show that optimizing on all queues before barrier merge can have negative impact on the amount of
-        // merging, schedule parallelism, inference performance and PWLM_V0_LCA mode stability.
+        // merging, schedule parallelism, inference performance.
         barrierInfo.initializeTaskQueueTypeMap({config::ExecutorKind::DMA_NN});
         barrierInfo.buildTaskQueueTypeMap();
     }

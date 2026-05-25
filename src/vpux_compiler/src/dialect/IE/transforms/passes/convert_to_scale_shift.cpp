@@ -9,12 +9,16 @@
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/transforms/rewriters/propagate_transpose_affine_reshape_common.hpp"
 #include "vpux/compiler/dialect/IE/utils/const_attributes.hpp"
+#include "vpux/compiler/dialect/IE/utils/scale_shift_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
+#include "vpux/compiler/dialect/VPUIP/interfaces/nce_invariant.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 namespace vpux::IE {
@@ -45,7 +49,7 @@ constexpr std::array<unsigned, 4> W_EXPAND_INVERSE = {0, 2, 3, 1};  // Inverse f
 
 // To explicitly control the patterns exec order to assure dependency
 // benefitLevels[0] is highest benefit level and represent the relative pattern is the first one to run
-const uint32_t levelCount = 2;
+const uint32_t levelCount = 3;
 SmallVector<mlir::PatternBenefit> benefitLevels = getBenefitLevels(levelCount);
 
 struct TransposeInfo {
@@ -367,9 +371,9 @@ mlir::LogicalResult ConvertBiasToScaleShift<BiasTypeOp>::matchAndRewrite(BiasTyp
     auto inElemType = mlir::cast<vpux::NDTypeInterface>(biasOp.getInput2().getType()).getElementType();
     auto outElemType = mlir::cast<vpux::NDTypeInterface>(biasOp.getOutput().getType()).getElementType();
 
-    // from the ops defination, scale shift can only support F16
-    if (!(inElemType.isF16())) {
-        _log.trace("Could not convert to scale shift due to input date type is not FP16");
+    // ScaleShift can only support F16; this also covers SubtractOp and other bias-type ops
+    if (vpux::IE::isScaleShiftAdaptationSupported(biasOp).failed()) {
+        _log.trace("Could not convert to scale shift due to unsupported data type");
         return mlir::failure();
     }
 
@@ -438,33 +442,107 @@ mlir::LogicalResult ConvertBiasToScaleShift<BiasTypeOp>::matchAndRewrite(BiasTyp
     return mlir::success();
 }
 
+static bool hasFakeQuantizeConsumer(IE::MultiplyOp mulOp) {
+    mlir::Value current = mulOp.getOutput();
+
+    while (true) {
+        if (!current.hasOneUse()) {
+            return false;
+        }
+
+        auto* user = *current.getUsers().begin();
+        if (mlir::isa<IE::FakeQuantizeOp>(user)) {
+            return true;
+        }
+
+        if (!IE::isPureViewOp(user) || user->getNumResults() != 1) {
+            return false;
+        }
+
+        current = user->getResult(0);
+    }
+}
+
+// Returns true when a Multiply op with only-C shape is more beneficial to run as NCEEltwise
+// (via NHWC layout) than as ScaleShift (DWConv). Specifically:
+//   - output shape is 1xCx1x1 with C > 1 and C-aligned
+//   - not connected to another ScaleShift / Add / Subtract op
+//   - no FakeQuantize consumer (which requires ScaleShift for PPE Quantize fusion)
+static bool isBeneficialToConvertMultiplyToNHWC(ShapeRef outputShape, IE::MultiplyOp mulOp, Logger log) {
+    const auto isOnlyCShape = outputShape[Dim(Dims4D::Act::N)] == 1 && outputShape[Dim(Dims4D::Act::C)] > 1 &&
+                              outputShape[Dim(Dims4D::Act::H)] == 1 && outputShape[Dim(Dims4D::Act::W)] == 1;
+    if (!isOnlyCShape) {
+        return false;
+    }
+
+    if (mlir::failed(VPUIP::NCEInvariant::verifyChannels(mulOp))) {
+        return false;
+    }
+
+    auto isScaleShiftOp = [](mlir::Operation* op) {
+        return mlir::isa_and_nonnull<IE::ScaleShiftOp, IE::AddOp, IE::SubtractOp>(op);
+    };
+    const bool isConnectedToScaleShift = llvm::any_of(mulOp->getResult(0).getUsers(), isScaleShiftOp) ||
+                                         llvm::any_of(mulOp->getOperands(), [&](mlir::Value operand) {
+                                             return isScaleShiftOp(operand.getDefiningOp());
+                                         });
+    if (isConnectedToScaleShift) {
+        return false;
+    }
+
+    // #E157147: NCEEltwise Multiply cannot fuse a Quantize into the PPE
+    // ScaleShift lowers to DWConv, which supports Quantize PPE fusion and avoids an extra NCE op
+    // Remove this override once E157147 enables Quantize fusion for NCEEltwise Multiply
+    if (hasFakeQuantizeConsumer(mulOp)) {
+        log.trace("Op {0} has FakeQuantize consumer; not converting to NHWC (ScaleShift handles Quantize fusion)",
+                  mulOp->getLoc());
+        return false;
+    }
+
+    return true;
+}
+
 //
 // ConvertMultiplyToScaleShift
 //
 
 class ConvertMultiplyToScaleShift : public mlir::OpRewritePattern<IE::MultiplyOp> {
 public:
-    ConvertMultiplyToScaleShift(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit, Logger log)
-            : mlir::OpRewritePattern<IE::MultiplyOp>(ctx, benefit), _log(log) {
+    ConvertMultiplyToScaleShift(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit, bool enableNCEEltwiseMultiply,
+                                Logger log)
+            : mlir::OpRewritePattern<IE::MultiplyOp>(ctx, benefit),
+              _enableNCEEltwiseMultiply(enableNCEEltwiseMultiply),
+              _log(log) {
         this->setDebugName("ConvertMultiplyToScaleShift");
     }
 
     mlir::LogicalResult matchAndRewrite(IE::MultiplyOp mulOp, mlir::PatternRewriter& rewriter) const final;
 
+private:
+    bool isBeneficialToConvertMultiplyToScaleShift(ShapeRef activationShape, ShapeRef weightsShape,
+                                                   ShapeRef outputShape, IE::MultiplyOp mulOp) const;
+
 protected:
+    bool _enableNCEEltwiseMultiply = false;
     Logger _log;
 };
 
-bool isBeneficialToConvertMultiplyToScaleShift(ShapeRef activationShape, ShapeRef weightsShape, ShapeRef outputShape,
-                                               const IE::MultiplyOp& mulOp, const Logger& log) {
+bool ConvertMultiplyToScaleShift::isBeneficialToConvertMultiplyToScaleShift(ShapeRef activationShape,
+                                                                            ShapeRef weightsShape, ShapeRef outputShape,
+                                                                            IE::MultiplyOp mulOp) const {
+    if (_enableNCEEltwiseMultiply && isBeneficialToConvertMultiplyToNHWC(outputShape, mulOp, _log)) {
+        _log.trace("Op {0} is more optimal to run on NCEEltwise, don't convert to ScaleShift", mulOp->getLoc());
+        return false;
+    }
+
     const int64_t dimCShape = outputShape[Dim(Dims4D::Act::C)];
     if (dimCShape <= VPU::NCEInvariant::VPU_DIMENSION_LIMIT) {
-        log.trace("Operations with C dimension <= 8192 can be converted to ScaleShift");
+        _log.trace("Operations with C dimension <= 8192 can be converted to ScaleShift");
         return true;
     }
 
     if (config::getArch(mulOp) <= config::ArchKind::NPU40XX) {
-        log.trace("Operations with C dimension > 8192 on NPU40xx and older is faster on SHAVE");
+        _log.trace("Operations with C dimension > 8192 on NPU40xx and older is faster on SHAVE");
         return false;
     }
 
@@ -478,7 +556,7 @@ bool isBeneficialToConvertMultiplyToScaleShift(ShapeRef activationShape, ShapeRe
     // SHAVE(VPU.Multiply) in later passes
     const bool needBroadcast = activationShape != weightsShape;
     if (needBroadcast && isBenefitOnDPU) {
-        log.trace("Operations that need to be broadcasted with C dimension > 8192 can be converted to ScaleShift");
+        _log.trace("Operations that need to be broadcasted with C dimension > 8192 can be converted to ScaleShift");
         return true;
     }
 
@@ -528,7 +606,7 @@ mlir::LogicalResult ConvertMultiplyToScaleShift::matchAndRewrite(IE::MultiplyOp 
         return mlir::failure();
     }
 
-    if (!isBeneficialToConvertMultiplyToScaleShift(activationShape, weightsShape, mulOutShape, mulOp, _log)) {
+    if (!isBeneficialToConvertMultiplyToScaleShift(activationShape, weightsShape, mulOutShape, mulOp)) {
         return mlir::failure();
     }
 
@@ -649,12 +727,84 @@ mlir::LogicalResult FoldMultiplyHWSplatWeights::matchAndRewrite(IE::MultiplyOp m
 }
 
 //
+// ConvertMultiplyToNHWC
+//
+
+class ConvertMultiplyToNHWC : public mlir::OpRewritePattern<IE::MultiplyOp> {
+public:
+    ConvertMultiplyToNHWC(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit, Logger log)
+            : mlir::OpRewritePattern<IE::MultiplyOp>(ctx, benefit), _log(log) {
+        this->setDebugName("ConvertMultiplyToNHWC");
+    }
+
+    mlir::LogicalResult matchAndRewrite(IE::MultiplyOp mulOp, mlir::PatternRewriter& rewriter) const final;
+
+protected:
+    Logger _log;
+};
+
+/*
+ * Convert Multiply to NHWC to enable lowering it to DPU Eltwise task
+ */
+mlir::LogicalResult ConvertMultiplyToNHWC::matchAndRewrite(IE::MultiplyOp mulOp,
+                                                           mlir::PatternRewriter& rewriter) const {
+    _log.trace("Got op {0} at {1}", mulOp->getName(), mulOp->getLoc());
+    auto input1 = mulOp->getOperand(0);
+    auto input2 = mulOp->getOperand(1);
+    auto output = mulOp->getResult(0);
+
+    if (input1.getType() != input2.getType() || input1.getType() != output.getType()) {
+        return mlir::failure();
+    }
+
+    auto outputShape = getShape(output);
+    if (!isBeneficialToConvertMultiplyToNHWC(outputShape, mulOp, _log)) {
+        return mlir::failure();
+    }
+
+    const auto expectedLayout = DimsOrder::NHWC;
+    const auto outputLayout = DimsOrder::fromValue(output);
+
+    if (expectedLayout == outputLayout) {
+        return mlir::failure();
+    }
+
+    auto ctx = rewriter.getContext();
+    const auto dstOrder = mlir::AffineMapAttr::get(expectedLayout.toAffineMap(ctx));
+    auto permutation = mlir::AffineMapAttr::get(getPermutationFromOrders(outputLayout, expectedLayout, ctx));
+
+    // Create permute cast operations for inputs
+    auto input1PermuteCastOp = rewriter.create<IE::PermuteCastOp>(appendLoc(mulOp->getLoc(), "_input_permute"), input1,
+                                                                  dstOrder, permutation);
+    auto input2PermuteCastOp = rewriter.create<IE::PermuteCastOp>(appendLoc(mulOp->getLoc(), "_input_permute"), input2,
+                                                                  dstOrder, permutation);
+
+    // Create new Multiply operation
+    auto newMultiplyOp = rewriter.create<IE::MultiplyOp>(
+            appendLoc(mulOp->getLoc(), "_multiply_nhwc"), input1PermuteCastOp.getOutput(),
+            input2PermuteCastOp.getOutput(), mulOp.getAutoBroadcastAttr(), mulOp.getPostOpAttr(), mulOp.getClampAttr(),
+            mulOp.getOutputPaddingAttr(), mulOp.getInputPaddingAttr());
+
+    // Create permute cast operation for output
+    const auto outputDstOrder = mlir::AffineMapAttr::get(outputLayout.toAffineMap(ctx));
+    auto outputPermutation = mlir::AffineMapAttr::get(getPermutationFromOrders(expectedLayout, outputLayout, ctx));
+    auto outputPermuteCastOp =
+            rewriter.create<IE::PermuteCastOp>(appendLoc(mulOp->getLoc(), "_output_permute"), newMultiplyOp.getOutput(),
+                                               outputDstOrder, outputPermutation);
+
+    rewriter.replaceAllUsesWith(mulOp, outputPermuteCastOp);
+    _log.trace("Converted Multiply to NHWC {0}", mulOp->getLoc());
+    return mlir::success();
+}
+
+//
 // ConvertToScaleShiftPass
 //
 
 class ConvertToScaleShiftPass final : public IE::impl::ConvertToScaleShiftBase<ConvertToScaleShiftPass> {
 public:
-    explicit ConvertToScaleShiftPass(Logger log) {
+    explicit ConvertToScaleShiftPass(bool enableNCEEltwiseMultiply, Logger log) {
+        this->enableNCEEltwiseMultiply = enableNCEEltwiseMultiply;
         Base::initLogger(log, Base::getArgumentName());
     }
 
@@ -673,7 +823,10 @@ void ConvertToScaleShiftPass::safeRunOnFunc() {
     patterns.add<FoldMultiplyHWSplatWeights>(&ctx, benefitLevels[0], _log);
     patterns.add<ConvertBiasToScaleShift<IE::AddOp>>(&ctx, benefitLevels[1], _log);
     patterns.add<ConvertBiasToScaleShift<IE::SubtractOp>>(&ctx, benefitLevels[1], _log);
-    patterns.add<ConvertMultiplyToScaleShift>(&ctx, benefitLevels[1], _log);
+    patterns.add<ConvertMultiplyToScaleShift>(&ctx, benefitLevels[1], enableNCEEltwiseMultiply, _log);
+    if (enableNCEEltwiseMultiply) {
+        patterns.add<ConvertMultiplyToNHWC>(&ctx, benefitLevels[2], _log);
+    }
 
     auto func = getOperation();
     if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
@@ -687,6 +840,6 @@ void ConvertToScaleShiftPass::safeRunOnFunc() {
 // createConvertToScaleShiftPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::IE::createConvertToScaleShiftPass(Logger log) {
-    return std::make_unique<ConvertToScaleShiftPass>(log);
+std::unique_ptr<mlir::Pass> vpux::IE::createConvertToScaleShiftPass(bool enableNCEEltwiseMultiply, Logger log) {
+    return std::make_unique<ConvertToScaleShiftPass>(enableNCEEltwiseMultiply, log);
 }

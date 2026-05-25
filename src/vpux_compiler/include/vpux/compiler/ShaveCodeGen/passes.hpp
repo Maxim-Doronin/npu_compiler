@@ -44,6 +44,7 @@ std::unique_ptr<mlir::Pass> createFlattenEltwiseKernelPass(Logger log = Logger::
 std::unique_ptr<mlir::Pass> createShaveStackAllocationPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createMoveKernelResultsToArgumentsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createOneShotBufferizeSWKernelsPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createStripFuncQuantTypesCodeGenPass(Logger log = Logger::global());
 
 //
 // Registration

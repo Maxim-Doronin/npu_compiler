@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --run-initial-low-precision-transformations-rewriters="rewriter=consolidate-activation-fp8-quantization" %s | FileCheck %s
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --run-initial-low-precision-transformations-rewriters="rewriter=consolidate-activation-fp8-quantization" %s | FileCheck %s
+// REQUIRES: platform-NPU5010
 
 !qElemType = !quant.uniform<i4:f32, 1.000000e+00:8>
 // CHECK:  !qElemType = !quant.uniform<f8E4M3FN:f32, 1.000000e+00>

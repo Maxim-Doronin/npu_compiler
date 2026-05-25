@@ -15,6 +15,10 @@ namespace test {
 // Test purpose: have a 'FakeQuantize' split into 'Quantize' + 'Dequantize'
 // In HW-pipeline, 'Quantize' will run on DPU, 'Dequantize' on Shave
 class FakeQuantPerChLayerTest_NPU3720 : virtual public VpuOv2LayerTest, public testing::WithParamInterface<ov::Shape> {
+    void configure_model() override {
+        configuration[ov::intel_npu::compilation_mode_params.name()] = "quant-dequant-removal=false";
+    }
+
     void SetUp() override {
         ov::Shape shape = GetParam();
         inType = outType = ov::element::f16;
@@ -52,11 +56,19 @@ class FakeQuantPerChLayerTest_NPU3720 : virtual public VpuOv2LayerTest, public t
 
 class FakeQuantPerChLayerTestConfig_NPU3720 : public FakeQuantPerChLayerTest_NPU3720 {
     void configure_model() override {
-        configuration[ov::intel_npu::compilation_mode_params.name()] = "merge-fake-quant=false";
+        configuration[ov::intel_npu::compilation_mode_params.name()] = "disabled-passes=merge-fake-quant";
     }
 };
 
 class FakeQuantPerChLayerTest_NPU4000 : public FakeQuantPerChLayerTestConfig_NPU3720 {};
+
+class ShaveCodeGenFakeQuantPerChLayerTestConfig_SW : public FakeQuantPerChLayerTest_NPU4000 {
+    void configure_model() override {
+        configuration[ov::intel_npu::compilation_mode_params.name()] =
+                "enable-shave-code-gen=true enable-convert-quantize-ops-to-nce=false disabled-passes=merge-fake-quant";
+    }
+};
+
 class FakeQuantPerChLayerTest_NPU5010 : public FakeQuantPerChLayerTestConfig_NPU3720 {};
 class FakeQuantPerChLayerTest_NPU5020 : public FakeQuantPerChLayerTestConfig_NPU3720 {};
 
@@ -114,16 +126,40 @@ TEST_P(FakeQuantPerChLayerTest_NPU4000, SW) {
     run(Platform::NPU4000);
 }
 
+TEST_P(ShaveCodeGenFakeQuantPerChLayerTestConfig_SW, NPU4000) {
+    rel_threshold = 0.001;
+    abs_threshold = 0.2;
+    setReferenceSoftwareMode();
+    setPluginCompilerType();
+    run(Platform::NPU4000);
+}
+
 TEST_P(FakeQuantPerChLayerTest_NPU5010, SW) {
     rel_threshold = 0.001;
     abs_threshold = 0.2;
     setReferenceSoftwareMode();
     run(Platform::NPU5010);
 }
+
+TEST_P(ShaveCodeGenFakeQuantPerChLayerTestConfig_SW, NPU5010) {
+    rel_threshold = 0.001;
+    abs_threshold = 0.2;
+    setReferenceSoftwareMode();
+    setPluginCompilerType();
+    run(Platform::NPU5010);
+}
 TEST_P(FakeQuantPerChLayerTest_NPU5020, SW) {
     rel_threshold = 0.001;
     abs_threshold = 0.2;
     setReferenceSoftwareMode();
+    run(Platform::NPU5020);
+}
+
+TEST_P(ShaveCodeGenFakeQuantPerChLayerTestConfig_SW, NPU5020) {
+    rel_threshold = 0.001;
+    abs_threshold = 0.2;
+    setReferenceSoftwareMode();
+    setPluginCompilerType();
     run(Platform::NPU5020);
 }
 
@@ -157,6 +193,9 @@ INSTANTIATE_TEST_SUITE_P(smoke_precommit_FakeQuantPerCh, FakeQuantPerChLayerTest
 INSTANTIATE_TEST_SUITE_P(smoke_FakeQuantPerCh, FakeQuantPerChLayerTestConfig_NPU3720, ::testing::ValuesIn(shapesSW));
 
 INSTANTIATE_TEST_SUITE_P(smoke_FakeQuantPerCh, FakeQuantPerChLayerTest_NPU4000, ::testing::ValuesIn(shapesSW));
+
+INSTANTIATE_TEST_SUITE_P(smoke_ShaveCodeGenFakeQuantPerCh, ShaveCodeGenFakeQuantPerChLayerTestConfig_SW,
+                         ::testing::ValuesIn(shapesSW));
 INSTANTIATE_TEST_SUITE_P(smoke_FakeQuantPerCh, FakeQuantPerChLayerTest_NPU5010, ::testing::ValuesIn(shapesSW));
 INSTANTIATE_TEST_SUITE_P(smoke_FakeQuantPerCh, FakeQuantPerChLayerTest_NPU5020, ::testing::ValuesIn(shapesSW));
 

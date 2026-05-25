@@ -3,11 +3,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --convert-VPUASM-to-NPUReg40XX --handle-alignment-requirements %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --convert-VPUASM-to-NPUReg40XX --handle-alignment-requirements %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-module @mainModule attributes {config.arch = #config.arch_kind<NPU40XX>} {
+module @mainModule attributes {config.platform = #config.platform<NPU4000>} {
   config.ExecutorResource 1 of @DMA_NN
   config.Resources 1 of @NCE at 6.000000e+02 MHz
   net.NetworkInfo entryPoint : @read_after_write_act_dma_f16_f16 inputsInfo : {
@@ -16,7 +16,7 @@ module @mainModule attributes {config.arch = #config.arch_kind<NPU40XX>} {
     DataInfo "output" : tensor<1x10x2x3xf16>
   }
   func.func private @read_after_write_act_dma_f16_f16() {
-    ELF.Main @ELFMain {
+    ELF.Main {
       VPUASM.DeclareBuffer @DeclareBuffer0 !VPUASM.Buffer< "NetworkInput"[0] <0> : memref<1x10x2x3xf16, #NHWC, @DDR> :  swizzling(0)>
       VPUASM.DeclareBuffer @DeclareBuffer1 !VPUASM.Buffer< "NetworkOutput"[0] <0> : memref<1x10x2x3xf16, #NHWC, @DDR> :  swizzling(0)>
       VPUASM.DeclareKernelEntry @DeclareKernelEntry0 : "test_kernel_elf_pad"

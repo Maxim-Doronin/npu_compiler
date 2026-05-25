@@ -11,7 +11,7 @@
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
-#include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Transforms/WalkPatternRewriteDriver.h>
 
 #include <numeric>
 
@@ -24,6 +24,40 @@ namespace vpux::IE {
 using namespace vpux;
 
 namespace {
+
+bool shouldConvertUpsamplingOp(IE::UpsamplingOp op) {
+    const auto inputShape = getShape(op.getInput());
+    SmallVector<int64_t> padLVector = {
+            checked_cast<int64_t>(mlir::cast<mlir::IntegerAttr>(op.getPadAttr().getPadsChannel()[0]).getInt()),
+            checked_cast<int64_t>(mlir::cast<mlir::IntegerAttr>(op.getPadAttr().getPadsHeight()[0]).getInt()),
+            checked_cast<int64_t>(mlir::cast<mlir::IntegerAttr>(op.getPadAttr().getPadsWidth()[0]).getInt())};
+
+    SmallVector<int64_t> padRVector = {
+            checked_cast<int64_t>(mlir::cast<mlir::IntegerAttr>(op.getPadAttr().getPadsChannel()[1]).getInt()),
+            checked_cast<int64_t>(mlir::cast<mlir::IntegerAttr>(op.getPadAttr().getPadsHeight()[1]).getInt()),
+            checked_cast<int64_t>(mlir::cast<mlir::IntegerAttr>(op.getPadAttr().getPadsWidth()[1]).getInt())};
+    const auto upsamplingFactorVector = parseIntArrayAttr<int64_t>(op.getUpsamplingFactor());
+
+    // Upsampling only supports 4D Input shape
+    // Upsampling supports pads only for 3 axes
+    // Upsampling supports factors only for 3 axes
+    if (inputShape.size() != 4 || padLVector.size() != 3 || padRVector.size() != 3 ||
+        upsamplingFactorVector.size() != 3) {
+        return false;
+    }
+
+    // Based on upsamplingOP's defination, the input/output's shape has below relation
+    //      outputShape=inShape*upsamplingFactorVector - (upsamplingFactorVector - 1) + padLVector + padRVector
+    // To make the upsampingOP can be converted to DMA. It should promise
+    //      outputShape = inShape*upsamplingFactor
+    // So padL = 0 and padRVector = upsamplingFactorVector - 1
+    int64_t initValue = 0;
+    int64_t sumPadL = std::accumulate(padLVector.begin(), padLVector.end(), initValue);
+    const bool hasExpectedRightPadding = (1 == upsamplingFactorVector[0] - padRVector[2]) &&
+                                         (1 == upsamplingFactorVector[1] - padRVector[1]) &&
+                                         (1 == upsamplingFactorVector[2] - padRVector[0]);
+    return !(sumPadL == 0 && hasExpectedRightPadding);
+}
 
 auto getConcatResult(mlir::PatternRewriter& rewriter, vpux::Dim axis, int64_t factor, mlir::Value input,
                      ShapeRef constShape, IE::UpsamplingOp origOp) {
@@ -78,6 +112,10 @@ private:
 
 mlir::LogicalResult ConvertUpsamplingToStridedConcatPass::UpsamplingOpConverter::matchAndRewrite(
         IE::UpsamplingOp origOp, mlir::PatternRewriter& rewriter) const {
+    if (!shouldConvertUpsamplingOp(origOp)) {
+        return mlir::failure();
+    }
+
     _log.trace("Found Upsampling Op {0}", origOp->getLoc());
 
     const auto inputShape = getShape(origOp.getInput());
@@ -170,59 +208,11 @@ mlir::LogicalResult ConvertUpsamplingToStridedConcatPass::UpsamplingOpConverter:
 
 void ConvertUpsamplingToStridedConcatPass::safeRunOnFunc() {
     auto& ctx = getContext();
-    mlir::ConversionTarget target(ctx);
-
-    target.addDynamicallyLegalOp<IE::UpsamplingOp>([&](IE::UpsamplingOp op) {
-        const auto inputShape = getShape(op.getInput());
-        SmallVector<int64_t> padLVector = {
-                checked_cast<int64_t>(mlir::cast<mlir::IntegerAttr>(op.getPadAttr().getPadsChannel()[0]).getInt()),
-                checked_cast<int64_t>(mlir::cast<mlir::IntegerAttr>(op.getPadAttr().getPadsHeight()[0]).getInt()),
-                checked_cast<int64_t>(mlir::cast<mlir::IntegerAttr>(op.getPadAttr().getPadsWidth()[0]).getInt())};
-
-        SmallVector<int64_t> padRVector = {
-                checked_cast<int64_t>(mlir::cast<mlir::IntegerAttr>(op.getPadAttr().getPadsChannel()[1]).getInt()),
-                checked_cast<int64_t>(mlir::cast<mlir::IntegerAttr>(op.getPadAttr().getPadsHeight()[1]).getInt()),
-                checked_cast<int64_t>(mlir::cast<mlir::IntegerAttr>(op.getPadAttr().getPadsWidth()[1]).getInt())};
-        const auto upsamplingFactorVector = parseIntArrayAttr<int64_t>(op.getUpsamplingFactor());
-
-        // Upsampling only supports 4D Input shape
-        // Upsampling supports pads only for 3 axes
-        // Upsampling supports factors only for 3 axes
-        if (inputShape.size() != 4 || padLVector.size() != 3 || padRVector.size() != 3 ||
-            upsamplingFactorVector.size() != 3) {
-            return true;
-        }
-
-        // Based on upsamplingOP's defination, the input/output's shape has below relation
-        //      outputShape=inShape*upsamplingFactorVector - (upsamplingFactorVector - 1) + padLVector + padRVector
-        // To make the upsampingOP can be converted to DMA. It should promise
-        //      outputShape = inShape*upsamplingFactor
-        // So padL = 0 and padRVector = upsamplingFactorVector - 1
-        int64_t initValue = 0;
-        int64_t sumPadL = std::accumulate(padLVector.begin(), padLVector.end(), initValue);
-        if (sumPadL) {
-            return false;
-        }
-
-        if (1 != upsamplingFactorVector[0] - padRVector[2] || 1 != upsamplingFactorVector[1] - padRVector[1] ||
-            1 != upsamplingFactorVector[2] - padRVector[0]) {
-            return false;
-        }
-        return true;
-    });
-
-    target.addLegalOp<IE::SliceOp>();
-    target.addLegalOp<IE::ConcatOp>();
-    target.addLegalOp<IE::PadOp>();
-    target.addLegalOp<Const::DeclareOp>();
 
     mlir::RewritePatternSet patterns(&ctx);
     patterns.insert<UpsamplingOpConverter>(&ctx, _log);
 
-    auto func = getOperation();
-    if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
-        signalPassFailure();
-    }
+    walkAndApplyPatterns(getOperation(), std::move(patterns));
 }
 
 }  // namespace

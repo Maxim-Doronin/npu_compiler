@@ -20,6 +20,7 @@
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/utils/sparsity.hpp"
+#include "vpux/utils/core/numeric.hpp"
 
 #include <vpu_layer_cost_model.h>
 

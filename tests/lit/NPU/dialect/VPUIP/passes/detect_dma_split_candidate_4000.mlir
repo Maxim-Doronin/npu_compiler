@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt  --split-input-file --init-compiler="vpu-arch=%arch%" --detect-dma-split-candidate %s | FileCheck %s
-// REQUIRES: arch-NPU40XX
+// RUN: vpux-opt  --split-input-file --init-compiler="platform=%platform%" --detect-dma-split-candidate %s | FileCheck %s
+// REQUIRES: platform-NPU4000
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
@@ -32,7 +32,7 @@ func.func @AssignSplitCandidateToBroadcastDMA(%arg0: !DummyT) -> !DummyT {
       %3 = VPUIP.NNDMA <{port = 0 : i64}> inputs(%cst : memref<1x1x1x368768xf16, #NCHW>) outputs(%2 : !DistributedType) -> !DistributedType
     }
 
-    // CHECK:       [[NNDMA:%.+]] = VPUIP.NNDMA <{port = 0 : i64, split_candidate}>
+    // CHECK:       [[NNDMA:%.+]] = VPUIP.NNDMA <{port = 0 : i64, split_candidate = true}>
 
     return %arg0 : !DummyT
 }
@@ -79,7 +79,7 @@ func.func @AssignSplitCandidateWhenAnotherPortIsTotallyIdle(%arg0: !DummyT) -> !
       %7 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%5 : memref<1x16x2x8xf16, [@CMX_NN, 1]>) outputs(%6 : memref<1x16x2x8xf16, {order = #NCHW, strides = [81920, 64, 8, 1]}, @DDR>) -> memref<1x16x2x8xf16, {order = #NCHW, strides = [81920, 64, 8, 1]}, @DDR>
     }
 
-    // CHECK:       [[NNDMA:%.+]] = VPUIP.NNDMA <{port = 0 : i64, split_candidate}>
+    // CHECK:       [[NNDMA:%.+]] = VPUIP.NNDMA <{port = 0 : i64, split_candidate = true}>
 
     return %arg0 : !DummyT
 }
@@ -119,7 +119,7 @@ func.func @AssignSplitCandidateWhenAnotherPortIsPartiallyIdle(%arg0: !DummyT) ->
       %5 = VPUIP.NNDMA <{port = 1 : i64}> inputs(%2 : memref<1x16x2x8xf16, [@CMX_NN, 1]>) outputs(%3 : memref<1x16x2x8xf16, {order = #NCHW, strides = [81920, 64, 8, 1]}, @DDR>) -> memref<1x16x2x8xf16, {order = #NCHW, strides = [81920, 64, 8, 1]}, @DDR>
     }
 
-    // CHECK:       [[NNDMA:%.+]] = VPUIP.NNDMA <{port = 0 : i64, split_candidate}>
+    // CHECK:       [[NNDMA:%.+]] = VPUIP.NNDMA <{port = 0 : i64, split_candidate = true}>
 
     return %arg0 : !DummyT
 }
@@ -147,7 +147,7 @@ func.func @NotAssignSplitCandidateWithCycleCostOverlap(%arg0: !DummyT) -> !Dummy
     }
 
     // CHECK:       [[NNDMA:%.+]] = VPUIP.NNDMA <{port = 0 : i64}>
-    // CHECK-NOT:           split_candidate
+    // CHECK-NOT:           split_candidate = true
 
     return %arg0 : !DummyT
 }
@@ -171,7 +171,7 @@ func.func @AssignSplitCandidateToCMX2DDRDMA(%arg0: !DummyT) -> !DummyT {
           outputs(%3 : memref<32x1280x3x3xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 1024 : i64>}, @DDR>) -> memref<32x1280x3x3xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 1024 : i64>}, @DDR>
     }
 
-    // CHECK:       [[NNDMA:%.+]] = VPUIP.NNDMA <{port = 0 : i64, spillId = 0 : i64, split_candidate}>
+    // CHECK:       [[NNDMA:%.+]] = VPUIP.NNDMA <{port = 0 : i64, spillId = 0 : i64, split_candidate = true}>
 
     return %arg0: !DummyT
 }
@@ -194,7 +194,7 @@ func.func @NotAssignSplitCandidateForCompressCandidate(%arg0: !DummyT) -> !Dummy
     }
 
     // CHECK:       [[NNDMA:%.+]] = VPUIP.NNDMA <{compress_candidate, port = 0 : i64, spillId = 0 : i64}>
-    // CHECK-NOT:           split_candidate
+    // CHECK-NOT:           split_candidate = true
 
     return %arg0 : !DummyT
 }
@@ -217,7 +217,7 @@ func.func @AvoidTrivialSplitCandidate(%arg0: !DummyT) -> !DummyT {
     }
 
     // CHECK:       [[NNDMA:%.+]] = VPUIP.NNDMA <{port = 0 : i64, spillId = 0 : i64}>
-    // CHECK-NOT:           split_candidate
+    // CHECK-NOT:           split_candidate = true
 
     return %arg0 : !DummyT
 }
@@ -251,7 +251,7 @@ func.func @AssignSplitCandidateToNon4DDMA(%arg0: !DummyT) -> !DummyT {
           outputs(%5 : memref<1x16x2x8xf16, {order = #NCHW, strides = [81920, 64, 8, 1]}, @DDR>) -> memref<1x16x2x8xf16, {order = #NCHW, strides = [81920, 64, 8, 1]}, @DDR>
     }
 
-    // CHECK:       [[NNDMA:%.+]] = VPUIP.NNDMA <{port = 0 : i64, split_candidate}>
+    // CHECK:       [[NNDMA:%.+]] = VPUIP.NNDMA <{port = 0 : i64, split_candidate = true}>
 
     return %arg0: !DummyT
 }

@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" %s | FileCheck %s
-// RUN: vpux-opt --emit-bytecode --init-compiler="vpu-arch=%arch%" %s | vpux-opt --vpu-arch=%arch% | FileCheck %s
-// REQUIRES: dev-build && arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" %s | FileCheck %s
+// RUN: vpux-opt --emit-bytecode --init-compiler="platform=%platform%" %s | vpux-opt --platform=%platform% | FileCheck %s
+// REQUIRES: dev-build && platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module @Test {
@@ -16,7 +16,7 @@ module @Test {
     DataInfo "output_0" : tensor<1x16x64x64xf16>
   }
   func.func @main() {
-    ELF.Main @ELFMain {
+    ELF.Main {
       ELF.CreateLogicalSection @builtin.data.nncmx0 aligned(64) secType(SHT_NOBITS) secFlags(SHF_ALLOC) secLocation(<CMX_NN>) {
         VPUASM.DeclareBuffer @DeclareBuffer_ActIn !VPUASM.Buffer< "CMX_NN"[0] <196736> : memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]> :  swizzling(0)>
         VPUASM.DeclareBuffer @Weights !VPUASM.Buffer< "CMX_NN"[0] <213632> : memref<64x16x3x3xf16, #NHWC, [@CMX_NN, 0]> :  swizzling(0)>

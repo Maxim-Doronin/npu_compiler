@@ -6,6 +6,8 @@
 #include "vpux/compiler/utils/memref_attr_utils.hpp"
 #include "vpux/compiler/core/attributes/dims_order.hpp"
 
+#include <mlir/IR/BuiltinAttributes.h>
+
 using namespace vpux;
 
 DimsOrder vpux::inferNewDimsOrder(DimsOrder origOrder, size_t numShapeDims) {
@@ -26,4 +28,12 @@ DimsOrder vpux::inferNewDimsOrder(DimsOrder origOrder, size_t numShapeDims) {
     }
     DimsOrder::StorageType newCode = origOrder.code() + codeDelta;
     return DimsOrder::fromCode(newCode);
+}
+
+bool vpux::hasStridedLayout(mlir::Type type) {
+    if (auto memrefType = mlir::dyn_cast<mlir::MemRefType>(type)) {
+        return mlir::isa<mlir::StridedLayoutAttr>(memrefType.getLayout());
+    }
+
+    return false;
 }

@@ -82,6 +82,9 @@ VPURegMapped::TaskType convertTargetToTaskType(config::ExecutorKind kind) {
     case config::ExecutorKind::SHAVE_ACT:
         returnType = VPURegMapped::TaskType::ActKernelRange;
         break;
+    case config::ExecutorKind::DMA_NN:
+        returnType = VPURegMapped::TaskType::DMA;
+        break;
     default:
         VPUX_THROW("Unsupported executor kind passed for FetchTask");
     }
@@ -166,7 +169,9 @@ void ConvertFetchDmasToFetchTaskOpsPass::safeRunOnFunc() {
 
     _log.trace("Get placeholder Fetch DMAs");
     for (auto dmaOp : llvm::make_early_inc_range(llvm::make_filter_range(dmaTaskOps, [](auto dma) {
-             return dma.getFetchDmaAttr() != nullptr;
+             // DescID suggests this DMA is to fetch single DMA descriptor for logical task, and thus should not be of
+             // concern in this pass
+             return dma.getFetchDmaAttr() != nullptr && dma.getFetchDmaAttr().getDescId() == nullptr;
          }))) {
         auto fetchAttr = dmaOp.getFetchDmaAttr();
 

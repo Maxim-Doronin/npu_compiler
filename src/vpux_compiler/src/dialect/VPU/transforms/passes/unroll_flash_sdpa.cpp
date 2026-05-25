@@ -9,11 +9,14 @@
 #include "vpux/compiler/dialect/VPU/IR/ops/internal.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/numeric.hpp"
+
+#include <mlir/Transforms/WalkPatternRewriteDriver.h>
 
 namespace vpux::VPU {
 #define GEN_PASS_DECL_UNROLLFLASHSDPA
@@ -56,6 +59,12 @@ mlir::Value createSlice(mlir::PatternRewriter& rewriter, mlir::Location loc, mli
 
 mlir::LogicalResult FlashSDPARewrite::matchAndRewrite(VPU::FlashSDPAOp origOp, mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got '{1}' at '{2}'", getDebugName(), origOp->getName(), origOp->getLoc());
+
+    if (origOp.getKvNumBlocksAttr() == nullptr) {
+        _log.trace("Failed to unroll FlashSDPA. Missing KvNumBlocks attribute.");
+        return mlir::failure();
+    }
+
     auto log = _log.nest();
     auto ctx = rewriter.getContext();
 
@@ -130,6 +139,7 @@ mlir::LogicalResult FlashSDPARewrite::matchAndRewrite(VPU::FlashSDPAOp origOp, m
                 tileLoc, query, keySlice, valueSlice, out, max, sum, attentionMaskSlice, sourceSeqLenPadSize,
                 isHeadAttr, isTailAttr, /*kvNumBlocksAttr*/ nullptr, origOp.getMultiClusterStrategyAttr());
 
+        copyLoopAttributes(origOp, tiledOp.getOperation());
         log.trace("Unrolled {0} - {1}", tiledOp->getName(), tiledOp->getResult(0));
 
         if (i + 1 == kvNumBlocks) {
@@ -142,7 +152,6 @@ mlir::LogicalResult FlashSDPARewrite::matchAndRewrite(VPU::FlashSDPAOp origOp, m
         out = tiledOp.getResultRunningOutput();
         max = tiledOp.getResultRunningMax();
         sum = tiledOp.getResultRunningSum();
-        query = tiledOp.getResultQuery();
 
         i++;
     }
@@ -169,22 +178,10 @@ void UnrollFlashSDPA::safeRunOnFunc() {
     auto func = getOperation();
     auto& ctx = getContext();
 
-    const auto isLegal = [](VPU::FlashSDPAOp op) {
-        return op.getKvNumBlocksAttr() == nullptr;
-    };
-
-    mlir::ConversionTarget target(ctx);
-    target.addDynamicallyLegalOp<VPU::FlashSDPAOp>(isLegal);
-    target.addLegalOp<VPU::SliceOp>();
-    target.addLegalOp<VPU::EmptyOp>();
-    target.addLegalOp<Const::DeclareOp>();
-
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<FlashSDPARewrite>(&ctx, _log);
 
-    if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
-        signalPassFailure();
-    }
+    walkAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-precision-to-i32 --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --convert-precision-to-i32 --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL: @GatherConvertIndices
 // CHECK-SAME:    [[ARG_0:%[^:]+]]: tensor<100xf16>
@@ -77,6 +77,21 @@ func.func @AddOp(%arg0: tensor<1x5x16x32xui64>, %arg1: tensor<1x5x16x32xui64>) -
 
     // CHECK: [[ADD:%.+]] = IE.Add([[ARG_0]], [[ARG_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x5x16x32xui32>, tensor<1x5x16x32xui32> -> tensor<1x5x16x32xui32>
     // CHECK: return [[ADD]] : tensor<1x5x16x32xui32>
+}
+
+// -----
+
+// CHECK-LABEL: @SelectOpSi64ConvertToSi32
+// CHECK-SAME:    [[ARG_0:%[^:]+]]: tensor<1x1024xsi32>
+// CHECK-SAME:    [[ARG_1:%[^:]+]]: tensor<1x1024xsi32>
+func.func @SelectOpSi64ConvertToSi32(%arg0: tensor<1x1024xsi64>, %arg1: tensor<1x1024xsi64>) -> tensor<1x1024xsi64> {
+    %cond = const.Declare tensor<1x1024xi8> = dense<1> : tensor<1x1024xi8>
+    %0 = IE.Select(%cond, %arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1024xi8>, tensor<1x1024xsi64>, tensor<1x1024xsi64> -> tensor<1x1024xsi64>
+    return %0 : tensor<1x1024xsi64>
+
+    // CHECK-DAG: [[COND:%.+]] = const.Declare tensor<1x1024xsi32> = dense<1> : tensor<1x1024xi8>, [#const.CastElemType<si32>]
+    // CHECK:     [[SELECT:%.+]] = IE.Select([[COND]], [[ARG_0]], [[ARG_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1024xsi32>, tensor<1x1024xsi32>, tensor<1x1024xsi32> -> tensor<1x1024xsi32>
+    // CHECK:     return [[SELECT]] : tensor<1x1024xsi32>
 }
 
 // -----

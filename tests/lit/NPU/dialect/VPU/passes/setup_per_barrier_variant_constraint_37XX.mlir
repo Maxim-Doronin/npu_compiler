@@ -4,10 +4,10 @@
 //
 
 
-// RUN: vpux-opt --vpu-arch=%arch% --setup-npu-constraint %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --platform=%platform% --setup-npu-constraint %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
-module @mainModule attributes { config.arch = #config.arch_kind<NPU37XX> } {
+module @mainModule attributes { config.platform = #config.platform<NPU3720> } {
   config.Resources 2 of @NCE at 1.700000e+03 MHz {
     config.ExecutorResource 2 of @SHAVE_ACT
     config.ExecutorResource 1 of @DPU

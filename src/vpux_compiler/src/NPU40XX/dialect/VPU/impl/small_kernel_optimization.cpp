@@ -3,35 +3,21 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/dialect/VPU/transforms/factories/small_kernel_optimization.hpp"
 #include "vpux/compiler/core/attributes/dims_order.hpp"
-#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops/dpu.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
-#include "vpux/compiler/dialect/config/IR/attributes.hpp"
-#include "vpux/compiler/utils/attributes.hpp"
 
 using namespace vpux;
 
 namespace vpux::VPU::arch40xx {
 
-bool isSmallKernelOptimizationSupported(mlir::Operation* op, const int64_t KX, const int64_t SX,
-                                        ArrayRef<VPU::DPUWorkloadOp> workloads) {
-    const auto isFp16Input = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType()).getElementType().isF16();
-    auto is16Workload = false;
-    auto is64Workload = false;
-    const auto workloadChannelsMeetRequirement = llvm::all_of(workloads, [&](auto workload) {
+bool isSmallKernelOptimizationSupported(mlir::Operation* /*op*/, ArrayRef<VPU::DPUWorkloadOp> workloads) {
+    return llvm::all_of(workloads, [](auto workload) {
         const auto wlSizes = workload.getConstOutputSizes();
-        is16Workload |= wlSizes[Dims4D::Act::C.ind()] == VPU::NCEInvariant::VPU_CHANNEL_SIZE_FOR_L1OPT16;
-        is64Workload |= wlSizes[Dims4D::Act::C.ind()] == VPU::NCEInvariant::VPU_CHANNEL_SIZE_FOR_L1OPT64;
-        return isFp16Input ? wlSizes[Dims4D::Act::C.ind()] == VPU::NCEInvariant::VPU_CHANNEL_SIZE_FOR_L1OPT16 ||
-                                     wlSizes[Dims4D::Act::C.ind()] == VPU::NCEInvariant::VPU_CHANNEL_SIZE_FOR_L1OPT32
-                           : (wlSizes[Dims4D::Act::C.ind()] == VPU::NCEInvariant::VPU_CHANNEL_SIZE_FOR_L1OPT16 ||
-                              wlSizes[Dims4D::Act::C.ind()] == VPU::NCEInvariant::VPU_CHANNEL_SIZE_FOR_L1OPT32 ||
-                              wlSizes[Dims4D::Act::C.ind()] == VPU::NCEInvariant::VPU_CHANNEL_SIZE_FOR_L1OPT64) &&
-                                     !(is16Workload && is64Workload);
+        const auto ch = wlSizes[Dims4D::Act::C.ind()];
+        return ch == VPU::NCEInvariant::VPU_CHANNEL_SIZE_FOR_L1OPT16 ||
+               ch == VPU::NCEInvariant::VPU_CHANNEL_SIZE_FOR_L1OPT32;
     });
-
-    return KX == 3 && SX == 1 && workloadChannelsMeetRequirement;
 }
 
 bool doesWorkloadSupportSmallKernelOpt(const int64_t KX, const int64_t SX, ArrayRef<int64_t> workloadOutSz,

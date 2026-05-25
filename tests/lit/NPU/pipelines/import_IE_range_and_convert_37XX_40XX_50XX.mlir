@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-translate --vpu-arch=%arch% --import-IE ./IR/range_4_and_convert.xml -o %t
+// RUN: vpux-translate --platform=%platform% --import-IE ./IR/range_4_and_convert.xml -o %t
 // RUN: FileCheck %s --input-file %t
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // Input: Range + Convert layer, where range output bounds cannot be calculated (start, stop, step not a constant values)
 // Case : Since the logic for Range output shape bounds calculation is not on ngraph, but on IE dialect, need to check that we wouldn't fail and handle such case

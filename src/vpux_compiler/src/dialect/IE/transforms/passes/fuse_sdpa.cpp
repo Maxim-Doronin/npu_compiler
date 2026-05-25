@@ -250,7 +250,7 @@ void FuseSDPAPass::safeRunOnFunc() {
                 builder.create<IE::TransposeOp>(appendLoc(sdpaOp->getLoc(), "transpose_v"), inputV, nullptr, orderAttr);
         auto newSdpaOp = builder.create<IE::SDPAOp>(
                 appendLoc(sdpaOp->getLoc(), "sdpa"), sdpaOp.getInputQ(), sdpaOp.getInputK(), transposedVOp.getOutput(),
-                sdpaOp.getInputMask(), sdpaOp.getInputScale(), sdpaOp.getCausalAttr());
+                sdpaOp.getInputMask(), sdpaOp.getInputScale(), sdpaOp.getInputSink(), sdpaOp.getCausalAttr());
         newSdpaOp->setAttrs(sdpaOp->getAttrs());
         sdpaOp->replaceAllUsesWith(newSdpaOp);
     });

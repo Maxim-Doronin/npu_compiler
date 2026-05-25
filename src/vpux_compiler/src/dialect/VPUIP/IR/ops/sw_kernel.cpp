@@ -29,6 +29,7 @@
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
+#include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/asm.hpp"
@@ -123,16 +124,26 @@ mlir::ArrayAttr optionalIoAttr(mlir::Operation* op) {
                 mask |= 1 << 6;                               // InputDataStorage
                 mask |= 1 << 7;                               // output
             })
-            .Case<VPU::SDPAExtendedOp>([&](VPU::SDPAExtendedOp sdpaExtended) {
-                mask |= 1 << 0;                                       // InputQ
-                mask |= 1 << 1;                                       // InputK
-                mask |= 1 << 2;                                       // InputV
-                mask |= (sdpaExtended.getInputMask() ? 1 : 0) << 3;   // InputMask
-                mask |= (sdpaExtended.getInputScale() ? 1 : 0) << 4;  // InputScale
-                mask |= (sdpaExtended.getInputBias() ? 1 : 0) << 5;   // InputBias
-                mask |= 1 << 6;                                       // InputDataStorage
-                mask |= (sdpaExtended.getDpuStorage() ? 1 : 0) << 7;  // InputDpuStorage
-                mask |= 1 << 8;                                       // output
+            .Case<VPU::AttentionOp>([&](VPU::AttentionOp attention) {
+                mask |= 1 << 0;                                    // InputQ
+                mask |= 1 << 1;                                    // InputK
+                mask |= 1 << 2;                                    // InputV
+                mask |= (attention.getInputMask() ? 1 : 0) << 3;   // InputMask
+                mask |= (attention.getInputScale() ? 1 : 0) << 4;  // InputScale
+                if (attention.getInputSink()) {
+                    // Sink kernel layout
+                    mask |= 1 << 5;                                    // InputSink
+                    mask |= (attention.getInputBias() ? 1 : 0) << 6;   // InputBias
+                    mask |= 1 << 7;                                    // InputDataStorage
+                    mask |= (attention.getDpuStorage() ? 1 : 0) << 8;  // InputDpuStorage
+                    mask |= 1 << 9;                                    // output
+                } else {
+                    // original kernel layout
+                    mask |= (attention.getInputBias() ? 1 : 0) << 5;   // InputBias
+                    mask |= 1 << 6;                                    // InputDataStorage
+                    mask |= (attention.getDpuStorage() ? 1 : 0) << 7;  // InputDpuStorage
+                    mask |= 1 << 8;                                    // output
+                }
             })
             .Case<VPU::PadOp>([&](VPU::PadOp pad) {
                 mask |= 1 << 0;                             // main input
@@ -140,6 +151,13 @@ mlir::ArrayAttr optionalIoAttr(mlir::Operation* op) {
                 mask |= (pad.getPadsEnd() ? 1 : 0) << 2;    // pad_end
                 mask |= (pad.getPadValue() ? 1 : 0) << 3;   // pad_value
                 mask |= 1 << 4;
+            })
+            .Case<VPU::InterpolateDMAOp>([&](VPU::InterpolateDMAOp interpDMA) {
+                mask |= 1 << 0;                                     // input
+                mask |= 1 << 1;                                     // scales
+                mask |= (interpDMA.getCoordinates() ? 1 : 0) << 2;  // coordinates
+                mask |= (interpDMA.getLambdas() ? 1 : 0) << 3;      // lambdas
+                mask |= 1 << 4;                                     // output
             })
             .Default([](mlir::Operation* op) {
                 VPUX_THROW("Bit-mask for '{0}' not implemented", op->getName());
@@ -165,6 +183,15 @@ bool isSupportedElemType(const bool isAttribute, const mlir::Value value) {
     const auto ndType = mlir::cast<NDTypeInterface>(value.getType());
     return ndType.getElementType().isInteger(32);
 }
+
+int64_t getNumTiles(mlir::Value operand) {
+    int64_t numTiles = 1;
+    if (auto distrib = mlir::dyn_cast<vpux::VPU::DistributedTensorType>(operand.getType())) {
+        numTiles = distrib.getDistribution().getNumClusters().getInt();
+    }
+    return numTiles;
+}
+
 }  // namespace
 
 namespace vpux {
@@ -418,7 +445,7 @@ void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, 
           /*dynamicInputShapesMap*/ nullptr, results, /*dynamicOutputShapes*/ ValueRange{},
           /*dynamicOutputShapesMap*/ nullptr, profilingOutput, tileIndex, /* listIndex */ nullptr,
           /* inputStrides */ nullptr, outputStrides,
-          /*profilingMetadata*/ nullptr);
+          /*profilingMetadata*/ nullptr, /*skipDescIds*/ nullptr);
 }
 
 void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, mlir::ValueRange inputs,
@@ -431,7 +458,7 @@ void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, 
           /*dynamicInputShapesMap*/ nullptr, results, /*dynamicOutputShapes*/ ValueRange{},
           /*dynamicOutputShapesMap*/ nullptr, profilingOutput, tileIndex, /* listIndex */ nullptr, inputStrides,
           outputStrides,
-          /*profilingMetadata*/ nullptr);
+          /*profilingMetadata*/ nullptr, /*skipDescIds*/ nullptr);
 }
 
 void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, mlir::ValueRange inputs,
@@ -442,7 +469,7 @@ void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, 
           /*dynamicInputShapes*/ ValueRange{}, /*dynamicInputShapesMap*/ nullptr, results,
           /*dynamicOutputShapes*/ ValueRange{}, /*dynamicOutputShapesMap*/ nullptr, profilingOutput, tileIndex,
           /* listIndex */ nullptr, /* inputStrides */ nullptr, /*outputStrides*/ nullptr,
-          /*profilingMetadata*/ nullptr);
+          /*profilingMetadata*/ nullptr, /*skipDescIds*/ nullptr);
 }
 
 void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, mlir::ValueRange inputs,
@@ -452,7 +479,7 @@ void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, 
           (profilingOutput ? profilingOutput.getType() : nullptr), kernelFunction, inputs,
           /*dynamicInputShapes*/ ValueRange{}, /*dynamicInputShapesMap*/ nullptr, results,
           /*dynamicOutputShapes*/ ValueRange{}, /*dynamicOutputShapesMap*/ nullptr, profilingOutput, tileIndex,
-          /* listIndex */ nullptr, inputStrides, outputStrides, /*profilingMetadata*/ nullptr);
+          /* listIndex */ nullptr, inputStrides, outputStrides, /*profilingMetadata*/ nullptr, /*skipDescIds*/ nullptr);
 }
 
 void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, mlir::ValueRange inputs,
@@ -465,7 +492,7 @@ void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, 
           DenseI32ArrayAttr::get(builder.getContext(), dynamicInputShapesMap), results, dynamicOutputShapes,
           DenseI32ArrayAttr::get(builder.getContext(), dynamicOutputShapesMap), /*profilingOutput*/ nullptr, tileIndex,
           /* listIndex */ nullptr, /* inputStrides */ nullptr, /*outputStrides*/ nullptr,
-          /*profilingMetadata*/ nullptr);
+          /*profilingMetadata*/ nullptr, /*skipDescIds*/ nullptr);
 }
 
 void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, mlir::ValueRange inputs,
@@ -477,7 +504,8 @@ void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, 
           kernelFunction, inputs, dynamicInputShapes,
           DenseI32ArrayAttr::get(builder.getContext(), dynamicInputShapesMap), results, dynamicOutputShapes,
           DenseI32ArrayAttr::get(builder.getContext(), dynamicOutputShapesMap), /*profilingOutput*/ nullptr, tileIndex,
-          /* listIndex */ nullptr, /* inputStrides */ nullptr, outputStrides, /*profilingMetadata*/ nullptr);
+          /* listIndex */ nullptr, /* inputStrides */ nullptr, outputStrides, /*profilingMetadata*/ nullptr,
+          /*skipDescIds*/ nullptr);
 }
 
 void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, mlir::ValueRange inputs,
@@ -490,7 +518,7 @@ void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, 
           DenseI32ArrayAttr::get(builder.getContext(), dynamicInputShapesMap), results, dynamicOutputShapes,
           DenseI32ArrayAttr::get(builder.getContext(), dynamicOutputShapesMap), profilingOutput, tileIndex,
           /* listIndex */ nullptr, /* inputStrides */ nullptr, /*outputStrides*/ nullptr,
-          /*profilingMetadata*/ nullptr);
+          /*profilingMetadata*/ nullptr, /*skipDescIds*/ nullptr);
 }
 
 void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, SwKernelOp swOp,
@@ -527,7 +555,8 @@ void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, 
           (profilingOutput ? profilingOutput.getType() : nullptr), kernelFunction, inputs, dynamicInputShapes,
           DenseI32ArrayAttr::get(builder.getContext(), dynamicInputShapesMap), results, dynamicOutputShapes,
           DenseI32ArrayAttr::get(builder.getContext(), dynamicOutputShapesMap), profilingOutput, tileIndex,
-          /* listIndex */ nullptr, /* inputStrides */ nullptr, outputStrides, /*profilingMetadata*/ nullptr);
+          /* listIndex */ nullptr, /* inputStrides */ nullptr, outputStrides, /*profilingMetadata*/ nullptr,
+          /*skipDescIds*/ nullptr);
 }
 
 void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, mlir::ValueRange inputs,
@@ -540,7 +569,7 @@ void SwKernelOp::build(mlir::OpBuilder& builder, mlir::OperationState& opState, 
           (profilingOutput ? profilingOutput.getType() : nullptr), kernelFunction, inputs, dynamicInputShapes,
           DenseI32ArrayAttr::get(builder.getContext(), dynamicInputShapesMap), results, dynamicOutputShapes,
           DenseI32ArrayAttr::get(builder.getContext(), dynamicOutputShapesMap), profilingOutput, tileIndex,
-          /* listIndex */ nullptr, inputStrides, outputStrides, /*profilingMetadata*/ nullptr);
+          /* listIndex */ nullptr, inputStrides, outputStrides, /*profilingMetadata*/ nullptr, /*skipDescIds*/ nullptr);
 }
 
 mlir::LogicalResult SwKernelOp::verify() {
@@ -725,6 +754,13 @@ std::tuple<SmallString, SmallString, SmallString> getKernelImpl(VPU::SoftMaxOp o
     }
 
     return std::tuple<SmallString, SmallString, SmallString>{"softmax", "softmax.cpp", "softmax"};
+}
+
+std::tuple<SmallString, SmallString> getKernelImpl(VPU::AttentionOp op) {
+    if (op.getInputSink()) {
+        return std::tuple<SmallString, SmallString>{"attention_sink", "attention_sink.cpp"};
+    }
+    return std::tuple<SmallString, SmallString>{"attention", "attention.cpp"};
 }
 
 std::pair<SmallString, SmallString> getKernelImpl(VPU::MVNOp op) {
@@ -953,11 +989,20 @@ VPUIP::KernelInfo SwKernelOp::getKernelInfo(mlir::Operation* origOp) {
                 const auto nearestMode = static_cast<int64_t>(interpolate.getAttr().getNearestMode().getValue());
                 const auto antialias = static_cast<int64_t>(interpolate.getAttr().getAntialias().getValue());
                 const auto inOrder = DimsOrder::fromValue(interpolate.getInput());
-                const auto initialInputDim = interpolate.getInitialInputDimsAttr().value();
+                const auto initialInputDim =
+                        interpolate.getInitialInputDimsAttr().has_value()
+                                ? interpolate.getInitialInputDimsAttr().value()
+                                : getIntArrayAttr(ctx, to_small_vector(getShape(interpolate.getInput())));
+
                 const auto initialInputDimsParam = permuteIntArrayAttr(inOrder, initialInputDim);
-                const auto initialOutputDim = interpolate.getInitialOutputDimsAttr().value();
+                const auto initialOutputDim =
+                        interpolate.getInitialOutputDimsAttr().has_value()
+                                ? interpolate.getInitialOutputDimsAttr().value()
+                                : getIntArrayAttr(ctx, to_small_vector(getShape(interpolate.getOutput())));
                 const auto initialOutputDimsParam = permuteIntArrayAttr(inOrder, initialOutputDim);
-                const auto tileFPList = parseFPArrayAttr<double>(interpolate.getTileOffsetAttrAttr());
+                const auto tileFPList = interpolate.getTileOffsetAttrAttr() != nullptr
+                                                ? parseFPArrayAttr<double>(interpolate.getTileOffsetAttrAttr())
+                                                : SmallVector<double>(inOrder.numDims(), 0.0);
                 const auto cubeCoeffParam = interpolate.getAttr().getCubeCoeff().getValueAsDouble();
                 const auto axisParam = parseIntArrayAttr<int64_t>(interpolate.getAxesAttrAttr());
                 // Check the scaling dim size since the swkernel only support scaling at most two dims
@@ -1019,6 +1064,30 @@ VPUIP::KernelInfo SwKernelOp::getKernelInfo(mlir::Operation* origOp) {
                                                      initialOutputDimsParamAttr, axisParamAttr, cubeCoeffParamAttr,
                                                      initialInputOffsetAttr, initialOutputOffsetAttr},
                         {"interpolate"}};
+            })
+            .Case<VPU::InterpolateDMAOp>([&](VPU::InterpolateDMAOp interpDMA) {
+                const auto mode = static_cast<int64_t>(interpDMA.getAttr().getMode().getValue());
+                const auto coordMode = static_cast<int64_t>(interpDMA.getAttr().getCoordMode().getValue());
+                const auto nearestMode = static_cast<int64_t>(interpDMA.getAttr().getNearestMode().getValue());
+                const auto antialias = static_cast<int64_t>(interpDMA.getAttr().getAntialias().getValue());
+                const auto axisParam = parseIntArrayAttr<int64_t>(interpDMA.getAxesAttrAttr());
+                const auto cubeCoeffParam = interpDMA.getAttr().getCubeCoeff().getValueAsDouble();
+                // Given default axes, only logically spatial dims will be interpolated
+                const auto scalingAxis = (axisParam.size() == 2) ? axisParam : SmallVector<int64_t>{2, 3};
+
+                const auto modeAttr = getIntAttr(ctx, mode);
+                const auto coordModeAttr = getIntAttr(ctx, coordMode);
+                const auto nearestModeAttr = getIntAttr(ctx, nearestMode);
+                const auto antialiasAttr = getIntAttr(ctx, antialias);
+                const auto axisParamAttr = getIntArrayAttr(ctx, scalingAxis);
+                const auto cubeCoeffParamAttr = getFPAttr(ctx, cubeCoeffParam);
+
+                const auto delimiterAttr = getIntAttr(ctx, INT64_MAX);
+
+                return VPUIP::KernelInfo{
+                        SmallVector<mlir::Attribute>{delimiterAttr, modeAttr, coordModeAttr, nearestModeAttr,
+                                                     antialiasAttr, axisParamAttr, cubeCoeffParamAttr},
+                        {"interpolate_dma"}};
             })
             .Case<VPU::ScatterNDUpdateOp>([&](VPU::ScatterNDUpdateOp) {
                 return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{}, {"scatter_nd_update"}};
@@ -1109,6 +1178,9 @@ VPUIP::KernelInfo SwKernelOp::getKernelInfo(mlir::Operation* origOp) {
             .Case<VPU::IsInfOp>([&](VPU::IsInfOp) {
                 return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{}, {"eltwise_isinf"}};
             })
+            .Case<VPU::IsFiniteOp>([&](VPU::IsFiniteOp) {
+                return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{}, {"eltwise_isfinite"}};
+            })
             .Case<VPU::LogicalOrOp>([&](VPU::LogicalOrOp) {
                 return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{}, {"eltwise_logical_or"}};
             })
@@ -1132,6 +1204,12 @@ VPUIP::KernelInfo SwKernelOp::getKernelInfo(mlir::Operation* origOp) {
             })
             .Case<VPU::BitwiseNotOp>([&](VPU::BitwiseNotOp) {
                 return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{}, {"eltwise_bitwise_not"}};
+            })
+            .Case<VPU::BitwiseLeftShiftOp>([&](VPU::BitwiseLeftShiftOp) {
+                return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{}, {"eltwise_bitwise_left_shift"}};
+            })
+            .Case<VPU::BitwiseRightShiftOp>([&](VPU::BitwiseRightShiftOp) {
+                return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{}, {"eltwise_bitwise_right_shift"}};
             })
             .Case<VPU::NotEqualOp>([&](VPU::NotEqualOp) {
                 return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{}, {"eltwise_not_equal"}};
@@ -1602,21 +1680,25 @@ VPUIP::KernelInfo SwKernelOp::getKernelInfo(mlir::Operation* origOp) {
                 const auto inFmt = yuvToRgb.getInFmtAttr().getValue();
                 const auto outFmt = static_cast<int64_t>(yuvToRgb.getOutFmtAttr().getValue()) - 2;
                 const auto outFmtIntAttr = getIntAttr(ctx, outFmt);
+                const auto scaleAttr =
+                        yuvToRgb.getScaleAttr() != nullptr ? yuvToRgb.getScaleAttr() : getFPAttr(ctx, 1.0f);
                 auto singlePlane = (yuvToRgb.getInput2() == nullptr);
 
                 if (inFmt == vpux::IE::ColorFmt::NV12) {
                     if (singlePlane) {
-                        return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{outFmtIntAttr},
+                        return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{outFmtIntAttr, scaleAttr},
                                                  {"nv12_to_rgb_single_plane"}};
                     } else {
-                        return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{outFmtIntAttr}, {"nv12_to_rgb"}};
+                        return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{outFmtIntAttr, scaleAttr},
+                                                 {"nv12_to_rgb"}};
                     }
                 } else {
                     if (singlePlane) {
-                        return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{outFmtIntAttr},
+                        return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{outFmtIntAttr, scaleAttr},
                                                  {"i420_to_rgb_single_plane"}};
                     } else {
-                        return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{outFmtIntAttr}, {"i420_to_rgb"}};
+                        return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{outFmtIntAttr, scaleAttr},
+                                                 {"i420_to_rgb"}};
                     }
                 }
             })
@@ -1837,6 +1919,12 @@ VPUIP::KernelInfo SwKernelOp::getKernelInfo(mlir::Operation* origOp) {
             })
             .Case<VPU::AtanOp>([&](VPU::AtanOp) {
                 return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{}, {"activation_atan"}};
+            })
+            .Case<VPU::AtanDmaOp>([&](VPU::AtanDmaOp op) {
+                int64_t numTiles = getNumTiles(op.getAuxBuffer());
+                int64_t numShaves = (static_cast<VPU::SwIoDmaOpInterface>(op)).getDuplicatedNumShaves();
+                const auto runInfoAttr = getIntAttr(op.getContext(), (numShaves << 32) | numTiles);
+                return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{runInfoAttr}, {"activation_atan_dma"}};
             })
             .Case<VPU::AsinhOp>([&](VPU::AsinhOp) {
                 return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{}, {"activation_asinh"}};
@@ -2401,11 +2489,20 @@ VPUIP::KernelInfo SwKernelOp::getKernelInfo(mlir::Operation* origOp) {
                 VPUX_THROW_UNLESS(iType.getRank() <= 4, "Supporting only 3D and 4D input, got {0}", iType.getRank());
 
                 mlir::MLIRContext* ctx = origOp->getContext();
-                const auto isInterleaved = static_cast<int64_t>(op.getIsInterleavedAttr() != nullptr);
-                const auto isInterleavedAttr = getIntAttr(ctx, isInterleaved);
-                return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{isInterleavedAttr},
-                                         {isInterleaved ? "rope_ilv" : "rope"},
-                                         {isInterleaved ? "rope_ilv.cpp" : "rope.cpp"}};
+                const auto mode = static_cast<int64_t>(op.getModeAttr().getValue());
+                const auto modeAttr = getIntAttr(ctx, mode);
+                const auto modeValue = op.getModeAttr().getValue();
+                if (modeValue == IE::RoPEMode::INTERLEAVED) {
+                    return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{modeAttr}, {"rope_ilv"}, {"rope_ilv.cpp"}};
+                }
+
+                if (modeValue == IE::RoPEMode::PAIRWISE) {
+                    return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{modeAttr},
+                                             {"rope_pairwise"},
+                                             {"rope_pairwise.cpp"}};
+                }
+
+                return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{modeAttr}, {"rope"}, {"rope.cpp"}};
             })
             .Case<VPU::DynamicDataMaskOp>([&](VPU::DynamicDataMaskOp) {
                 return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{},
@@ -2431,9 +2528,17 @@ VPUIP::KernelInfo SwKernelOp::getKernelInfo(mlir::Operation* origOp) {
                         getIntArrayAttr(op->getContext(), SmallVector<int64_t>{INT64_MAX, flags, sourceSeqLenPadSize});
                 return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{attrs}, {"flash_sdpa"}, {"flash_sdpa.cpp"}};
             })
-            .Case<VPU::SDPAExtendedOp>([&](VPU::SDPAExtendedOp op) {
+            .Case<VPU::AttentionOp>([&](VPU::AttentionOp op) {
                 const auto iType = mlir::cast<vpux::NDTypeInterface>(op.getInputQ().getType());
                 VPUX_THROW_UNLESS(iType.getRank() == 4, "Supporting only 4D input, got {0}", iType.getRank());
+                if (op.getInputScale() != nullptr) {
+                    const auto scaleType = mlir::cast<vpux::NDTypeInterface>(op.getInputScale().getType());
+                    VPUX_THROW_UNLESS(scaleType.getRank() == 4, "AttentionOp supporting only 4D input, got {0}",
+                                      scaleType.getRank());
+                    const auto shape = scaleType.getShape();
+                    VPUX_THROW_UNLESS((shape[Dim(scaleType.getRank() - 1)] * shape[Dim(scaleType.getRank() - 2)]) == 1,
+                                      "AttentionOp supporting only Scale with size 1 on last dims, got {0}", shape);
+                }
                 int64_t padSize = 0;
                 if (op.getPadSizeSAttr() != nullptr) {
                     if (op.getPadSizeS().has_value()) {
@@ -2441,8 +2546,11 @@ VPUIP::KernelInfo SwKernelOp::getKernelInfo(mlir::Operation* origOp) {
                     }
                 }
                 const auto padSizeAttr = getIntAttr(ctx, padSize);
+                auto [kernelEntry, kernelSrc] = getKernelImpl(op);
                 return VPUIP::KernelInfo{SmallVector<mlir::Attribute>{optionalIoAttr(op), padSizeAttr},
-                                         {"sdpa_extended"}};
+                                         kernelEntry,
+                                         kernelSrc,
+                                         {"attention"}};
             })
             .Default([](mlir::Operation* unknownOp) -> VPUIP::KernelInfo {
                 VPUX_THROW("Operation '{0}' is not supported by the act-shaves", unknownOp->getName());

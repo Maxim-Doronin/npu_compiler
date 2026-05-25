@@ -10,7 +10,7 @@
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/numeric.hpp"
 
-#include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Transforms/WalkPatternRewriteDriver.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_CONVERTPOWERTOMULT
@@ -28,6 +28,27 @@ namespace {
 
 constexpr int64_t MAX_CONVERSION_EXPONENT = 3;
 
+bool shouldConvertPowerOp(IE::PowerOp powerOp) {
+    // Check if given PowerOp has constant single value exponent
+    // with small value. If yes then such PowerOp should be converted
+    // to Mult
+    auto cstOp = powerOp.getInput2().getDefiningOp<Const::DeclareOp>();
+    if (cstOp == nullptr) {
+        return false;
+    }
+
+    // Exponent must be a scalar or tensor with all elements equal
+    const auto& constAttr = cstOp.getContentAttr();
+    if (!constAttr.isSplat()) {
+        return false;
+    }
+
+    const auto exponent = constAttr.fold().getSplatValue<float>();
+    auto isIntegerExponent = isFloatEqual(std::floor(exponent), exponent);
+    auto isConversionBeneficial = (static_cast<int64_t>(exponent) <= MAX_CONVERSION_EXPONENT);
+    return isIntegerExponent && isConversionBeneficial;
+}
+
 class PowerToMultRewriter final : public mlir::OpRewritePattern<IE::PowerOp> {
 public:
     PowerToMultRewriter(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<IE::PowerOp>(ctx), _log(log) {
@@ -40,6 +61,10 @@ private:
 };
 
 mlir::LogicalResult PowerToMultRewriter::matchAndRewrite(IE::PowerOp powerOp, mlir::PatternRewriter& rewriter) const {
+    if (!shouldConvertPowerOp(powerOp)) {
+        return mlir::failure();
+    }
+
     _log.trace("Got PowerOp for conversion to MultOp - '{0}'", powerOp->getLoc());
 
     auto cstOp = powerOp.getInput2().getDefiningOp<Const::DeclareOp>();
@@ -92,39 +117,10 @@ private:
 void ConvertPowerToMultPass::safeRunOnFunc() {
     auto& ctx = getContext();
 
-    const auto isLegalOp = [&](IE::PowerOp powerOp) {
-        // Check if given PowerOp has constant single value exponent
-        // with small value. If yes then such PowerOp should be converted
-        // to Mult
-        if (auto cstOp = powerOp.getInput2().getDefiningOp<Const::DeclareOp>()) {
-            // Exponent must be a scalar or tensor with all elements equal
-            const auto& constAttr = cstOp.getContentAttr();
-            if (!constAttr.isSplat()) {
-                return true;
-            }
-
-            const auto exponent = constAttr.fold().getSplatValue<float>();
-            auto isIntegerExponent = isFloatEqual(std::floor(exponent), exponent);
-            auto isConversionBeneficial = (static_cast<int64_t>(exponent) <= MAX_CONVERSION_EXPONENT);
-            if (isIntegerExponent && isConversionBeneficial) {
-                return false;
-            }
-        }
-
-        return true;
-    };
-
-    mlir::ConversionTarget target(ctx);
-    target.addDynamicallyLegalOp<IE::PowerOp>(isLegalOp);
-    target.addLegalOp<IE::MultiplyOp>();
-
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<PowerToMultRewriter>(&ctx, _log);
 
-    auto func = getOperation();
-    if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
-        signalPassFailure();
-    }
+    walkAndApplyPatterns(getOperation(), std::move(patterns));
 }
 
 }  // namespace

@@ -9,7 +9,7 @@
 
 namespace vpux::bitc {
 // clang-format off
-enum class ArchType : uint32_t { NPU27, NPU4, NPU5
+enum class ArchType : uint32_t { UNKNOWN, NPU27, NPU4, NPU5
 };
 
 struct BitCompactorConfig {

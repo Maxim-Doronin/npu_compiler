@@ -38,8 +38,8 @@ namespace vpux {
 // Default file names to dump and read manual strategies from
 //
 
-constexpr StringLiteral writeStrategyFileLocation = "strategy_out.json";
-constexpr StringLiteral readStrategyFileLocation = "strategy_in.json";
+constexpr StringLiteral writeStrategyDefaultFileLocation = "strategy_out.json";
+constexpr StringLiteral readStrategyDefaultFileLocation = "strategy_in.json";
 
 //
 // PatternBenefit

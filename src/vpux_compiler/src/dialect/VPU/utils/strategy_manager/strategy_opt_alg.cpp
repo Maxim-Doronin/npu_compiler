@@ -4,7 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/VPU/utils/strategy_manager/strategy_opt_alg.hpp"
-#include "vpux/utils/algorithms/simulated_annealing.hpp"
+#include "vpux/utils/algorithm/simulated_annealing.hpp"
 
 using namespace vpux;
 

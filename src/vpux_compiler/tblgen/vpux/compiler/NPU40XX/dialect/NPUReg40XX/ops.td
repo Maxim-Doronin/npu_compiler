@@ -612,7 +612,8 @@ def MappedInferenceVersionOp :
                 DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize"]>,
                 DeclareOpInterfaceMethods<ELF_BinarySizeOpInterface, ["getBinarySize", "getAlignmentRequirements"]>,
                 Symbol,
-                DeclareOpInterfaceMethods<VPURegMapped_SerializedVersionInterface>
+                DeclareOpInterfaceMethods<VPURegMapped_SerializedVersionInterface>,
+                VPURegMapped_MIVersionInterface
             ]
         > {
     let summary = "Represents a versioning mechanism for Mapped Inference";

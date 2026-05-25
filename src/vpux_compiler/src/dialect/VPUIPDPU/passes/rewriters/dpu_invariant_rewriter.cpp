@@ -29,7 +29,7 @@ mlir::LogicalResult insertEntryBlock(mlir::OpBuilder& builder, mlir::Block* bloc
     return mlir::success();
 }
 
-mlir::LogicalResult insertInvBlockArgs(VPUASM::DPUInvariantOp op, const Logger& log, mlir::Block* invBlock,
+mlir::LogicalResult insertInvBlockArgs(VPUASM::DPUInvariantOp op, mlir::Block* invBlock,
                                        std::unordered_map<BlockArg, size_t>& invBlockArgsPos,
                                        ELF::SymbolReferenceMap& symRefMap) {
     // input activations
@@ -124,17 +124,15 @@ mlir::LogicalResult insertInvBlockArgs(VPUASM::DPUInvariantOp op, const Logger& 
     }
 
     // output activations
-    mlir::MemRefType outType;
     if (!op.getIsContinued() && op.getOutput()) {
-        outType = getBufferType(symRefMap.lookupSymbol(op.getOutput().value()));
+        auto outType = getBufferType(symRefMap.lookupSymbol(op.getOutput().value()));
+        invBlock->addArgument(outType, op.getLoc());
+        invBlockArgsPos[BlockArg::ACT_OUT] = invBlock->getNumArguments() - 1;
     } else if (op.getIsContinued() && op.getOutputTypeContinued()) {
-        outType = op.getOutputTypeContinued().value().getMemref();
-    } else {
-        log.error("Expected either output buffer or output type for continued mode");
-        return mlir::failure();
+        auto outType = op.getOutputTypeContinued().value().getMemref();
+        invBlock->addArgument(outType, op.getLoc());
+        invBlockArgsPos[BlockArg::ACT_OUT] = invBlock->getNumArguments() - 1;
     }
-    invBlock->addArgument(outType, op.getLoc());
-    invBlockArgsPos[BlockArg::ACT_OUT] = invBlock->getNumArguments() - 1;
 
     // output sparsity
     if (op.getOutputSparsityMap()) {
@@ -191,7 +189,7 @@ mlir::LogicalResult DPUInvariantRewriter::matchAndRewrite(VPUASM::DPUInvariantOp
     {
         mlir::OpBuilder::InsertionGuard guard(rewriter);
 
-        if (insertInvBlockArgs(op, _log, invBlock, invBlockArgsPos, _symRefMap).failed()) {
+        if (insertInvBlockArgs(op, invBlock, invBlockArgsPos, _symRefMap).failed()) {
             return mlir::failure();
         }
 

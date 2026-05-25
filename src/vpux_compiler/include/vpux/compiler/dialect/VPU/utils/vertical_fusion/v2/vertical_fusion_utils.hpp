@@ -71,4 +71,10 @@ std::optional<Dim> getVFOptimizedDim(const VFSplit& vfSplit);
 
 // Get the mapped VF block argument for the operand, the intermediate view like op will be ignored
 mlir::BlockArgument getVFBlockArgument(mlir::Value operand);
+
+// Check if the op supports multi cluster strategy adjustment when merging into VF
+bool supportMultiClusterStrategyAdjustmentInVF(mlir::Operation* op);
+
+// Find the first non-view-like user of the operation and its operand index
+std::optional<std::pair<mlir::Operation*, int64_t>> findFirstNonViewUser(mlir::Operation* operation);
 }  // namespace vpux::VPU::VF::v2

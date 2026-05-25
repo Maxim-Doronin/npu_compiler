@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-eltwise-layers-to-math %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --convert-eltwise-layers-to-math %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 // IE.Add
 
@@ -86,11 +86,11 @@ module @AddWithReluPostOp {
     return %0 : tensor<1x1x1x1000xf16>
 
 // CHECK-NOT:     IE.Add
+// CHECK:      [[ZERO:%.+]] = arith.constant 0.000000e+00 : f16
 // CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xf16>
 // CHECK-NEXT:   [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}}, {{%.+}} : tensor<1x1x1x1000xf16>, tensor<1x1x1x1000xf16>) outs([[EMPTY]] : tensor<1x1x1x1000xf16>) {
 // CHECK-NEXT:    ^bb0([[LHS:%.+]]: f16, [[RHS:%.+]]: f16, {{%.+}}: f16):
 // CHECK-NEXT:      [[ADD:%.+]] = arith.addf [[LHS]], [[RHS]] : f16
-// CHECK-NEXT:      [[ZERO:%.+]] = arith.constant 0.000000e+00 : f16
 // CHECK-NEXT:      [[CMP:%.+]] = arith.cmpf ole, [[ADD]], [[ZERO]] fastmath<nnan,nsz> : f16
 // CHECK-NEXT:      [[OP:%.+]] = arith.select [[CMP]], [[ZERO]], [[ADD]] : f16
 // CHECK-NEXT:      linalg.yield [[OP]] : f16
@@ -120,15 +120,15 @@ module @AddWithLeakyReluPostOp {
     return %0 : tensor<1x1x1x1000xf16>
 
 // CHECK-NOT:     IE.Add
+// CHECK:      [[SLOPE:%.+]] = arith.constant 1.999510e-01 : f16
+// CHECK:      [[ZERO:%.+]] = arith.constant 0.000000e+00 : f16
 // CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xf16>
 // CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[ARG0:%.+]], [[ARG1:%.+]] : tensor<1x1x1x1000xf16>, tensor<1x1x1x1000xf16>) outs([[EMPTY]] : tensor<1x1x1x1000xf16>) {
 // CHECK-NEXT:    ^bb0([[LHS:%.+]]: f16, [[RHS:%.+]]: f16, {{%.+}}: f16):
 // CHECK-NEXT:      [[ADD:%.+]] = arith.addf [[LHS]], [[RHS]] : f16
-// CHECK-NEXT:      [[ZERO:%.+]] = arith.constant 0.000000e+00 : f16
 // CHECK-NEXT:      [[CMP:%.+]] = arith.cmpf ole, [[ADD]], [[ZERO]] fastmath<nnan,nsz> : f16
 // CHECK-NEXT:      [[POS:%.+]] = arith.select [[CMP]], [[ZERO]], [[ADD]] : f16
 // CHECK-NEXT:      [[NEG:%.+]] = arith.select [[CMP]], [[ADD]], [[ZERO]] : f16
-// CHECK-NEXT:      [[SLOPE:%.+]] = arith.constant 1.999510e-01 : f16
 // CHECK-NEXT:      [[WSLOP:%.+]] = arith.mulf [[NEG]], [[SLOPE]] : f16
 // CHECK-NEXT:      [[OP:%.+]] = arith.addf [[POS]], [[WSLOP]] : f16
 // CHECK-NEXT:      linalg.yield [[OP]] : f16

@@ -7,9 +7,9 @@
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/transposed_convolution_utils.hpp"
-#include "vpux/compiler/dialect/VPU/utils/conv_utils.hpp"
 #include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
@@ -17,7 +17,7 @@
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
-#include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Transforms/WalkPatternRewriteDriver.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_CONVERTGROUPTRANSPOSEDCONVTOTRANSPOSEDCONV
@@ -29,14 +29,36 @@ using namespace vpux;
 
 namespace {
 
+bool shouldConvertGroupTransposedConvToTransposedConv(IE::GroupTransposedConvolutionOp groupTransposedConv,
+                                                      bool enableSEPTransposedConv, Logger log) {
+    const auto logCb = [&](const formatv_object_base& msg) {
+        log.trace("{0}", msg.str());
+    };
+
+    log.trace("Got '{0}' at '{1}'", groupTransposedConv->getName(), groupTransposedConv->getLoc());
+    if (!enableSEPTransposedConv) {
+        log.nest().trace("SEP disabled for TransposedConvolutions");
+        return false;
+    }
+    auto seOp = mlir::dyn_cast<IE::SEOpInterface>(groupTransposedConv.getOperation());
+    if (!seOp || !seOp.isSupported(logCb)) {
+        log.nest().trace("GroupTransposedConvolutionOp cannot be executed using SEP");
+        return false;
+    }
+
+    return true;
+}
+
 //
 // GroupTransposedConvConverter
 //
 
 class GroupTransposedConvConverter final : public mlir::OpRewritePattern<IE::GroupTransposedConvolutionOp> {
 public:
-    GroupTransposedConvConverter(mlir::MLIRContext* ctx, Logger log)
-            : mlir::OpRewritePattern<IE::GroupTransposedConvolutionOp>(ctx), _log(log) {
+    GroupTransposedConvConverter(mlir::MLIRContext* ctx, bool enableSEPTransposedConv, Logger log)
+            : mlir::OpRewritePattern<IE::GroupTransposedConvolutionOp>(ctx),
+              _enableSEPTransposedConv(enableSEPTransposedConv),
+              _log(log) {
     }
 
 public:
@@ -44,6 +66,7 @@ public:
                                         mlir::PatternRewriter& rewriter) const final;
 
 private:
+    bool _enableSEPTransposedConv;
     Logger _log;
 };
 
@@ -59,6 +82,10 @@ private:
 //                                              weights [32, 32, 3, 1]
 mlir::LogicalResult GroupTransposedConvConverter::matchAndRewrite(IE::GroupTransposedConvolutionOp origOp,
                                                                   mlir::PatternRewriter& rewriter) const {
+    if (!shouldConvertGroupTransposedConvToTransposedConv(origOp, _enableSEPTransposedConv, _log)) {
+        return mlir::failure();
+    }
+
     _log.trace("Got GroupConvolutionOp at '{0}'", origOp->getLoc());
 
     const auto input = origOp.getInput();
@@ -171,8 +198,10 @@ mlir::LogicalResult GroupTransposedConvConverter::matchAndRewrite(IE::GroupTrans
 
 class DepthwiseGroupTransposedConvConverter final : public mlir::OpRewritePattern<IE::GroupTransposedConvolutionOp> {
 public:
-    DepthwiseGroupTransposedConvConverter(mlir::MLIRContext* ctx, Logger log)
-            : mlir::OpRewritePattern<IE::GroupTransposedConvolutionOp>(ctx), _log(log) {
+    DepthwiseGroupTransposedConvConverter(mlir::MLIRContext* ctx, bool enableSEPTransposedConv, Logger log)
+            : mlir::OpRewritePattern<IE::GroupTransposedConvolutionOp>(ctx),
+              _enableSEPTransposedConv(enableSEPTransposedConv),
+              _log(log) {
     }
 
 public:
@@ -183,6 +212,7 @@ private:
     Const::DeclareOp findWeightsConstant(mlir::Value weightsOperand) const;
     mlir::Value createNewWeightsConst(mlir::PatternRewriter& rewriter, Const::DeclareOp weightsOp) const;
 
+    bool _enableSEPTransposedConv;
     Logger _log;
 };
 
@@ -235,6 +265,10 @@ mlir::Value DepthwiseGroupTransposedConvConverter::createNewWeightsConst(mlir::P
 //                                           weights [64, 64, 3, 1]
 mlir::LogicalResult DepthwiseGroupTransposedConvConverter::matchAndRewrite(IE::GroupTransposedConvolutionOp origOp,
                                                                            mlir::PatternRewriter& rewriter) const {
+    if (!shouldConvertGroupTransposedConvToTransposedConv(origOp, _enableSEPTransposedConv, _log)) {
+        return mlir::failure();
+    }
+
     _log.trace("Got depthwise GroupConvolutionOp at '{0}'", origOp->getLoc());
 
     const auto input = origOp.getInput();
@@ -317,40 +351,11 @@ void ConvertGroupTransposedConvToTransposedConvPass::safeRunOnFunc() {
     const auto moduleOp = getModuleOp(func);
     const auto enableSEPtrsOps = config::hasEnableSEPtrsOperations(moduleOp);
 
-    const auto logCb = [&](const formatv_object_base& msg) {
-        _log.trace("{0}", msg.str());
-    };
-
-    const auto isLegalGroupTransposedConv = [&](IE::GroupTransposedConvolutionOp groupTransposedConv) {
-        _log.trace("Got '{0}' at '{1}'", groupTransposedConv->getName(), groupTransposedConv->getLoc());
-        if (!enableSEPtrsOps) {
-            _log.nest().trace("SEP disabled for TransposedConvolutions");
-            return true;
-        }
-        if (!VPU::isSupportedSEPTransposedConv(groupTransposedConv, logCb, /*checkLayout=*/false,
-                                               /*checkChannelAlignment=*/false)) {
-            _log.nest().trace("GroupTransposedConvolutionOp cannot be executed using SEP");
-            return true;
-        }
-        return false;
-    };
-
-    mlir::ConversionTarget target(ctx);
-    target.addDynamicallyLegalOp<IE::GroupTransposedConvolutionOp>(isLegalGroupTransposedConv);
-    target.addLegalOp<Const::DeclareOp>();
-    target.addLegalOp<IE::ConcatOp>();
-    target.addLegalOp<IE::TransposedConvolutionOp>();
-    target.addLegalOp<IE::FakeQuantizeOp>();
-    target.addLegalOp<IE::ReshapeOp>();
-    target.addLegalOp<IE::SliceOp>();
-
     mlir::RewritePatternSet patterns(&ctx);
-    patterns.add<GroupTransposedConvConverter>(&ctx, _log);
-    patterns.add<DepthwiseGroupTransposedConvConverter>(&ctx, _log);
+    patterns.add<GroupTransposedConvConverter>(&ctx, enableSEPtrsOps, _log);
+    patterns.add<DepthwiseGroupTransposedConvConverter>(&ctx, enableSEPtrsOps, _log);
 
-    if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
-        signalPassFailure();
-    }
+    walkAndApplyPatterns(getOperation(), std::move(patterns));
 }
 
 }  // namespace

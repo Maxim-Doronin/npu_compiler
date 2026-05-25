@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/VPU/interfaces/singleton_initializer.hpp"
+#include "vpux/compiler/init/singleton_initializer.hpp"
 
 namespace vpux::VPU::arch37xx {
 

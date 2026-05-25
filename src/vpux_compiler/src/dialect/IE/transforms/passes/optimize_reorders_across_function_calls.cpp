@@ -38,13 +38,9 @@ struct ArgOperations {
 class OptimizeReordersAcrossFunctionCallsPass final :
         public IE::impl::OptimizeReordersAcrossFunctionCallsBase<OptimizeReordersAcrossFunctionCallsPass> {
 public:
-    explicit OptimizeReordersAcrossFunctionCallsPass(const bool seOpsEnabled, const bool seExperimentalOpsEnabled,
-                                                     Logger log)
-            : _seOpsEnabled(seOpsEnabled), _seExperimentalOpsEnabled(seExperimentalOpsEnabled) {
+    explicit OptimizeReordersAcrossFunctionCallsPass(Logger log) {
         Base::initLogger(log, Base::getArgumentName());
     }
-
-    mlir::LogicalResult initialize(mlir::MLIRContext* ctx) final;
 
 private:
     void safeRunOnModule() final;
@@ -66,27 +62,9 @@ private:
                               const std::map<size_t, size_t>& oldToNewArgMapping, SmallVector<size_t> erasedArguments);
 
 private:
-    bool _seOpsEnabled;
-    bool _seExperimentalOpsEnabled;
-
     FunctionCalls _functionCalls;
     CallFunction _callFunction;
 };
-
-mlir::LogicalResult OptimizeReordersAcrossFunctionCallsPass::initialize(mlir::MLIRContext* ctx) {
-    if (mlir::failed(Base::initialize(ctx))) {
-        return mlir::failure();
-    }
-
-    if (seOpsEnabled.hasValue()) {
-        _seOpsEnabled = seOpsEnabled.getValue();
-    }
-    if (seExperimentalOpsEnabled.hasValue()) {
-        _seExperimentalOpsEnabled = seExperimentalOpsEnabled.getValue();
-    }
-
-    return mlir::success();
-}
 
 /**
  * Collect information on what CallOps each function has, as well as what FuncOp each CallOp refers to
@@ -212,7 +190,7 @@ SmallVector<Usage> OptimizeReordersAcrossFunctionCallsPass::getCompatibleUsers(A
         auto orderInfo = layoutIf.getLayoutInfo();
         const auto operandNumber = userPair.operandIdx;
         orderInfo.setInput(operandNumber, inputOrder);
-        layoutIf.inferLayoutInfo(orderInfo, _seOpsEnabled, _seExperimentalOpsEnabled);
+        layoutIf.inferLayoutInfo(orderInfo);
 
         bool inputsCompatible = true;
         for (size_t inputIdx = 0; inputIdx < orderInfo.getNumInputs(); ++inputIdx) {
@@ -576,8 +554,6 @@ void OptimizeReordersAcrossFunctionCallsPass::safeRunOnModule() {
 // createOptimizeReordersAcrossFunctionCallsPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::IE::createOptimizeReordersAcrossFunctionCallsPass(const bool seOpsEnabled,
-                                                                                    const bool seExperimentalOpsEnabled,
-                                                                                    Logger log) {
-    return std::make_unique<OptimizeReordersAcrossFunctionCallsPass>(seOpsEnabled, seExperimentalOpsEnabled, log);
+std::unique_ptr<mlir::Pass> vpux::IE::createOptimizeReordersAcrossFunctionCallsPass(Logger log) {
+    return std::make_unique<OptimizeReordersAcrossFunctionCallsPass>(log);
 }

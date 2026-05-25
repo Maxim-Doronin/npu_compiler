@@ -19,23 +19,37 @@ using namespace ov::test::utils;
 using namespace ov::test;
 namespace ov::test::subgraph {
 
-using RMSNormDecompositionParams = std::tuple<ov::Shape,          // input shapes
-                                              ov::element::Type,  // input precision
-                                              ov::Shape>;         // gamma shape (empty = same as input)
+template <class ShapeType>
+using IODescription = std::tuple<ShapeType, std::optional<ov::Layout>>;
+
+template <class ShapeType>
+using IODescriptions = std::vector<IODescription<ShapeType>>;
+
+using RMSNormDecompositionParams = std::tuple<IODescription<ov::Shape>,   // input shapes & optional layouts
+                                              ov::element::Type,          // input precision
+                                              IODescription<ov::Shape>>;  // gamma shape (empty = same as input)
 
 class FuseRMSTestCommon : public VpuOv2LayerTest, public testing::WithParamInterface<RMSNormDecompositionParams> {
 public:
     static std::string getTestCaseName(testing::TestParamInfo<RMSNormDecompositionParams> obj) {
-        ov::Shape inputShape;
+        IODescription<ov::Shape> input;
         ov::element::Type inputPrecision;
-        ov::Shape gammaShape;
-        std::tie(inputShape, inputPrecision, gammaShape) = obj.param;
+        IODescription<ov::Shape> gammaOutput;
+        std::tie(input, inputPrecision, gammaOutput) = obj.param;
 
         const std::string sep = "_";
         std::ostringstream result;
+        auto [inputShape, inputLayout] = input;
+        auto [gammaShape, gammaLayout] = gammaOutput;
         result << "TestKind" << ov::test::utils::testKind(__FILE__) << sep;
         result << "InputShape=" << inputShape << sep;
+        if (inputLayout.has_value()) {
+            result << "InputLayout=" << inputLayout->to_string() << sep;
+        }
         result << "GammaShape=" << (gammaShape.empty() ? ov::Shape{inputShape.back()} : gammaShape) << sep;
+        if (gammaLayout.has_value()) {
+            result << "GammaLayout=" << gammaLayout->to_string() << sep;
+        }
         result << "TestIdx=" << obj.index << sep;
         return result.str();
     }
@@ -48,9 +62,17 @@ public:
         VpuOv2LayerTest::inputs.insert({funcInputs[0].get_node_shared_ptr(), tensorData});
     }
 
-    std::shared_ptr<ov::Model> init_subgraph(std::vector<ov::PartialShape>& input_shapes, const ov::Shape& target_shape,
-                                             const ov::element::Type input_precision, const ov::Shape& gamma_shape) {
-        ov::ParameterVector params{std::make_shared<ov::op::v0::Parameter>(input_precision, input_shapes[0])};
+    std::shared_ptr<ov::Model> init_subgraph(const IODescriptions<ov::PartialShape>& input_info,
+                                             const ov::Shape& target_shape, const ov::element::Type input_precision,
+                                             const IODescription<ov::Shape>& gamma_output) {
+        ov::ParameterVector params;
+        for (const auto& [input_shape, input_layout] : input_info) {
+            auto param = std::make_shared<ov::op::v0::Parameter>(input_precision, input_shape);
+            if (input_layout.has_value()) {
+                param->set_layout(input_layout.value());
+            }
+            params.push_back(std::move(param));
+        }
 
         // x^2
         auto power_const = ov::op::v0::Constant::create(input_precision, {}, {2.f});
@@ -76,57 +98,58 @@ public:
 
         // x * 1/Sqrt(ReduceMean(x^2,axes)+eps) * gamma
         // empty gamma_shape means use input's last dimension
+        // empty gamma_layout means use first input's layout
+        auto [gamma_shape, gamma_layout] = gamma_output;
         ov::Shape actual_gamma_shape = gamma_shape.empty() ? ov::Shape{target_shape.back()} : gamma_shape;
-
+        if (!gamma_layout.has_value()) {
+            gamma_layout = std::get<1>(input_info[0]);
+        }
         auto tensor = ov::test::utils::create_and_fill_tensor(input_precision, actual_gamma_shape);
         auto gamma = std::make_shared<ov::op::v0::Constant>(tensor);
         auto mul2 = std::make_shared<ov::op::v1::Multiply>(gamma, mul1);
 
         auto comp = std::make_shared<ov::op::v0::Convert>(mul2, ov::element::f16);
-
-        return std::make_shared<ov::Model>(ov::OutputVector{comp}, params, "RMSNormDecomposition");
+        std::shared_ptr<ov::op::v0::Result> res = std::make_shared<ov::op::v0::Result>(comp);
+        if (gamma_layout.has_value()) {
+            res->set_layout(gamma_layout.value());
+        }
+        return std::make_shared<ov::Model>(ov::OutputVector{res}, params, "RMSNormDecomposition");
     }
     void SetUp() override {
-        ov::Shape input_shapes;
+        IODescription<ov::Shape> input;
         ov::element::Type input_precision;
-        ov::Shape gamma_shape;
+        IODescription<ov::Shape> gamma_output;
 
-        std::tie(input_shapes, input_precision, gamma_shape) = GetParam();
+        std::tie(input, input_precision, gamma_output) = GetParam();
+        const auto& [input_shapes, input_layout] = input;
         inType = outType = input_precision;
         init_input_shapes(ov::test::static_shapes_to_test_representation({input_shapes}));
 
-        std::vector<ov::PartialShape> partial_shapes = {inputDynamicShapes.front()};
-        function = init_subgraph(partial_shapes, input_shapes, input_precision, gamma_shape);
+        IODescriptions<ov::PartialShape> input_infos = {std::make_tuple(inputDynamicShapes.front(), input_layout)};
+        function = init_subgraph(input_infos, input_shapes, input_precision, gamma_output);
     }
 };
 
 TEST_P(FuseRMSTestCommon, NPU3720_HW) {
     abs_threshold = 0.11f;
     setDefaultHardwareMode();
-    // TODO E####-203348 - delete unroll after fix
-    setBatchCompilerMode("unroll");
     run(Platform::NPU3720);
 }
 
 TEST_P(FuseRMSTestCommon, NPU4000_HW) {
     abs_threshold = 0.11f;
     setDefaultHardwareMode();
-    // TODO E####-203348 - delete unroll after fix
-    setBatchCompilerMode("unroll");
     run(Platform::NPU4000);
 }
 
 TEST_P(FuseRMSTestCommon, NPU5010_HW) {
     abs_threshold = 0.11f;
     setDefaultHardwareMode();
-    // TODO E####-203348 - delete unroll after fix
-    setBatchCompilerMode("unroll");
     run(Platform::NPU5010);
 }
 TEST_P(FuseRMSTestCommon, NPU5020_HW) {
     abs_threshold = 0.11f;
     setDefaultHardwareMode();
-    // TODO E####-203348 - delete unroll after fix
     // TODO E####-159644
     setBatchCompilerMode("unroll");
     run(Platform::NPU5020);
@@ -135,11 +158,13 @@ TEST_P(FuseRMSTestCommon, NPU5020_HW) {
 namespace {
 const std::vector<ov::element::Type> input_precisions = {ov::element::f32};
 
-const std::vector<ov::Shape> input_shapes_basic = {{{1, 2, 6}}, {{2, 2, 6}}};
-const std::vector<ov::Shape> input_shapes = {{32}, {{3, 32}}, {{1, 32, 16}}, {{1, 4, 16, 16}}, {{1, 77, 4096}}};
+const IODescriptions<ov::Shape> input_shapes_basic = {
+        {IODescription<ov::Shape>{{1, 2, 6}, {}}, IODescription<ov::Shape>{{2, 2, 6}, {"CHW"}}}};
+const IODescriptions<ov::Shape> input_shapes = {
+        {{32}, {"C"}}, {{3, 32}, {"HW"}}, {{1, 32, 16}, {}}, {{1, 4, 16, 16}, {}}, {{1, 77, 4096}, {}}};
 
-const std::vector<ov::Shape> gamma_shapes_default = {{}};
-const std::vector<ov::Shape> gamma_shapes_broadcast = {{1, 1, 1}};
+const IODescriptions<ov::Shape> gamma_shapes_default = {{}};
+const IODescriptions<ov::Shape> gamma_shapes_broadcast = {{{1, 1, 1}, {}}};
 
 INSTANTIATE_TEST_SUITE_P(precommit_FuseRMS, FuseRMSTestCommon,
                          ::testing::Combine(::testing::ValuesIn(input_shapes_basic),
@@ -153,7 +178,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_FuseRMS, FuseRMSTestCommon,
                          FuseRMSTestCommon::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_FuseRMS_BroadcastGamma, FuseRMSTestCommon,
-                         ::testing::Combine(::testing::Values(ov::Shape{1, 4, 128}),
+                         ::testing::Combine(::testing::Values(IODescription<ov::Shape>{{1, 4, 128}, {}}),
                                             ::testing::ValuesIn(input_precisions),
                                             ::testing::ValuesIn(gamma_shapes_broadcast)),
                          FuseRMSTestCommon::getTestCaseName);

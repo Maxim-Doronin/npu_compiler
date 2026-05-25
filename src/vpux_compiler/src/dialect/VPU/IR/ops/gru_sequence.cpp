@@ -54,22 +54,29 @@ vpux::InputTiling vpux::VPU::GRUSequenceOp::backInferTileInfo(const vpux::TileIn
 
     inputTile.shape[Dim(0)] = outputTileY.shape[Dim(0)];
     inputTile.offsets[Dim(0)] = outputTileY.offsets[Dim(0)];
+    inputTile.axis[Dim(0)] = outputTileY.axis[Dim(0)];
     inputTile.shape[Dim(1)] = outputTileY.shape[Dim(2)];
     inputTile.offsets[Dim(1)] = outputTileY.offsets[Dim(2)];
+    inputTile.axis[Dim(1)] = outputTileY.axis[Dim(2)];
 
     initialHiddenStateTile.shape[Dim(0)] = outputTileY.shape[Dim(0)];
     initialHiddenStateTile.offsets[Dim(0)] = outputTileY.offsets[Dim(0)];
+    initialHiddenStateTile.axis[Dim(0)] = outputTileY.axis[Dim(0)];
     initialHiddenStateTile.shape[Dim(1)] = outputTileY.shape[Dim(1)];
     initialHiddenStateTile.offsets[Dim(1)] = outputTileY.offsets[Dim(1)];
+    initialHiddenStateTile.axis[Dim(1)] = outputTileY.axis[Dim(1)];
 
     wTile.shape[Dim(0)] = outputTileY.shape[Dim(1)];
     wTile.offsets[Dim(0)] = outputTileY.offsets[Dim(1)];
+    wTile.axis[Dim(0)] = outputTileY.axis[Dim(1)];
 
     rTile.shape[Dim(0)] = outputTileY.shape[Dim(1)];
     rTile.offsets[Dim(0)] = outputTileY.offsets[Dim(1)];
+    rTile.axis[Dim(0)] = outputTileY.axis[Dim(1)];
 
     bTile.shape[Dim(0)] = outputTileY.shape[Dim(1)];
     bTile.offsets[Dim(0)] = outputTileY.offsets[Dim(1)];
+    bTile.axis[Dim(0)] = outputTileY.axis[Dim(1)];
 
     return InputTiling{{inputTile, initialHiddenStateTile, wTile, std::move(rTile), bTile}};
 }

@@ -94,6 +94,7 @@ void MergeVfSubgraphsPass::safeRunOnFunc() {
     auto maxTilingOp = std::max_element(maxTiling.begin(), maxTiling.end());
 
     mlir::RewritePatternSet patterns(&ctx);
+    // TODO: remove WLM dependency E#208433
     if (_workloadManagementMode <= WorkloadManagementMode::PWLM_V0_1_PAGES) {
         patterns.add<VPU::VF::v1::MergeVFRegionRewriter>(&ctx, _enableVerticalFusionPipelining, _enablePrefetchTiling,
                                                          costFunction, _log);

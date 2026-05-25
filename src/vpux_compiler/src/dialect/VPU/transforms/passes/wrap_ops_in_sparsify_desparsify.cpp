@@ -6,7 +6,7 @@
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/dpu.hpp"
-#include "vpux/compiler/dialect/VPU/transforms/factories/sparsity_constraint.hpp"
+#include "vpux/compiler/dialect/VPU/interfaces/strategies.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sparsity_utils.hpp"
@@ -90,8 +90,9 @@ void WrapOpsInSparsifyDesparsifyPairsPass::safeRunOnFunc() {
         return;
     }
 
-    auto arch = config::getArch(func);
-    auto constraint = VPU::getSparsityConstraint(arch);
+    auto& ctx = getContext();
+    const auto& strategyFactory = VPU::getVPUStrategyFactory(&ctx);
+    auto constraint = strategyFactory->getSparsityConstraint();
 
     const auto outputWrapper = [&](mlir::Operation* producerOp, mlir::Location loc) {
         mlir::OpBuilder builder(producerOp);

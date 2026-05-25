@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --add-copy-between-swkernels-and-network-io %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --add-copy-between-swkernels-and-network-io %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 VPURT.SW.Runtime
     entryPoint: @VPU.SW::@runtime
@@ -891,4 +891,63 @@ module {
     return %results#0, %results#1 : memref<1x8x384x384xf16>, memref<4xsi32>
     //CHECK:        return [[COPY_3]], [[COPY_4]] : memref<1x8x384x384xf16>, memref<4xsi32>
   }
+}
+
+// -----
+
+module @VPU.SW {
+    func.func private @builtin_AtanDma(memref<*xf16>, memref<*xsi32>, memref<*xui8, @CMX_NN>, memref<*xf16>, memref<*xsi32>, memref<*xui8, @CMX_NN>, i64)
+                       attributes {VPU.kernel_code = "activation_atan_dma.cpp", VPU.kernel_entry = "activation_atan_dma", VPU.kernel_name = "activation_atan_dma", VPU.task_type = @COMPUTE}
+    func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
+}
+
+// CHECK-LABEL: @AtanDmaCopy
+net.NetworkInfo entryPoint : @AtanDmaCopy inputsInfo : {
+    DataInfo "Input"  : tensor<1x1x1x?xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 1, 4194304]> : tensor<4xsi64>}>
+    DataInfo "InputShape" : tensor<4xsi32>
+} outputsInfo : {
+    DataInfo "Output"  : tensor<1x1x1x?xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 1, 4194304]> : tensor<4xsi64>}>
+    DataInfo "OutputShape" : tensor<4xsi32>
+}
+
+// CHECK-LABEL: @AtanDmaCopy
+// CHECK-SAME:   ([[IN_DATA:%.+]]: memref<1x1x1x4194304xf16, @DDR>, [[IN_SHAPE:%.+]]: memref<4xsi32, @DDR>, [[OUT_DATA:%.+]]: memref<1x1x1x4194304xf16, @DDR>, [[OUT_SHAPE:%.+]]: memref<4xsi32, @DDR>)
+func.func @AtanDmaCopy(%arg0: memref<1x1x1x4194304xf16, @DDR>, %arg1: memref<4xsi32, @DDR>, %arg2: memref<1x1x1x4194304xf16, @DDR>, %arg3: memref<4xsi32, @DDR>) -> (memref<1x1x1x4194304xf16, @DDR>, memref<4xsi32, @DDR>) {
+    %aux_buf = memref.alloc() : memref<1x1x1x524288xui8, [@CMX_NN, 0]>
+
+    %results:4, %dynamicOutputShapes = VPUIP.SW.Kernel {dynamicInputShapesMap = array<i32: 0, -1>, dynamicOutputShapesMap = array<i32: 0, -1>, resultSegmentSizes = array<i32: 4, 1, 0>}
+     @VPU.SW::@builtin_AtanDma
+      inputs(%arg0 as %arg4: memref<1x1x1x4194304xf16, @DDR>, %aux_buf as %arg5: memref<1x1x1x524288xui8, [@CMX_NN, 0]>,
+             %arg0 as %arg6: memref<1x1x1x4194304xf16, @DDR>, %aux_buf as %arg7: memref<1x1x1x524288xui8, [@CMX_NN, 0]>)
+      dynamicInputShapes(%arg1 : memref<4xsi32, @DDR>)
+      outputs(%arg2 as %arg8: memref<1x1x1x4194304xf16, @DDR>, %aux_buf as %arg9: memref<1x1x1x524288xui8, [@CMX_NN, 0]>,
+              %arg2 as %arg10: memref<1x1x1x4194304xf16, @DDR>, %aux_buf as %arg11: memref<1x1x1x524288xui8, [@CMX_NN, 0]>)
+      dynamicOutputShapes(%arg3 : memref<4xsi32, @DDR>)
+      on tile 0 -> (memref<1x1x1x4194304xf16, @DDR>, memref<1x1x1x524288xui8, [@CMX_NN, 0]>, memref<1x1x1x4194304xf16, @DDR>, memref<1x1x1x524288xui8, [@CMX_NN, 0]>, memref<4xsi32, @DDR>)
+     {
+       VPUIP.SW.Kernel.run {attrs = [8589934593]}(%arg4, %arg5, %arg8, %arg9)   : memref<1x1x1x4194304xf16, @DDR>, memref<1x1x1x524288xui8, [@CMX_NN, 0]>, memref<1x1x1x4194304xf16, @DDR>, memref<1x1x1x524288xui8, [@CMX_NN, 0]>
+       VPUIP.SW.Kernel.run {attrs = [8589934593]}(%arg6, %arg7, %arg10, %arg11) : memref<1x1x1x4194304xf16, @DDR>, memref<1x1x1x524288xui8, [@CMX_NN, 0]>, memref<1x1x1x4194304xf16, @DDR>, memref<1x1x1x524288xui8, [@CMX_NN, 0]>
+     }
+
+    return %results#0, %dynamicOutputShapes : memref<1x1x1x4194304xf16, @DDR>, memref<4xsi32, @DDR>
+
+
+    // CHECK:      [[OUT_D_COPY:%.+]]     = memref.alloc() : memref<1x1x1x4194304xf16, @DDR>
+    // CHECK:      [[OUT_SHAPE_BUFF:%.+]] = memref.alloc() : memref<4xsi32, @DDR>
+    // CHECK:      [[IN_SHAPE_BUFF:%.+]]  = memref.alloc() : memref<4xsi32, @DDR>
+    // CHECK:      [[IN_D_COPY_BUFF:%.+]] = memref.alloc() : memref<1x1x1x4194304xf16, @DDR>
+    // CHECK:      [[AUX_BUFF:%.+]]       = memref.alloc() : memref<1x1x1x524288xui8, [@CMX_NN, 0]>
+    // CHECK:      [[IN_D_COPY:%.+]]      = VPUIP.Copy inputs([[IN_DATA]] : memref<1x1x1x4194304xf16, @DDR>) outputs([[IN_D_COPY_BUFF]] : memref<1x1x1x4194304xf16, @DDR>) -> memref<1x1x1x4194304xf16, @DDR>
+    // CHECK:      [[IN_S_COPY:%.+]]      = VPUIP.Copy inputs([[IN_SHAPE]] : memref<4xsi32, @DDR>) outputs([[IN_SHAPE_BUFF]] : memref<4xsi32, @DDR>) -> memref<4xsi32, @DDR>
+
+    // CHECK:      [[RESULTS:%.+]]:4, [[SHAPE:%.+]] = VPUIP.SW.Kernel
+    // CHECK-SAME:     @VPU.SW::@builtin_AtanDma
+    // CHECK-SAME:         inputs([[IN_D_COPY]] as [[IN_DATA_1:[^:]+]]:  memref<1x1x1x4194304xf16, @DDR>, [[AUX_BUFF]] as [[AUX_1:[^:]+]]: memref<1x1x1x524288xui8, [@CMX_NN, 0]>,
+    // CHECK-SAME:                [[IN_D_COPY]] as [[IN_DATA_2:[^:]+]]:  memref<1x1x1x4194304xf16, @DDR>, [[AUX_BUFF]] as [[AUX_2:[^:]+]]: memref<1x1x1x524288xui8, [@CMX_NN, 0]>)
+    // CHECK-SAME:       outputs([[OUT_D_COPY]] as [[OUT_DATA_1:[^:]+]]: memref<1x1x1x4194304xf16, @DDR>, [[AUX_BUFF]] as [[AUX_3:[^:]+]]: memref<1x1x1x524288xui8, [@CMX_NN, 0]>,
+    // CHECK-SAME:               [[OUT_D_COPY]] as [[OUT_DATA_2:[^:]+]]: memref<1x1x1x4194304xf16, @DDR>, [[AUX_BUFF]] as [[AUX_4:[^:]+]]: memref<1x1x1x524288xui8, [@CMX_NN, 0]>)
+
+    // CHECK:      [[RES_DATA:%.+]]  = VPUIP.Copy inputs([[RESULTS]]#0 : memref<1x1x1x4194304xf16, @DDR>) outputs([[OUT_DATA]] : memref<1x1x1x4194304xf16, @DDR>) -> memref<1x1x1x4194304xf16, @DDR>
+    // CHECK:      [[RES_SHAPE:%.+]] = VPUIP.Copy inputs([[SHAPE]] : memref<4xsi32, @DDR>) outputs([[OUT_SHAPE]] : memref<4xsi32, @DDR>) -> memref<4xsi32, @DDR>
+    // CHECK:       return [[RES_DATA]], [[RES_SHAPE]] : memref<1x1x1x4194304xf16, @DDR>, memref<4xsi32, @DDR>
 }

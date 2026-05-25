@@ -3,10 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --vpu-arch=%arch% --setup-npu-constraint %s | FileCheck %s
-// REQUIRES: arch-NPU40XX
+// RUN: vpux-opt --split-input-file --platform=%platform% --setup-npu-constraint %s | FileCheck %s
+// REQUIRES: platform-NPU4000
 
-module @mainModule attributes { config.arch = #config.arch_kind<NPU40XX> } {
+module @mainModule attributes { config.platform = #config.platform<NPU4000> } {
   config.Resources 2 of @NCE at 1.700000e+03 MHz {
     config.ExecutorResource 2 of @SHAVE_ACT
     config.ExecutorResource 1 of @DPU

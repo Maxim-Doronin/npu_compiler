@@ -235,6 +235,7 @@ void TraceEventExporter::processLayers(const std::vector<LayerInfo>& layers) {
 
     createProcess("Layers");
     ++_threadId;
+    const std::string layersThreadName = "Layers";
 
     TraceEventTimeOrderedDistribution layersDistr;
     for (auto& layer : layers) {
@@ -243,7 +244,7 @@ void TraceEventExporter::processLayers(const std::vector<LayerInfo>& layers) {
     }
 
     for (unsigned n = 0; n < layersDistr.size(); ++n) {
-        setTraceEventThreadName("Layers", _threadId++, _processId);
+        setTraceEventThreadName(layersThreadName, _threadId++, _processId);
     }
 }
 

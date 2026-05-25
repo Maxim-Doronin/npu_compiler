@@ -458,11 +458,14 @@ int64_t getQuantizationLevels(mlir::Type inputElemType) {
     if (inputElemType.isInteger(2)) {
         return 4;
     }
-    if (inputElemType.isInteger(4) || mlir::isa<vpux::type::NF4Type>(inputElemType)) {
+    if (inputElemType.isInteger(4)) {
         return 16;
     }
     if (inputElemType.isInteger(8)) {
         return 256;
+    }
+    if (const auto qfType = mlir::dyn_cast<vpux::type::QuantileType>(inputElemType)) {
+        return (1LL << qfType.getStorageWidth());
     }
 
     VPUX_THROW("Got unsupported type when trying to compute levels: {0}", inputElemType);
@@ -657,7 +660,7 @@ std::set<int64_t> findAxes(IE::DynamicDequantizeOp origOp) {
 }
 
 template <>
-type::QuantileFloatType tryParsingNF4(Const::DeclareOp constOp) {
+type::QuantileType tryParsingNF4(Const::DeclareOp constOp) {
     // Note: NF4 is special: the raw data is 4-bit int, but - due to quantiles -
     // its range is not standard quantization range - it is instead deduced from
     // quantiles.
@@ -671,11 +674,23 @@ type::QuantileFloatType tryParsingNF4(Const::DeclareOp constOp) {
     for (const auto& transform : contentAttr.getTransformations()) {
         // if there is a cast to NF4, it means the constant is NF4.
         if (auto cast = mlir::dyn_cast<Const::CastElemTypeAttr>(transform);
-            cast && mlir::isa<type::QuantileFloatType>(cast.getElemType())) {
-            return mlir::cast<type::QuantileFloatType>(cast.getElemType());
+            cast && mlir::isa<type::QuantileType>(cast.getElemType())) {
+            return mlir::cast<type::QuantileType>(cast.getElemType());
         }
     }
     return nullptr;
+}
+
+bool WeightsDequantizeStructureInfo::isI4ConsumedByGather() const {
+    auto* lastOp = getLastOp();
+    if (!lastOp->getResult(0).hasOneUse()) {
+        return false;
+    }
+    if (!mlir::isa<IE::GatherOp>(*lastOp->getResult(0).user_begin())) {
+        return false;
+    }
+    auto elemType = getLowPrecisionElemType();
+    return elemType.isInteger(4);
 }
 
 }  // namespace IE

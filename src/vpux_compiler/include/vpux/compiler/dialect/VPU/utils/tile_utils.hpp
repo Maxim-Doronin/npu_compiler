@@ -42,8 +42,9 @@ int64_t countElementsPerOutputChannelInWeightTable(NCEOp nceOp) {
             isNewWeightTable
                     ? (nceOp.getWeightTableScale() == nullptr ? 0 : 1) +
                               (nceOp.getWeightTableBias() == nullptr ? 0 : 1) +
-                              0 /*Zero stands for zero-point table. Size will be
-                                calculated for it in VPU/utils/tile_utils.cpp : getRequiredCMXSizeForZeroPointTable() */
+                              0 /*Zero stands for zero-point table and data-pointer table.
+                                Size will be calculated for them in VPU/utils/tile_utils.cpp :
+                                getRequiredCMXSizeForZeroPointTable() and getRequiredCMXSizeForDataPointerTable*/
                     : 0;
     int64_t elemsPerChannel =
             isNewWeightTable ? VPU::NCEInvariant::NEW_WEIGHT_TABLE_NUM_ELEMENTS_PER_OC * numberOfNewWeightTables
@@ -199,7 +200,9 @@ Byte getRequiredCMXSizeForNCEOps(ArrayRef<std::pair<NDTypeInterface, TensorDistr
 
 Byte getRequiredCMXSizeForDefaultOps(mlir::Operation* op);
 
-Byte getRequiredCMXSizeForZeroPointTable(mlir::Operation* op, int64_t OC, mlir::Value weightTableZeroPoints);
+Byte getRequiredCMXSizeForDataPointerTable(mlir::Operation* op, int64_t OC);
+
+Byte getRequiredCMXSizeForZeroPointTable(mlir::Operation* op, int64_t OC, mlir::Type weightsElemType);
 
 Byte getRequiredCMX(mlir::Operation* op, const SmallVector<NDTypeInterface>& types);
 

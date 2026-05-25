@@ -63,13 +63,34 @@ ELF::SymbolSignature ELF::LogicalSectionOp::getSymbolSignature() {
             buffLoc = buff.getBufferType().getLocation();
             break;
         }
-        auto moduleOp = getOperation()->getParentOfType<mlir::ModuleOp>();
-        auto ioBindings = VPUASM::IOBindingsOp::getFromModule(moduleOp);
-
         auto section = buffLoc.getSection();
         auto index = buffLoc.getSectionIndex();
+        auto moduleOp = getOperation()->getParentOfType<mlir::ModuleOp>();
 
-        ioBindings.walk([&symSize, &section, &index](VPUASM::DeclareBufferOp ioBuffer) {
+        auto inputBindings = VPUASM::InputBindingsOp::getFromModule(moduleOp);
+        assert(inputBindings != nullptr);
+
+        inputBindings.walk([&symSize, &section, &index](VPUASM::DeclareBufferOp ioBuffer) {
+            auto ioBuffLoc = ioBuffer.getBufferType().getLocation();
+            if (ioBuffLoc.getSection() == section && ioBuffLoc.getSectionIndex() == index) {
+                symSize = ioBuffer.getBinarySize(config::ArchKind::UNKNOWN);
+            }
+        });
+
+        auto outputBindings = VPUASM::OutputBindingsOp::getFromModule(moduleOp);
+        assert(outputBindings != nullptr);
+
+        outputBindings.walk([&symSize, &section, &index](VPUASM::DeclareBufferOp ioBuffer) {
+            auto ioBuffLoc = ioBuffer.getBufferType().getLocation();
+            if (ioBuffLoc.getSection() == section && ioBuffLoc.getSectionIndex() == index) {
+                symSize = ioBuffer.getBinarySize(config::ArchKind::UNKNOWN);
+            }
+        });
+
+        auto profilingBindings = VPUASM::ProfilingBindingsOp::getFromModule(moduleOp);
+        assert(profilingBindings != nullptr);
+
+        profilingBindings.walk([&symSize, &section, &index](VPUASM::DeclareBufferOp ioBuffer) {
             auto ioBuffLoc = ioBuffer.getBufferType().getLocation();
             if (ioBuffLoc.getSection() == section && ioBuffLoc.getSectionIndex() == index) {
                 symSize = ioBuffer.getBinarySize(config::ArchKind::UNKNOWN);

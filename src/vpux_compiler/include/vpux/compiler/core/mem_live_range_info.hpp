@@ -31,6 +31,7 @@ public:
     ValueOrderedSet getOutputBuffers(mlir::Operation* op) const;
     ValueOrderedSet getAllBuffers() const;
     size_t eraseUser(mlir::Value val, mlir::Operation* op);
+    bool hasRemainingUsers(mlir::Value val) const;
     bool isBufferUsedByOp(mlir::Value val, mlir::Operation* op) const;
 
 private:

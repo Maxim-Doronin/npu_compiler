@@ -16,6 +16,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
+#include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
@@ -175,18 +176,15 @@ mlir::quant::QuantizedType IE::getQuantizedType(const Const::ContentAttr& lowCon
                                                           storageMin, storageMax);
         }
 
-        if (const auto quantileFloatType = mlir::dyn_cast<vpux::type::QuantileFloatType>(lowFpTypeVal)) {
-            const auto quantileType = mlir::Float16Type::get(ctx);
-
+        if (const auto quantileType = mlir::dyn_cast<vpux::type::QuantileType>(lowFpTypeVal)) {
+            const auto flags = quantileType.shouldDefaultToSigned() ? mlir::quant::QuantizationFlags::Signed : 0;
             if (isPerAxisQuant) {
-                return mlir::quant::QuantileQuantizedPerAxisType::getChecked(
-                        loc, storageType.isSignedInteger(), storageType, quantileType, expressedType,
-                        quantileFloatType.getQuantiles(), std::move(scales), std::move(zeroPoints), quantizedDim,
-                        storageMin, storageMax);
+                return mlir::quant::UniformQuantizedPerAxisType::getChecked(loc, flags, quantileType, expressedType,
+                                                                            std::move(scales), std::move(zeroPoints),
+                                                                            quantizedDim, storageMin, storageMax);
             }
-            return mlir::quant::QuantileQuantizedType::getChecked(
-                    loc, storageType.isSignedInteger(), storageType, quantileType, expressedType,
-                    quantileFloatType.getQuantiles(), scales[0], zeroPoints[0], storageMin, storageMax);
+            return mlir::quant::UniformQuantizedType::getChecked(loc, flags, quantileType, expressedType, scales[0],
+                                                                 zeroPoints[0], storageMin, storageMax);
         }
     }
 
@@ -390,7 +388,7 @@ bool IE::areAllUsersQuantized(mlir::Operation* op) {
 
 bool IE::isPerAxisQuant(mlir::Value val) {
     auto elemType = mlir::cast<vpux::NDTypeInterface>(val.getType()).getElementType();
-    return mlir::isa<mlir::quant::UniformQuantizedPerAxisType, mlir::quant::QuantileQuantizedPerAxisType>(elemType);
+    return mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(elemType);
 }
 
 bool IE::checkQuantApproximation(mlir::Operation* op) {
@@ -440,20 +438,24 @@ mlir::Value IE::findQuantizedInput(mlir::Value opInput, bool allowPerAxisQuantiz
 
 bool IE::isSymmetricQuantType(mlir::quant::QuantizedType type) {
     int64_t targetZeroPoint = 0;
-    if (mlir::isa_and_nonnull<mlir::quant::QuantileQuantizedType, mlir::quant::QuantileQuantizedPerAxisType>(type)) {
-        mlir::Type quantileType =
-                mlir::isa<mlir::quant::QuantileQuantizedType>(type)
-                        ? mlir::cast<mlir::quant::QuantileQuantizedType>(type).getQuantileType()
-                        : mlir::cast<mlir::quant::QuantileQuantizedPerAxisType>(type).getQuantileType();
-
-        if (auto intType = mlir::dyn_cast<mlir::IntegerType>(quantileType)) {
-            bool isSignedInteger = intType.isSigned();
-            int64_t integerMin =
-                    mlir::quant::QuantizedType::getDefaultMinimumForInteger(isSignedInteger, intType.getWidth());
-            int64_t integerMax =
-                    mlir::quant::QuantizedType::getDefaultMaximumForInteger(isSignedInteger, intType.getWidth());
-            targetZeroPoint = (integerMax + integerMin + 1) / 2;
+    if (auto uniformType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(type)) {
+        if (auto quantileStorageType = mlir::dyn_cast<vpux::type::QuantileType>(uniformType.getStorageType())) {
+            const auto quantileType = quantileStorageType.getQuantileType();
+            if (auto intType = mlir::dyn_cast<mlir::IntegerType>(quantileType)) {
+                bool isSignedInteger = intType.isSigned();
+                const int64_t integerMin =
+                        mlir::quant::QuantizedType::getDefaultMinimumForInteger(isSignedInteger, intType.getWidth());
+                const int64_t integerMax =
+                        mlir::quant::QuantizedType::getDefaultMaximumForInteger(isSignedInteger, intType.getWidth());
+                targetZeroPoint = (integerMax + integerMin + 1) / 2;
+            }
         }
+        return uniformType.getZeroPoint() == targetZeroPoint;
+    } else if (const auto uniformPerAxisQuantType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(type)) {
+        const auto zeroPoints = uniformPerAxisQuantType.getZeroPoints();
+        return std::all_of(zeroPoints.begin(), zeroPoints.end(), [targetZeroPoint](const int64_t zp) {
+            return zp == targetZeroPoint;
+        });
     } else if (mlir::isa<mlir::IntegerType>(type.getStorageType())) {
         const auto qMin = type.getStorageTypeMin();
         const auto qMax = type.getStorageTypeMax();
@@ -461,16 +463,6 @@ bool IE::isSymmetricQuantType(mlir::quant::QuantizedType type) {
     } else if (!mlir::isa_and_nonnull<mlir::FloatType>(type.getStorageType())) {
         return false;
     }
-
-    if (const auto uniformQuantType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(type)) {
-        return uniformQuantType.getZeroPoint() == targetZeroPoint;
-    } else if (const auto uniformPerAxisQuantType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(type)) {
-        const auto zeroPoints = uniformPerAxisQuantType.getZeroPoints();
-        return std::all_of(zeroPoints.begin(), zeroPoints.end(), [targetZeroPoint](const int64_t zp) {
-            return zp == targetZeroPoint;
-        });
-    }
-
     return false;
 }
 
@@ -808,16 +800,17 @@ bool vpux::IE::isNCEOpCandidatesWithWeights(mlir::Operation* op) {
     return mlir::isa_and_nonnull<IE::ConvolutionOp, IE::GroupConvolutionOp, IE::MatMulOp>(op);
 }
 
-bool nceOpCandidateHasSIWeightsAsInput(mlir::Operation* op) {
+bool nceOpCandidateHasSIWeightsAsInputOrConst(mlir::Operation* op) {
     if (!vpux::IE::isNCEOpCandidatesWithWeights(op)) {
         return false;
     }
 
-    auto findNCEOpWeightsAsInput = [](mlir::Operation* op) -> mlir::FailureOr<mlir::Value> {
+    auto findNCEOpWeightsAsInputOrConst = [](mlir::Operation* op) -> mlir::FailureOr<mlir::Value> {
         mlir::Value filterOperand = op->getOperand(1);
 
         while (true) {
-            if (mlir::isa<mlir::BlockArgument>(filterOperand)) {
+            if (mlir::isa<mlir::BlockArgument>(filterOperand) ||
+                mlir::isa<Const::DeclareOp>(filterOperand.getDefiningOp())) {
                 return filterOperand;
             } else if (auto concatOp = mlir::dyn_cast_or_null<IE::ConcatOp>(filterOperand.getDefiningOp())) {
                 for (auto input : concatOp.getInputs()) {
@@ -836,17 +829,45 @@ bool nceOpCandidateHasSIWeightsAsInput(mlir::Operation* op) {
             }
         }
 
-        // Return failure if not WAI (no BlockArgument is found)
+        // Return failure if no BlockArgument or Const::DeclareOp is found (no WAI nor WAC)
         return mlir::failure();
     };
 
-    auto weights = findNCEOpWeightsAsInput(op);
+    auto weights = findNCEOpWeightsAsInputOrConst(op);
     if (mlir::failed(weights)) {
         return false;
     }
 
     // Verify SI data type
     auto inputElemType = mlir::cast<NDTypeInterface>(weights.value().getType()).getElementType();
+
+    if (auto inputQuantizeElemType = mlir::dyn_cast<mlir::quant::QuantizedType>(inputElemType)) {
+        if (vpux::getElemTypeSize(inputQuantizeElemType).count() < CHAR_BIT) {
+            auto storageType = inputQuantizeElemType.getStorageType();
+            if (storageType.isSignedInteger()) {
+                return true;
+            }
+
+            if (storageType.isUnsignedInteger()) {
+                if (const auto perAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(inputElemType)) {
+                    return llvm::any_of(perAxisType.getZeroPoints(), [](int64_t zp) {
+                        return zp != 0;
+                    });
+                }
+                if (const auto uniformType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(inputElemType)) {
+                    return uniformType.getZeroPoint() != 0;
+                }
+            }
+
+            if (auto quantileStorageType = mlir::dyn_cast<vpux::type::QuantileType>(storageType)) {
+                mlir::Type quantileType = quantileStorageType.getQuantileType();
+                if (auto intType = mlir::dyn_cast<mlir::IntegerType>(quantileType)) {
+                    return intType.isSigned();
+                }
+            }
+        }
+    }
+
     return inputElemType.isSignedInteger();
 }
 
@@ -885,7 +906,7 @@ mlir::FailureOr<SmallVector<mlir::Operation*>> findNCEOpCandidatesWithWeights(ml
     return nceOpCandidatesWithWeights;
 }
 
-bool vpux::IE::keepIntTypeForSIWeightsAsInput(mlir::Operation* op) {
+bool vpux::IE::keepIntTypeForSIWeightsAsInputOrConst(mlir::Operation* op) {
     const auto moduleOp = getModuleOp(op);
     const auto isAsymmetricPerChannelZeroPointSupported = config::asymmetricPerChannelZeroPointSupported(moduleOp);
     const auto isAsymmetricPerTensorZeroPointSupported = config::asymmetricPerTensorZeroPointSupported(moduleOp);
@@ -954,7 +975,7 @@ bool vpux::IE::keepIntTypeForSIWeightsAsInput(mlir::Operation* op) {
             return false;
         }
 
-        if (nceOpCandidateHasSIWeightsAsInput(op)) {
+        if (nceOpCandidateHasSIWeightsAsInputOrConst(op)) {
             return true;
         }
     }
@@ -970,7 +991,7 @@ bool vpux::IE::keepIntTypeForSIWeightsAsInput(mlir::Operation* op) {
             }
 
             if (llvm::all_of(childNCEOps.value(), [&](mlir::Operation* childNCEOp) {
-                    return nceOpCandidateHasSIWeightsAsInput(childNCEOp);
+                    return nceOpCandidateHasSIWeightsAsInputOrConst(childNCEOp);
                 })) {
                 return true;
             }

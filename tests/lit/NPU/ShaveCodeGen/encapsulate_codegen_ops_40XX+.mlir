@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --encapsulate-codegen-ops %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --encapsulate-codegen-ops %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 module @SingleCosLayer {
   net.NetworkInfo entryPoint : @main inputsInfo : {
@@ -240,52 +240,6 @@ module @RejectDynamicShape {
     return %cos_res : tensor<?x1x1x1000xf16>
 
     // CHECK: func.func @main([[ARG0:%.+]]: tensor<?x1x1x1000xf16>) -> tensor<?x1x1x1000xf16> {
-    // CHECK-NOT: [[VAR0:%.+]] = IE.CodeGenCapsule
-  }
-}
-
-// -----
-
-!qElemType = !quant.uniform<u8:f16, 1.0588235294117647:37>
-
-module @AcceptPerTensorQuant {
-  net.NetworkInfo entryPoint : @main inputsInfo : {
-    DataInfo "input" : tensor<1x32x16x8xf16>
-  } outputsInfo : {
-    DataInfo "output" : tensor<1x32x16x8xf16>
-  }
- func.func @main(%arg0: tensor<1x32x16x8xf16>) -> tensor<1x32x16x8xf16> {
-    %0 = IE.Quantize(%arg0) {dstElemType = !qElemType} : tensor<1x32x16x8xf16> -> tensor<1x32x16x8x!qElemType>
-    %1 = IE.Dequantize(%0) {dstElemType = f16} : tensor<1x32x16x8x!qElemType> -> tensor<1x32x16x8xf16>
-    return %1 : tensor<1x32x16x8xf16>
-
-    // CHECK:    [[CAP1:%.+]] = IE.CodeGenCapsule inputs({{.+}} as [[ARG1:%.+]]: tensor<1x32x16x8xf16>) {
-    // CHECK:      [[QUA:%.+]] = IE.Quantize([[ARG1]]) {dstElemType = !qElemType} : tensor<1x32x16x8xf16> -> tensor<1x32x16x8x!qElemType>
-    // CHECK:      IE.CGCYield [[QUA]] : tensor<1x32x16x8x!qElemType>
-    // CHECK:    } -> tensor<1x32x16x8x!qElemType>
-    // CHECK:    [[CAP2:%.+]] = IE.CodeGenCapsule inputs({{.+}} as [[ARG1:%.+]]: tensor<1x32x16x8x!qElemType>) {
-    // CHECK:      [[DEQ:%.+]] = IE.Dequantize([[ARG1]]) {dstElemType = f16} : tensor<1x32x16x8x!qElemType> -> tensor<1x32x16x8xf16>
-    // CHECK:      IE.CGCYield [[DEQ]] : tensor<1x32x16x8xf16>
-    // CHECK:    } -> tensor<1x32x16x8xf16>
-  }
-}
-
-// -----
-
-!qElemType = !quant.uniform<u8:f16:1, {0.031372549019607843,0.030591299019607842,0.032935049019607844,0.029013480392156864,0.034497549019607845,0.027450980392156862,0.036090686274509801,0.025888480392156864}>
-
-module @RejectPeAxisQuant {
-  net.NetworkInfo entryPoint : @main inputsInfo : {
-    DataInfo "input" : tensor<1x8x3x21xf16>
-  } outputsInfo : {
-    DataInfo "output" : tensor<1x8x3x21xf16>
-  }
- func.func @main(%arg0: tensor<1x8x3x21xf16>) -> tensor<1x8x3x21xf16> {
-    %0 = IE.Quantize(%arg0) {dstElemType = !qElemType} : tensor<1x8x3x21xf16> -> tensor<1x8x3x21x!qElemType>
-    %1 = IE.Dequantize(%0) {dstElemType = f16} : tensor<1x8x3x21x!qElemType> -> tensor<1x8x3x21xf16>
-    return %1 : tensor<1x8x3x21xf16>
-
-    // CHECK: func.func @main([[ARG0:%.+]]: tensor<1x8x3x21xf16>) -> tensor<1x8x3x21xf16>
     // CHECK-NOT: [[VAR0:%.+]] = IE.CodeGenCapsule
   }
 }

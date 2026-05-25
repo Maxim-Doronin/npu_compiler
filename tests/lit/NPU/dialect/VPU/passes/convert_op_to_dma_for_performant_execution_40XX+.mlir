@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-op-to-dma-for-performant-execution %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --convert-op-to-dma-for-performant-execution %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL: @GatherMoveToDMA
 // CHECK-SAME:  [[ARG0:%.+]]: tensor<30522x21xf16>, [[ARG1:%.+]]: tensor<1x512xsi32>
@@ -201,21 +201,21 @@ func.func @NotTileGatherForCouldNotConvertToGatherDMA(%arg0: tensor<3x12x4096xf1
 
 // -----
 
-!quantileFloatType = !QuantileFloat.quantileFloat<ui4:f16, {-1.000000e+00,-0.69619280099868774,-0.52507305145263672,-0.39491748809814453,-0.28444138169288635,-0.18477343022823334,-0.091050036251544952,0.000000e+00,0.07958029955625534,0.16093020141124725,0.24611230194568634,0.33791524171829224,0.44070982933044434,0.56261700391769409,0.72295683622360229,1.000000e+00}>
+!quantileType = !QuantileType.quantile<ui4:f16, {-1.000000e+00,-0.69619280099868774,-0.52507305145263672,-0.39491748809814453,-0.28444138169288635,-0.18477343022823334,-0.091050036251544952,0.000000e+00,0.07958029955625534,0.16093020141124725,0.24611230194568634,0.33791524171829224,0.44070982933044434,0.56261700391769409,0.72295683622360229,1.000000e+00}>
 
-// CHECK-LABEL: @GatherNon4DWithQuantileFloat
-// CHECK-SAME:  [[ARG0:%.+]]: tensor<184320x2880x!QuantileFloat.quantileFloat<ui4:f16, {{.+}}>>, [[ARG1:%.+]]: tensor<23040xsi32>
-func.func @GatherNon4DWithQuantileFloat(%arg0: tensor<184320x2880x!quantileFloatType>, %arg1: tensor<23040xsi32>) -> tensor<23040x2880x!quantileFloatType> {
-    %0 = VPU.Gather(%arg0, %arg1) {axis_value = 0 : i64, batch_dims = 0 : i64, indices_rank = 1 : i64} : tensor<184320x2880x!quantileFloatType>, tensor<23040xsi32> -> tensor<23040x2880x!quantileFloatType>
-    return %0 : tensor<23040x2880x!quantileFloatType>
+// CHECK-LABEL: @GatherNon4DWithQuantileType
+// CHECK-SAME:  [[ARG0:%.+]]: tensor<184320x2880x!QuantileType.quantile<ui4:f16, {{.+}}>>, [[ARG1:%.+]]: tensor<23040xsi32>
+func.func @GatherNon4DWithQuantileType(%arg0: tensor<184320x2880x!quantileType>, %arg1: tensor<23040xsi32>) -> tensor<23040x2880x!quantileType> {
+    %0 = VPU.Gather(%arg0, %arg1) {axis_value = 0 : i64, batch_dims = 0 : i64, indices_rank = 1 : i64} : tensor<184320x2880x!quantileType>, tensor<23040xsi32> -> tensor<23040x2880x!quantileType>
+    return %0 : tensor<23040x2880x!quantileType>
 
     // CHECK:       [[RESHAPE0:%.+]] = VPU.Reshape([[ARG1]]) {shape_value = [23040, 1]} : tensor<23040xsi32> -> tensor<23040x1xsi32>
     // CHECK:       [[RESHAPE1:%.+]] = VPU.Reshape([[RESHAPE0]]) {shape_value = [1, 23040, 1, 1]} : tensor<23040x1xsi32> -> tensor<1x23040x1x1xsi32>
     // CHECK:       [[CONVERT:%.+]] = VPU.Convert([[RESHAPE1]]) {dstElemType = i64} : tensor<1x23040x1x1xsi32> -> tensor<1x23040x1x1xi64>
     // CHECK:       [[RESHAPE2:%.+]] = VPU.Reshape([[CONVERT]]) {shape_value = [23040, 1]} : tensor<1x23040x1x1xi64> -> tensor<23040x1xi64>
     // CHECK:       [[GATHER_DMA:%.+]] = VPU.GatherDMA([[ARG0]], [[RESHAPE2]]) {
-    // CHECK-SAME:      axis_value = 0 : i64, batch_dims = 0 : i64} : tensor<184320x2880x!QuantileFloat.quantileFloat<ui4:f16, {{.+}}>>, tensor<23040x1xi64> -> tensor<23040x2880x!QuantileFloat.quantileFloat<ui4:f16, {{.+}}>>
-    // CHECK:       [[RESHAPE3:%.+]] = VPU.Reshape([[GATHER_DMA]]) {shape_value = [23040, 2880]} : tensor<23040x2880x!QuantileFloat.quantileFloat<ui4:f16, {{.+}}>> -> tensor<23040x2880x!QuantileFloat.quantileFloat<ui4:f16, {{.+}}>>
+    // CHECK-SAME:      axis_value = 0 : i64, batch_dims = 0 : i64} : tensor<184320x2880x!QuantileType.quantile<ui4:f16, {{.+}}>>, tensor<23040x1xi64> -> tensor<23040x2880x!QuantileType.quantile<ui4:f16, {{.+}}>>
+    // CHECK:       [[RESHAPE3:%.+]] = VPU.Reshape([[GATHER_DMA]]) {shape_value = [23040, 2880]} : tensor<23040x2880x!QuantileType.quantile<ui4:f16, {{.+}}>> -> tensor<23040x2880x!QuantileType.quantile<ui4:f16, {{.+}}>>
 
-    // CHECK:       return [[RESHAPE3]] : tensor<23040x2880x!QuantileFloat.quantileFloat<ui4:f16, {{.+}}>>
+    // CHECK:       return [[RESHAPE3]] : tensor<23040x2880x!QuantileType.quantile<ui4:f16, {{.+}}>>
 }

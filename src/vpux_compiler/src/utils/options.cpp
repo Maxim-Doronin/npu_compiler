@@ -46,10 +46,6 @@ StringLiteral vpux::stringifyEnum(WorkloadManagementBarrierProgrammingMode val) 
     switch (val) {
     case WorkloadManagementBarrierProgrammingMode::LEGACY:
         return "LEGACY";
-    case WorkloadManagementBarrierProgrammingMode::NO_BARRIER_DMAS_SCHEDULED:
-        return "NO_BARRIER_DMAS_SCHEDULED";
-    case WorkloadManagementBarrierProgrammingMode::INITIAL_BARRIER_DMAS_SCHEDULED:
-        return "INITIAL_BARRIER_DMAS_SCHEDULED";
     case WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED:
         return "ALL_BARRIER_DMAS_SCHEDULED";
     case WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED_4K:
@@ -85,17 +81,12 @@ StringLiteral vpux::stringifyEnum(WeightsTableReuseMode val) {
 
 StringLiteral vpux::stringifyEnum(WorkloadManagementMode val) {
     switch (val) {
-    case WorkloadManagementMode::PWLM_V0_LCA:
-        return "PWLM_V0_LCA";
     case WorkloadManagementMode::PWLM_V0_1_PAGES:
         return "PWLM_V0_1_PAGES";
-    case WorkloadManagementMode::PWLM_V1_BARRIER_FIFO:
-        return "PWLM_V1_BARRIER_FIFO";
-    case WorkloadManagementMode::PWLM_V2_PAGES:
-        return "PWLM_V2_PAGES";
     case WorkloadManagementMode::FWLM_V1_PAGES:
         return "FWLM_V1_PAGES";
     default:
+        llvm::outs() << "Unknown WorkloadManagementMode value: " << static_cast<int>(val) << "\n";
         return "UNKNOWN";
     }
 }

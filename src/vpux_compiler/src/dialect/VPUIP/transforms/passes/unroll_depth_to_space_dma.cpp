@@ -47,7 +47,7 @@ void UnrollDepthToSpaceDMAPass::safeRunOnFunc() {
 
     SmallVector<mlir::RewritePatternSet> patternSets;
 
-    auto& strategyFactory = VPUIP::getVPUIPStrategyFactory(&ctx);
+    const auto& strategyFactory = VPUIP::getVPUIPStrategyFactory(&ctx);
     auto dmaPortCount = config::getNumOfDMAPorts(func);
     auto unrollStrategy = strategyFactory->getUnrollDepthToSpaceDMAStrategy(&ctx, dmaPortCount);
     unrollStrategy->addPatterns(patternSets, _log);

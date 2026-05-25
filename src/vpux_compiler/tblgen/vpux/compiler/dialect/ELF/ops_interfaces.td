@@ -413,21 +413,6 @@ def ELF_RelocatableOpWithDynamicStridesInterface : OpInterface<"RelocatableOpWit
             "Get operation output symbol",
             "mlir::SymbolRefAttr",
             "getOutputSymbol", (ins)
-        >,
-        InterfaceMethod<
-            "Get shape value",
-            "uint32_t",
-            "getShapeValue", (ins "size_t":$shapeIdx, "bool":$isInput)
-        >,
-        InterfaceMethod<
-            "Get stride value",
-            "vpux::Byte",
-            "getStrideValue", (ins "size_t":$strideIdx, "bool":$isInput)
-        >,
-        InterfaceMethod<
-            "Get width value",
-            "int64_t",
-            "getWidthValue", (ins "bool":$isInput)
         >
     ];
 }

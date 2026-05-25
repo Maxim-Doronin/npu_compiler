@@ -3,11 +3,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% revision-id=3" -verify-diagnostics %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% revision-id=3" -verify-diagnostics %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // expected-error@+1 {{Target platform is already set, probably you run '--init-compiler' twice}}
-module @test attributes {config.arch = #config.arch_kind<NPU37XX>} {
+module @test attributes {config.platform = #config.platform<NPU3720>} {
 }
 
 // -----

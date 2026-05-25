@@ -87,6 +87,7 @@ void FindWlmEnqueueDmasBarrierPass::safeRunOnFunc() {
     const VPURT::TaskQueueType enqueueDmaQueueType = {config::ExecutorKind::DMA_NN,
                                                       getDMAQueueIdEncoding(/*port*/ 0, VPUIP::DmaChannelType::DDR)};
 
+    mlir::DenseSet<size_t> barriersConsumedByEnqueueDmas;
     // Process provided enqueue DMA data.
     // enqueueDmaDataVec order of enqueue DMAs follows the order of tasks on same HW FIFO
     // It is important to keep this order when inserting those ops in the IR, especially
@@ -98,6 +99,8 @@ void FindWlmEnqueueDmasBarrierPass::safeRunOnFunc() {
         auto startTaskIdx = enqueueDmaData.startTaskIdx;
         auto endTaskIdx = enqueueDmaData.endTaskIdx;
         auto insertBefore = enqueueDmaData.insertBefore;
+
+        barriersConsumedByEnqueueDmas.insert(waitBars.begin(), waitBars.end());
 
         _log.trace("Enqueue DMA data: pageInd={0}, queueType={1}:{2}, startTaskIdx={3}, endTaskIdx={4}, "
                    "waitBars={5}, insertBefore={6}",
@@ -132,6 +135,28 @@ void FindWlmEnqueueDmasBarrierPass::safeRunOnFunc() {
     }
 
     VPURT::orderExecutionTasksAndBarriers(func, barrierInfo, _log, true);
+
+    // Optimize out redundant barrier dependencies inserted which were the result of inserting enqueue DMAs
+    // Do such limited targeted modification instead of performing general optimization on whole IR to save compile time
+    auto barriersConsumedByEnqueueDmasVec = to_small_vector(barriersConsumedByEnqueueDmas);
+    for (auto barInd : barriersConsumedByEnqueueDmasVec) {
+        // Remove redundant consumers of the barrier
+        auto barCons = barrierInfo.getBarrierConsumers(barInd);
+        SmallVector<size_t> dmaP0ChDDrDmas;
+        for (auto cons : barCons) {
+            auto taskOp = barrierInfo.getTaskOpAtIndex(cons);
+            if (VPURT::getTaskQueueType(taskOp, false) == enqueueDmaQueueType) {
+                dmaP0ChDDrDmas.push_back(cons);
+            }
+        }
+        llvm::sort(dmaP0ChDDrDmas);
+        // Leave only first consumer of barrier, all other are redundant and can be removed
+        for (size_t i = 1; i < dmaP0ChDDrDmas.size(); i++) {
+            barrierInfo.removeConsumer(barInd, dmaP0ChDDrDmas[i]);
+            barrierInfo.updateIRForTask(dmaP0ChDDrDmas[i]);
+        }
+    }
+
     barrierPagesSplitHandler =
             VPURT::BarrierPagesSplitHandler{func, barrierInfo, static_cast<size_t>(numBarriers), _log};
     barrierPagesSplitHandler.initializeForEnqueue(func);

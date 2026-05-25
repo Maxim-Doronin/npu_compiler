@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/utils/stable_hash.hpp"
+#include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/utils/core/format.hpp"
 
 #include <llvm/ADT/Hashing.h>
@@ -30,23 +31,18 @@ llvm::hash_code getStableHash(mlir::Type type) {
     // manually dispatched to a better hashing procedure.
 
     return mlir::TypeSwitch<mlir::Type, llvm::hash_code>(type)
-            // Note: quantile per-axis is *also* uniform per-axis
-            // (UniformQuantizedPerAxisType is the base type), so type-checking
-            // for quantile case must precede uniform case.
-            .Case([](mlir::quant::QuantileQuantizedPerAxisType perAxisType) {
-                const auto quantiles = perAxisType.getQuantiles();
-                const auto scales = perAxisType.getScales();
-                return llvm::hash_combine(perAxisType.getFlags(), getStableHash(perAxisType.getStorageType()),
-                                          getStableHash(perAxisType.getQuantileType()),
-                                          getStableHash(perAxisType.getExpressedType()), castDoublesToInts(quantiles),
-                                          castDoublesToInts(scales), perAxisType.getZeroPoints(),
-                                          perAxisType.getQuantizedDimension(), perAxisType.getStorageTypeMin(),
-                                          perAxisType.getStorageTypeMax());
-            })
             .Case([](mlir::quant::UniformQuantizedPerAxisType perAxisType) {
-                assert(!mlir::isa<mlir::quant::QuantileQuantizedPerAxisType>(perAxisType) &&
-                       "Cannot hash quantile per-axis as uniform per-axis");
-
+                if (const auto quantileStorageType =
+                            mlir::dyn_cast<vpux::type::QuantileType>(perAxisType.getStorageType())) {
+                    const auto quantiles = quantileStorageType.getQuantiles();
+                    const auto scales = perAxisType.getScales();
+                    return llvm::hash_combine(
+                            perAxisType.getFlags(), getStableHash(quantileStorageType.getStorageType()),
+                            getStableHash(quantileStorageType.getQuantileType()),
+                            getStableHash(perAxisType.getExpressedType()), castDoublesToInts(quantiles),
+                            castDoublesToInts(scales), perAxisType.getZeroPoints(), perAxisType.getQuantizedDimension(),
+                            perAxisType.getStorageTypeMin(), perAxisType.getStorageTypeMax());
+                }
                 const auto scales = perAxisType.getScales();
                 return llvm::hash_combine(perAxisType.getFlags(), getStableHash(perAxisType.getStorageType()),
                                           getStableHash(perAxisType.getExpressedType()), castDoublesToInts(scales),

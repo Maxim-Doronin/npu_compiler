@@ -17,6 +17,7 @@
 #include "vpux/compiler/dialect/IE/utils/elem_type_info_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/dialect/IE/utils/transpose_op_utils.hpp"
+#include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/error.hpp"
@@ -59,7 +60,7 @@ bool checkOrderCompatible(mlir::Operation* origOp, DimsOrder origOrder, DimsOrde
 
         auto orderInfo = iface.getLayoutInfo();
         orderInfo.setInput(0, parentOrder);
-        iface.inferLayoutInfo(orderInfo, /*seOpsEnabled=*/false, /*seExperimentalOpsEnabled=*/false);
+        iface.inferLayoutInfo(orderInfo);
         if (orderInfo.getInput(0) != parentOrder) {
             return false;
         }
@@ -883,8 +884,17 @@ bool isSafeToTraverse(mlir::Operation* op, Logger log, bool seOpsEnabled) {
         return false;
     }
 
-    if (!vpux::IE::isSupportedElemTypeInfoCase(op, seOpsEnabled, logCb)) {
-        log.trace("Operation {0} doesn't implement ElemTypeInfoOpInterface interface", *op);
+    auto isTraversableCastOp = [](mlir::Operation* op) -> bool {
+        if (mlir::isa<IE::QuantizeCastOp>(op)) {
+            return false;
+        }
+        return mlir::isa<IE::ViewLikeOpInterface>(op);
+    };
+
+    if (!vpux::IE::isSupportedElemTypeInfoCase(op, seOpsEnabled, logCb) && !isTraversableCastOp(op)) {
+        log.trace("Operation {0} does not implement the ElemTypeInfoOpInterface and is not a traversable "
+                  "ViewLikeOpInterface.",
+                  *op);
         return false;
     }
 
@@ -923,13 +933,6 @@ bool isSafeToSwap(mlir::Operation* producerOp, mlir::Operation* firstUserOp, mli
 
     auto origElemType = mlir::cast<vpux::NDTypeInterface>(activationOp->getResult(0).getType()).getElementType();
     if (mlir::template dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(origElemType)) {
-        return false;
-    }
-
-    // If the activation is swapped with tranpose and fused with a prior operation, it leaves transpose with
-    // a possible element type mismatch. Detect such a case and avoid the swap.
-    auto origInputElemType = mlir::cast<vpux::NDTypeInterface>(activationOp->getOperand(0).getType()).getElementType();
-    if (mlir::isa<IE::TransposeOp>(firstUserOp) && (origElemType != origInputElemType)) {
         return false;
     }
 
@@ -978,6 +981,13 @@ void swapActivation(mlir::PatternRewriter& rewriter, mlir::Operation* firstUserO
             moveBeforeOp->getOpOperand(static_cast<uint32_t>(i)).set(newActivation->getResult(0));
         }
 
+        // Update moveBeforeOp's output type first: its input operand was just changed to the new
+        // activation (which may carry a different element type), so its declared output type is now
+        // stale. Without this call, previousOp would see the old element type on moveBeforeOp's
+        // output and infer the wrong type for its own output.
+        inferReturnTypes(moveBeforeOp, InferShapedTypeMode::ELEM_TYPE);
+        // Now propagate the updated element type through previousOp so that when opToBeMoved is
+        // replaced by previousOp's result, consumers receive the correct output type.
         inferReturnTypes(previousOp, InferShapedTypeMode::ELEM_TYPE);
         rewriter.replaceOp(opToBeMoved, previousOp->getResults());
         rewriter.finalizeOpModification(moveBeforeOp);
@@ -1163,39 +1173,26 @@ mlir::LogicalResult SwapGatherQuantizeCast::matchAndRewrite(IE::GatherOp origOp,
 
 class SwapOperationsPass final : public IE::impl::SwapOperationsBase<SwapOperationsPass> {
 public:
-    explicit SwapOperationsPass(const bool seOpsEnabled, Logger log): _seOpsEnabled(seOpsEnabled) {
+    explicit SwapOperationsPass(Logger log) {
         Base::initLogger(log, Base::getArgumentName());
     }
-    mlir::LogicalResult initialize(mlir::MLIRContext* ctx) final;
 
 private:
     void safeRunOnFunc() final;
-
-    bool _seOpsEnabled;
 };
-
-mlir::LogicalResult SwapOperationsPass::initialize(mlir::MLIRContext* ctx) {
-    if (mlir::failed(Base::initialize(ctx))) {
-        return mlir::failure();
-    }
-
-    // When this parameter has a value, it probably comes from LIT test.
-    // Override the default
-    if (seOpsEnabled.hasValue()) {
-        _seOpsEnabled = seOpsEnabled.getValue();
-    }
-
-    return mlir::success();
-}
 
 void SwapOperationsPass::safeRunOnFunc() {
     auto& ctx = getContext();
-
+    auto func = getOperation();
+    auto op = getModuleOp(func);
     mlir::RewritePatternSet patterns(&ctx);
 
+    const auto seOpsEnabled = config::hasEnableSEPtrsOperations(op);
+    const auto experimentalSeOpsEnabled = config::hasEnableExperimentalSEPtrsOperations(op);
+
     // TODO: E#194430 Replace Clamp rewriter with new implementation
-    patterns.add<SwapWithActivation<IE::ClampOp>>(&ctx, _log.nest(), _seOpsEnabled);
-    patterns.add<SwapGeluExpand>(&ctx, _log.nest(), _seOpsEnabled);
+    patterns.add<SwapWithActivation<IE::ClampOp>>(&ctx, _log.nest(), seOpsEnabled || experimentalSeOpsEnabled);
+    patterns.add<SwapGeluExpand>(&ctx, _log.nest(), seOpsEnabled || experimentalSeOpsEnabled);
     patterns.add<SwapWithBias<IE::AddOp>>(&ctx, _log.nest());
     patterns.add<SwapWithBias<IE::ScaleShiftOp>>(&ctx, _log.nest());
     // TODO: E#18651 Support ElemTypeInfoOpInterface for Slice
@@ -1208,7 +1205,6 @@ void SwapOperationsPass::safeRunOnFunc() {
     patterns.add<SwapAffineReshapeFakeQuantize>(&ctx, _log.nest());
     IE::AffineReshapeOp::getCanonicalizationPatterns(patterns, &ctx);
 
-    auto func = getOperation();
     if (mlir::failed(applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
         signalPassFailure();
     }
@@ -1216,7 +1212,7 @@ void SwapOperationsPass::safeRunOnFunc() {
     {
         // we look for DPU operations that we can later fuse activations into
         mlir::RewritePatternSet activationPatterns(&ctx);
-        activationPatterns.add<FindChildActivationAndSwap>(&ctx, _log.nest(), _seOpsEnabled);
+        activationPatterns.add<FindChildActivationAndSwap>(&ctx, _log.nest(), seOpsEnabled || experimentalSeOpsEnabled);
 
         collectOpsAndApplyPatterns(func, std::move(activationPatterns));
     }
@@ -1237,8 +1233,8 @@ void SwapOperationsPass::safeRunOnFunc() {
 // createSwapOperationsPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::IE::createSwapOperationsPass(const bool seOpsEnabled, Logger log) {
-    return std::make_unique<SwapOperationsPass>(seOpsEnabled, log);
+std::unique_ptr<mlir::Pass> vpux::IE::createSwapOperationsPass(Logger log) {
+    return std::make_unique<SwapOperationsPass>(log);
 }
 
 void vpux::IE::registerSwapOperationsRewriters(RewriterRegistry& registry, ArrayRef<mlir::PatternBenefit> benefitLevels,

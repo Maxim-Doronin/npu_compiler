@@ -22,7 +22,7 @@ mlir::LogicalResult commonMatchAndRewrite(OriginalOp origOp, IE::WeightsDequanti
     const auto inputElemType = IE::getTrueElemType(origOp);
     // The commonMatchAndRewrite supported weights data type are I8, U8, I4, U4, I2, U2 and NF4
     if (!inputElemType.isInteger(8) && !inputElemType.isInteger(4) && !inputElemType.isInteger(2) &&
-        !mlir::isa<vpux::type::QuantileFloatType>(inputElemType)) {
+        !mlir::isa<vpux::type::QuantileType>(inputElemType)) {
         return mlir::failure();
     }
 
@@ -31,19 +31,19 @@ mlir::LogicalResult commonMatchAndRewrite(OriginalOp origOp, IE::WeightsDequanti
     auto inHigh = 0.0f;
     mlir::IntegerAttr levelsAttr = nullptr;
     mlir::TypeAttr lowFpTypeAttr = nullptr;
-    auto quantileFloatType = [&]() -> vpux::type::QuantileFloatType {
-        if (mlir::isa<vpux::type::QuantileFloatType>(inputElemType)) {
-            return mlir::cast<vpux::type::QuantileFloatType>(inputElemType);
+    auto quantileType = [&]() -> vpux::type::QuantileType {
+        if (mlir::isa<vpux::type::QuantileType>(inputElemType)) {
+            return mlir::cast<vpux::type::QuantileType>(inputElemType);
         }
         return IE::tryParsingNF4(origOp);
     }();
 
-    if (quantileFloatType) {
+    if (quantileType) {
         // Quantile float case
-        auto quantileTable = quantileFloatType.getQuantiles();
+        auto quantileTable = quantileType.getQuantiles();
         inLow = quantileTable.front();
         inHigh = quantileTable.back();
-        lowFpTypeAttr = mlir::TypeAttr::get(quantileFloatType);
+        lowFpTypeAttr = mlir::TypeAttr::get(quantileType);
     } else if (mlir::isa<mlir::IntegerType>(inputElemType)) {
         // Integer case
         const auto levels = IE::getQuantizationLevels(inputElemType);
@@ -115,6 +115,12 @@ public:
         auto wdInfo = maybeWdInfo.value();
         if (wdInfo.getDynamicScale()) {
             _log.trace("Can't create FakeQuantize with dynamic scale");
+            return mlir::failure();
+        }
+        // Constant WD chains feeding a Gather are routed to DynamicDequantize.
+        // The Gather accesses a small subset of rows, so offline dequantization wastes blob size.
+        if (wdInfo.isI4ConsumedByGather()) {
+            _log.trace("WD chain feeds a Gather op with i4/ui4 weights; deferring to DynamicDequantize path.");
             return mlir::failure();
         }
         if (!wdInfo.isKVcachedPattern() && IE::getTrueElemType(origOp).isInteger(2)) {

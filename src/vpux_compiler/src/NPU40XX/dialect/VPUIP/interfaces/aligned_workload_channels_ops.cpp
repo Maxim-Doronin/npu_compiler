@@ -5,9 +5,8 @@
 
 #include "vpux/compiler/NPU40XX/dialect/VPUIP/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
-
+#include "vpux/compiler/dialect/VPU/interfaces/strategies.hpp"
 #include "vpux/compiler/dialect/VPU/interfaces/workload_splitter.hpp"
-#include "vpux/compiler/dialect/VPU/transforms/factories/sparsity_constraint.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 
 using namespace vpux;
@@ -22,9 +21,11 @@ public:
     SmallVector<int64_t> getSupportedWorkLoadChannels(mlir::Operation* nceOp) const {
         auto func = nceOp->getParentOfType<mlir::func::FuncOp>();
         auto log = Logger::global();
-        const auto arch = config::getArch(func);
-        auto sparsityConstraint = VPU::getSparsityConstraint(arch);
-        VPU::WorkloadSplitter splitter(func, vpux::VPU::supportedChannelsDW, log);
+        auto ctx = nceOp->getContext();
+        const auto& strategyFactory = VPU::getVPUStrategyFactory(ctx);
+        auto sparsityConstraint = strategyFactory->getSparsityConstraint();
+        auto supportedChannelsDW = strategyFactory->getSupportedChannelsDW();
+        VPU::WorkloadSplitter splitter(func, supportedChannelsDW, log);
 
         // More than one operation might need to be handled at the same time for some sparse activations,
         // to satisfy the requirements of the consumer ops

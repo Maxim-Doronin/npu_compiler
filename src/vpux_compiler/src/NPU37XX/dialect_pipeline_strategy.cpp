@@ -7,6 +7,7 @@
 #include "vpux/compiler/NPU37XX/conversion.hpp"
 #include "vpux/compiler/NPU37XX/pipeline_options.hpp"
 #include "vpux/compiler/conversion.hpp"
+#include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/pipelines/options_setup.hpp"
 
 using namespace vpux;
@@ -37,12 +38,9 @@ public:
     static void setupOptionsCommon(DefaultHWOptions37XX& options) {
         overwriteIfUnset(options.enableDummyOpReplacement, false);
         overwriteIfUnset(options.constantFoldingInBackground, false);
-        overwriteIfUnset(options.enableMergeFakeQuant, true);
         overwriteIfUnset(options.enableOptimizeReorders, false);
         overwriteIfUnset(options.enableExperimentalSEPtrsOperations, false);
         overwriteIfUnset(options.enableFuseClampOperations, false);
-        overwriteIfUnset(options.enableConvertPrecisionToFP16, true);
-        overwriteIfUnset(options.enableConvertNonConstantPadToSliceAndConcat, true);
         overwriteIfUnset(options.reduceParallelControlFlows, true);
         overwriteIfUnset(options.enableGroupedMatMul, false);
         overwriteIfUnset(options.enableFP16CompressedConvolution, false);
@@ -97,6 +95,10 @@ public:
         VPU::buildInitCompilerPipeline(pm, _optionsContainer->getInitCompilerOptions(), log.nest());
     }
 
+    void buildDebatcherPipeline(mlir::OpPassManager&, Logger log) override {
+        log.warning("Debatching is not supported");
+    }
+
     void buildIEPipeline(mlir::OpPassManager& pm, Logger log) override {
         IE::arch37xx::buildDefaultHWPipeline(pm, _optionsContainer->getPipelineOptions(), log);
     }
@@ -140,6 +142,10 @@ public:
 
     void initializePipeline(mlir::OpPassManager& pm, Logger log) override {
         VPU::buildInitCompilerPipeline(pm, _optionsContainer->getInitCompilerOptions(), log.nest());
+    }
+
+    void buildDebatcherPipeline(mlir::OpPassManager&, Logger log) override {
+        log.warning("Debatching is not supported");
     }
 
     void buildIEPipeline(mlir::OpPassManager& pm, Logger log) override {

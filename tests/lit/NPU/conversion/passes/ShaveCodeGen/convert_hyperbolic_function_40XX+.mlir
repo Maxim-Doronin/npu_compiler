@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-eltwise-layers-to-math %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --convert-eltwise-layers-to-math %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 
 // IE.Sinh
@@ -26,11 +26,11 @@ module @SinhF16Layer {
     return %0 : tensor<1x1x1x1000xf16>
 
     // CHECK-NOT:     IE.Sinh
+    // CHECK:      [[CST:%.+]] = arith.constant 5.000000e-01 : f16
+    // CHECK:      [[CST0:%.+]] = arith.constant 0.000000e+00 : f16
     // CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xf16>
     // CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}} : tensor<1x1x1x1000xf16>) outs([[EMPTY]] : tensor<1x1x1x1000xf16>) {
     // CHECK-NEXT:    ^bb0([[IN:%.+]]: f16, {{%.+}}: f16):
-    // CHECK-NEXT:      [[CST0:%.+]] = arith.constant 0.000000e+00 : f16
-    // CHECK-NEXT:      [[CST:%.+]] = arith.constant 5.000000e-01 : f16
     // CHECK-NEXT:      [[EXP:%.+]] = math.exp [[IN]] fastmath<afn> : f16
     // CHECK-NEXT:      [[NEG:%.+]] = arith.subf [[CST0]], [[IN]] : f16
     // CHECK-NEXT:      [[EXPN:%.+]] = math.exp [[NEG]] fastmath<afn> : f16
@@ -94,11 +94,11 @@ module @CoshF16Layer {
     return %0 : tensor<1x1x1x1000xf16>
 
     // CHECK-NOT:     IE.Cosh
+    // CHECK:      [[CST:%.+]] = arith.constant 5.000000e-01 : f16
+    // CHECK:      [[CST0:%.+]] = arith.constant 0.000000e+00 : f16
     // CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xf16>
     // CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}} : tensor<1x1x1x1000xf16>) outs([[EMPTY]] : tensor<1x1x1x1000xf16>) {
     // CHECK-NEXT:    ^bb0([[IN:%.+]]: f16, {{%.+}}: f16):
-    // CHECK-NEXT:      [[CST0:%.+]] = arith.constant 0.000000e+00 : f16
-    // CHECK-NEXT:      [[CST:%.+]] = arith.constant 5.000000e-01 : f16
     // CHECK-NEXT:      [[EXP:%.+]] = math.exp [[IN]] fastmath<afn> : f16
     // CHECK-NEXT:      [[NEG:%.+]] = arith.subf [[CST0]], [[IN]] : f16
     // CHECK-NEXT:      [[EXPN:%.+]] = math.exp [[NEG]] fastmath<afn> : f16
@@ -187,12 +187,12 @@ module @AtanhF16Layer {
     return %0 : tensor<1x1x1x1000xf16>
 
     // CHECK-NOT:     IE.Atanh
+    // CHECK:      [[CST0:%.+]] = arith.constant 5.000000e-01 : f16
+    // CHECK:      [[CST:%.+]] = arith.constant 1.000000e+00 : f16
     // CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xf16>
     // CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}} : tensor<1x1x1x1000xf16>) outs([[EMPTY]] : tensor<1x1x1x1000xf16>) {
     // CHECK-NEXT:    ^bb0([[IN:%.+]]: f16, {{%.+}}: f16):
-    // CHECK-NEXT:      [[CST:%.+]] = arith.constant 1.000000e+00 : f16
-    // CHECK-NEXT:      [[CST0:%.+]] = arith.constant 5.000000e-01 : f16
-    // CHECK-NEXT:      [[ADD:%.+]] = arith.addf [[CST]], [[IN]] : f16
+    // CHECK-NEXT:      [[ADD:%.+]] = arith.addf [[IN]], [[CST]] : f16
     // CHECK-NEXT:      [[SUB:%.+]] = arith.subf [[CST]], [[IN]] : f16
     // CHECK-NEXT:      [[DIV:%.+]] = arith.divf [[ADD]], [[SUB]] : f16
     // CHECK-NEXT:      [[LOG:%.+]] = math.log [[DIV]] fastmath<afn> : f16

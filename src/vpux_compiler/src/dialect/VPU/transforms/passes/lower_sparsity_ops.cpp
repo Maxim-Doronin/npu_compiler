@@ -186,6 +186,10 @@ mlir::LogicalResult rewriteSparsityOpWithEltwiseOp(mlir::PatternRewriter& rewrit
 
     const auto opType = VPU::EltwiseType::ADD;
     const auto ppeAttr = VPU::getPpeConfig(ctx).retrievePPEAttribute(origOp);
+    VPU::MPEEngineAttr mpeEngineModeAttr = nullptr;
+    if (auto mpeEngineInterface = mlir::dyn_cast<IE::MPEEngineInfoOpInterface>(origOp)) {
+        mpeEngineModeAttr = mlir::cast<VPU::MPEEngineAttr>(mpeEngineInterface.getMPEEngineMode());
+    }
 
     auto inputPaddingAttr = origOp->hasAttr(VPU::INPUT_PADDING_ATTR_NAME)
                                     ? mlir::cast<mlir::ArrayAttr>(origOp->getAttr(VPU::INPUT_PADDING_ATTR_NAME))
@@ -195,7 +199,7 @@ mlir::LogicalResult rewriteSparsityOpWithEltwiseOp(mlir::PatternRewriter& rewrit
                                      : nullptr;
 
     auto nceOp = rewriter.create<VPU::NCEEltwiseOp>(origOp->getLoc(), outputType, input, input,
-                                                    VPU::EltwiseTypeAttr::get(ctx, opType), ppeAttr,
+                                                    VPU::EltwiseTypeAttr::get(ctx, opType), ppeAttr, mpeEngineModeAttr,
                                                     /*multi_cluster_strategyAttr=*/nullptr,
                                                     /*is_inplace*/ nullptr, outputPaddingAttr, inputPaddingAttr);
 
@@ -355,7 +359,10 @@ mlir::LogicalResult rewriteSparsityOpWithConv(mlir::PatternRewriter& rewriter, m
     const auto ppeAttr = ppeConfig.retrievePPEAttribute(origOp);
     const auto ppeConverter = VPU::NCESparsity::getPPEConverterCb(arch);
     const auto biasConverter = VPU::NCESparsity::getBiasConverterCb(arch);
-    const auto mpeEngineAttr = VPU::MPEEngineConfig::retrieveMPEEngineAttribute(origOp);
+    VPU::MPEEngineAttr mpeEngineModeAttr = nullptr;
+    if (auto mpeEngineInterface = mlir::dyn_cast<IE::MPEEngineInfoOpInterface>(origOp)) {
+        mpeEngineModeAttr = mlir::cast<VPU::MPEEngineAttr>(mpeEngineInterface.getMPEEngineMode());
+    }
 
     const auto adaptedOutElemType =
             ppeConfig.getFactoryAs<VPU::IPpeAdapterFpPreluAlpha>().adaptTypeForPreluAlphaScaling(
@@ -382,7 +389,7 @@ mlir::LogicalResult rewriteSparsityOpWithConv(mlir::PatternRewriter& rewriter, m
             origOp->getLoc(), outputType, input, filter, weightsTable,
             /*weight_table_data_ptr=*/nullptr,
             /*weight_table_sp_ptr=*/nullptr, /*weight_table_scale=*/nullptr, /*weight_table_bias=*/nullptr,
-            /*weight_zero_points=*/nullptr, stridesAttr, padAttr, ppeAttr, mpeEngineAttr, rawFilterShape,
+            /*weight_zero_points=*/nullptr, stridesAttr, padAttr, ppeAttr, mpeEngineModeAttr, rawFilterShape,
             /*multi_cluster_strategyAttr=*/nullptr, outputPaddingAttr, inputPaddingAttr);
 
     auto newOutput = nceOp.getOutput();

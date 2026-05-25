@@ -97,7 +97,16 @@ mlir::FailureOr<Strides> adaptStrides(StridesRef origStrides, ShapeRef subShape,
     return dimsOrder.toLogicalOrder(memStrides);
 }
 
-// Need to adapt when stride dim is higher than tiling dim in memory.
+// Need to adapt when a non-compact stride appears on a higher-order memory dim than the tiling dim,
+// OR when a higher-order dim's stride encodes the tiling dim's full extent (so tiling that dim
+// must proportionally reduce the outer dim's stride).
+// Dims with extent 1 are ignored because their stride does not affect address progression for DMA accesses.
+//
+// Example (motivating the second condition):
+//   Shape [1, 3, 128, 128xf16], order NWHC, strides [262144, 1, 16, 2048], SEGMENTED over H.
+//   W_stride = 2048 = 128(H) × 16(H_stride): compact w.r.t. the H neighbor, so the first condition
+//   does not trigger.  But after tiling H to 64 per cluster, W_stride must become 64 × 16 = 1024.
+//   The second condition catches this: W_stride(2048) >= shape[H](128) × stride[H](16) = 2048.
 bool needToAdaptStrides(vpux::NDTypeInterface originType) {
     const auto inReqs = StrideReqs::compact(originType.getRank());
     if (inReqs.checkStrides(originType)) {
@@ -132,9 +141,25 @@ bool needToAdaptStrides(vpux::NDTypeInterface originType) {
         }
     }
 
+    if (memTileIndex < 0) {
+        return false;
+    }
+
+    const auto tileDimStride = memStrides[MemDim(memTileIndex)].count();
+    const auto tileDimExtent = memShape[MemDim(memTileIndex)];
+
     for (int64_t i = 0; i < static_cast<int64_t>(memShape.size() - 1); i++) {
-        if (memStrides[MemDim(i)] != memShape[MemDim(i)] * memStrides[MemDim(i + 1)] && i < memTileIndex) {
-            return true;
+        if (memShape[MemDim(i)] > 1 && i < memTileIndex) {
+            // Condition 1: non-compact stride on a dim above the tile dim.
+            if (memStrides[MemDim(i)] != memShape[MemDim(i)] * memStrides[MemDim(i + 1)]) {
+                return true;
+            }
+            // Condition 2: stride encodes the full tile dim extent. Even when the dim looks locally
+            // compact (stride[i] == shape[i] × stride[i+1]), tiling will reduce the tile dim extent
+            // and this outer dim's stride must scale accordingly.
+            if (tileDimStride > 0 && memStrides[MemDim(i)].count() >= tileDimExtent * tileDimStride) {
+                return true;
+            }
         }
     }
 
@@ -389,21 +414,9 @@ void VPUIP::ClusterNCEBaseRewriter::matchAndRewrite(VPUIP::NCEClusterTaskOp nceT
     for (int64_t clusterId = 0; clusterId < numClusters; ++clusterId) {
         const auto newLoc = appendLoc(loc, "cluster_{0}", clusterId);
 
-        mlir::Value profilingData = nullptr;
-        mlir::Type profilingOutputType = nullptr;
-        mlir::Type outputType = outputBuffs[clusterId].getType();
-        mlir::Value outputSparsityMap = nullptr;
-        mlir::Type outputSparsityMapType = nullptr;
-
-        if (nceTask.getOutputSparsityMapBuff()) {
-            outputSparsityMap = outputSparsityMapBuffs[clusterId];
-            outputSparsityMapType = outputSparsityMap.getType();
-        }
-
-        if (nceTask.getProfilingData()) {
-            profilingOutputType = profilingBuffs[clusterId].getType();
-            profilingData = profilingBuffs[clusterId];
-        }
+        mlir::Value profilingData = nceTask.getProfilingData() ? profilingBuffs[clusterId] : nullptr;
+        mlir::Value outputSparsityMap =
+                nceTask.getOutputSparsityMapBuff() ? outputSparsityMapBuffs[clusterId] : nullptr;
 
         // Calculate LocalRegionAttr for this cluster
         auto outDistributionMode = outDistribution.getMode().getValue();
@@ -433,16 +446,16 @@ void VPUIP::ClusterNCEBaseRewriter::matchAndRewrite(VPUIP::NCEClusterTaskOp nceT
         }
 
         auto newTask = VPURT::wrapIntoTaskOp<VPUIP::NCEClusterTaskOp>(
-                builder, vpurtTask.getWaitBarriers(), vpurtTask.getUpdateBarriers(), newLoc, outputType,
-                outputSparsityMapType, profilingOutputType, inputBuffs[clusterId], inputSparsityMapBuffs[clusterId],
-                inputSETableBuffs[clusterId], weightsBuffs[clusterId], weightsSparsityMapBuffs[clusterId],
-                weightTable[clusterId], dataPtrTable[clusterId], sparsityPtrTable[clusterId], scaleTable[clusterId],
-                biasTable[clusterId], zeroPointTable[clusterId], sprLookupTableBuffs[clusterId],
-                palletLookupTableBuffs[clusterId], parentInputBuffs[clusterId], parentInputSparsityMap[clusterId],
-                parentInputSETable[clusterId], parentOutputBuffs[clusterId], parentOutputSparsityMap[clusterId],
-                mlir::ValueRange(outputItiBuffs[clusterId]), outputBuffs[clusterId], outputSparsityMap, profilingData,
-                /*dynamic_sequence_length=*/nullptr, /*max_per_xy=*/nullptr,
-                /*min_per_xy=*/nullptr, /*min_max_per_tensor=*/mlir::ValueRange(), nceTask.getTaskType(),
+                builder, vpurtTask.getWaitBarriers(), vpurtTask.getUpdateBarriers(), newLoc, inputBuffs[clusterId],
+                inputSparsityMapBuffs[clusterId], inputSETableBuffs[clusterId], weightsBuffs[clusterId],
+                weightsSparsityMapBuffs[clusterId], weightTable[clusterId], dataPtrTable[clusterId],
+                sparsityPtrTable[clusterId], scaleTable[clusterId], biasTable[clusterId], zeroPointTable[clusterId],
+                sprLookupTableBuffs[clusterId], palletLookupTableBuffs[clusterId], parentInputBuffs[clusterId],
+                parentInputSparsityMap[clusterId], parentInputSETable[clusterId], parentOutputBuffs[clusterId],
+                parentOutputSparsityMap[clusterId], mlir::ValueRange(outputItiBuffs[clusterId]), outputBuffs[clusterId],
+                outputSparsityMap, profilingData,
+                /*dynamic_sequence_length=*/nullptr, /*max_per_xy_buff=*/nullptr,
+                /*min_per_xy_buff=*/nullptr, /*min_max_per_tensor_buff=*/mlir::ValueRange(), nceTask.getTaskType(),
                 nceTask.getKernelSizeAttr(), nceTask.getKernelStridesAttr(), padAttrForCluster[clusterId],
                 nceTask.getIsContinued(), nceTask.getCmSpPatternAttr(), isSegmentedNCETask(parentInputType),
                 outChannelOffsets[clusterId], nceTask.getInputChannelsCompression(),
@@ -626,7 +639,23 @@ void VPUIP::ClusterPerElementDMABaseRewriter::matchAndRewrite(VPUIP::DMATypeOpIn
     }
 
     SmallVector<Byte> inputBufferOffsets;
-    if (inputDistType != nullptr && outputDistType != nullptr) {
+    // Check if input DeclareBufferOp has per-cluster buffer offsets from an explicit SubViewOp
+    if (auto inputDeclBuff = dmaOp.getInput().getDefiningOp<VPURT::DeclareBufferOp>()) {
+        auto perClusterBufferOffsetAttr =
+                mlir::dyn_cast_or_null<mlir::ArrayAttr>(inputDeclBuff->getAttr(vpux::perClusterBufferOffsetAttrName));
+        if (perClusterBufferOffsetAttr) {
+            auto allClusterOffsets = parseIntArrayOfArrayAttr<int64_t>(perClusterBufferOffsetAttr);
+            auto strides = inputType.getStrides();
+            for (const auto& clusterOffsets : allClusterOffsets) {
+                Byte offsetInBytes(0);
+                for (size_t dim = 0; dim < clusterOffsets.size(); ++dim) {
+                    offsetInBytes += static_cast<Byte>(clusterOffsets[dim] * strides[Dim(dim)]);
+                }
+                inputBufferOffsets.push_back(offsetInBytes);
+            }
+        }
+    }
+    if (inputBufferOffsets.empty() && inputDistType != nullptr && outputDistType != nullptr) {
         VPUX_THROW_UNLESS(
                 mlir::succeeded(VPU::areDistributionAttrsCompatible(inputDistType, outputDistType,
                                                                     /*allowDifferentPerClusterMemoryView = */ true)),
@@ -1214,16 +1243,39 @@ void VPUIP::ClusterPerElementDMABaseRewriter::unrollSegmentedOrOverlapped(mlir::
                 newType = VPUIP::setCompressionState(newType, VPUIP::CompressionState::CompressionCandidate);
             }
         } else {
-            offset += static_cast<Byte>(perClusterShapeOffsets[clusterId][Dim(tilingAxis)] *
-                                        newType.getStrides()[Dim(tilingAxis)]);
-            auto shapeVec = to_small_vector(viewOffsets);
-            auto perClusterOffsetVec = to_small_vector(perClusterShapeOffsets[clusterId]);
-            if (shapeVec.size() < perClusterOffsetVec.size()) {
-                shapeVec.insert(shapeVec.end(), perClusterOffsetVec.size() - shapeVec.size(), 0);
+            // Check if per-cluster buffer offsets are explicitly provided (e.g., from a SubViewOp
+            // where the subview axis overlaps with the distribution tiling axis)
+            auto perClusterBufferOffsetAttr =
+                    mlir::dyn_cast_or_null<mlir::ArrayAttr>(declBuff->getAttr(vpux::perClusterBufferOffsetAttrName));
+            if (perClusterBufferOffsetAttr) {
+                auto allClusterOffsets = parseIntArrayOfArrayAttr<int64_t>(perClusterBufferOffsetAttr);
+                VPUX_THROW_UNLESS(clusterId < allClusterOffsets.size(),
+                                  "Cluster id '{0}' exceeds perClusterBufferOffset size '{1}'", clusterId,
+                                  allClusterOffsets.size());
+                const auto& clusterOffsets = allClusterOffsets[clusterId];
+                for (size_t dim = 0; dim < clusterOffsets.size(); ++dim) {
+                    offset += static_cast<Byte>(clusterOffsets[dim] * newType.getStrides()[Dim(dim)]);
+                }
+                auto shapeVec = to_small_vector(viewOffsets);
+                if (shapeVec.size() < clusterOffsets.size()) {
+                    shapeVec.insert(shapeVec.end(), clusterOffsets.size() - shapeVec.size(), 0);
+                }
+                for (size_t dim = 0; dim < clusterOffsets.size(); ++dim) {
+                    shapeVec[dim] += clusterOffsets[dim];
+                }
+                viewOffsets = Shape(shapeVec);
+            } else {
+                offset += static_cast<Byte>(perClusterShapeOffsets[clusterId][Dim(tilingAxis)] *
+                                            newType.getStrides()[Dim(tilingAxis)]);
+                auto shapeVec = to_small_vector(viewOffsets);
+                auto perClusterOffsetVec = to_small_vector(perClusterShapeOffsets[clusterId]);
+                if (shapeVec.size() < perClusterOffsetVec.size()) {
+                    shapeVec.insert(shapeVec.end(), perClusterOffsetVec.size() - shapeVec.size(), 0);
+                }
+                std::transform(shapeVec.begin(), shapeVec.end(), perClusterOffsetVec.begin(), shapeVec.begin(),
+                               std::plus<>{});
+                viewOffsets = Shape(shapeVec);
             }
-            std::transform(shapeVec.begin(), shapeVec.end(), perClusterOffsetVec.begin(), shapeVec.begin(),
-                           std::plus<>{});
-            viewOffsets = Shape(shapeVec);
         }
 
         const auto distType =
@@ -1352,15 +1404,20 @@ void VPUIP::ClusterPerElementDMABaseRewriter::unrollSegmentedOrOverlapped(mlir::
         // While split of last one will
         // Port 0: |---------- CMX 0 ----------| |-- CMX 2 -|
         // Port 1: |---------- CMX 1 ----------| |-- CMX 2 -|
-        if (isDmaSplitRequired && clusterId == (numClusters - 1)) {
-            const auto transferSize = vpux::getTotalSize(inputBuffer);
-            // DMAs smaller than 128B can't fully utilize bandwidth
-            const int64_t PER_CLUSTER_BANDWIDTH_40XX = 128;
-            if (transferSize.count() < PER_CLUSTER_BANDWIDTH_40XX) {
-                continue;
-            }
+        if (isDmaSplitRequired) {
             if (auto nndma = mlir::dyn_cast<VPUIP::NNDMAOp>(newDMAOp.getOperation())) {
-                nndma.setSplitCandidate(true);
+                auto canBeSplit = false;
+                if (clusterId == (numClusters - 1)) {
+                    const auto transferSize = vpux::getTotalSize(inputBuffer);
+                    // DMAs smaller than 128B can't fully utilize bandwidth
+                    const int64_t PER_CLUSTER_BANDWIDTH_40XX = 128;
+                    if (transferSize.count() < PER_CLUSTER_BANDWIDTH_40XX) {
+                        continue;
+                    }
+                    canBeSplit = true;
+                }
+                // avoid further splitting balanced DMAs
+                nndma.setSplitCandidate(canBeSplit);
             }
         }
         _log.trace("Insert new DMA op: '{0}'", newDMAOp);
@@ -1739,7 +1796,7 @@ void UnrollDistributedOpsPass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
 
-    auto& strategyFactory = VPUIP::getVPUIPStrategyFactory(&ctx);
+    const auto& strategyFactory = VPUIP::getVPUIPStrategyFactory(&ctx);
     auto strategy = strategyFactory->getUnrollDistributedOpsStrategy(func, _enableSegmentedDmaFusion);
     strategy->prepareOps(ctx, _log);
 }

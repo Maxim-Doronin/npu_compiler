@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --expand-dpu-config %s | FileCheck %s
-// REQUIRES: arch-NPU40XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --expand-dpu-config %s | FileCheck %s
+// REQUIRES: platform-NPU4000
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module {
@@ -15,7 +15,7 @@ module {
   }
 
   func.func @PPE_FP16_FP16_CONV() {
-    ELF.Main @ELFMain {
+    ELF.Main {
       ELF.CreateLogicalSection @program.metadata.cmx aligned(32) secType(VPU_SHT_CMX_METADATA) secFlags("SHF_NONE") secLocation(<CMX_NN>) {
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DPUInvariant_0_0_0 idx(!VPURegMapped.Index<0:0:0>) <DPUInvariant>
       }
@@ -67,7 +67,7 @@ module {
   }
 
   func.func @PPE_FP16_FP16_CONV_LRELU() {
-    ELF.Main @ELFMain {
+    ELF.Main {
       ELF.CreateLogicalSection @program.metadata.cmx aligned(32) secType(VPU_SHT_CMX_METADATA) secFlags("SHF_NONE") secLocation(<CMX_NN>) {
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DPUInvariant_0_0_0 idx(!VPURegMapped.Index<0:0:0>) <DPUInvariant>
       }
@@ -120,7 +120,7 @@ module {
   }
 
   func.func @PPE_FP16_FP16_CONV_LPRELU() {
-    ELF.Main @ELFMain {
+    ELF.Main {
       ELF.CreateLogicalSection @program.metadata.cmx aligned(32) secType(VPU_SHT_CMX_METADATA) secFlags("SHF_NONE") secLocation(<CMX_NN>) {
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DPUInvariant_0_0_0 idx(!VPURegMapped.Index<0:0:0>) <DPUInvariant>
       }
@@ -173,7 +173,7 @@ module {
   }
 
   func.func @PPE_FP16_BFP16_CONV() {
-    ELF.Main @ELFMain {
+    ELF.Main {
       ELF.CreateLogicalSection @program.metadata.cmx aligned(32) secType(VPU_SHT_CMX_METADATA) secFlags("SHF_NONE") secLocation(<CMX_NN>) {
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DPUInvariant_0_0_0 idx(!VPURegMapped.Index<0:0:0>) <DPUInvariant>
       }
@@ -226,7 +226,7 @@ module {
   }
 
   func.func @PPE_FP16_FP16_MAXPOOL() {
-    ELF.Main @ELFMain {
+    ELF.Main {
       ELF.CreateLogicalSection @program.metadata.cmx aligned(32) secType(VPU_SHT_CMX_METADATA) secFlags("SHF_NONE") secLocation(<CMX_NN>) {
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DPUInvariant_0_0_0 idx(!VPURegMapped.Index<0:0:0>) <DPUInvariant>
       }
@@ -275,7 +275,7 @@ module {
   }
 
   func.func @PPE_FP16_FP16_ELTWISE() {
-    ELF.Main @ELFMain {
+    ELF.Main {
       ELF.CreateLogicalSection @program.metadata.cmx aligned(32) secType(VPU_SHT_CMX_METADATA) secFlags("SHF_NONE") secLocation(<CMX_NN>) {
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DPUInvariant_0_0_0 idx(!VPURegMapped.Index<0:0:0>) <DPUInvariant>
       }
@@ -329,7 +329,7 @@ module {
   }
 
   func.func @PPE_FP16_FP16_AVEPOOL() {
-    ELF.Main @ELFMain {
+    ELF.Main {
       ELF.CreateLogicalSection @program.metadata.cmx aligned(32) secType(VPU_SHT_CMX_METADATA) secFlags("SHF_NONE") secLocation(<CMX_NN>) {
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DPUInvariant_0_0_0 idx(!VPURegMapped.Index<0:0:0>) <DPUInvariant>
       }
@@ -384,7 +384,7 @@ module {
   }
 
   func.func @PPE_U8_FP16_CONV() {
-    ELF.Main @ELFMain {
+    ELF.Main {
       ELF.CreateLogicalSection @program.metadata.cmx aligned(32) secType(VPU_SHT_CMX_METADATA) secFlags("SHF_NONE") secLocation(<CMX_NN>) {
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DPUInvariant_0_0_0 idx(!VPURegMapped.Index<0:0:0>) <DPUInvariant>
       }
@@ -437,7 +437,7 @@ module {
   }
 
   func.func @PPE_FP16_U8_CONV() {
-    ELF.Main @ELFMain {
+    ELF.Main {
       ELF.CreateLogicalSection @program.metadata.cmx aligned(32) secType(VPU_SHT_CMX_METADATA) secFlags("SHF_NONE") secLocation(<CMX_NN>) {
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DPUInvariant_0_0_0 idx(!VPURegMapped.Index<0:0:0>) <DPUInvariant>
       }
@@ -492,7 +492,7 @@ module {
   }
 
   func.func @PPE_U8_U8_CONV() {
-    ELF.Main @ELFMain {
+    ELF.Main {
       ELF.CreateLogicalSection @program.metadata.cmx aligned(32) secType(VPU_SHT_CMX_METADATA) secFlags("SHF_NONE") secLocation(<CMX_NN>) {
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DPUInvariant_0_0_0 idx(!VPURegMapped.Index<0:0:0>) <DPUInvariant>
       }
@@ -545,7 +545,7 @@ module {
   }
 
   func.func @PPE_U8_U8_ELTWISE_LRELU() {
-    ELF.Main @ELFMain {
+    ELF.Main {
       ELF.CreateLogicalSection @program.metadata.cmx aligned(32) secType(VPU_SHT_CMX_METADATA) secFlags("SHF_NONE") secLocation(<CMX_NN>) {
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DPUInvariant_0_0_0 idx(!VPURegMapped.Index<0:0:0>) <DPUInvariant>
       }
@@ -598,7 +598,7 @@ module {
   }
 
   func.func @PPE_U8_U8_AVEPOOL() {
-    ELF.Main @ELFMain {
+    ELF.Main {
       ELF.CreateLogicalSection @program.metadata.cmx aligned(32) secType(VPU_SHT_CMX_METADATA) secFlags("SHF_NONE") secLocation(<CMX_NN>) {
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DPUInvariant_0_0_0 idx(!VPURegMapped.Index<0:0:0>) <DPUInvariant>
       }
@@ -648,7 +648,7 @@ module {
   }
 
   func.func @PPE_U8_U8_MAXPOOL() {
-    ELF.Main @ELFMain {
+    ELF.Main {
       ELF.CreateLogicalSection @program.metadata.cmx aligned(32) secType(VPU_SHT_CMX_METADATA) secFlags("SHF_NONE") secLocation(<CMX_NN>) {
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DPUInvariant_0_0_0 idx(!VPURegMapped.Index<0:0:0>) <DPUInvariant>
       }
@@ -698,7 +698,7 @@ module {
   }
 
   func.func @PPE_U8_FP16_MAXPOOL() {
-    ELF.Main @ELFMain {
+    ELF.Main {
       ELF.CreateLogicalSection @program.metadata.cmx aligned(32) secType(VPU_SHT_CMX_METADATA) secFlags("SHF_NONE") secLocation(<CMX_NN>) {
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DPUInvariant_0_0_0 idx(!VPURegMapped.Index<0:0:0>) <DPUInvariant>
       }

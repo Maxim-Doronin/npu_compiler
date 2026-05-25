@@ -4,13 +4,13 @@
 //
 
 #include "vpux/compiler/compiler_hash.hpp"
-#include "vpux/compiler/core/developer_build_utils.hpp"
 #include "vpux/compiler/dialect/ELF/IR/dialect.hpp"
 #include "vpux/compiler/dialect/ELF/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUASM/dialect.hpp"
 #include "vpux/compiler/dialect/VPUASM/ops.hpp"
 #include "vpux/compiler/dialect/VPUASM/passes.hpp"
 #include "vpux/compiler/utils/passes.hpp"
+#include "vpux/utils/core/developer_build_utils.hpp"
 
 namespace vpux::VPUASM {
 #define GEN_PASS_DECL_ADDCOMPILERHASH

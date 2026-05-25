@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-expand --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --convert-expand --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU5010
 
 !qElemType = !quant.uniform<f8E4M3FN:f16, 0.01>
 
@@ -31,7 +31,7 @@ func.func @ExpandEndF8E4M3FN(%arg0: memref<1x3x4x4x!qElemType>) -> memref<1x8x4x
     // CHECK-SAME:       inputs([[CST_END]] : memref<1x5x4x4x!qElemType>) outputs([[VIEW_1]] : memref<1x5x4x4x!qElemType, {order = #NCHW, strides = [128, 16, 4, 1]}>) -> memref<1x5x4x4x!qElemType, {order = #NCHW, strides = [128, 16, 4, 1]}>
 
     // CHECK:        [[OUT:%.+]] = VPUIP.ConcatView
-    // CHECK-SAME:       inputs([[COPY_0]], [[COPY_1]] : memref<1x3x4x4x!qElemType, {order = #NCHW, strides = [128, 16, 4, 1]}>, memref<1x5x4x4x!qElemType, {order = #NCHW, strides = [128, 16, 4, 1]}>) outputs(%alloc : memref<1x8x4x4x!qElemType>) -> memref<1x8x4x4x!qElemType>
+    // CHECK-SAME:       inputs([[COPY_0]], [[COPY_1]] : memref<1x3x4x4x!qElemType, {order = #NCHW, strides = [128, 16, 4, 1]}>, memref<1x5x4x4x!qElemType, {order = #NCHW, strides = [128, 16, 4, 1]}>) outputs([[OUT_BUFFER]] : memref<1x8x4x4x!qElemType>) -> memref<1x8x4x4x!qElemType>
 
     // CHECK: return [[OUT]] : memref<1x8x4x4x!qElemType>
 }
@@ -63,7 +63,7 @@ func.func @ExpandBeginF8E5M2(%arg0: memref<1x3x4x4x!qElemType>) -> memref<1x8x4x
     // CHECK-SAME:       inputs([[INPUT]] : memref<1x3x4x4x!qElemType>) outputs([[VIEW_1]] : memref<1x3x4x4x!qElemType, {order = #NCHW, strides = [128, 16, 4, 1]}>) -> memref<1x3x4x4x!qElemType, {order = #NCHW, strides = [128, 16, 4, 1]}>
 
     // CHECK:        [[OUT:%.+]] = VPUIP.ConcatView
-    // CHECK-SAME:       inputs([[COPY_0]], [[COPY_1]] : memref<1x5x4x4x!qElemType, {order = #NCHW, strides = [128, 16, 4, 1]}>, memref<1x3x4x4x!qElemType, {order = #NCHW, strides = [128, 16, 4, 1]}>) outputs(%alloc : memref<1x8x4x4x!qElemType>) -> memref<1x8x4x4x!qElemType>
+    // CHECK-SAME:       inputs([[COPY_0]], [[COPY_1]] : memref<1x5x4x4x!qElemType, {order = #NCHW, strides = [128, 16, 4, 1]}>, memref<1x3x4x4x!qElemType, {order = #NCHW, strides = [128, 16, 4, 1]}>) outputs([[OUT_BUFFER]] : memref<1x8x4x4x!qElemType>) -> memref<1x8x4x4x!qElemType>
 
     // CHECK: return [[OUT]] : memref<1x8x4x4x!qElemType>
 }
@@ -101,7 +101,7 @@ func.func @ExpandBeginAndEndF8E4M3FN(%arg0: memref<1x3x4x4x!qElemType>) -> memre
     // CHECK-SAME:       inputs([[CST_END]] : memref<1x2x4x4x!qElemType>) outputs([[VIEW_2]] : memref<1x2x4x4x!qElemType, {order = #NCHW, strides = [128, 16, 4, 1]}>) -> memref<1x2x4x4x!qElemType, {order = #NCHW, strides = [128, 16, 4, 1]}>
 
     // CHECK:        [[OUT:%.+]] = VPUIP.ConcatView
-    // CHECK-SAME:       inputs([[COPY_0]], [[COPY_1]], [[COPY_2]] : memref<1x3x4x4x!qElemType, {order = #NCHW, strides = [128, 16, 4, 1]}>, memref<1x3x4x4x!qElemType, {order = #NCHW, strides = [128, 16, 4, 1]}>, memref<1x2x4x4x!qElemType, {order = #NCHW, strides = [128, 16, 4, 1]}>) outputs(%alloc : memref<1x8x4x4x!qElemType>) -> memref<1x8x4x4x!qElemType>
+    // CHECK-SAME:       inputs([[COPY_0]], [[COPY_1]], [[COPY_2]] : memref<1x3x4x4x!qElemType, {order = #NCHW, strides = [128, 16, 4, 1]}>, memref<1x3x4x4x!qElemType, {order = #NCHW, strides = [128, 16, 4, 1]}>, memref<1x2x4x4x!qElemType, {order = #NCHW, strides = [128, 16, 4, 1]}>) outputs([[OUT_BUFFER]] : memref<1x8x4x4x!qElemType>) -> memref<1x8x4x4x!qElemType>
 
     // CHECK: return [[OUT]] : memref<1x8x4x4x!qElemType>
 }
@@ -130,22 +130,22 @@ func.func @MultiplePrecisionExpands(%arg0: memref<1x3x9x4xf16>, %arg1: memref<1x
     // CHECK:        [[VIEW_0:%.+]] = VPUIP.SubView [[OUT_BUFFER_0]] [0, 0, 0, 0] [1, 3, 9, 4]
     // CHECK-SAME:       : memref<1x9x9x4xf16> to memref<1x3x9x4xf16, {order = #NCHW, strides = [324, 36, 4, 1]}>
     // CHECK:        [[COPY_0:%.+]] = VPUIP.Copy
-    // CHECK-SAME:       inputs([[INPUT_0]] : memref<1x3x9x4xf16>) outputs(%0 : memref<1x3x9x4xf16, {order = #NCHW, strides = [324, 36, 4, 1]}>) -> memref<1x3x9x4xf16, {order = #NCHW, strides = [324, 36, 4, 1]}>
+    // CHECK-SAME:       inputs([[INPUT_0]] : memref<1x3x9x4xf16>) outputs([[VIEW_0]] : memref<1x3x9x4xf16, {order = #NCHW, strides = [324, 36, 4, 1]}>) -> memref<1x3x9x4xf16, {order = #NCHW, strides = [324, 36, 4, 1]}>
     // CHECK:        [[VIEW_1:%.+]] = VPUIP.SubView [[OUT_BUFFER_0]] [0, 3, 0, 0] [1, 3, 5, 4]
     // CHECK-SAME:       : memref<1x9x9x4xf16> to memref<1x3x5x4xf16, {order = #NCHW, strides = [324, 36, 4, 1]}>
     // CHECK:        [[COPY_1:%.+]] = VPUIP.Copy
-    // CHECK-SAME:       inputs([[CST_END_1]] : memref<1x3x5x4xf16>) outputs(%2 : memref<1x3x5x4xf16, {order = #NCHW, strides = [324, 36, 4, 1]}>) -> memref<1x3x5x4xf16, {order = #NCHW, strides = [324, 36, 4, 1]}>
+    // CHECK-SAME:       inputs([[CST_END_1]] : memref<1x3x5x4xf16>) outputs([[VIEW_1]] : memref<1x3x5x4xf16, {order = #NCHW, strides = [324, 36, 4, 1]}>) -> memref<1x3x5x4xf16, {order = #NCHW, strides = [324, 36, 4, 1]}>
 
     // CHECK:        [[OUT_BUFFER_1:%.+]] = memref.alloc() : memref<1x9x9x4x!qElemType>
     // CHECK:        [[VIEW_2:%.+]] = VPUIP.SubView [[OUT_BUFFER_1]] [0, 0, 0, 0] [1, 9, 4, 4]
     // CHECK-SAME:       : memref<1x9x9x4x!qElemType> to memref<1x9x4x4x!qElemType, {order = #NCHW, strides = [324, 36, 4, 1]}>
     // CHECK:        [[COPY_2:%.+]] = VPUIP.Copy
-    // CHECK-SAME:       inputs([[INPUT_1]] : memref<1x9x4x4x!qElemType>) outputs(%4 : memref<1x9x4x4x!qElemType, {order = #NCHW, strides = [324, 36, 4, 1]}>) -> memref<1x9x4x4x!qElemType, {order = #NCHW, strides = [324, 36, 4, 1]}>
+    // CHECK-SAME:       inputs([[INPUT_1]] : memref<1x9x4x4x!qElemType>) outputs([[VIEW_2]] : memref<1x9x4x4x!qElemType, {order = #NCHW, strides = [324, 36, 4, 1]}>) -> memref<1x9x4x4x!qElemType, {order = #NCHW, strides = [324, 36, 4, 1]}>
     // CHECK:        [[VIEW_3:%.+]] = VPUIP.SubView [[OUT_BUFFER_1]] [0, 0, 4, 0] [1, 9, 5, 4]
     // CHECK-SAME:       : memref<1x9x9x4x!qElemType> to memref<1x9x5x4x!qElemType, {order = #NCHW, strides = [324, 36, 4, 1]}>
     // CHECK:        [[COPY_3:%.+]] = VPUIP.Copy
-    // CHECK-SAME:       inputs([[CST_END_0]] : memref<1x9x5x4x!qElemType>) outputs(%6 : memref<1x9x5x4x!qElemType, {order = #NCHW, strides = [324, 36, 4, 1]}>) -> memref<1x9x5x4x!qElemType, {order = #NCHW, strides = [324, 36, 4, 1]}>
-    // CHECK:        [[OUT:%.+]] = VPUIP.ConcatView inputs(%5, %7 : memref<1x9x4x4x!qElemType, {order = #NCHW, strides = [324, 36, 4, 1]}>, memref<1x9x5x4x!qElemType, {order = #NCHW, strides = [324, 36, 4, 1]}>) outputs(%alloc_1 : memref<1x9x9x4x!qElemType>) -> memref<1x9x9x4x!qElemType>
+    // CHECK-SAME:       inputs([[CST_END_0]] : memref<1x9x5x4x!qElemType>) outputs([[VIEW_3]] : memref<1x9x5x4x!qElemType, {order = #NCHW, strides = [324, 36, 4, 1]}>) -> memref<1x9x5x4x!qElemType, {order = #NCHW, strides = [324, 36, 4, 1]}>
+    // CHECK:        [[OUT:%.+]] = VPUIP.ConcatView inputs([[COPY_2]], [[COPY_3]] : memref<1x9x4x4x!qElemType, {order = #NCHW, strides = [324, 36, 4, 1]}>, memref<1x9x5x4x!qElemType, {order = #NCHW, strides = [324, 36, 4, 1]}>) outputs([[OUT_BUFFER_1]] : memref<1x9x9x4x!qElemType>) -> memref<1x9x9x4x!qElemType>
 
     // CHECK: return [[OUT]] : memref<1x9x9x4x!qElemType>
 }

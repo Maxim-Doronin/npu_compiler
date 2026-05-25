@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --verify-diagnostics --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --convert-layers-to-VPU %s | FileCheck %s
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt --split-input-file --verify-diagnostics --init-compiler="platform=%platform% compilation-mode=DefaultHW" --convert-layers-to-VPU %s | FileCheck %s
+// REQUIRES: platform-NPU5010
 
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
@@ -49,19 +49,19 @@ func.func @FlashSDPA(%arg0: tensor<1x8x64x64xf16>, %arg1: tensor<1x8x32x64xf16>,
     // CHECK-DAG:   [[IN_MAX_RESHAPED:%.+]] = VPU.AffineReshape([[IN_MAX]]) {dim_mapping = {{\[\[}}0], [0], [1], [2, 3]], shape_value = [1, 8, 64, 1]} : tensor<1x1x8x64xf16> -> tensor<1x8x64x1xf16>
     // CHECK-DAG:   [[IN_SUM_RESHAPED:%.+]] = VPU.AffineReshape([[IN_SUM]]) {dim_mapping = {{\[\[}}0], [0], [1], [2, 3]], shape_value = [1, 8, 64, 1]} : tensor<1x1x8x64xf32> -> tensor<1x8x64x1xf32>
 
-    // CHECK-DAG:   [[AUX_BUF:%.+]] = VPU.Empty : tensor<1x4x64x32xf16>
+    // CHECK-DAG:   [[AUX_BUF:%.+]] = VPU.Empty : tensor<1x2x64x32xf16>
     // CHECK-DAG:   [[DPU_DESCRIPTORS_BUF:%.+]] = const.Declare tensor<1x1x2x256xsi32> = dense<0> : tensor<1x1x2x256xsi32>
     // CHECK-DAG:   [[WEIGHTS_TABLE_0:%.+]] = const.Declare tensor<1x1x32x4xsi32> = dense
     // CHECK-DAG:   [[WEIGHTS_TABLE_1:%.+]] = const.Declare tensor<1x1x128x4xsi32> = dense
 
-    // CHECK:           [[RES_OUT:%[^, ]+]], [[RES_MAX:%[^, ]+]], [[RES_SUM:%[^, ]+]], [[RES_QUERY:%[^, ]+]] =
+    // CHECK:           [[RES_OUT:%[^, ]+]], [[RES_MAX:%[^, ]+]], [[RES_SUM:%[^, ]+]] =
     // CHECK-SAME:              VPU.FlashSDPA([[QUERY]], [[KEY]], [[VALUE]], [[AUX_BUF]],
     // CHECK-SAME:                            [[DPU_DESCRIPTORS_BUF]], [[WEIGHTS_TABLE_0]], [[WEIGHTS_TABLE_1]],
     // CHECK-SAME:                            [[IN_OUT]], [[IN_MAX_RESHAPED]], [[IN_SUM_RESHAPED]]) {
     // CHECK-SAME:                      is_head = true,
     // CHECK-SAME:                      is_tail = true,
     // CHECK-SAME:                      source_seq_len_pad_size = 0 : i64
-    // CHECK-SAME:                  -> tensor<1x8x64x128xf16>, tensor<1x8x64x1xf16>, tensor<1x8x64x1xf32>, tensor<1x8x64x64xf16>
+    // CHECK-SAME:                  -> tensor<1x8x64x128xf16>, tensor<1x8x64x1xf16>, tensor<1x8x64x1xf32>
 
     // CHECK-DAG:   [[RESHAPED_RES_MAX:%.+]] = VPU.AffineReshape([[RES_MAX]]) {dim_mapping = {{\[\[}}0, 1], [2], [3], [3]], shape_value = [1, 1, 8, 64]} : tensor<1x8x64x1xf16> -> tensor<1x1x8x64xf16>
     // CHECK-DAG:   [[RESHAPED_RES_SUM:%.+]] = VPU.AffineReshape([[RES_SUM]]) {dim_mapping = {{\[\[}}0, 1], [2], [3], [3]], shape_value = [1, 1, 8, 64]} : tensor<1x8x64x1xf32> -> tensor<1x1x8x64xf32>

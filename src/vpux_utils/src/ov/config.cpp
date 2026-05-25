@@ -5,7 +5,7 @@
 
 //
 
-#include "vpux/utils/IE/config.hpp"
+#include "vpux/utils/ov/config.hpp"
 #include "intel_npu/config/options.hpp"
 
 #include <openvino/core/except.hpp>

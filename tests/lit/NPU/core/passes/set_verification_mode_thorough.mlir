@@ -4,8 +4,8 @@
 //
 
 
-// RUN: vpux-opt --init-compiler="vpu-arch=%arch%" --setup-location-verifier="mode=thorough" %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX
+// RUN: vpux-opt --init-compiler="platform=%platform%" --setup-location-verifier="mode=thorough" %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000
 
 module @mainModule {
 }

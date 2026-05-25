@@ -5,10 +5,8 @@
 
 #include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
-#include "vpux/compiler/dialect/const/attributes/stable_hash_storage.hpp"
 #include "vpux/compiler/dialect/const/utils/transformations.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
-#include "vpux/compiler/utils/stable_hash.hpp"
 #include "vpux/utils/core/format.hpp"
 #include "vpux/utils/core/func_ref.hpp"
 #include "vpux/utils/core/numeric.hpp"
@@ -63,14 +61,18 @@ void unpackSubByteData(MutableArrayRef<DataType> targetData, ArrayRef<DataType> 
     const auto numBytes = sourceData.size();
     for (size_t byteIdx = 0; byteIdx < numBytes; byteIdx++) {
         for (size_t elemIdxPerByte = 0; elemIdxPerByte < elemPerByte; elemIdxPerByte++) {
+            const size_t outIdx = byteIdx * elemPerByte + elemIdxPerByte;
+            if (outIdx >= targetData.size()) {
+                return;
+            }
             const size_t lShift = rShift - (elemIdxPerByte * bitWidth);
             // convert to *unsigned* type to perform well-defined left shift
-            auto unsignedVal = llvm::bit_cast<uint8_t>(sourceData[byteIdx]);
-            unsignedVal <<= lShift;
+            const auto sourceByte = llvm::bit_cast<uint8_t>(sourceData[byteIdx]);
+            const uint8_t unsignedVal = sourceByte << lShift;
             // convert back to (potentially signed) data type to perform right
             // shift (with sign extension when signed)
             const auto val = llvm::bit_cast<DataType>(unsignedVal);
-            targetData[byteIdx * elemPerByte + elemIdxPerByte] = (val >> rShift);
+            targetData[outIdx] = (val >> rShift);
         }
     }
 }
@@ -120,7 +122,7 @@ Const::Content vpux::Const::ConvertElemTypeAttr::transform(vpux::Const::Content&
         return convertQuantizedToQuantizedWithZeroPoint(input, qTypeIn, qTypeOut, outNDType);
     }
 
-    if (mlir::isa<mlir::quant::QuantizedType, vpux::type::QuantileFloatType>(inElementType)) {
+    if (mlir::isa<mlir::quant::QuantizedType, vpux::type::QuantileType>(inElementType)) {
         // TODO: Support dequantization transformation
         VPUX_THROW("Unsupported conversion: {0} -> {1}", inElementType, outElementType);
     }

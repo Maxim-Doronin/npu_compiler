@@ -57,15 +57,13 @@ bool vpux::VPU::isSupportedPermutation(mlir::Operation* nceOp, mlir::Operation* 
     auto seExperimentalOpsEnabled = config::hasEnableExperimentalSEPtrsOperations(moduleOp);
 
     if (seExperimentalOpsEnabled && seOpsEnabled) {
-        const auto logCb = [&](const formatv_object_base& msg) {
-            Logger::global().trace("{0}", msg.str());
-        };
         // TODO: E153229
         if (auto groupConv = mlir::dyn_cast_or_null<IE::GroupConvolutionOp>(nceOp)) {
-            const auto isSepDilatedConv =
-                    VPU::isSupportedSEPDilatedConv(groupConv, logCb,
-                                                   /*checkLayout=*/false, /*checkChannelAlignment=*/false);
-            if (isSepDilatedConv) {
+            auto seOp = mlir::dyn_cast<IE::SEOpInterface>(groupConv.getOperation());
+            const auto logCb = [&](const formatv_object_base& msg) {
+                Logger::global().trace("{0}", msg.str());
+            };
+            if (seOp && seOp.isSupported(logCb)) {
                 supportedOrders = {DimsOrder::NHWC, DimsOrder::NWHC};
             }
         }

@@ -15,8 +15,12 @@ include "mlir/Pass/PassBase.td"
 def InitResources : PassBase<"init-resources", "vpux::ModulePass"> {
     let summary = "Initializes compiler for VPU platforms";
     let description = [{
-        This pass attaches VPU related compilation parameters to Module attributes and
-        initializes run-time resources information.
+        AI-generated summary
+
+        Initializes VPU resource configuration by reading compilation options and populating
+        IE::TileResourceOp, IE::MemoryResourceOp, and IE::ExecutorResourceOp attributes.
+        Sets DPU count per tile, available memory sizes for each memory kind (CMX, DDR),
+        and SHAVE actor count based on the target platform (NPU37XX, NPU40XX, etc.).
     }];
 
     let constructor = "vpux::VPU::createInitResourcesPass()";
@@ -70,6 +74,28 @@ def InitResources : PassBase<"init-resources", "vpux::ModulePass"> {
 }
 
 //
+// RegisterPassDisablingExecutionContext
+//
+
+def RegisterPassDisablingExecutionContext : PassBase<"register-pass-disabling-execution-context", "vpux::ModulePass"> {
+    let summary = "Registers the PassDisablingExecutionContext";
+    let description = [{
+        Registers the PassDisablingExecutionContext, which is used to disable specific
+        passes in the compiler pipeline based on regex provided by option `disabled-passes`.
+    }];
+
+    let constructor = "vpux::VPU::createRegisterPassDisablingExecutionContextPass()";
+
+    let options = [
+        Option<
+            "disabledPassesOpt", "disabled-passes",
+            "std::string", "",
+            "Regex for disabling specific passes in the compiler pipeline"
+        >
+    ];
+}
+
+//
 // DMATaskProfilingReserveMem
 //
 
@@ -77,7 +103,12 @@ def DMATaskProfilingReserveMem : PassBase<"dma-task-profiling-reserve-mem", "vpu
     let summary = "DMA task profiling memory reserving";
 
     let description = [{
-        This pass adds in ModuleOp information about reserved memory for DMA profiling.
+        AI-generated summary
+
+        Reserves CMX memory for DMA task profiling buffers by analyzing the scheduled DMA
+        operations and computing required profiling buffer sizes. Inserts IE::MemoryResourceOp
+        declarations to account for DMA hardware profiling storage, ensuring profiling data
+        collection does not conflict with inference workload memory allocation.
     }];
 
     let options = [
@@ -99,9 +130,11 @@ def CompressDmaReserveMem : PassBase<"compress-dma-reserve-mem", "vpux::ModulePa
     let summary = "Reserve memory for additional compressedDMA metadata";
 
     let description = [{
+        AI-generated summary
+
         Reserve memory in CMX where additional metadata is stored for compressed DMAs handling activation spilling.
-        In this memory Compressed DMA wil store a LUT with actual compressed data sizee that is later to be used
-        by decompress DMA
+        In this memory Compressed DMA will store a LUT with actual compressed data size that is later to be used
+        by decompress DMA.
     }];
 
     let constructor = "vpux::VPU::createCompressDmaReserveMemPass()";
@@ -115,11 +148,13 @@ def SWKernelDataPrefetchReserveMem : PassBase<"sw-kernel-data-prefetch-reserve-m
     let summary = "Reserve memory for SW Kernel data prefetching";
 
     let description = [{
+        AI-generated summary
+
         SW Kernel reads extra few bytes of data for better performance.
         When input buffer is at the end of CMX, reading extra data would cause ACT SHAVE read violation.
         Now we reserve CMX for profiling and activation compression at the end of CMX.
         This pass checks the total reserved memory size and inserts a dummy section if necessary, to ensure
-        the total reserved memory size is safe for SW Kenel data prefetching.
+        the total reserved memory size is safe for SW Kernel data prefetching.
 
         This pass eliminates the risk of ACT SHAVE read violation, but model performance might be impacted.
         One case is described in E#122488, where DMA and DPU execution pipeline is impacted by the memory layout adjustment.
@@ -145,17 +180,22 @@ def SWKernelInstructionPrefetchReserveMemForDummyKernels : PassBase<"sw-kernel-i
 }
 
 //
-// ShaveStacksReserveMem
+// CMXStackFramesReserveMem
 //
 
-def ShaveStacksReserveMem : PassBase<"shave-stacks-reserve-mem", "vpux::ModulePass"> {
-    let summary = "Reserve memory for SHAVE stacks";
+def CMXStackFramesReserveMem : PassBase<"cmx-stack-frames-reserve-mem", "vpux::ModulePass"> {
+    let summary = "Reserve additional CMX memory for shave stack frames";
 
     let description = [{
-        This pass adds in ModuleOp information about reserved memory in CMX for additional SHAVE stacks.
+        AI-generated summary
+
+        Reserves CMX memory for SHAVE processor stack allocations by calculating required
+        stack sizes based on the number of SHAVE engines and per-engine stack requirements.
+        Creates IE::MemoryResourceOp declarations that reduce available CMX capacity, ensuring
+        stack regions do not overlap with tensor data during inference execution.
     }];
 
-    let constructor = "vpux::VPU::createShaveStacksReserveMemPass()";
+    let constructor = "vpux::VPU::createCMXStackFramesReserveMemPass()";
 }
 
 //
@@ -166,6 +206,8 @@ def SCFVerticalFusion : PassBase<"scf-vertical-fusion", "vpux::FunctionPass"> {
     let summary = "Apply VF to operations and convert it to scf representation";
 
     let description = [{
+        AI-generated summary
+
         Applies scf tiling to operation and searches for its parents to merge
         to the loop.
         For all operations which might be fused the optimal number of tiles is calculated.
@@ -174,7 +216,7 @@ def SCFVerticalFusion : PassBase<"scf-vertical-fusion", "vpux::FunctionPass"> {
         Current algorithm doesn't compare cost of VF among different dimensions tiling and
         it doesn't compare the cost of VF vs operations without VF.
         Algorithm provides greedy approach to merge as much as possible based on same limitations which
-        non-scf algorithm has (aligned MC stratgies). To be extended to cost comparison further.
+        non-scf algorithm has (aligned MC strategies). To be extended to cost comparison further.
     }];
 
     let constructor = "vpux::VPU::createSCFVerticalFusionPass()";
@@ -198,6 +240,13 @@ def SCFMulticlustering : PassBase<"scf-multiclustering", "vpux::FunctionPass"> {
     let description = [{
         All ops with a multicluster strategy attached will be wrapped into an scf.forall
         loop which describes how its inputs/outputs are sliced and distributed per cluster.
+        For each op with a `multiClusterStrategy` attribute, the pass attempts to fuse
+        it and its producers. If fusion succeeds, they share the same scf.forall loop (avoiding spills).
+        Otherwise, the op is wrapped in its own multiclustering loop.
+
+        Additional transformations:
+        - when the pattern `scf.for { tensor.pad -> scf.forall {} }` is found, the tensor.pad
+          is moved inside the scf.forall loop to be closer to the consumer operation.
     }];
 
     let constructor = "vpux::VPU::createSCFMulticlusteringPass()";
@@ -211,6 +260,8 @@ def OutputPipelineTiling : PassBase<"output-pipeline-tiling", "vpux::FunctionPas
     let summary = "Increase the number of tiles so that sub-tiles can be executed in parallel";
 
     let description = [{
+        AI-generated summary
+
         Originally, tiling pipeline created tiles for a conv based operation to fit below operands on CMX with PIPELINING tiling mode:
         1) Activation of current tile
         2) Weights of current tile
@@ -220,7 +271,7 @@ def OutputPipelineTiling : PassBase<"output-pipeline-tiling", "vpux::FunctionPas
         As a result, DPU computation of next tile has to wait for previous tile's output spilling
         when there's no enough CMX memory size left for the next tile's result.
 
-        Output pipelining is introduced in to optimize such case by creating more and smaller tiles
+        Output pipelining is introduced to optimize such case by creating more and smaller tiles
         to fit all operands of 2 sub-tiles on CMX at the same time.
         This allows for better overlap between the cost of DMA data transmission and DPU computation.
     }];
@@ -244,8 +295,13 @@ def CostModelAnalysisConstruct : PassBase<"cost-model-analysis-construct", "vpux
     let summary = "This pass constructs a vpunn cost model instance and preserve it in an analysis";
 
     let description = [{
-        The pass constructs a VPUNN cost model according to option `version` and preserves it in analysis.
-        The cost model instance exists until the AnalysisManager is cleared
+        AI-generated summary
+
+        The pass constructs a VPUNN cost model and preserves it in the AnalysisManager.
+        Two analyses are created if not already cached:
+        - CostModelAnalysis: provides access to the raw VPUNN cost model instance.
+        - LayerCostModelAnalysis: provides a higher-level layer cost model built on top of VPUNN.
+        These instances exist until the AnalysisManager is cleared
         or the cost model analysis is cleared explicitly by pass `CostModelAnalysisDestroy`.
     }];
 
@@ -264,8 +320,14 @@ def CostModelAnalysisDestroy : PassBase<"cost-model-analysis-destroy", "vpux::Mo
     let summary = "This pass destroys a vpunn cost model instance if it exists";
 
     let description = [{
-        The pass destroys the VPUNN cost model instance if it exists
-        The destroyed cost model version is chosen by option `version`
+        AI-generated summary
+
+        The pass invalidates the cached cost model analyses if they exist.
+        Two analyses are targeted:
+        - CostModelAnalysis: the raw VPUNN cost model instance.
+        - LayerCostModelAnalysis: the higher-level layer cost model.
+        After invalidation, subsequent passes that need cost estimation must
+        reconstruct the analyses via CostModelAnalysisConstruct.
     }];
 
     let constructor = "vpux::VPU::createCostModelAnalysisDestroyPass()";
@@ -282,9 +344,11 @@ def PrintNNCacheStatistics : PassBase<"print-nn-cache-statistics", "vpux::Module
     let summary = "This pass prints nn cache statistics log";
 
     let description = [{
-        Since the cost model is singleton, the functional passA could affect the cache statistics for functional passB,
-        which could make nn cahce statistics log inaccurtate in passB.
-        This pass is used to synchronize parallel functions between functional passes, thus making nn cache statistics log more accurate.
+        AI-generated summary
+
+        Since the cost model is a singleton, passA can mutate the cache state observed by passB.
+        This pass logs the current VPUNN cache hit counter (`preloaded` count) for the
+        immediately preceding pass, allowing cache-effectiveness tracking across the pipeline.
     }];
 
     let constructor = "vpux::VPU::createPrintNNCacheStatisticsPass()";
@@ -299,7 +363,16 @@ def PrintNNCacheStatistics : PassBase<"print-nn-cache-statistics", "vpux::Module
 //
 
 def MultiClusterStrategyAssignment : PassBase<"multi-cluster-strategy-assignment", "vpux::FunctionPass"> {
-    let summary = "This pass compute the hardware efficiency of layer that is executed as SOH or SOK and assigns the most optimal strategy";
+    let summary = "Assign optimal multi-cluster strategies using greedy cost model analysis and subgraph optimization";
+
+    let description = [{
+        AI-generated summary
+
+        Determines optimal multi-cluster execution strategies for operations using VPUNN
+        cost model analysis. Assigns ISOLATED or PREFETCH tiling mode per operation.
+        Performs subgraph-level optimization and caches tiling results for performance.
+        Skips pure HostCompile functions and requires 2+ clusters.
+    }];
 
     let constructor = "vpux::VPU::createMultiClusterStrategyAssignmentPass()";
 
@@ -329,8 +402,19 @@ def MakeOpsWithDistributedTensor : PassBase<"make-ops-with-distributed-tensor", 
     let summary = "This pass creates vpu operations that should be executed across multiple clusters";
 
     let description = [{
-        This pass builds an IR in order to represent multi-cluster compilation. It performs a number of functions.
-        It creates variations of distributed tensors depending on the multi-cluster strategy of the layer.
+        AI-generated summary
+
+        This pass materializes multi-cluster compilation by converting operations with a
+        `multiClusterStrategy` attribute into their distributed-tensor equivalents.
+
+        For each ClusteredOpInterface operation with an assigned strategy, the pass:
+        1. Computes DistributedTensorType for each output result via `getDistributedTypeForOpResult`,
+           using SiblingOpsAnalysis to align distributions with sibling consumers.
+        2. Computes DistributedTensorType for each input operand via `getDistributedTypeForOpOperand`.
+        3. Replaces the types of the original operations with their DistributedTensor variants.
+
+        After conversion, the `multiClusterStrategy` attribute is removed from each processed op.
+        The pass handles both DPU and ACT SHAVE operations.
     }];
 
     let constructor = "vpux::VPU::createMakeOpsWithDistributedTensorPass()";
@@ -356,7 +440,15 @@ def MakeDistributedCopies : PassBase<"make-distributed-copies", "vpux::FunctionP
     let summary = "";
 
     let description = [{
-        This pass creates DMA operations DDR->CMX and CMX to DDR from UnrolledType
+        AI-generated summary
+
+        Lowers VPU.UnrolledTypeOp placeholders into concrete VPU.CopyOp operations for
+        distributed multi-tile data movement:
+        - UnrolledTypeToCopyConversion: replaces each UnrolledTypeOp with a VPU.CopyOp
+          (or eliminates it when both sides are non-distributed)
+        - OptimizeShapeCastDistributedCopies: when a VPU.ShapeCastOp sits between two
+          UnrolledTypeOps with OVERLAPPED distributions, inserts copy pairs so that
+          redundant copies cancel out after canonicalization
     }];
 
     let constructor = "vpux::VPU::createMakeDistributedCopiesPass()";
@@ -396,7 +488,12 @@ def EfficientIROrder : PassBase<"efficient-ir-order", "vpux::FunctionPass"> {
     let summary = "Change the IR order to execute operation more efficiently";
 
     let description = [{
-        Reorder IR around eltwise pattern in order to reach better performance on scheduling stage
+        AI-generated summary
+
+        Reorders operations in the IR to minimize live tensor memory by scheduling operations
+        that free memory before those that allocate. Uses a topological sort heuristic that
+        prioritizes operations consuming tensors with the fewest remaining users, reducing
+        peak CMX memory pressure.
     }];
 
     let constructor = "vpux::VPU::createEfficientIROrderPass()";
@@ -422,10 +519,12 @@ def WrapVerticalFusionRegion : PassBase<"wrap-in-vertical-fusion", "vpux::Functi
     let summary = "This pass wraps vpu operations that might be tiled in order to implement VF";
 
     let description = [{
+        AI-generated summary
+
         Wrap operations to VerticalFusion block which match criterias
-        1. Operation has activation tiling (activation doesn't fit in CMX)
-        2. NCE operations don't have strides larger than 1
-        3. Even if NCE operation doesn't have activation tiling, but its kernel is 1x1,
+        - Operation has activation tiling (activation doesn't fit in CMX)
+        - NCE operations don't have strides larger than 1
+        - Even if NCE operation doesn't have activation tiling, but its kernel is 1x1,
         it also might be wrapped because there is no additional computation cost of it
     }];
 
@@ -437,10 +536,8 @@ def WrapVerticalFusionRegion : PassBase<"wrap-in-vertical-fusion", "vpux::Functi
             "vpux::WorkloadManagementMode", "",
             "Setting which controls mode of WLM",
             [{::llvm::cl::values(
-                clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA", "WLM enqueue barriers search algorithm at VPURT enabled"),
                 clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_1_PAGES, "PWLM_V0_1_PAGES", "PWLM with split into subgraphs (pages)"),
-                clEnumValN(vpux::WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO", "WLM enqueue barriers search algorithm at VPURT disabled"),
-                clEnumValN(vpux::WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES", "WLM with split into subgraphs(pages)")
+                clEnumValN(vpux::WorkloadManagementMode::FWLM_V1_PAGES, "FWLM_V1_PAGES", "Full WLM with split into pages")
             )}]
         >
     ];
@@ -470,10 +567,8 @@ def MoveViewOpsToVF : PassBase<"move-view-ops-to-vf", "vpux::FunctionPass"> {
             "vpux::WorkloadManagementMode", "",
             "Setting which controls mode of WLM",
             [{::llvm::cl::values(
-                clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA", "WLM enqueue barriers search algorithm at VPURT ENABLED"),
                 clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_1_PAGES, "PWLM_V0_1_PAGES", "PWLM with split into subgraphs (pages)"),
-                clEnumValN(vpux::WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO", "WLM enqueue barriers search algorithm at VPURT DISABLED"),
-                clEnumValN(vpux::WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES", "WLM with split into subgraphs(pages)")
+                clEnumValN(vpux::WorkloadManagementMode::FWLM_V1_PAGES, "FWLM_V1_PAGES", "Full WLM with split into pages")
             )}]
         >
     ];
@@ -491,19 +586,21 @@ def MergeVfSubgraphs : PassBase<"merge-vertical-fusion-subgraphs", "vpux::Functi
     let summary = "Build subgraph from VF single regions";
 
     let description = [{
+        AI-generated summary
+
         Merge VF blocks and add operations to them recalculating tiling information
         and halo regions in following cases:
-        1. All operations have compatible tensor types (distributed and not distributed)
-        2. Region which is supposed to be added doesn't have any other users except current region or
+        - All operations have compatible tensor types (distributed and not distributed)
+        - Region which is supposed to be added doesn't have any other users except current region or
         all its users point to current region too. In newest versions the merging process is not skipped for other operands.
-        3. All operations in new region after merging fit in CMX when they are tiled for VF. In case they don't, number of tiles
+        - All operations in new region after merging fit in CMX when they are tiled for VF. In case they don't, number of tiles
         increases.
-        5. Required CMX memory by constant weights shouldn't exceed the threshold to avoid spilling.
+        - Required CMX memory by constant weights shouldn't exceed the threshold to avoid spilling.
 
         There are two versions of the VF merging implementation, referred to as v1 and v2. The differences in VF pipelining between
         these versions are as follows:
-        1. v1 only enables pipelining for the pattern NCE -> SW -> NCE.
-        2. v2 supports generic pipelining for any subgraph that includes both DPU and ActShave executor
+        - v1 only enables pipelining for the pattern NCE -> SW -> NCE.
+        - v2 supports generic pipelining for any subgraph that includes both DPU and ActShave executor
     }];
 
     let constructor = "vpux::VPU::createMergeVfSubgraphsPass()";
@@ -530,10 +627,8 @@ def MergeVfSubgraphs : PassBase<"merge-vertical-fusion-subgraphs", "vpux::Functi
             "vpux::WorkloadManagementMode", "",
             "Setting which controls mode of WLM",
             [{::llvm::cl::values(
-                clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA", "WLM enqueue barriers search algorithm at VPURT ENABLED"),
                 clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_1_PAGES, "PWLM_V0_1_PAGES", "PWLM with split into subgraphs (pages)"),
-                clEnumValN(vpux::WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO", "WLM enqueue barriers search algorithm at VPURT DISABLED"),
-                clEnumValN(vpux::WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES", "WLM with split into subgraphs(pages)")
+                clEnumValN(vpux::WorkloadManagementMode::FWLM_V1_PAGES, "FWLM_V1_PAGES", "Full WLM with split into pages")
             )}]
         >
     ];
@@ -609,7 +704,12 @@ def VfTiling : PassBase<"vertical-fusion-tiling", "vpux::FunctionPass"> {
     let summary = "Apply tiling on VF subgraph";
 
     let description = [{
-        Apply VF tiling on subgraph wrapped in VF region.
+        AI-generated summary
+
+        Tiles and unwraps VPU.VerticalFusionOp regions into sequences of individually tiled
+        operations that fit within CMX memory constraints. Computes tile dimensions along
+        spatial axes so each fused subgraph executes in CMX-sized chunks, then replaces the
+        VerticalFusionOp wrapper with the tiled operation sequence.
     }];
 
     let constructor = "vpux::VPU::createVfTilingPass()";
@@ -634,10 +734,8 @@ def VfTiling : PassBase<"vertical-fusion-tiling", "vpux::FunctionPass"> {
             "vpux::WorkloadManagementMode", "",
             "Setting which controls mode of WLM",
             [{::llvm::cl::values(
-                clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA", "WLM enqueue barriers search algorithm at VPURT ENABLED"),
                 clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_1_PAGES, "PWLM_V0_1_PAGES", "PWLM with split into subgraphs (pages)"),
-                clEnumValN(vpux::WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO", "WLM enqueue barriers search algorithm at VPURT DISABLED"),
-                clEnumValN(vpux::WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES", "WLM with split into subgraphs(pages)")
+                clEnumValN(vpux::WorkloadManagementMode::FWLM_V1_PAGES, "FWLM_V1_PAGES", "Full WLM with split into pages")
             )}]
         >
     ];
@@ -651,7 +749,11 @@ def UnrollUnusedVerticalFusionRegion : PassBase<"unroll-unused-vertical-fusion",
     let summary = "Unroll single VF blocks";
 
     let description = [{
-        Unroll VF block in case it hasn't been assembled with other blocks in subgraph
+        AI-generated summary
+
+        Removes vertical fusion regions that contain only a single operation or that did not
+        benefit from fusion. Extracts the operations from the VPU.VerticalFusion region body
+        back into the parent block and erases the empty region wrapper.
     }];
 
     let constructor = "vpux::VPU::createUnrollUnusedVerticalFusionRegionPass()";
@@ -669,9 +771,17 @@ def ManualStrategyUtils : PassBase<"manual-strategy-utils", "vpux::FunctionPass"
     let summary = "Utils for reading or writing a json strategy";
 
     let description = [{
-        Utility allowing to store and write as JSON the current selected strategy from the two strategy passes
-        createMultiClusterStrategyAssignmentPass() and createPrefetchTilingPass(). And also to manually
-        overwrite the strategy.
+        AI-generated summary
+
+        Utility for serializing, deserializing, and overriding compilation strategies
+        (multi-cluster, tiling, vertical fusion) as JSON. Supports:
+        - Writing current strategies to a JSON file for analysis/debugging
+        - Reading strategies from a JSON file to manually override assignments
+        - Dumping strategies to log for inspection (dump-to-log mode)
+        - Updating output pipelining strategies after tile count changes
+        - Storing vertical fusion (VF) tiling strategies to preserve info after unrolling
+        Thread-safe for parallel compilation via shared mutexes on file I/O. A model ID
+        hash prevents race conditions when multiple models compile concurrently.
     }];
 
     let constructor = "vpux::VPU::createManualStrategyUtilsPass()";
@@ -684,7 +794,7 @@ def ManualStrategyUtils : PassBase<"manual-strategy-utils", "vpux::FunctionPass"
         >,
         Option<
             "writeStrategyFileLocation", "write-strategy-file-location",
-            "std::string", [{"strategy.json"}],
+            "std::string", [{"strategy_out.json"}],
             "Location/path to write strategy file"
         >,
         Option<
@@ -694,7 +804,7 @@ def ManualStrategyUtils : PassBase<"manual-strategy-utils", "vpux::FunctionPass"
         >,
         Option<
             "readStrategyFileLocation", "read-strategy-file-location",
-            "std::string", [{"strategy.json"}],
+            "std::string", [{"strategy_in.json"}],
             "Location/path to read strategy file"
         >
     ];
@@ -709,7 +819,17 @@ def ManualStrategyUtils : PassBase<"manual-strategy-utils", "vpux::FunctionPass"
 //
 
 def SplitNCEOpsOntoWorkloads : PassBase<"split-NCE-ops-onto-workloads", "vpux::FunctionPass"> {
-    let summary = "Split VPU NCE operation onto workloads";
+    let summary = "Partition NCE operations into cost-optimized DPU workloads respecting hardware constraints";
+
+    let description = [{
+        AI-generated summary
+
+        Decomposes NCE operations into DPU workloads. Uses VPUNN LayersPreSplit API
+        when supported by the operation type, falling back to generic heuristic splitting
+        otherwise. Validates that per-cluster workload count does not exceed barrier variant
+        slot limits; reverts to heuristic mode if exceeded. Assigns the total VPUNN cost as
+        a DPUCost attribute on each NCE operation.
+    }];
 
     let constructor = "vpux::VPU::createSplitNCEOpsOntoWorkloadsPass()";
 
@@ -751,12 +871,15 @@ def CreateNewWeightTablesData : PassBase<"create-new-weight-tables-data", "vpux:
     let summary = "Correct new weight tables data with known workloads information";
     let description = [{
         This pass updates dedicated operations for table creation, used by NCE operations with the new weight table format.
-        It creates the zero-point table data and appends it to attribute of ZeroPointTableOp operation. Following steps are done:
+        It creates the zero-point table data or data-pointer table data. Appends it to attribute of ZeroPointTableOp or DataPointerTableOp
+        operation. Following steps are done:
         - Extracting workload channel counts from NCE operation
-        - Slicing quantization parameters (zero-points and scales) to match the NCE operation's output channels
-        - Generating zero-point table data with correct workload sizes
-        - Updating distributed types and memory shapes, to ensure proper 32-byte alignment
-        - Updating CopyOp operations which have ZeroPointTableOp as input
+        - Getting sliced quantization parameters (zero-points and scales) that match the NCE operation's output channels
+        - Generating zero-point table or data-pointer table data with correct workload sizes
+        - Updating distributed types and memory shapes, to ensure proper alignment (32-byte for zero-point and 256-byte for data-pointer tables)
+        - Updating CopyOp operations which have ZeroPointTableOp or DataPointerTableOp as input
+
+        To see more, read Zero-point table and Data-pointer table documentation in npu_compiler_hld.md
     }];
 
     let constructor = "vpux::VPU::createCreateNewWeightTablesDataPass()";
@@ -941,8 +1064,20 @@ def CMXConcat : PassBase<"cmx-concat", "vpux::FunctionPass"> {
     let constructor = "vpux::VPU::createCMXConcatPass()";
 
     let description = [{
-        This pass will try to check if a Concat operation can fit in NNCMX
-        with few restrictions and if so move the concat from DDR to NNCMX.
+        AI-generated summary
+
+        Moves Concat operations from DDR to NNCMX when the following conditions are met:
+        - Concat must be single-axis and not 5D.
+        - Input/output dimensions must not exceed VPU_DIMENSION_LIMIT.
+        - Input pattern: each concat input must come from an NCE op followed by a Copy,
+          or be a block argument / constant. NCEPermuteOp inputs are excluded.
+        - Output pattern: concat users must be Slice (DPU-supported split) or Copy
+          followed by an NCE op.
+        - For distributed (multi-cluster) types, input and output distribution attributes
+          must be compatible (same mode, num_clusters, per-cluster shapes/offsets).
+        - Combined input and output buffers must fit in available CMX memory.
+        When output pattern validation fails but input buffers alone fit in CMX, an
+        input-only CMX concat is performed as a fallback.
     }];
 
     let dependentDialects = [
@@ -976,9 +1111,14 @@ def DetectInPlaceEltwise : PassBase<"detect-in-place-eltwise", "vpux::FunctionPa
     let summary = "Convert Eltwise operation to read and write to the same buffer in memory";
 
     let description = [{
-        This pass will check if Eltwise operation has input and output buffers of the same size
-        in memory and mark such Eltwise eligible for inplace execution.
-        It will write the result into one of the inputs in memory.
+        AI-generated summary
+
+        Marks NCEEltwiseOp eligible for inplace execution when the operation does NOT fit in CMX,
+        so the result is written into one of the input buffers in DDR. The pass skips operations
+        that use sprLUT (which adds a dummy DPU task that would corrupt the input). Each input
+        candidate must be single-use, must not be a block argument, and must have a type compatible
+        with the output (checked via isCompatibleForInplaceOp). The first qualifying input is
+        selected and the isInplace attribute is set.
     }];
 
     let constructor = "vpux::VPU::createDetectInPlaceEltwisePass()";
@@ -1028,7 +1168,18 @@ def WrapOpsInSparsifyDesparsifyPairs : PassBase<"wrap-ops-in-sparsify-pairs", "v
 //
 
 def FuseSparsityOps : PassBase<"fuse-sparsity-ops", "vpux::FunctionPass"> {
-    let summary = "Fuse subsequent [De]SparsifyOps with SparseOpInterface ops";
+    let summary = "Eliminate redundant Sparsify/Desparsify conversions by fusing with compatible operations";
+
+    let description = [{
+        AI-generated summary
+
+        Removes redundant sparsity conversion operations by fusing Sparsify/Desparsify
+        with compatible sparse-aware producers and consumers. In desparsify-fusion mode,
+        replaces Desparsify->SparseCompatibleConsumer patterns with direct sparse output.
+        In sparsify-fusion mode, removes Sparsify operations when the producer supports
+        sparse outputs. This avoids the overhead of materializing dense intermediates between
+        sparse-aware operations.
+    }];
 
     let constructor = "vpux::VPU::createFuseSparsityOpsPass()";
 
@@ -1050,7 +1201,16 @@ def FuseSparsityOps : PassBase<"fuse-sparsity-ops", "vpux::FunctionPass"> {
 //
 
 def OptimizeSparsifyDesparsifyPairs : PassBase<"optimize-sparsify-desparsify-pairs", "vpux::FunctionPass"> {
-    let summary = "Optimize common patterns of subsequent sparsify-desparsify ops to remove redundant conversions";
+    let summary = "Eliminate Desparsify->Sparsify pair sequences and unwrap sparsity converters around Concat";
+
+    let description = [{
+        AI-generated summary
+
+        Removes unnecessary Desparsify->Sparsify pair sequences and simplifies sparsity
+        wrappers around Concat operations per the configured activation sparsity profile
+        (S0, S1, AUTO). S0/AUTO profiles require all Desparsify consumers to be Sparsify
+        ops; S1 profile allows mixed-mode consumers.
+    }];
 
     let constructor = "vpux::VPU::createOptimizeSparsifyDesparsifyPairsPass()";
 
@@ -1075,9 +1235,19 @@ def OptimizeSparsityOps : PassBase<"optimize-sparsity-ops", "vpux::FunctionPass"
     let summary = "Optimize additional sparsity patterns";
 
     let description = [{
-        Some optimizations such duplicated Sparsify ops for Eltwise, first Sparsify
-        or last Desparsify cant be done during WrapOpsInSparsifyDesparsifyPairs pass
-        until output sparsity wouldnt be fused
+        AI-generated summary
+
+        Optimizes sparsity operations that cannot be handled during WrapOpsInSparsifyDesparsifyPairs
+        because they depend on output sparsity fusion having already been applied.
+
+        Three rewrite patterns are applied:
+        - RemoveExtraSparsifyOp: For non-S1 profiles, removes SparsifyOp operations that have a
+           single use, replacing the sparse output with the dense input directly.
+        - RemoveDuplicatedSparsifyOps: When an NCEEltwiseOp has two separate SparsifyOp inputs
+           that originate from the same dense value, one duplicate SparsifyOp is eliminated.
+        - RemoveExtraDesparsifyOp: When a DesparsifyOp is the sole user of a SparseOpInterface
+           producer, the producer is changed to produce dense output directly and the DesparsifyOp
+           is removed.
     }];
 
     let constructor = "vpux::VPU::createOptimizeSparsityOpsPass(vpux::VPU::symbolizeEnum<VPU::ActivationSparsityProfile>)";
@@ -1133,7 +1303,12 @@ def SparsifyWeights : PassBase<"sparsify-weights", "vpux::FunctionPass"> {
     let summary = "Sparsify weights for NCE ops";
 
     let description = [{
-        Convert const parameters for NCE ops to sparse types depending on sparsify strategy.
+        AI-generated summary
+
+        Converts dense weight constants into sparse representation by analyzing zero-value
+        density. Generates sparsity maps and compressed data for weights that exceed a
+        configurable sparsity threshold, enabling the DPU to skip zero-weight MAC operations
+        and reduce DDR-to-CMX transfer bandwidth.
     }];
 
     let constructor = "vpux::VPU::createSparsifyWeightsPass()";
@@ -1152,7 +1327,13 @@ def RecomputeSparsityPtrs : PassBase<"recompute-sparsity-ptrs", "vpux::FunctionP
     let summary = "Recomputes sparsity pointers";
 
     let description = [{
-        Recomputes the sparsity pointers inside the weights table for sparse weights.
+        AI-generated summary
+
+        Patches sparsity pointer columns in weights table constants for NCE operations
+        with sparse weights. Computes the sparsity pointer step from the sparsity map
+        shape (IC x KY x KX in bits, converted to bytes) and writes sequential pointer
+        offsets into the weights table. Caches recomputed tables keyed by (step,
+        weightsTableConstOp) to avoid redundant work.
     }];
 
     let constructor = "vpux::VPU::createRecomputeSparsityPtrsPass()";
@@ -1190,13 +1371,22 @@ def SplitSEOps : PassBase<"split-se-ops", "vpux::FunctionPass"> {
     let summary = "Split compatible SE operations for better performance";
 
     let description = [{
+        AI-generated summary
+
         Finds operations that can be executed on hardware using the Storage Element pointers
         feature and splits them if they have benefits for performance.
 
-        The list of supported operations:
-        Interpolate Op that satisfied the following limitations:
-        - The NCEInterpolate size is larger than the CMX size;
-        - Both factors on H and W are larger than 4
+        The pass is only active when SE pointers operations are enabled in the module configuration.
+
+        Supported operations and their splitting criteria:
+        - SplitInterpolate (VPU.InterpolateOp):
+           - The NCEInterpolate size is larger than the CMX size;
+           - Both scale factors on H and W are larger than 4.
+           Splits the interpolate into two sequential operations, each handling one spatial axis.
+        - SplitRoll (VPU.RollOp):
+           - The roll operation with SE table does not fit into CMX;
+           - The roll operates on two spatial dimensions simultaneously (both H and W shifts are non-zero).
+           Splits into two sequential single-axis roll operations (first W, then H).
     }];
 
     let constructor = "vpux::VPU::createSplitSEOpsPass()";
@@ -1214,25 +1404,22 @@ def LowerOpsToSENCE : PassBase<"lower-ops-to-se-nce", "vpux::FunctionPass"> {
     let summary = "Converts compatible operations to SE NCE operations";
 
     let description = [{
-        Finds operations that can be executed on hardware using the Storage Element pointers
-        feature and lowers them to VPU.NCE.
+        AI-generated summary
 
-        The list of supported operations:
-        - Interpolate - mode: NEAREST
-                        axes: H, W
-                        coordinate_transformation_mode: all (except ALIGN_CORNERS)
-                        nearest_mode: all
-                        scale: integer only
-                        padding: none
+        Lowers operations that can leverage the Storage Element pointers (SEP) hardware
+        feature into VPU.NCE equivalents. Each operation is checked via SEOpInterface for
+        layout, channel alignment, and batch compatibility before conversion.
 
-                      - mode: LINEAR, LINEAR_ONNX
-                        axes: H, W
-                        coordinate_transformation_mode: ASYMMETRIC, PYTORCH_HALF_PIXEL, HALF_PIXEL
-                        scale: integer only
-                          - values between [1-5] for PYTORCH_HALF_PIXEL and HALF_PIXEL
-                            when the scale is an even number
-                          - values between [1-11] for all other cases
-                        padding: none
+        Supported operations:
+        - Interpolate -> VPU.NCE.Interpolate
+          * NEAREST mode: axes H/W, all coord modes (except ALIGN_CORNERS), integer scale
+          * LINEAR/LINEAR_ONNX mode: axes H/W, ASYMMETRIC/PYTORCH_HALF_PIXEL/HALF_PIXEL,
+            integer scale [1-11] (or [1-5] for even scale with HALF_PIXEL variants)
+        - TransposedConvolution -> VPU.NCE.Convolution (with upsampled input via SEP)
+        - Dilated GroupConvolution -> VPU.NCE.DepthConvolution (gated by experimental
+          SEP flag; dilation handled via SE table)
+        - Pad -> VPU.NCE.DepthConvolution (padding represented as SE pointers)
+        - Roll -> VPU.NCE.DepthConvolution (circular shift via SE table)
     }];
 
     let constructor = "vpux::VPU::createLowerOpsToSENCEPass()";
@@ -1354,7 +1541,12 @@ def ApplyTiling : PassBase<"apply-tiling", "vpux::FunctionPass"> {
     let summary = "Apply tiling on layers with assigned tiling strategy";
 
     let description = [{
-        The pass applies tiling strategy on layers with previously assigned strategy attribute.
+        AI-generated summary
+
+        Materializes tiling decisions by splitting operations with computed tile schemes into
+        explicit VPU.Slice and VPU.Concat sequences. For each operation with an attached tiling
+        strategy, generates per-tile sliced inputs, creates tiled operation instances, and
+        concatenates partial results, transforming logical tiles into concrete IR operations.
     }];
 
     let constructor = "vpux::VPU::createApplyTilingPass()";
@@ -1449,8 +1641,12 @@ def TileLSTMSequence : PassBase<"tile-lstm-sequence", "vpux::FunctionPass"> {
     let summary = "Tile the LSTMSequenceOp sequentially";
 
     let description = [{
-        Tile the LSTMSequenceOp sequentially, creating a chain of
-        LSTMSequenceOps split on the seq_length dimension.
+        AI-generated summary
+
+        Tiles VPU.LSTMSequence operations along the sequence length dimension to reduce
+        per-step memory requirements. Splits the input sequence into individual time steps,
+        creating separate LSTM cell operations for each step with proper hidden and cell
+        state forwarding between consecutive tiles.
     }];
 
     let constructor = "vpux::VPU::createTileLSTMSequencePass()";
@@ -1569,9 +1765,21 @@ def EnsureNCEOpsSizeRequirements : PassBase<"ensure-nce-ops-size-requirements", 
     let summary = "Ensure hw operations meet size requirements";
 
     let description = [{
-        This pass ensures that hardware operations meet hardware size requirements:
-        each operation need to have less than 8192 values per dimension. This is done
-        by tiling such operations into smaller ones.
+        AI-generated summary
+
+        Ensures NCE operations meet hardware dimension limits (VPU_DIMENSION_LIMIT = 8192
+        per dimension) by tiling oversized operations. Includes two rewrite patterns:
+        - EnsureConvICRequirements: splits NCEConvolutionOp input channels exceeding the
+          limit, respecting weights alignment and optional Concat-Slice alignment.
+        - EnsureNCEOpSizeRequirements: tiles output dimensions that exceed the limit,
+          iterating through the tile dimension order.
+        For SplitOverKernel strategies with more than 2 clusters, the channel dimension
+        threshold is extended to VPU_DIMENSION_LIMIT * numClusters. Per-channel ops
+        (DepthConv, MaxPool, AvgPool) skip channel-dimension checks to benefit vertical
+        fusion. Concat-Slice alignment is preserved by computing the LCM of the per-input
+        concat-axis size and the NCE channel alignment.
+        The output channel (OC) check for NCEConvolutionOp and NCEEltwiseOp can be
+        independently controlled via skip-conv-oc and skip-eltwise-oc options.
     }];
 
     let constructor = "vpux::VPU::createEnsureNCEOpsSizeRequirementsPass()";
@@ -1588,9 +1796,20 @@ def EnsureNCEOpsSizeRequirements : PassBase<"ensure-nce-ops-size-requirements", 
             "Skip ops where the weights are dequantized via an explicit operation before strategy is assigned"
         >,
         Option<
-            "skipNonConvOC", "skip-non-conv-oc",
-            "bool", "false",
-            "Flag to skip checking the output channel of non-convolution op"
+            "skipConvOC", "skip-conv-oc",
+            "std::string", [{"SKIP_NONE"}],
+            "Mode to skip checking the output channel of NCEConvolutionOp. "
+            "SKIP_NONE: always enforce OC limit. "
+            "SKIP_LARGE_SPATIAL: skip OC check when H or W > 4. "
+            "SKIP_ALL: always skip OC check."
+        >,
+        Option<
+            "skipEltwiseOC", "skip-eltwise-oc",
+            "std::string", [{"SKIP_NONE"}],
+            "Mode to skip checking the output channel of NCEEltwiseOp. "
+            "SKIP_NONE: always enforce OC limit. "
+            "SKIP_LARGE_SPATIAL: skip OC check when H or W > 4. "
+            "SKIP_ALL: always skip OC check."
         >
     ];
 
@@ -1607,33 +1826,26 @@ def ConvolutionSplitOverInputChannel : PassBase<"convolution-split-over-input-ch
     let summary = "Split convolution over input channel to avoid 2D tiling";
 
     let description = [{
-        This pass matches ConvOps that have 2D tilingStrategy, and large inputs/weights and small outputs.
-        Then it splits the ConvOps over input channel and accumulate these new ConvOps using AddOps.
+        AI-generated summary
+
+        This pass applies an `NCEConvolutionSplitOverInputChannel` rewrite pattern on `VPU.NCE.Convolution`
+        operations that have a 2D tiling strategy (tiles on both output-channel and height/width dimensions).
+
+        The pattern is skipped when:
+        - The operation has quantized inputs, weights, or outputs
+        - The operation has sparse inputs or weights
+        - The operation has only a 1D tiling strategy
+        - The operation already supports pipelining with the current strategy
+        - A profitability check fails: the DMA reload overhead of 2D tiling must exceed
+          the round-trip cost of writing and reading intermediate partial sums
+
+        When profitable, the pass splits the convolution input and weights along the input-channel
+        dimension into aligned tiles using `splitNCEConvolutionOverIC`. The resulting sub-convolutions
+        are accumulated via `VPU.NCE.Eltwise` (Add) operations. Multi-cluster strategies (SplitOverKernel,
+        SplitOverHeight) and 1D tiling strategies are assigned to each new operation.
     }];
 
     let constructor = "vpux::VPU::createConvolutionSplitOverInputChannelPass()";
-
-    let dependentDialects = [
-        "vpux::VPU::VPUDialect"
-    ];
-}
-
-//
-// FuseClampPass
-//
-
-def FuseClampPass : PassBase<"fuse-clamp", "vpux::FunctionPass"> {
-    let summary = "Fuses VPU.Clamp parameters into previous NCE operation";
-
-    let description = [{
-        This pass follows `SetupPPEPass` and fuses VPU.Clamp with already existing PPE task.
-        1. Search for VPU.NCE -> VPU.Clamp pattern
-        2. Fetch min and max parameters from VPU.Clamp
-        3. Set clamp_low and clamp_high according to min, max and existing activation
-        4. Remove VPU.Clamp from the graph
-    }];
-
-    let constructor = "vpux::VPU::createFuseClampPass()";
 
     let dependentDialects = [
         "vpux::VPU::VPUDialect"
@@ -1648,7 +1860,11 @@ def FuseConvertPass : PassBase<"fuse-convert", "vpux::FunctionPass"> {
     let summary = "Fuses VPU.Convert into previous operation";
 
     let description = [{
-        Fuses VPU.Convert into previous operation
+        AI-generated summary
+
+        Fuses VPU.ConvertOp into a preceding VPU.DepthToSpaceOp when the configuration is
+        supported (BLOCKS_FIRST mode, blockSize 2, 16 input channels, F16-to-F32 conversion).
+        Sets the dstElemType attribute on DepthToSpaceOp and removes the standalone ConvertOp.
     }];
 
     let constructor = "vpux::VPU::createFuseConvertPass()";
@@ -1666,8 +1882,19 @@ def OptimizeConcat : PassBase<"optimize-concat", "vpux::FunctionPass"> {
     let summary = "Try to eliminate Concat for Concat-Slice pattern";
 
     let description = [{
-        After `ApplyTilingPass` lots of `VPU.Concat`-`VPU.Slice` are introduced, `VPU.Concat` can be eliminated only if all its users are `VPU.Slice` and
-        input tensor of each `VPU.Slice` is actually sub-tensor of one of input tensors of Concat.
+        AI-generated summary
+
+        Optimizes redundant Concat operations introduced by tiling. Applies three patterns:
+        - EliminateConcat: removes a Concat when all users are Slice ops whose output is a
+          sub-tensor of one of the Concat inputs. Also handles an intermediate PermuteCast
+          between Concat and Slice when present.
+        - EliminateSameSiblingConcat: deduplicates sibling Concat ops that share the same
+          root activation input, same offsets, same types, and whose constant inputs are
+          splat values with identical content. Redundant siblings are replaced by the
+          original Concat output.
+        - FuseMultipleConcatOpsAroundGatherDMA: fuses nested Concat ops produced by
+          separate Gather DMA tiling passes (TileGather + general tiling) into a single
+          Concat, recalculating offsets through optional AffineReshape ops.
     }];
 
     let constructor = "vpux::VPU::createOptimizeConcatPass()";
@@ -1698,7 +1925,12 @@ def SetupPipelineOptions : PassBase<"setup-pipeline-options", "vpux::ModulePass"
     let summary = "Initialize the symbol table for global options in the model/IR";
 
     let description = [{
-        Creates a PipelineOptionsOp structure in the IR so the constraints could be exposed globally
+        AI-generated summary
+
+        Configures compilation pipeline options by storing key compilation flags as module-level
+        attributes. Reads hash value, compilation mode, number of DMA ports, and option flags
+        from the compiler configuration, making them accessible to downstream passes without
+        requiring the original options objects.
     }];
 
     let constructor = "vpux::VPU::createSetupPipelineOptionsPass()";
@@ -1734,9 +1966,22 @@ def SetupNpuConstraint : PassBase<"setup-npu-constraint", "vpux::ModulePass"> {
     let summary = "Set WLM related constraints in the model/IR";
 
     let description = [{
-        Uses the PipelineOptionsOp structure from the IR so the WLM constraints could be exposed globally.
-        Sets the constraints like BarrierMaxVariantCount, BarrierMaxVariantSum, MetadataMaxInvariantCount, MetadataMaxKernelInvocationCount,
-        MetadataMaxVariantCount, MetadataMaxKernelRangeCount, MetadataMaxMediaCount
+        AI-generated summary
+
+        Stores Workload Management (WLM) and hardware constraints into the PipelineOptionsOp
+        symbol table so they are globally accessible by subsequent passes.
+
+        The pass performs the following:
+        - Sets the WorkloadManagementStatus (ENABLED / DISABLED). WLM is force-disabled on
+          NPU37XX architectures.
+        - Configures per-SHAVE-engine FIFO support when the architecture and WLM settings
+          allow dedicated FIFOs.
+        - Adds per-barrier variant constraints: BarrierMaxVariantSum, BarrierMaxVariantCount.
+        - Adds DPU and SHV register FIFO addresses, barrier FIFO address and depth.
+        - Adds CMX metadata limits: MetadataMaxVariantCount, MetadataMaxInvariantCount,
+          MetadataMaxKernelInvocationCount, MetadataMaxKernelRangeCount, and
+          MetadataMaxMediaCount (NPU40XX and later).
+        - On supported architectures, sets MaxBarriersPerTask to 8 for 4K barrier task descriptors.
     }];
 
     let constructor = "vpux::VPU::createSetupNpuConstraintPass()";
@@ -1777,7 +2022,12 @@ def SetupMaxKernelSize : PassBase<"setup-max-kernel-size", "vpux::ModulePass"> {
     let summary = "Set maximum kernel size allowed by arch in the model/IR";
 
     let description = [{
-        Uses the PipelineOptionsOp structure from the IR so the constant could be exposed globally
+        AI-generated summary
+
+        Sets the maximum supported kernel size attribute on the module based on the target NPU
+        architecture. Queries the platform-specific VPU::ArchKind to determine the largest
+        convolution kernel the DPU can execute natively, used by decomposition passes to decide
+        when to split large kernels.
     }];
 
     let constructor = "vpux::VPU::createSetupMaxKernelSizePass()";
@@ -1803,7 +2053,17 @@ def SetTargetIndependentPassOptions : PassBase<"set-target-independent-options",
     let summary = "Enable pass options and store it in the Module/IR";
 
     let description = [{
-        Uses the PipelineOptionsOp structure from the IR so the options could be exposed globally. Adds several Symbols aka Options to PipelineOptions sumbol table
+        AI-generated summary
+
+        Stores target-independent compilation options in the PipelineOptionsOp symbol table
+        so they are globally accessible by subsequent passes. Each option is added as a
+        `config::OptionOp` symbol.
+
+        Categories of options stored include: auto-padding (ODU/IDU), NCE reduce support,
+        FP16 compressed convolution, VPUNN pre-split, ODU local region, SE-pointer operations,
+        QDQ optimization, adaptive stripping, weights table reuse mode, profiling,
+        asymmetric zero-point handling, weights dynamic dequantization, and architecture-specific
+        options such as sprLUT, DCIM, and power optimization.
     }];
 
     let constructor = "vpux::VPU::createSetTargetIndependentPassOptionsPass()";
@@ -1866,7 +2126,7 @@ def SetTargetIndependentPassOptions : PassBase<"set-target-independent-options",
         >,
         Option<
             "enableAdaptiveStripping", "enable-adaptive-stripping",
-            "bool", "false",
+            "bool", "true",
             "[Optional] Set AdaptiveStripping to true/false"
         >,
         Option<
@@ -1956,14 +2216,27 @@ def ConvertOpToDMAForPerformantExecution : PassBase<"convert-op-to-dma-for-perfo
     let summary = "Adapt and move ops to DMA if possible and efficient";
 
     let description = [{
-        If op can be done with DMA efficiently this pass will, convert the op to DMA related op.
-        Only added to VPU40XX+ pipelines as only op converted via this pass is Gather and is only supported
-        on VPU40XX+ pipelines.
+        AI-generated summary
 
-        Currently GatherOp -> GatherDMAOp is supported ( on LNL and newer architectures).
-        Gather DMA has some limitation, the input size after axis should be less than 4096.
-        On Adaptation side the pass will tile gather on the dimension after gather axis.
-        Gather -> Reshape + Convert + (Optional) Copy + GatherDMA + Reshape + Copy.
+        Converts operations to DMA equivalents when this is more efficient. Currently targets
+        GatherOp on VPU40XX and newer architectures.
+
+        The pass applies three rewrite patterns in sequence:
+
+        1. **TileGatherElement**: Tiles the GatherOp output on dimensions after the gather axis
+           so that each tile's element size (in bits) fits within the architecture-specific
+           GatherDMA maximum element size limit.
+
+        2. **TileGatherIndices**: Tiles the GatherOp output so that the indices list length
+           per tile does not exceed the architecture-specific GatherDMA maximum indices list
+           length.
+
+        3. **MoveToDMAGather** (NPU40XX+): Converts GatherOp to GatherDMAOp. Handles negative
+           constant indices by converting them to positive values. Reshapes indices to match
+           the input tensor rank. Converts indices to 64-bit integers (HW requirement). For
+           non-4D inputs, reshapes to 4D for multi-SHAVE utilization. The resulting sequence is:
+           Reshape(indices) + Convert(i64) + GatherDMA + Reshape(output).
+           Sets addressing mode (INDEXED) based on tiling and multi-clustering compatibility.
     }];
 
     let constructor = "vpux::VPU::createConvertOpToDMAForPerformantExecutionPass()";
@@ -1983,13 +2256,15 @@ def RemoveOutputSparseToAvoidSuboptimalDPUWorkloadsPass : PassBase<"remove-outpu
     let summary = "Remove output sparsity for SOK layer to avoid suboptimal dpu workloads";
 
     let description = [{
+        AI-generated summary
+
         This pass removes SOK layer's output sparsity if
-        1. SOK layer has different split sizes on clusters excluding the last one. For example, we need to split OC = 128 on 6 tiles,
+        - SOK layer has different split sizes on clusters excluding the last one. For example, we need to split OC = 128 on 6 tiles,
         the tiled size will be {32, 32, 16, 16, 16, 16}. If there's output sparsity, we need to split 32 into two pieces of 16 because
         we must have the same workload channel excluding the last one. However, two workloads with 16 channels have much worse
         performance than a workload with 32 channels. If there's no sparsity, we can keep the workload with 32 channels.
         This is only relevant to the senario with more than 2 tiles so it doesn't exist for NPU37XX.
-        2. SOK layer's output is used by `VPU.Concat`
+        - SOK layer's output is used by `VPU.Concat`
 
         Conv1_1 (OC = 256, SOK)  Conv1_2 (OC = 256, SOK)
              \                               /
@@ -2228,8 +2503,10 @@ def DestructWsAnalysis : PassBase<"destruct-ws-analysis", "vpux::ModulePass"> {
     let summary = "Destroy weights separation analysis";
 
     let description = [{
-        This pass destroys previously created weights separation analysis
-        object.
+        AI-generated summary
+
+        Invalidates the cached VPU::WeightsSeparationInfo analysis after weights-separation
+        decisions have been consumed by downstream passes.
     }];
 
     let constructor = "vpux::VPU::createDestructWsAnalysisPass()";
@@ -2485,6 +2762,8 @@ def FinalizeComputeFunctionBoundaries : PassBase<"finalize-compute-function-boun
     let summary = "Finalize compute function boundaries for Host Pipeline";
 
     let description = [{
+        AI-generated summary
+
         This pass finalizes the compute function boundaries for the Host Pipeline.
 
         It ensures that all compute functions are properly outlined and that their
@@ -2494,13 +2773,13 @@ def FinalizeComputeFunctionBoundaries : PassBase<"finalize-compute-function-boun
 
         The pass performs several key transformations:
 
-        1. NPU-specific encoding is preserved only inside compute functions
-        2. NPU-specific attributes (layout, memory space, bounds) are stripped from
+        - NPU-specific encoding is preserved only inside compute functions
+        - NPU-specific attributes (layout, memory space, bounds) are stripped from
            tensor types in function signatures and @main function
-        3. Tensor types are transformed to be compatible with upstream MLIR components
-        4. Necessary bridging operations (like Core.ReinterpretCast) are inserted at
+        - Tensor types are transformed to be compatible with upstream MLIR components
+        - Necessary bridging operations (like Core.ReinterpretCast) are inserted at
            function boundaries
-        5. Quantized types are handled by preserving quantization parameters while
+        - Quantized types are handled by preserving quantization parameters while
            transforming the underlying storage tensor types
 
         Important contract established by this pass:
@@ -2631,17 +2910,24 @@ def AdjustForOptimizedLayers : PassBase<"adjust-for-optimized-layers", "vpux::Fu
     let summary = "Adjust layers shape or layout to utilize more compute engines or leverage optimized kernel implementation";
 
     let description = [{
-        The pass adjusts layers shape or layout to utilize more compute engines and better leverage optimized SHAVE
-        implementation
+        AI-generated summary
+
+        Adjusts layer shapes or layout via ShapeCast to utilize more compute engines and
+        leverage optimized kernel implementations.
         Supported Optimizations:
-        - Softmax:
-          * Axis0: Adjust shape to leverage the optimized kernel for Softmax with axis=0
-          * MultiSHAVEs: Adjust shape to gather dimensions on the tile dimension to utilize more SHAVE engines
-        - Gelu & Multiply:
-          * MultiSHAVEs & MultiClusters: Adjust shape to gather dimensions on the tile dimension to utilize more
-          SHAVE engines and avoid Clustering strategy due to batch size
-         - NCEPermute:
-          * MultiClusters: Adjust shape to ensure there's enough dim size on height for MC split to utilize more DPU engines
+        - Softmax: Adjust shape for axis=0 optimization and multi-SHAVE utilization
+        - Gelu & Multiply: Gather dimensions on tile axis for multi-SHAVE/multi-cluster
+          utilization, avoiding Clustering strategy due to batch size
+        - MVN: Fuse batch dimension into channel dimension (batch-to-channel reshape)
+          for multi-SHAVE optimization when batch > 1 and layout is NCHW
+        - Reduce ops (ReduceMin, ReduceMax, ReduceMean, ReduceSum, ReduceProd, ReduceL1,
+          ReduceL2, ReduceLogicalAnd, ReduceLogicalOr): Gather dimensions for multi-SHAVE
+          utilization when batch > 1
+        - NCEPermute: Ensure sufficient height dimension for multi-cluster split
+        - NCEMatMul: Balance H and W dimensions via factorization for improved DPU
+          utilization
+        - NCEAveragePool: Reshape batch dimension into spatial dimensions when batch > 1
+          to enable HW execution with aligned channels
     }];
 
     let constructor = "vpux::VPU::createAdjustForOptimizedLayersPass()";
@@ -2659,9 +2945,18 @@ def SplitRealDFTOps : PassBase<"split-real-dft-ops", "vpux::FunctionPass"> {
     let summary = "Replace RDFT and IRDFT operations with a subgraph of smaller operations";
 
     let description = [{
-        Replace RDFT and IRDFT operations with a subgraph of smaller operations.
-        VPU.RDFT = {VPU.RDFTUncutOp->VPU.SliceOp}
-        VPU.IRDFT = {VPU.IDFTOp->VPU.IRDFTLastAxisOp}
+        AI-generated summary
+
+        Decomposes DFT-family operations into computational subgraphs with precomputed
+        twiddle factor constants:
+        - VPU.RDFT  -> VPU.RDFTUncutOp + VPU.SliceOp (cuts symmetric part)
+        - VPU.IRDFT -> VPU.IDFTOp (all axes except last) + VPU.IRDFTLastAxisOp
+        - VPU.DFTOp and VPU.IDFTOp -> same op type recreated with an attached
+          twiddle factor constant tensor (root-of-unity complex multiplicative
+          coefficients computed per-axis)
+        Twiddle factors are generated with precision matching the output element type
+        (FP16 or FP32). The sign of the angle constant is positive for inverse transforms
+        (IDFT, IRDFT) and negative for forward transforms (DFT, RDFT).
     }];
 
     let constructor = "vpux::VPU::createSplitRealDFTOpsPass()";
@@ -2701,9 +2996,19 @@ def ApplyTilingMVN1Sum : PassBase<"apply-tiling-mvn1sum", "vpux::FunctionPass"> 
     let summary = "Tiling for mvn1_sum op";
 
     let description = [{
-        MVN1SumOp tiling will be done in this pass. Because the current logic is to tile the output and after to back infer
-        to the input. Output tensor size is NxCx2 and it can be 1x1x2, it is imposible to tile and back infer in this case.
-        MVN1MeanVarOp does not need tiling because tensor is NxCx2.
+        AI-generated summary
+
+        Applies tiling to MVN1SumOp using two rewrite patterns:
+
+        - **MVN1SumCorrectHeight**: Adjusts the input height of MVN1SumOp to ensure alignment
+           constraints are met before tiling.
+
+        - **MVN1SumTiling**: Tiles the MVN1SumOp along the height dimension. Standard output-first
+           back-inference tiling cannot be used because the output tensor shape is NxCx2 (and can be
+           as small as 1x1x2), making back-inference impossible. Instead, the pass tiles on the input
+           side directly. Supports both ISOLATED and PREFETCH tiling modes.
+
+        MVN1MeanVarOp does not need tiling because its tensor shape is NxCx2.
     }];
 
     let constructor = "vpux::VPU::createApplyTilingMVN1SumPass()";
@@ -2839,23 +3144,29 @@ def RestorePadAttrAfterSCFTiling : PassBase<"restore-tensor-pad-after-scf-tiling
 }
 
 //
-// FlashSDPATilingStrategyEstimation
+// FlashSDPATiling
 //
 
-def FlashSDPATilingStrategyEstimation : PassBase<"flash-sdpa-tiling-strategy-estimation", "vpux::FunctionPass"> {
-    let summary = "Computes Query and Key/Value tiling parameters";
+def FlashSDPATiling : PassBase<"flash-sdpa-tiling", "vpux::FunctionPass"> {
+    let summary = "Tiles FlashSDPA operation and computes unrolling factor on KV sequence length";
 
     let description = [{
-        Compute tiling dimensions for both Query and Key/Value tensors.
-        Assign Key/Value tiling attribute to propagate it to the UnrollFlashSDPAPass.
-        Isolated tiling algorithm will tile VPU.FlashSDPAOp on Query.
-        The Key/Value tiling attribute is used to estimate CMX requirement for the final tiled operation.
+        Tiles VPU.FlashSDPA operation, reserving memory for the pipelining on Query and/or Key/Value sequence length.
+        Assigns kvNumBlocks attribute for the future pass that does unrolling on Key/Value sequence length.
     }];
 
-    let constructor = "vpux::VPU::createFlashSDPATilingStrategyEstimationPass()";
+    let constructor = "vpux::VPU::createFlashSDPATilingPass()";
 
     let dependentDialects = [
         "vpux::VPU::VPUDialect"
+    ];
+
+    let options = [
+        Option<
+            "enablePipelining", "enable-pipelining",
+            "bool", "true",
+            "Enable pipelining (double-buffering) of tiled FlashSDPA operations"
+        >
     ];
 }
 
@@ -2866,11 +3177,15 @@ def SCFFuseLastViewLikeOp : PassBase<"scf-fuse-last-viewlike-op", "vpux::Functio
     let summary = "Fuses the last view-like op into the preceding scf.for loop";
 
     let description = [{
-        View ops placed after the last compute op in an scf.for loop will remain outside
+        View-like ops placed after the last compute op in an scf.for loop will remain outside
         of it after the SCF VF pass. That will however lead to errors later on.
 
-        This pass takes the final view ops and integrates them in the scf.for loop.
-        Currently supporting only PermuteCast fusion.
+        This pass takes the final view-like ops and integrates them into the scf.for loop by
+        cloning the operation inside the loop body before the insert_slice, updating offsets and
+        sizes as needed, and adapting the loop's iter_args and result types.
+
+        Currently supported view-like ops: PermuteCast, Slice, and QuantizeCast.
+        The pass handles arbitrarily nested scf.for loops.
     }];
 
     let constructor = "vpux::VPU::createSCFFuseLastViewLikeOpPass()";
@@ -2937,6 +3252,10 @@ def UnrollSCFLoop : PassBase<"unroll-scf-loop", "vpux::ModulePass"> {
     let description = [{
         Unrolls scf.for loops by a specified unroll factor.
         This optimization can improve performance by reducing loop overhead.
+
+        Option priority: loop-unroll-factor takes precedence over enable-auto-unrolling.
+        For each dimension, if the manual factor from loop-unroll-factor is > 1 it is used
+        directly. Auto-unrolling is applied only for dimensions where the manual factor is <= 1.
 
         The pass takes an unroll factor for each tensor dimension (N, C, H, W) and unrolls
         loops accordingly. Post unrolling,  tensor extract_slice and insert_slice operations
@@ -3048,6 +3367,28 @@ def UnrollSCFLoop : PassBase<"unroll-scf-loop", "vpux::ModulePass"> {
             " - dynamic loops (with runtime-determined upper bounds). "
 
             "Trade-off: Increases compiled code size due to multiple specialized kernel functions."
+        >,
+        Option<
+            "enableAutoUnrolling", "enable-auto-unrolling",
+            "bool", "false",
+            "Automatically derives the unroll factor from tensor bounds instead of requiring manual specification. "
+            "For each loop dimension where the manual factor is <= 1, inspects the InsertSliceOp "
+            "destination (result tensor) and source (tile tensor) types. Both must be BoundedTensorType. "
+            "The factor is accepted only if >= 2; otherwise the dimension is skipped."
+
+            "Algorithm: factor = resultBound[dim] / tileBound[dim]"
+
+            "Example with tensor result bounds [1, 16, 96, 1280] and tile bounds [1, 16, 48, 1280]:"
+            "  dim 0: 1/1   = 1 → skip"
+            "  dim 1: 16/16 = 1 → skip"
+            "  dim 2: 96/48 = 2 → unroll factor 2 (equivalent to loop-unroll-factor=1,1,2,1)"
+            "  dim 3: 1280/1280 = 1 → skip"
+
+            "Benefits: Eliminates manual loop-unroll-factor tuning per model. "
+            "Adapts automatically when tile sizes change."
+
+            "Trade-off: Requires BoundedTensorType on both result and tile tensors. "
+            "If bounds are absent, the dimension is silently skipped and no unrolling is applied."
         >
     ];
 }
@@ -3111,8 +3452,15 @@ def RunMVNNormalizeOnDPU : PassBase<"run-mvn-normalize-on-dpu", "vpux::FunctionP
     let summary = "Decompose MVN Normalize to run on DPU";
 
     let description = [{
-        The pass decomposes MVN Normalize operation into multiple operations that can run on DPU.
-            }];
+        AI-generated summary
+
+        Replaces VPU.MVN1NormalizeOp with DPU-executable operations:
+        - Extracts pre-computed mean and scale from the meanVar input via VPU.SliceOp
+        - Computes bias (negated mean) via VPU.NCEEltwiseOp (multiply by -1)
+        - Builds a weights table (sparsity pointers, scale, bias) via VPU.ConcatOp
+        - Replaces the original op with VPU.NCEMaxPoolOp (1x1 kernel) that applies
+          per-channel scale and bias on the DPU
+    }];
 
     let constructor = "vpux::VPU::createRunMVNNormalizeOnDPUPass()";
 }

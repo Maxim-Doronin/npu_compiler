@@ -6,7 +6,10 @@
 #include "vpux/compiler/core/tiling.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops/shape_manipulation.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPU/utils/concat_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/conv_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
@@ -16,6 +19,8 @@
 #include "vpux/compiler/utils/sparsity.hpp"
 
 #include <mlir/Transforms/DialectConversion.h>
+
+#include <numeric>
 
 namespace vpux::VPU {
 #define GEN_PASS_DECL_ENSURENCEOPSSIZEREQUIREMENTS
@@ -52,6 +57,67 @@ bool hasSplitOverKernelStrategy(mlir::Operation* op) {
     return false;
 }
 
+// Matches the subgraph pattern for NCEConvolutionOp:
+//   weights <- Slice <- PermuteCast <- AffineReshape (single use) <- Concat (single use,
+//   >= 3 inputs, single axis, arg0..argN-3 equal-sized on that axis).
+// Returns the LCM of the per-input concat-axis size and the NCE channel alignment,
+// or 0 if the pattern does not match.
+static int64_t getAlignmentFromConcatSlicePattern(mlir::Operation* op) {
+    auto nceConvOp = mlir::dyn_cast_if_present<VPU::NCEConvolutionOp>(op);
+    if (nceConvOp == nullptr) {
+        return 0;
+    }
+    auto weights = nceConvOp.getFilter();
+
+    // Trace from weights
+    auto sliceOp = weights.getDefiningOp<VPU::SliceOp>();
+    if (sliceOp == nullptr) {
+        return 0;
+    }
+    auto permuteCastOp = sliceOp.getInput().getDefiningOp<VPU::PermuteCastOp>();
+    if (permuteCastOp == nullptr) {
+        return 0;
+    }
+    auto affineReshapeOp = permuteCastOp.getInput().getDefiningOp<VPU::AffineReshapeOp>();
+    if (affineReshapeOp == nullptr || !affineReshapeOp->hasOneUse()) {
+        return 0;
+    }
+    auto concatOp = affineReshapeOp.getInput().getDefiningOp<VPU::ConcatOp>();
+    if (concatOp == nullptr || !concatOp->hasOneUse()) {
+        return 0;
+    }
+    // Require exactly one concat axis.
+    const auto concatAxes = VPU::getConcatAxes(concatOp);
+    if (concatAxes.size() != 1) {
+        return 0;
+    }
+    const auto axis = Dim(*concatAxes.begin());
+    const auto inputs = concatOp.getInputs();
+    const int64_t firstSize = getShape(inputs.front())[axis];
+    if (inputs.size() > 2) {
+        // inputs[0] through inputs[N-3] must have equal size on the concat axis.
+        // The last two inputs are allowed to differ (e.g. remainder tiles).
+        for (auto input : inputs.drop_back(2)) {
+            if (getShape(input)[axis] != firstSize) {
+                return 0;
+            }
+        }
+    }
+
+    // Align to the LCM of the per-input concat size and the NCE channel alignment
+    // so that each tile satisfies both the concat boundary and HW alignment requirements.
+    auto weightsType = mlir::cast<vpux::NDTypeInterface>(weights.getType());
+    const int64_t nceAlignment = VPU::NCEInvariant::getAlignment(weightsType.getElementType());
+    const int64_t alignment = std::lcm(firstSize, nceAlignment);
+
+    // If the alignment exceeds the HW dimension limit, tiles cannot be produced within
+    // that limit, so fall back to the default alignment.
+    if (alignment > VPU::NCEInvariant::VPU_DIMENSION_LIMIT) {
+        return 0;
+    }
+    return alignment;
+}
+
 class EnsureNCEOpSizeRequirements final : public mlir::OpInterfaceRewritePattern<VPU::TilingBuilderOpInterface> {
 public:
     EnsureNCEOpSizeRequirements(mlir::MLIRContext* ctx, Logger log)
@@ -83,9 +149,24 @@ mlir::LogicalResult EnsureNCEOpSizeRequirements::matchAndRewrite(VPU::TilingBuil
     _log.nest(4).trace("Tile Dim order is {0}", tileDimOrder);
     const auto moduleOp = op->getParentOfType<mlir::ModuleOp>();
     const auto numClusters = config::getTileExecutor(moduleOp).getCount();
+    const int64_t concatInputAlignment = getAlignmentFromConcatSlicePattern(op);
+
+    const auto getTilesWithOptionalConcatAlignment = [&](ShapeRef tilesOnDim) -> mlir::FailureOr<OutputTiling> {
+        if (concatInputAlignment == 0) {
+            return fillDividedTiles(op, tilesOnDim, outputShape);
+        }
+
+        // Preserve op-specific alignment and tile-unroll order, then LCM the C-dimension
+        // alignment with the concat input alignment to respect concat boundaries.
+        auto alignment = getAlignment(op, tilesOnDim, outputShape);
+        alignment[Dims4D::Act::C.ind()] = std::lcm(alignment[Dims4D::Act::C.ind()], concatInputAlignment);
+        auto optionalAlignment = std::optional<ArrayRef<int64_t>>(alignment);
+        auto unrollSpatialFirst = isSpatialFirstNestedTiling(op, tilesOnDim);
+        return fillDividedTiles(tilesOnDim, outputShape, optionalAlignment, unrollSpatialFirst);
+    };
 
     const auto isSupportedTileSize = [&](ShapeRef nTilesOnDim, Dim dimToTile, ArrayRef<int64_t> dimThresholds) -> bool {
-        const auto tiles = fillDividedTiles(op, nTilesOnDim, outputShape);
+        const auto tiles = getTilesWithOptionalConcatAlignment(nTilesOnDim);
         if (mlir::failed(tiles)) {
             return false;
         }
@@ -127,7 +208,7 @@ mlir::LogicalResult EnsureNCEOpSizeRequirements::matchAndRewrite(VPU::TilingBuil
         return mlir::failure();
     }
 
-    const auto tilesNew = fillDividedTiles(op, nTilesOnDim, outputShape);
+    const auto tilesNew = getTilesWithOptionalConcatAlignment(nTilesOnDim);
     if (mlir::failed(tilesNew)) {
         return mlir::failure();
     }
@@ -193,6 +274,11 @@ mlir::LogicalResult EnsureConvICRequirements::matchAndRewrite(VPU::NCEConvolutio
         alignment[Dims4D::Act::C.ind()] = weightsAlignment;
     }
 
+    const int64_t icAlign = getAlignmentFromConcatSlicePattern(origOp);
+    if (icAlign != 0) {
+        alignment[Dims4D::Act::C.ind()] = std::lcm(alignment[Dims4D::Act::C.ind()], icAlign);
+    }
+
     auto optionalAlignment = std::optional<ArrayRef<int64_t>>(alignment);
     const auto tiles = fillDividedTiles(nTilesOnDim, inputShape, optionalAlignment);
 
@@ -226,11 +312,12 @@ class EnsureNCEOpsSizeRequirementsPass final :
         public VPU::impl::EnsureNCEOpsSizeRequirementsBase<EnsureNCEOpsSizeRequirementsPass> {
 public:
     explicit EnsureNCEOpsSizeRequirementsPass(bool enableOutputEnsurance,
-                                              bool enableDequantWeightEnsuranceBeforeStrategy, bool skipNonConvOC,
-                                              Logger log) {
+                                              bool enableDequantWeightEnsuranceBeforeStrategy, StringRef skipConvOC,
+                                              StringRef skipEltwiseOC, Logger log) {
         this->enableOutputEnsurance = enableOutputEnsurance;
         this->enableDequantWeightEnsuranceBeforeStrategy = enableDequantWeightEnsuranceBeforeStrategy;
-        this->skipNonConvOC = skipNonConvOC;
+        this->skipConvOC = skipConvOC.str();
+        this->skipEltwiseOC = skipEltwiseOC.str();
         Base::initLogger(log, Base::getArgumentName());
     }
 
@@ -246,6 +333,14 @@ void EnsureNCEOpsSizeRequirementsPass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
     auto moduleOp = func->getParentOfType<mlir::ModuleOp>();
+
+    const auto validateSkipOCMode = [](StringRef mode, StringRef optionName) {
+        VPUX_THROW_WHEN(mode != "SKIP_NONE" && mode != "SKIP_LARGE_SPATIAL" && mode != "SKIP_ALL",
+                        "Unknown {0} mode '{1}': expected SKIP_NONE, SKIP_LARGE_SPATIAL, or SKIP_ALL", optionName,
+                        mode);
+    };
+    validateSkipOCMode(skipConvOC, "skip-conv-oc");
+    validateSkipOCMode(skipEltwiseOC, "skip-eltwise-oc");
 
     mlir::ConversionTarget target(ctx);
     mlir::RewritePatternSet patterns(&ctx);
@@ -298,12 +393,6 @@ void EnsureNCEOpsSizeRequirementsPass::safeRunOnFunc() {
                 outputDimThresholds[(Dims4D::Act::C).ind()] = VPU::NCEInvariant::VPU_DIMENSION_LIMIT * numClusters;
             }
 
-            if (skipNonConvOC && !mlir::isa<VPU::NCEConvolutionOp>(op)) {
-                // OC limit will be handled in multi-cluster and tiling pass
-                // Limit to non-conv to avoid regression of memory fragmentation
-                return true;
-            }
-
             auto inSizeWrongDims = getDimsOverKHWLimit(inputShape, inputDimThresholds);
             if (!inSizeWrongDims.empty()) {
                 _log.nest(2).debug("Input size has dims greater than HW requirements: {0}", inSizeWrongDims);
@@ -328,13 +417,46 @@ void EnsureNCEOpsSizeRequirementsPass::safeRunOnFunc() {
 
             // Skip slicing C for per-channel based NCE ops, which will be handled later in tiling pass
             // This will benefit vertical fusion
+            const auto eraseChannel = [&](SmallVector<Dim>& wrongDims) {
+                wrongDims.erase(std::remove(wrongDims.begin(), wrongDims.end(), Dims4D::Act::C), wrongDims.end());
+            };
             if (mlir::isa<VPU::NCEDepthConvolutionOp, VPU::NCEMaxPoolOp, VPU::NCEAveragePoolOp>(op)) {
                 _log.nest(2).debug("Skip checking C dimension for per-channel based NCE op {0} at {1}", op->getName(),
                                    op->getLoc());
-                inSizeWrongDims.erase(std::remove(inSizeWrongDims.begin(), inSizeWrongDims.end(), Dims4D::Act::C),
-                                      inSizeWrongDims.end());
-                outSizeWrongDims.erase(std::remove(outSizeWrongDims.begin(), outSizeWrongDims.end(), Dims4D::Act::C),
-                                       outSizeWrongDims.end());
+                eraseChannel(inSizeWrongDims);
+                eraseChannel(outSizeWrongDims);
+            }
+
+            // For NCEConvolutionOp and NCEEltwiseOp, conditionally skip slicing OC based on mode:
+            //   SKIP_NONE: always enforce OC limit.
+            //   SKIP_LARGE_SPATIAL: skip OC check when H or W > 4.
+            //   SKIP_ALL: always skip OC check.
+            // TODO: Fix all regressions (E#209583, E#209685, E#210083) to skip all OC checks
+            const auto applySkipOCMode = [&](StringRef mode, bool isEltwise) {
+                if (mode == "SKIP_NONE") {
+                    return;
+                }
+                const bool ocIsInWrongDims = llvm::is_contained(outSizeWrongDims, Dims4D::Act::C);
+                if (!ocIsInWrongDims) {
+                    return;
+                }
+                constexpr int64_t kSpatialLimit = 4;
+                const bool largeSpatial =
+                        outputShape[Dims4D::Act::H] > kSpatialLimit || outputShape[Dims4D::Act::W] > kSpatialLimit;
+                const bool doSkip = (mode == "SKIP_ALL") || (mode == "SKIP_LARGE_SPATIAL" && largeSpatial);
+                if (doSkip) {
+                    _log.nest(2).debug("Skip checking OC dimension for {0} at {1} (mode={2})", op->getName(),
+                                       op->getLoc(), mode);
+                    eraseChannel(outSizeWrongDims);
+                    if (isEltwise) {
+                        eraseChannel(inSizeWrongDims);
+                    }
+                }
+            };
+            if (mlir::isa<VPU::NCEConvolutionOp>(op)) {
+                applySkipOCMode(skipConvOC, /*isEltwise=*/false);
+            } else if (mlir::isa<VPU::NCEEltwiseOp>(op)) {
+                applySkipOCMode(skipEltwiseOC, /*isEltwise=*/true);
             }
 
             return inSizeWrongDims.empty() && outSizeWrongDims.empty();
@@ -358,7 +480,8 @@ void EnsureNCEOpsSizeRequirementsPass::safeRunOnFunc() {
 //
 
 std::unique_ptr<mlir::Pass> vpux::VPU::createEnsureNCEOpsSizeRequirementsPass(
-        bool enableOutputEnsurance, bool enableDequantWeightEnsuranceBeforeStrategy, bool skipNonConvOC, Logger log) {
+        bool enableOutputEnsurance, bool enableDequantWeightEnsuranceBeforeStrategy, StringRef skipConvOC,
+        StringRef skipEltwiseOC, Logger log) {
     return std::make_unique<EnsureNCEOpsSizeRequirementsPass>(
-            enableOutputEnsurance, enableDequantWeightEnsuranceBeforeStrategy, skipNonConvOC, log);
+            enableOutputEnsurance, enableDequantWeightEnsuranceBeforeStrategy, skipConvOC, skipEltwiseOC, log);
 }

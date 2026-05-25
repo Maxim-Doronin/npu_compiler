@@ -45,41 +45,47 @@ void vpux::transitivelyCloneFunctions(mlir::ModuleOp dstModuleOp, mlir::ModuleOp
     auto llvmFuncOp = srcModuleOp.lookupSymbol<mlir::LLVM::LLVMFuncOp>(swKernelSymbol);
     VPUX_THROW_UNLESS(llvmFuncOp != nullptr, "llvmFuncOp should be valid");
 
-    llvm::SmallSetVector<mlir::LLVM::LLVMFuncOp, 4> seen;
-    llvm::SmallVector<mlir::LLVM::LLVMFuncOp, 4> worklist;
+    llvm::SmallSetVector<mlir::Operation*, 4> seen;
+    llvm::SmallVector<mlir::Operation*, 4> worklist;
     seen.insert(llvmFuncOp);
     worklist.push_back(llvmFuncOp);
 
     // We expect all functions to be fully lowered to the llvm dialect.
     // Any symbol uses should be either AddressOf or Call ops.
     while (!worklist.empty()) {
-        auto callerOp = worklist.pop_back_val();
+        auto currentOp = worklist.pop_back_val();
 
-        callerOp.walk([&](mlir::SymbolUserOpInterface sOp) {
-            mlir::LLVM::LLVMFuncOp callee = nullptr;
+        currentOp->walk([&](mlir::SymbolUserOpInterface sOp) {
+            mlir::Operation* referencedSymbol = nullptr;
             auto callOp = mlir::dyn_cast<mlir::LLVM::CallOp>(&sOp);
             if (callOp != nullptr && callOp->getCallee()) {
                 auto sym = llvm::dyn_cast<mlir::SymbolRefAttr>(callOp->getCallableForCallee());
                 if (sym != nullptr) {
-                    callee = mlir::dyn_cast_or_null<mlir::LLVM::LLVMFuncOp>(
+                    referencedSymbol = mlir::dyn_cast_or_null<mlir::LLVM::LLVMFuncOp>(
                             mlir::SymbolTable::lookupNearestSymbolFrom(*callOp, sym));
                 }
             }
 
             if (auto addrOfOp = mlir::dyn_cast<mlir::LLVM::AddressOfOp>(&sOp)) {
                 auto symNameAttr = mlir::StringAttr::get(dstModuleOp.getContext(), addrOfOp->getGlobalName());
-                callee = mlir::dyn_cast_or_null<mlir::LLVM::LLVMFuncOp>(
-                        mlir::SymbolTable::lookupNearestSymbolFrom(*addrOfOp, symNameAttr));
+                auto* symbolOp = mlir::SymbolTable::lookupNearestSymbolFrom(*addrOfOp, symNameAttr);
+
+                if (auto funcOp = mlir::dyn_cast_or_null<mlir::LLVM::LLVMFuncOp>(symbolOp)) {
+                    referencedSymbol = funcOp;
+                } else if (auto globalOp = mlir::dyn_cast_or_null<mlir::LLVM::GlobalOp>(symbolOp)) {
+                    // Adding a work-around to also include verification of globalOp
+                    referencedSymbol = globalOp;
+                }
             }
 
-            if (callee && seen.insert(callee)) {
-                worklist.push_back(callee);
+            if (referencedSymbol && seen.insert(referencedSymbol)) {
+                worklist.push_back(referencedSymbol);
             }
         });
     }
 
     for (auto funcOp : seen) {
-        dstModuleOp.getBody()->push_back(funcOp.clone());
+        dstModuleOp.getBody()->push_back(funcOp->clone());
     }
 }
 

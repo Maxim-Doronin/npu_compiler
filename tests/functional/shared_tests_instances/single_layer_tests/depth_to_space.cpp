@@ -36,6 +36,11 @@ TEST_P(DepthToSpaceLayerTestCommon, NPU4000_SW) {
     run(Platform::NPU4000);
 }
 
+TEST_P(DepthToSpace_SCFTilingLayerTest, NPU4000_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU4000);
+}
+
 TEST_P(DepthToSpaceLayerTestCommon, NPU5010_SW) {
     setReferenceSoftwareMode();
     run(Platform::NPU5010);

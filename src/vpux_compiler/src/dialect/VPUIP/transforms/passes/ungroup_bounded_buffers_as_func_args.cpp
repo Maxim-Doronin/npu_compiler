@@ -8,13 +8,13 @@
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPUIP/transforms/passes/bounded_buffer_pass_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
+
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/logging.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/error.hpp"
-
-#include <intel_npu/prefix.hpp>
 
 #include <llvm/ADT/STLExtras.h>
 #include <mlir/Dialect/Func/IR/FuncOps.h>
@@ -36,30 +36,6 @@ namespace vpux::VPUIP {
 using namespace vpux;
 
 namespace {
-struct BoundedBuffer {
-    mlir::MemRefType dataType;
-    mlir::MemRefType dynamicShapeType;
-};
-
-void addDataInfo(mlir::func::FuncOp mainFuncOp, mlir::MemRefType boundedMemRef, mlir::MemRefType dynamicShapeMemRef,
-                 mlir::Block& infoBlock, mlir::StringRef dataInfoName, size_t dataBufferCount, Logger log) {
-    log.trace("Memory to store dynamic tensor: {0}, {1}", boundedMemRef, dynamicShapeMemRef);
-
-    const auto type = mlir::RankedTensorType::get(dynamicShapeMemRef.getShape(), dynamicShapeMemRef.getElementType());
-    const auto name = std::string(intel_npu::SHAPE_TENSOR_PREFIX) + dataInfoName.str();
-
-    auto insertionPointAfter = std::next(infoBlock.begin(), static_cast<int64_t>(dataBufferCount));
-    auto infoBuilder = mlir::OpBuilder(&infoBlock, insertionPointAfter);
-    infoBuilder.create<net::DataInfoOp>(takeOpLoc(mainFuncOp, "{0}", mainFuncOp.getName()), name, type);
-    log.trace("Added new DataInfo '{0}' with type {1}", name, type);
-}
-
-BoundedBuffer unpackBoundedBuffer(VPUIP::BoundedBufferType type) {
-    // TODO: support for other buffer types will be added separately
-    // Track E#118173
-    return {mlir::cast<mlir::MemRefType>(type.getData()), mlir::cast<mlir::MemRefType>(type.getDynamicShape())};
-};
-
 void adaptFuncInputArgs(mlir::func::FuncOp funcOp, net::NetworkInfoOp netInfo, Logger log) {
     auto& entryBlock = funcOp.front();
     auto builder = mlir::OpBuilder::atBlockBegin(&entryBlock);
@@ -79,12 +55,12 @@ void adaptFuncInputArgs(mlir::func::FuncOp funcOp, net::NetworkInfoOp netInfo, L
         }
 
         log.trace("Found dynamic input {0}", inArgType);
-        const auto& [boundedMemRef, dynamicShapeMemRef] = unpackBoundedBuffer(boundedType);
+        const auto& [boundedMemRef, dynamicShapeMemRef] = VPUIP::unpackBoundedBufferType(boundedType);
 
         if (!funcOp.isPrivate()) {
-            addDataInfo(funcOp, boundedMemRef, dynamicShapeMemRef, netInfo.getInputsInfo().front(),
-                        netInfo.getInputsDataInfo()[index].getName(),
-                        /*current dataBufferCount*/ netInfo.getInputsDataInfo().size(), log.nest(2));
+            VPUIP::addShapeTensorDataInfo(funcOp, dynamicShapeMemRef, netInfo.getInputsInfo().front(),
+                                          netInfo.getInputsDataInfo()[index].getName(),
+                                          /*current dataBufferCount*/ netInfo.getInputsDataInfo().size());
         }
 
         auto arg0 = entryBlock.insertArgument(index + 1, boundedMemRef, funcLoc);
@@ -131,12 +107,12 @@ void adaptFuncOutputArgs(mlir::func::FuncOp funcOp, net::NetworkInfoOp netInfo, 
         }
 
         log.trace("Found dynamic output {0}", output);
-        const auto boundedBufferTypes = unpackBoundedBuffer(boundedType);
+        const auto boundedBufferTypes = VPUIP::unpackBoundedBufferType(boundedType);
 
         if (!funcOp.isPrivate()) {
-            addDataInfo(funcOp, boundedBufferTypes.dataType, boundedBufferTypes.dynamicShapeType,
-                        netInfo.getOutputsInfo().front(), netInfo.getOutputsDataInfo()[index].getName(),
-                        /*current dataBufferCount*/ netInfo.getOutputsDataInfo().size(), log.nest(2));
+            VPUIP::addShapeTensorDataInfo(funcOp, boundedBufferTypes.dynamicShapeType, netInfo.getOutputsInfo().front(),
+                                          netInfo.getOutputsDataInfo()[index].getName(),
+                                          /*current dataBufferCount*/ netInfo.getOutputsDataInfo().size());
         }
 
         builder.setInsertionPoint(returnOp);
@@ -249,7 +225,7 @@ void UngroupBoundedBuffersAsFuncArgs::safeRunOnModule() {
                     continue;
                 }
 
-                const auto& [boundedMemRef, dynamicShapeMemRef] = unpackBoundedBuffer(boundedType);
+                const auto& [boundedMemRef, dynamicShapeMemRef] = VPUIP::unpackBoundedBufferType(boundedType);
                 newResultsType.push_back(boundedMemRef);
                 dynShapeResultTypes.push_back(dynamicShapeMemRef);
 

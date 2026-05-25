@@ -30,15 +30,13 @@ class AdjustForVPUPipelineRewriterExecutorPass final :
 public:
     using Base = impl::AdjustForVPUPipelineRewriterExecutorBase<AdjustForVPUPipelineRewriterExecutorPass>;
 
-    explicit AdjustForVPUPipelineRewriterExecutorPass(const IE::AdjustForVPUOptions& options, Logger log)
-            : _enableFuseClamp(options.enableFuseClampOperations) {
+    explicit AdjustForVPUPipelineRewriterExecutorPass(Logger log) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
 private:
     mlir::LogicalResult initialize(mlir::MLIRContext* ctx) final;
     void safeRunOnFunc() final;
-    bool _enableFuseClamp = false;
 };
 
 mlir::LogicalResult AdjustForVPUPipelineRewriterExecutorPass::initialize(mlir::MLIRContext* ctx) {
@@ -49,10 +47,6 @@ mlir::LogicalResult AdjustForVPUPipelineRewriterExecutorPass::initialize(mlir::M
         setRewriterName(rewriterName.getValue());
     }
 
-    if (enableFuseClamp.hasValue()) {
-        _enableFuseClamp = enableFuseClamp.getValue();
-    }
-
     return mlir::success();
 }
 
@@ -60,7 +54,7 @@ void AdjustForVPUPipelineRewriterExecutorPass::safeRunOnFunc() {
     auto func = getOperation();
     auto& ctx = getContext();
 
-    auto strategy = IE::createAdjustForVPUPipelineStrategy(func, _enableFuseClamp);
+    auto strategy = IE::createAdjustForVPUPipelineStrategy(func);
     auto customRegistry = vpux::RegistryManager::createCustomRegistry();
     strategy->registerRewriters(*customRegistry, _log);
 
@@ -71,11 +65,6 @@ void AdjustForVPUPipelineRewriterExecutorPass::safeRunOnFunc() {
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> vpux::IE::createAdjustForVPUPipelineRewriterExecutorPass(
-        const IE::AdjustForVPUOptions& options, Logger log) {
-    return std::make_unique<AdjustForVPUPipelineRewriterExecutorPass>(options, log);
-}
-
 std::unique_ptr<mlir::Pass> vpux::IE::createAdjustForVPUPipelineRewriterExecutorPass(Logger log) {
-    return createAdjustForVPUPipelineRewriterExecutorPass(IE::AdjustForVPUOptions{}, log);
+    return std::make_unique<AdjustForVPUPipelineRewriterExecutorPass>(log);
 }

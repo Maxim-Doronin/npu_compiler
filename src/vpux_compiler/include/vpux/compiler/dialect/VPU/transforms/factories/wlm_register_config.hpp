@@ -9,6 +9,10 @@
 
 #include <cstdint>
 
+namespace mlir {
+class Operation;
+}
+
 namespace vpux::config {
 enum class ArchKind : uint64_t;
 }
@@ -16,7 +20,7 @@ enum class ArchKind : uint64_t;
 namespace vpux {
 namespace VPU {
 
-VPU::RegisterConfig getRegisterConfig(config::ArchKind arch);
+VPU::RegisterConfig getRegisterConfig(config::ArchKind arch, mlir::Operation* op);
 
 }  // namespace VPU
 }  // namespace vpux

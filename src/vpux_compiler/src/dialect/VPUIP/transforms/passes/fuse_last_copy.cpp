@@ -7,6 +7,7 @@
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/core/IR/ops.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 
@@ -70,14 +71,6 @@ void fuseLastCopy(VPUIP::CopyOp copyOp, const AliasesInfo& aliasesInfo, Logger l
         return;
     }
 
-    auto targetRoot = aliasesInfo.getRoots(copyOp.getOutputBuff()).front();
-    if (auto blockArg = mlir::dyn_cast<mlir::BlockArgument>(targetRoot)) {
-        if (vpux::net::isArgStrided(copyOp->getParentOfType<mlir::ModuleOp>(), blockArg.getArgNumber())) {
-            nestedLogger.trace("Cannot match: output is strided network output");
-            return;
-        }
-    }
-
     auto allRootAliases = aliasesInfo.getAllAliases(sourceRoot);
     for (auto alias : allRootAliases) {
         for (auto userOp : alias.getUsers()) {
@@ -106,7 +99,7 @@ void fuseLastCopy(VPUIP::CopyOp copyOp, const AliasesInfo& aliasesInfo, Logger l
 
     auto isCastOp = [](mlir::Operation* maybeTypeCastOp) {
         return mlir::isa_and_present<VPUIP::GenericReshapeOp, VPUIP::QuantizeCastOp, VPUIP::PermuteCastOp,
-                                     VPUIP::ShapeCastOp>(maybeTypeCastOp);
+                                     VPUIP::ShapeCastOp, Core::ReinterpretCastOp>(maybeTypeCastOp);
     };
 
     if (sourceRoot.getType() != copyOp.getOutputBuff().getType()) {
@@ -175,6 +168,9 @@ void fuseLastCopy(VPUIP::CopyOp copyOp, const AliasesInfo& aliasesInfo, Logger l
                         getIntArrayAttr(shapeCastOp.getContext(), newOutShape),
                         shapeCastOp.getExplicitOutputShapesAttr(), shapeCastOp.getExplicitOutputOffsetsAttr());
                 newBuffer = newShapeCast.getResult();
+            } else if (mlir::isa<Core::ReinterpretCastOp>(preOfTypeCastOp)) {
+                newBuffer = replaceCastWith<Core::ReinterpretCastOp>(
+                        preOfTypeCastOp, sourceRoot, preOfTypeCastOp->getOperand(0).getType(), newBuffer);
             } else {
                 VPUX_THROW("Unsupported cast operation: {0}", preOfTypeCastOp->getName());
             }

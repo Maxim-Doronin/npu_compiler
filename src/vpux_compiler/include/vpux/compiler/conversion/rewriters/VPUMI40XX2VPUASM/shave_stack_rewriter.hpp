@@ -10,10 +10,10 @@
 namespace vpux {
 namespace vpumi40xx2vpuasm {
 
-class ShaveStackRewriter : public VPUASMSymbolizationPattern<VPUMI40XX::ShaveStackFrameOp> {
+class ShaveStackRewriter : public VPUASMSymbolizationPattern<VPUMI40XX::ShaveStackFrameBuffOp> {
 public:
     using Base::Base;
-    mlir::FailureOr<SymbolizationResult> symbolize(VPUMI40XX::ShaveStackFrameOp op, SymbolMapper& mapper,
+    mlir::FailureOr<SymbolizationResult> symbolize(VPUMI40XX::ShaveStackFrameBuffOp op, SymbolMapper& mapper,
                                                    mlir::ConversionPatternRewriter& rewriter) const override;
 };
 

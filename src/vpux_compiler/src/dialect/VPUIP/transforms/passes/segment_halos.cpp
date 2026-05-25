@@ -206,26 +206,23 @@ void updateNceOps(NCEClusterTaskOp nceOp, DenseMap<NCEClusterTaskOp, NceOpOutput
     auto output = newOutputs[nceOp]._output;
     auto outSparsityMap = newOutputs[nceOp]._outSparsityMap;
 
-    mlir::Type outSparsityMapType = outSparsityMap != nullptr ? outSparsityMap.getType() : nullptr;
-    mlir::Type profilingOutputType = nceOp.getProfilingData() != nullptr ? nceOp.getProfilingData().getType() : nullptr;
-
     auto taskOp = nceOp->getParentOfType<VPURT::TaskOp>();
     VPUX_THROW_UNLESS(taskOp != nullptr, "Can't get VPURT task operation");
 
     mlir::OpBuilder builder(taskOp);
 
     auto updatedNceOp = VPURT::wrapIntoTaskOp<NCEClusterTaskOp>(
-            builder, taskOp.getWaitBarriers(), taskOp.getUpdateBarriers(), nceOp.getLoc(), output.getType(),
-            outSparsityMapType, profilingOutputType, nceOp.getInput(), nceOp.getInputSparsityMap(),
-            nceOp.getInputStorageElementTable(), nceOp.getWeights(), nceOp.getWeightsSparsityMap(),
-            nceOp.getWeightTable(), nceOp.getWeightTableDataPtr(), nceOp.getWeightTableSpPtr(),
-            nceOp.getWeightTableScale(), nceOp.getWeightTableBias(), nceOp.getWeightZeroPoints(),
-            nceOp.getSprLookupTable(), nceOp.getPalletLookupTable(), nceOp.getParentInput(),
-            nceOp.getParentInputSparsityMap(), nceOp.getParentInputStorageElementTable(), output, outSparsityMap,
-            mlir::ValueRange(newOutputItis), output, outSparsityMap, nceOp.getProfilingData(),
-            nceOp.getDynamicSequenceLength(), nceOp.getMaxPerXy(), nceOp.getMinPerXy(), nceOp.getMinMaxPerTensor(),
-            nceOp.getTaskType(), nceOp.getKernelSizeAttr(), nceOp.getKernelStridesAttr(), nceOp.getKernelPaddingAttr(),
-            nceOp.getIsContinued(), nceOp.getCmSpPatternAttr(),
+            builder, taskOp.getWaitBarriers(), taskOp.getUpdateBarriers(), nceOp.getLoc(), nceOp.getInput(),
+            nceOp.getInputSparsityMap(), nceOp.getInputStorageElementTable(), nceOp.getWeights(),
+            nceOp.getWeightsSparsityMap(), nceOp.getWeightTable(), nceOp.getWeightTableDataPtr(),
+            nceOp.getWeightTableSpPtr(), nceOp.getWeightTableScale(), nceOp.getWeightTableBias(),
+            nceOp.getWeightZeroPoints(), nceOp.getSprLookupTable(), nceOp.getPalletLookupTable(),
+            nceOp.getParentInput(), nceOp.getParentInputSparsityMap(), nceOp.getParentInputStorageElementTable(),
+            output, outSparsityMap, mlir::ValueRange(newOutputItis), output, outSparsityMap, nceOp.getProfilingData(),
+            nceOp.getDynamicSequenceLength(), nceOp.getMaxPerXyBuff(), nceOp.getMinPerXyBuff(),
+            nceOp.getMinMaxPerTensorBuff(), nceOp.getTaskType(), nceOp.getKernelSizeAttr(),
+            nceOp.getKernelStridesAttr(), nceOp.getKernelPaddingAttr(), nceOp.getIsContinued(),
+            nceOp.getCmSpPatternAttr(),
             /*is_segmented*/ false, nceOp.getOutChannelOffsetAttr(), nceOp.getInputChannelsCompression(),
             nceOp.getIsZeroOffsetWeightsTable(), nceOp.getIsSuperdense(), nceOp.getIsInplaceAttr(),
             nceOp.getInputSeSizeAttr(), nceOp.getOutputSeSizeAttr(), nceOp.getIsPermuteQuantize(),

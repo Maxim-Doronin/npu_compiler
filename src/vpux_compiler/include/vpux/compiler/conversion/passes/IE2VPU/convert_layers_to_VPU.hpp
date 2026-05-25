@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "vpux/compiler/dialect/IE/IR/ops/arithmetic.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/control_flow.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
@@ -167,6 +168,22 @@ public:
 
 public:
     mlir::LogicalResult matchAndRewrite(IE::TopKOp origOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+//
+// AtanRewrite
+//
+
+class AtanRewrite final : public mlir::OpRewritePattern<IE::AtanOp> {
+public:
+    AtanRewrite(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<IE::AtanOp>(ctx), _log(log) {
+    }
+
+public:
+    mlir::LogicalResult matchAndRewrite(IE::AtanOp origOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
     Logger _log;

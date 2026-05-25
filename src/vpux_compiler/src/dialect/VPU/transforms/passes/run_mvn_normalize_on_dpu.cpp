@@ -128,12 +128,17 @@ mlir::Value RunMVNNormalizeOnDPU::computeBias(mlir::Location origOpLoc, mlir::Va
     // Both inputs have shape [1, C, 1, 1]
     const auto opType = VPU::EltwiseType::MULTIPLY;
     auto bias_ppeAttr = VPU::getPpeConfig(ctx).retrievePPEAttribute(origOp);
+    VPU::MPEEngineAttr mpeEngineModeAttr = nullptr;
+    if (auto mpeEngineInterface = mlir::dyn_cast<IE::MPEEngineInfoOpInterface>(origOp.getOperation())) {
+        mpeEngineModeAttr = mlir::cast<VPU::MPEEngineAttr>(mpeEngineInterface.getMPEEngineMode());
+    }
 
-    auto bias = rewriter.create<VPU::NCEEltwiseOp>(appendLoc(origOpLoc, "_compute_bias"), mean.getType(), mean, negOne,
-                                                   VPU::EltwiseTypeAttr::get(ctx, opType), bias_ppeAttr,
-                                                   /*multi_cluster_strategy*/ nullptr,
-                                                   /*is_inplace*/ nullptr, nullptr, nullptr)
-                        .getOutput();
+    auto bias =
+            rewriter.create<VPU::NCEEltwiseOp>(appendLoc(origOpLoc, "_compute_bias"), mean.getType(), mean, negOne,
+                                               VPU::EltwiseTypeAttr::get(ctx, opType), bias_ppeAttr, mpeEngineModeAttr,
+                                               /*multi_cluster_strategy*/ nullptr,
+                                               /*is_inplace*/ nullptr, nullptr, nullptr)
+                    .getOutput();
 
     // Convert to fp32
     bias = rewriter.create<VPU::ConvertOp>(appendLoc(origOpLoc, "_bias_convert"), bias,
@@ -224,9 +229,14 @@ mlir::LogicalResult RunMVNNormalizeOnDPU::matchAndRewrite(VPU::MVN1NormalizeOp o
     const SmallVector<int64_t> pads = {0, 0};
     auto padAttr = VPU::getPaddingAttr(ctx, PadInfo(getIntArrayAttr(ctx, pads), getIntArrayAttr(ctx, pads)));
     auto ppeAttr = VPU::getPpeConfig(ctx).retrievePPEAttribute(origOp);
-    rewriter.replaceOpWithNewOp<VPU::NCEMaxPoolOp>(
-            origOp, origOp.getInput(), weightsTable, getIntArrayAttr(ctx, maxPoolKernels),
-            getIntArrayAttr(ctx, maxPoolStrides), padAttr, ppeAttr, nullptr, nullptr, nullptr);
+    VPU::MPEEngineAttr mpeEngineModeAttr = nullptr;
+    if (auto mpeEngineInterface = mlir::dyn_cast<IE::MPEEngineInfoOpInterface>(origOp.getOperation())) {
+        mpeEngineModeAttr = mlir::cast<VPU::MPEEngineAttr>(mpeEngineInterface.getMPEEngineMode());
+    }
+    rewriter.replaceOpWithNewOp<VPU::NCEMaxPoolOp>(origOp, origOp.getInput(), weightsTable,
+                                                   getIntArrayAttr(ctx, maxPoolKernels),
+                                                   getIntArrayAttr(ctx, maxPoolStrides), padAttr, ppeAttr,
+                                                   mpeEngineModeAttr, nullptr, nullptr, nullptr, nullptr);
 
     return mlir::success();
 }

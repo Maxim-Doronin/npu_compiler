@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --expand-dpu-config %s | FileCheck %s
-// REQUIRES: arch-NPU40XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --expand-dpu-config %s | FileCheck %s
+// REQUIRES: platform-NPU4000
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module {
@@ -16,7 +16,7 @@ module {
   }
 
   func.func @multiple_clusters_dpu_soh_f16_f16_f16() {
-    ELF.Main @ELFMain {
+    ELF.Main {
       ELF.CreateLogicalSection @program.metadata.cmx aligned(32) secType(VPU_SHT_CMX_METADATA) secFlags("SHF_NONE") secLocation(<CMX_NN>) {
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DPUInvariant_0_0_0 idx(!VPURegMapped.Index<0:0:0>) <DPUInvariant>
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DPUInvariant_1_0_0 idx(!VPURegMapped.Index<1:0:0>) <DPUInvariant>
@@ -165,7 +165,7 @@ module {
   }
 
   func.func @multiple_clusters_dpu_sok_f16_f16_f16() {
-    ELF.Main @ELFMain {
+    ELF.Main {
       ELF.CreateLogicalSection @program.metadata.cmx aligned(32) secType(VPU_SHT_CMX_METADATA) secFlags("SHF_NONE") secLocation(<CMX_NN>) {
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DPUInvariant_0_0_0 idx(!VPURegMapped.Index<0:0:0>) <DPUInvariant>
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DPUInvariant_1_0_0 idx(!VPURegMapped.Index<1:0:0>) <DPUInvariant>

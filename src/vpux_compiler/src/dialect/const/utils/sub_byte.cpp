@@ -5,6 +5,8 @@
 
 #include "vpux/compiler/dialect/const/utils/sub_byte.hpp"
 
+#include <climits>
+
 //
 // Const::isSubByte
 //

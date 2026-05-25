@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --apply-tiling --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --apply-tiling --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -235,7 +235,7 @@ func.func @FlashSDPA8kSeqLen(%arg0: tensor<1x1x8192x32xf16>, %arg1: tensor<1x1x1
 
     %value_reordered = IE.Reorder(%arg2) {dstOrder = #NCWH} : tensor<1x1x128x64xf16> -> tensor<1x1x128x64xf16, {order = #NCWH}>
 
-    %result_running_output, %result_running_max, %result_running_sum, %result_query =
+    %result_running_output, %result_running_max, %result_running_sum =
         VPU.FlashSDPA(%arg0, %arg1, %value_reordered, %cst_2, %cst_1, %cst_0, %cst, %cst_5, %cst_4, %cst_3, %arg3) {
                 is_head = true, is_tail = true, kv_num_blocks = 1 : i64, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
                 source_seq_len_pad_size = 0 : i64, tilingStrategy = [1, 1, 2, 1]
@@ -243,19 +243,19 @@ func.func @FlashSDPA8kSeqLen(%arg0: tensor<1x1x8192x32xf16>, %arg1: tensor<1x1x1
                 tensor<1x1x8192x128xf16>, tensor<1x1x2x256xsi32>, tensor<1x1x128x4xsi32>,
                 tensor<1x1x64x4xsi32>, tensor<1x1x8192x64xf16>, tensor<1x1x8192x1xf16>,
                 tensor<1x1x8192x1xf32>, tensor<1x1x8192x128xf16>
-            -> tensor<1x1x8192x64xf16>, tensor<1x1x8192x1xf16>, tensor<1x1x8192x1xf32>, tensor<1x1x8192x32xf16>
+            -> tensor<1x1x8192x64xf16>, tensor<1x1x8192x1xf16>, tensor<1x1x8192x1xf32>
 
     return %result_running_output : tensor<1x1x8192x64xf16>
 
-    // CHECK-DAG:       [[IN_SUM0:%.+]] = const.Declare tensor<1x1x4104x1xf32> = dense<0.000000e+00> : tensor<1x1x8192x1xf32>, [#const.SubView<[0, 0, 0, 0], [1, 1, 4104, 1]>]
-    // CHECK-DAG:       [[IN_MAX0:%.+]] = const.Declare tensor<1x1x4104x1xf16> = dense<0xFC00> : tensor<1x1x8192x1xf16>, [#const.SubView<[0, 0, 0, 0], [1, 1, 4104, 1]>]
-    // CHECK-DAG:       [[IN_OUT0:%.+]] = const.Declare tensor<1x1x4104x64xf16> = dense<0.000000e+00> : tensor<1x1x8192x64xf16>, [#const.SubView<[0, 0, 0, 0], [1, 1, 4104, 64]>]
-    // CHECK-DAG:       [[IN_AUX0:%.+]] = const.Declare tensor<1x1x4104x128xf16> = dense<0.000000e+00> : tensor<1x1x8192x128xf16>, [#const.SubView<[0, 0, 0, 0], [1, 1, 4104, 128]>]
+    // CHECK-DAG:       [[IN_SUM0:%.+]] = const.Declare tensor<1x1x4128x1xf32> = dense<0.000000e+00> : tensor<1x1x8192x1xf32>, [#const.SubView<[0, 0, 0, 0], [1, 1, 4128, 1]>]
+    // CHECK-DAG:       [[IN_MAX0:%.+]] = const.Declare tensor<1x1x4128x1xf16> = dense<0xFC00> : tensor<1x1x8192x1xf16>, [#const.SubView<[0, 0, 0, 0], [1, 1, 4128, 1]>]
+    // CHECK-DAG:       [[IN_OUT0:%.+]] = const.Declare tensor<1x1x4128x64xf16> = dense<0.000000e+00> : tensor<1x1x8192x64xf16>, [#const.SubView<[0, 0, 0, 0], [1, 1, 4128, 64]>]
+    // CHECK-DAG:       [[IN_AUX0:%.+]] = const.Declare tensor<1x1x4128x128xf16> = dense<0.000000e+00> : tensor<1x1x8192x128xf16>, [#const.SubView<[0, 0, 0, 0], [1, 1, 4128, 128]>]
 
-    // CHECK-DAG:       [[IN_SUM1:%.+]] = const.Declare tensor<1x1x4088x1xf32> = dense<0.000000e+00> : tensor<1x1x8192x1xf32>, [#const.SubView<[0, 0, 4104, 0], [1, 1, 4088, 1]>]
-    // CHECK-DAG:       [[IN_MAX1:%.+]] = const.Declare tensor<1x1x4088x1xf16> = dense<0xFC00> : tensor<1x1x8192x1xf16>, [#const.SubView<[0, 0, 4104, 0], [1, 1, 4088, 1]>]
-    // CHECK-DAG:       [[IN_OUT1:%.+]] = const.Declare tensor<1x1x4088x64xf16> = dense<0.000000e+00> : tensor<1x1x8192x64xf16>, [#const.SubView<[0, 0, 4104, 0], [1, 1, 4088, 64]>]
-    // CHECK-DAG:       [[IN_AUX1:%.+]] = const.Declare tensor<1x1x4088x128xf16> = dense<0.000000e+00> : tensor<1x1x8192x128xf16>, [#const.SubView<[0, 0, 4104, 0], [1, 1, 4088, 128]>]
+    // CHECK-DAG:       [[IN_SUM1:%.+]] = const.Declare tensor<1x1x4064x1xf32> = dense<0.000000e+00> : tensor<1x1x8192x1xf32>, [#const.SubView<[0, 0, 4128, 0], [1, 1, 4064, 1]>]
+    // CHECK-DAG:       [[IN_MAX1:%.+]] = const.Declare tensor<1x1x4064x1xf16> = dense<0xFC00> : tensor<1x1x8192x1xf16>, [#const.SubView<[0, 0, 4128, 0], [1, 1, 4064, 1]>]
+    // CHECK-DAG:       [[IN_OUT1:%.+]] = const.Declare tensor<1x1x4064x64xf16> = dense<0.000000e+00> : tensor<1x1x8192x64xf16>, [#const.SubView<[0, 0, 4128, 0], [1, 1, 4064, 64]>]
+    // CHECK-DAG:       [[IN_AUX1:%.+]] = const.Declare tensor<1x1x4064x128xf16> = dense<0.000000e+00> : tensor<1x1x8192x128xf16>, [#const.SubView<[0, 0, 4128, 0], [1, 1, 4064, 128]>]
 
     // CHECK-DAG:       [[DPU_DESCRIPTORS_BUF:%.+]] = const.Declare tensor<1x1x2x256xsi32> = dense<0> : tensor<1x1x2x256xsi32>
     // CHECK-DAG:       [[WEIGHTS_TABLE_0:%.+]] = const.Declare tensor<1x1x128x4xsi32> = dense
@@ -263,27 +263,27 @@ func.func @FlashSDPA8kSeqLen(%arg0: tensor<1x1x8192x32xf16>, %arg1: tensor<1x1x1
 
     // CHECK-DAG:       [[VALUE_REORDERED:%.+]] = IE.Reorder([[VALUE]]) {dstOrder = #NCWH} : tensor<1x1x128x64xf16> -> tensor<1x1x128x64xf16, {order = #NCWH}>
 
-    // CHECK:           [[QUERY0:%.+]] = VPU.Slice [[QUERY]] [0, 0, 0, 0] [1, 1, 4104, 32] : tensor<1x1x8192x32xf16> to tensor<1x1x4104x32xf16>
-    // CHECK:           [[ATTENTION_MASK0:%.+]] = VPU.Slice [[ATTENTION_MASK]] [0, 0, 0, 0] [1, 1, 4104, 128] : tensor<1x1x8192x128xf16> to tensor<1x1x4104x128xf16>
-    // CHECK:           [[RES_OUT0:%[^, ]+]], [[RES_MAX0:%[^, ]+]], [[RES_SUM0:%[^, ]+]], [[RES_QUERY0:%[^, ]+]] =
+    // CHECK:           [[QUERY0:%.+]] = VPU.Slice [[QUERY]] [0, 0, 0, 0] [1, 1, 4128, 32] : tensor<1x1x8192x32xf16> to tensor<1x1x4128x32xf16>
+    // CHECK:           [[ATTENTION_MASK0:%.+]] = VPU.Slice [[ATTENTION_MASK]] [0, 0, 0, 0] [1, 1, 4128, 128] : tensor<1x1x8192x128xf16> to tensor<1x1x4128x128xf16>
+    // CHECK:           [[RES_OUT0:%[^, ]+]], [[RES_MAX0:%[^, ]+]], [[RES_SUM0:%[^, ]+]] =
     // CHECK-SAME:              VPU.FlashSDPA([[QUERY0]], [[KEY]], [[VALUE_REORDERED]], [[IN_AUX0]],
     // CHECK-SAME:                            [[DPU_DESCRIPTORS_BUF]], [[WEIGHTS_TABLE_0]], [[WEIGHTS_TABLE_1]],
     // CHECK-SAME:                            [[IN_OUT0]], [[IN_MAX0]], [[IN_SUM0]], [[ATTENTION_MASK0]]) {
     // CHECK-SAME:                      is_head = true, is_tail = true, kv_num_blocks = 1 : i64
     // CHECK-SAME:                      multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>
     // CHECK-SAME:                      source_seq_len_pad_size = 0 : i64
-    // CHECK-SAME:                  -> tensor<1x1x4104x64xf16>, tensor<1x1x4104x1xf16>, tensor<1x1x4104x1xf32>, tensor<1x1x4104x32xf16>
+    // CHECK-SAME:                  -> tensor<1x1x4128x64xf16>, tensor<1x1x4128x1xf16>, tensor<1x1x4128x1xf32>
 
-    // CHECK:           [[QUERY1:%.+]] = VPU.Slice [[QUERY]] [0, 0, 4104, 0] [1, 1, 4088, 32] : tensor<1x1x8192x32xf16> to tensor<1x1x4088x32xf16>
-    // CHECK:           [[ATTENTION_MASK1:%.+]] = VPU.Slice [[ATTENTION_MASK]] [0, 0, 4104, 0] [1, 1, 4088, 128] : tensor<1x1x8192x128xf16> to tensor<1x1x4088x128xf16>
-    // CHECK:           [[RES_OUT1:%[^, ]+]], [[RES_MAX1:%[^, ]+]], [[RES_SUM1:%[^, ]+]], [[RES_QUERY1:%[^, ]+]] =
+    // CHECK:           [[QUERY1:%.+]] = VPU.Slice [[QUERY]] [0, 0, 4128, 0] [1, 1, 4064, 32] : tensor<1x1x8192x32xf16> to tensor<1x1x4064x32xf16>
+    // CHECK:           [[ATTENTION_MASK1:%.+]] = VPU.Slice [[ATTENTION_MASK]] [0, 0, 4128, 0] [1, 1, 4064, 128] : tensor<1x1x8192x128xf16> to tensor<1x1x4064x128xf16>
+    // CHECK:           [[RES_OUT1:%[^, ]+]], [[RES_MAX1:%[^, ]+]], [[RES_SUM1:%[^, ]+]] =
     // CHECK-SAME:              VPU.FlashSDPA([[QUERY1]], [[KEY]], [[VALUE_REORDERED]], [[IN_AUX1]],
     // CHECK-SAME:                            [[DPU_DESCRIPTORS_BUF]], [[WEIGHTS_TABLE_0]], [[WEIGHTS_TABLE_1]],
     // CHECK-SAME:                            [[IN_OUT1]], [[IN_MAX1]], [[IN_SUM1]], [[ATTENTION_MASK1]])
     // CHECK-SAME:                      is_head = true, is_tail = true, kv_num_blocks = 1 : i64
     // CHECK-SAME:                      multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>
     // CHECK-SAME:                      source_seq_len_pad_size = 0 : i64
-    // CHECK-SAME:                  -> tensor<1x1x4088x64xf16>, tensor<1x1x4088x1xf16>, tensor<1x1x4088x1xf32>, tensor<1x1x4088x32xf16>
+    // CHECK-SAME:                  -> tensor<1x1x4064x64xf16>, tensor<1x1x4064x1xf16>, tensor<1x1x4064x1xf32>
 
     // CHECK:           [[CONCAT:%.+]] = VPU.Concat([[RES_OUT0]], [[RES_OUT1]])
 
@@ -311,14 +311,14 @@ func.func @FlashSDPATargetSeqLenEqual1(%arg0: tensor<1x24x1x64xf16>, %arg1: tens
     %cst_0 = const.Declare tensor<1x1x1024x4xsi32> = dense<0> : tensor<1x1x1024x4xsi32>
 
     %cst_1 = const.Declare tensor<1x1x2x256xsi32> = dense<0> : tensor<1x1x2x256xsi32>
-    %cst_2 = const.Declare tensor<1x4x1x1024xf16> = dense<0.000000e+00> : tensor<1x4x1x1024xf16>
+    %cst_2 = const.Declare tensor<1x2x1x1024xf16> = dense<0.000000e+00> : tensor<1x2x1x1024xf16>
     %cst_3 = const.Declare tensor<1x24x1x1xf32> = dense<0.000000e+00> : tensor<1x24x1x1xf32>
     %cst_4 = const.Declare tensor<1x24x1x1xf16> = dense<0xFC00> : tensor<1x24x1x1xf16>
     %cst_5 = const.Declare tensor<1x24x1x64xf16> = dense<0.000000e+00> : tensor<1x24x1x64xf16>
 
     %value_reordered = IE.Reorder(%arg2) {dstOrder = #NCWH} : tensor<1x24x1024x64xf16> -> tensor<1x24x1024x64xf16, {order = #NCWH}>
 
-    %result_running_output, %result_running_max, %result_running_sum, %result_query =
+    %result_running_output, %result_running_max, %result_running_sum =
         VPU.FlashSDPA(%arg0, %arg1, %value_reordered, %cst_2, %cst_1, %cst_0, %cst, %cst_5, %cst_4, %cst_3) {
                 is_head = true,
                 is_tail = true,
@@ -327,10 +327,10 @@ func.func @FlashSDPATargetSeqLenEqual1(%arg0: tensor<1x24x1x64xf16>, %arg1: tens
                 source_seq_len_pad_size = 0 : i64,
                 tilingStrategy = [1, 2, 1, 1]
             } : tensor<1x24x1x64xf16>, tensor<1x24x1024x64xf16>, tensor<1x24x1024x64xf16, {order = #NCWH}>,
-                tensor<1x4x1x1024xf16>, tensor<1x1x2x256xsi32>, tensor<1x1x1024x4xsi32>,
+                tensor<1x2x1x1024xf16>, tensor<1x1x2x256xsi32>, tensor<1x1x1024x4xsi32>,
                 tensor<1x1x64x4xsi32>, tensor<1x24x1x64xf16>, tensor<1x24x1x1xf16>,
                 tensor<1x24x1x1xf32>
-            -> tensor<1x24x1x64xf16>, tensor<1x24x1x1xf16>, tensor<1x24x1x1xf32>, tensor<1x24x1x64xf16>
+            -> tensor<1x24x1x64xf16>, tensor<1x24x1x1xf16>, tensor<1x24x1x1xf32>
 
     return %result_running_output : tensor<1x24x1x64xf16>
 
@@ -346,7 +346,7 @@ func.func @FlashSDPATargetSeqLenEqual1(%arg0: tensor<1x24x1x64xf16>, %arg1: tens
     // CHECK-DAG:   [[WEIGHTS_TABLE_0:%.+]] = const.Declare tensor<1x1x1024x4xsi32> = dense
     // CHECK-DAG:   [[WEIGHTS_TABLE_1:%.+]] = const.Declare tensor<1x1x64x4xsi32> = dense
 
-    // CHECK-DAG:   [[IN_AUX:%.+]] = const.Declare tensor<1x4x1x1024xf16> = dense<0.000000e+00> : tensor<1x4x1x1024xf16>
+    // CHECK-DAG:   [[IN_AUX:%.+]] = const.Declare tensor<1x2x1x1024xf16> = dense<0.000000e+00> : tensor<1x2x1x1024xf16>
 
     // CHECK-DAG:   [[VALUE_REORDERED:%.+]] = IE.Reorder([[VALUE]]) {dstOrder = #NCWH} : tensor<1x24x1024x64xf16> -> tensor<1x24x1024x64xf16, {order = #NCWH}>
 
@@ -354,7 +354,7 @@ func.func @FlashSDPATargetSeqLenEqual1(%arg0: tensor<1x24x1x64xf16>, %arg1: tens
     // CHECK-DAG:   [[KEY0:%.+]] = VPU.Slice [[KEY]] [0, 0, 0, 0] [1, 12, 1024, 64] : tensor<1x24x1024x64xf16> to tensor<1x12x1024x64xf16>
     // CHECK-DAG:   [[VALUE0:%.+]] = VPU.Slice [[VALUE_REORDERED]] [0, 0, 0, 0] [1, 12, 1024, 64] : tensor<1x24x1024x64xf16, {order = #NCWH}> to tensor<1x12x1024x64xf16, {order = #NCWH}>
 
-    // CHECK:       [[RES_OUT0:%[^, ]+]], [[RES_MAX0:%[^, ]+]], [[RES_SUM0:%[^, ]+]], [[RES_QUERY0:%[^, ]+]] =
+    // CHECK:       [[RES_OUT0:%[^, ]+]], [[RES_MAX0:%[^, ]+]], [[RES_SUM0:%[^, ]+]] =
     // CHECK-SAME:          VPU.FlashSDPA([[QUERY0]], [[KEY0]], [[VALUE0]], [[IN_AUX]],
     // CHECK-SAME:                        [[DPU_DESCRIPTORS_BUF]], [[WEIGHTS_TABLE_0]], [[WEIGHTS_TABLE_1]],
     // CHECK-SAME:                        [[IN_OUT0]], [[IN_MAX0]], [[IN_SUM0]]) {
@@ -366,7 +366,7 @@ func.func @FlashSDPATargetSeqLenEqual1(%arg0: tensor<1x24x1x64xf16>, %arg1: tens
     // CHECK-DAG:   [[KEY1:%.+]] = VPU.Slice [[KEY]] [0, 12, 0, 0] [1, 12, 1024, 64] : tensor<1x24x1024x64xf16> to tensor<1x12x1024x64xf16>
     // CHECK-DAG:   [[VALUE1:%.+]] = VPU.Slice [[VALUE_REORDERED]] [0, 12, 0, 0] [1, 12, 1024, 64] : tensor<1x24x1024x64xf16, {order = #NCWH}> to tensor<1x12x1024x64xf16, {order = #NCWH}>
 
-    // CHECK:       [[RES_OUT1:%[^, ]+]], [[RES_MAX1:%[^, ]+]], [[RES_SUM1:%[^, ]+]], [[RES_QUERY1:%[^, ]+]] =
+    // CHECK:       [[RES_OUT1:%[^, ]+]], [[RES_MAX1:%[^, ]+]], [[RES_SUM1:%[^, ]+]] =
     // CHECK-SAME:          VPU.FlashSDPA([[QUERY1]], [[KEY1]], [[VALUE1]], [[IN_AUX]],
     // CHECK-SAME:                        [[DPU_DESCRIPTORS_BUF]], [[WEIGHTS_TABLE_0]], [[WEIGHTS_TABLE_1]],
     // CHECK-SAME:                        [[IN_OUT1]], [[IN_MAX1]], [[IN_SUM1]]) {

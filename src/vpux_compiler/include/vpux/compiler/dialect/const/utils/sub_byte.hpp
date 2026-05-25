@@ -5,16 +5,7 @@
 
 #pragma once
 
-#include "vpux/utils/IE/format.hpp"
-#include "vpux/utils/core/error.hpp"
-#include "vpux/utils/core/numeric.hpp"
-#include "vpux/utils/core/small_vector.hpp"
-
-#include "vpux/compiler/utils/types.hpp"
-
-#include <openvino/core/type/element_type.hpp>
-
-#include <mlir/IR/MLIRContext.h>
+#include <cstddef>
 
 namespace vpux {
 namespace Const {

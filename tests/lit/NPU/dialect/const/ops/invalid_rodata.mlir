@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt %s --split-input-file --init-compiler="vpu-arch=%arch%" --verify-diagnostics
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt %s --split-input-file --init-compiler="platform=%platform%" --verify-diagnostics
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // expected-error@+1 {{'const.Rodata' op expects parent op 'const.Data'}}
 const.Rodata @weights dense_resource<blob> : tensor<2x2xf32>

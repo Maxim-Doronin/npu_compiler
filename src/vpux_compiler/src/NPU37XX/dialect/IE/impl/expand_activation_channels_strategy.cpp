@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,8 +12,11 @@ namespace vpux::IE::arch37xx {
 
 void ExpandActivationChannelsStrategy::addTargets(mlir::ConversionTarget& target) {
     const auto isLegal = [&](mlir::Operation* op) {
-        if (!_seOpsEnabled && mlir::isa<IE::SEOpInterface>(op)) {
-            return true;
+        if (!_seOpsEnabled) {
+            if (auto seOp = mlir::dyn_cast<IE::SEOpInterface>(op);
+                seOp && !mlir::isa<IE::GroupConvolutionOp>(op) && seOp.isSupported(emptyLogCb)) {
+                return true;
+            }
         }
 
         if (auto iface = mlir::dyn_cast<IE::AlignedChannelsOpInterface>(op)) {
@@ -38,7 +41,7 @@ void ExpandActivationChannelsStrategy::addPatterns(mlir::RewritePatternSet& patt
     patterns.add<IE::GroupConvolutionRewriter>(ctx, _log);
     patterns.add<IE::MatMulRewriter>(ctx, _log);
     patterns.add<IE::SoftMaxRewriter>(ctx, _log);
-    patterns.add<IE::SDPAExtendedRewriter>(ctx, _log);
+    patterns.add<IE::AttentionRewriter>(ctx, _log);
     patterns.add<IE::FlashSDPARewriter>(ctx, _log);
 
     if (_seOpsEnabled) {

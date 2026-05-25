@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW allow-custom-values=true" --mlir-elide-elementsattrs-if-larger 8 --default-hw-mode-vpuip="function-outlining='naive'" %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW allow-custom-values=true" --mlir-elide-elementsattrs-if-larger 8 --default-hw-mode-vpuip="function-outlining='naive'" %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 !MemRef = memref<1x3x62x62xf16>
 
@@ -214,13 +214,11 @@ module @SwKernelsIndependentCalls {
 
         // CHECK: @builtin_SoftMax inputs([[FOO_CALL0_IN_SLICE0]] {{.+}} outputs([[FOO_CALL0_OUT_SLICE0]]
         // CHECK: @builtin_SoftMax inputs([[FOO_CALL0_IN_SLICE1]] {{.+}} outputs([[FOO_CALL0_OUT_SLICE1]]
-
-        // CHECK: VPUIP.NNDMA <{{.+}}> inputs([[MAIN_OUT]] {{.+}} outputs([[DDR_OUT1]]
-
         // CHECK: @builtin_SoftMax inputs([[FOO_CALL1_IN_SLICE0]] {{.+}} outputs([[FOO_CALL1_OUT_SLICE0]]
         // CHECK: @builtin_SoftMax inputs([[FOO_CALL1_IN_SLICE1]] {{.+}} outputs([[FOO_CALL1_OUT_SLICE1]]
 
         // CHECK: VPUIP.NNDMA <{{.+}}> inputs([[MAIN_OUT]] {{.+}} outputs([[DDR_OUT0]]
+        // CHECK: VPUIP.NNDMA <{{.+}}> inputs([[MAIN_OUT]] {{.+}} outputs([[DDR_OUT1]]
 
         // CHECK: return [[OUT0]], [[OUT1]]
     }

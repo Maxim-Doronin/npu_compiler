@@ -596,6 +596,17 @@ bool vpux::VPU::isUniformDistributedSegmentsSupported(mlir::Operation* op) {
     return !config::isArchVPUX3XXX(config::getArch(op));
 }
 
+// HaloAssistedSliceOptimization requires NCE ODU halo capability.
+// MTL (NPU37XX) lacks hardware halo support entirely.
+// LNL (NPU40XX) has halo hardware but suffers from performance scaling issues that
+// cause this optimization to regress full-model performance rather than improve it.
+// TODO: E#211948 — re-evaluate enabling on LNL once the performance regression is root-caused.
+// The optimization is therefore restricted to NPU50XX and newer architectures.
+bool vpux::VPU::isHaloAssistedSliceOptimizationSupported(mlir::Operation* op) {
+    auto arch = config::getArch(op);
+    return arch >= config::ArchKind::NPU50XX;
+}
+
 //
 // Tiling utils
 //

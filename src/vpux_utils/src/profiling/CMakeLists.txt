@@ -60,12 +60,14 @@ target_include_directories(${TARGET_NAME}
 )
 
 ov_link_system_libraries(${TARGET_NAME}
-    PRIVATE
-        npu_elf
-        LLVMSupport
     PUBLIC
         flatbuffers
         npu_profiling_schema
+        npu_logger
+        npu_core_utils
+    PRIVATE
+        npu_elf
+        LLVMSupport
+        npu_compiler_npu37xx
+        npu_compiler_npu40xx
 )
-
-target_link_libraries(${TARGET_NAME} PRIVATE npu_core_utils npu_llvm_utils)

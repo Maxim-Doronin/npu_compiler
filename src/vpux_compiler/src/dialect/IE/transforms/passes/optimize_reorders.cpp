@@ -1406,11 +1406,8 @@ bool doesConvertOpIncreaseElemSize(IE::ConvertOp convertOp) {
 
 class ReorderWithLayer final : public mlir::OpInterfaceRewritePattern<IE::LayoutInfoOpInterface> {
 public:
-    ReorderWithLayer(mlir::MLIRContext* ctx, Logger log, const bool seOpsEnabled, const bool seExperimentalOpsEnabled)
-            : mlir::OpInterfaceRewritePattern<IE::LayoutInfoOpInterface>(ctx),
-              _log(log),
-              _seOpsEnabled(seOpsEnabled),
-              _seExperimentalOpsEnabled(seExperimentalOpsEnabled) {
+    ReorderWithLayer(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpInterfaceRewritePattern<IE::LayoutInfoOpInterface>(ctx), _log(log) {
         setDebugName("ReorderWithLayer");
     }
 
@@ -1419,8 +1416,6 @@ public:
 
 private:
     Logger _log;
-    bool _seOpsEnabled;
-    bool _seExperimentalOpsEnabled;
 };
 
 mlir::LogicalResult ReorderWithLayer::matchAndRewrite(IE::LayoutInfoOpInterface layerOp,
@@ -1482,7 +1477,7 @@ mlir::LogicalResult ReorderWithLayer::matchAndRewrite(IE::LayoutInfoOpInterface 
     // Propagate first input layout and infer layout info
     auto orderInfo = layerOp.getLayoutInfo();
     orderInfo.setInput(0, propagatingOrder);
-    layerOp.inferLayoutInfo(orderInfo, _seOpsEnabled, _seExperimentalOpsEnabled);
+    layerOp.inferLayoutInfo(orderInfo);
     if (orderInfo.getInput(0) != propagatingOrder) {
         return matchFailed(_log.nest(), rewriter, layerOp, "Layer doesn't support propagating order {0}",
                            propagatingOrder);
@@ -1920,6 +1915,245 @@ mlir::LogicalResult ReorderWithGroupConv::matchAndRewrite(IE::GroupConvolutionOp
 }
 
 //
+// ReorderWithAddAndGroupConv
+//
+// Optimize the pattern:
+//   input1(NCHW)   input2(NCHW)
+//       |               |
+//     Reorder        Reorder
+//       |               |
+//     (NHWC)          (NHWC)
+//         \           /
+//             Add
+//              |
+//        GroupConvolution (eltwise)
+//              |
+//            Reorder
+//              |
+//          (any order)
+//
+// Into:
+//   input1          input2
+//       |               |
+//   PermuteCast     PermuteCast
+//       |               |
+//         \           /
+//             Add
+//              |
+//        GroupConvolution (eltwise)
+//              |
+//          PermuteCast      <- restores NCHW logical shape
+//              |
+//           Reorder         <- reaches the original dst order; folded if dst is already NCHW
+//              |
+//           output
+//
+// The input PermuteCasts reinterpret memory layout without data movement, eliminating expensive
+// Reorders. The output PermuteCast+Reorder pair is canonicalized away when the original chain
+// was a NCHW -> NHWC -> NCHW round-trip.
+//
+
+class ReorderWithAddAndGroupConv final : public mlir::OpRewritePattern<IE::GroupConvolutionOp> {
+public:
+    ReorderWithAddAndGroupConv(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpRewritePattern<IE::GroupConvolutionOp>(ctx), _log(log) {
+        setDebugName("ReorderWithAddAndGroupConv");
+    }
+
+public:
+    mlir::LogicalResult matchAndRewrite(IE::GroupConvolutionOp origOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+mlir::LogicalResult ReorderWithAddAndGroupConv::matchAndRewrite(IE::GroupConvolutionOp origOp,
+                                                                mlir::PatternRewriter& rewriter) const {
+    _log.trace("[{0}] Got IE::GroupConvolutionOp at '{1}'", getDebugName(), origOp->getLoc());
+
+    // --- 1. Pattern topology: Reorder -> Add -> eltwise-GroupConv -> Reorder ---
+
+    if (!IE::isEltwiseGroupConv(origOp, /*isConstFilter=*/true)) {
+        return mlir::failure();
+    }
+    if (!origOp.getOutput().hasOneUse()) {
+        return mlir::failure();
+    }
+    auto outReorderOp = mlir::dyn_cast<IE::ReorderOp>(*origOp.getOutput().getUsers().begin());
+    if (outReorderOp == nullptr) {
+        return mlir::failure();
+    }
+    auto addOp = origOp.getInput().getDefiningOp<IE::AddOp>();
+    if (addOp == nullptr || !addOp.getResult().hasOneUse()) {
+        return mlir::failure();
+    }
+    auto in1ReorderOp = addOp.getInput1().getDefiningOp<IE::ReorderOp>();
+    auto in2ReorderOp = addOp.getInput2().getDefiningOp<IE::ReorderOp>();
+    if (in1ReorderOp == nullptr || in2ReorderOp == nullptr) {
+        return mlir::failure();
+    }
+    if (!in1ReorderOp.getResult().hasOneUse() || !in2ReorderOp.getResult().hasOneUse()) {
+        return mlir::failure();
+    }
+    // All Reorders must perform actual data movement (non-trivial) to justify the substitution.
+    if (isTrivialReorder(in1ReorderOp) || isTrivialReorder(in2ReorderOp) || isTrivialReorder(outReorderOp)) {
+        return mlir::failure();
+    }
+
+    // --- 2. Layout consistency: all orders form a coherent round-trip ---
+
+    // Input Reorders must feed the GroupConv layout; GroupConv must preserve it at the output
+    // so the output PermuteCast can restore the original order.
+    const auto groupConvInOrder = DimsOrder::fromValue(origOp.getInput());
+    if (DimsOrder::fromAffineMap(in1ReorderOp.getDstOrder()) != groupConvInOrder ||
+        DimsOrder::fromAffineMap(in2ReorderOp.getDstOrder()) != groupConvInOrder) {
+        return mlir::failure();
+    }
+    if (DimsOrder::fromValue(origOp.getOutput()) != groupConvInOrder) {
+        return mlir::failure();
+    }
+    const auto origInOrder = DimsOrder::fromValue(in1ReorderOp.getInput());
+    // This optimization targets a fixed round-trip: NCHW -> NHWC -> NCHW.
+    // The shape arithmetic below assumes newGroups is taken from original W.
+    if (origInOrder != DimsOrder::NCHW || groupConvInOrder != DimsOrder::NHWC) {
+        return mlir::failure();
+    }
+
+    // Both Add inputs must share the same type to rule out broadcasting: PermuteCast changes
+    // the logical shape, so any implicit broadcast could silently shift to a different axis.
+    if (in1ReorderOp.getInput().getType() != in2ReorderOp.getInput().getType()) {
+        return mlir::failure();
+    }
+
+    // --- 3. Semantic constraints: attributes that are axis-sensitive ---
+
+    const auto hasPerAxisQuantElemType = [](mlir::Value val) {
+        const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(val.getType());
+        return ndType != nullptr && mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(ndType.getElementType());
+    };
+    const auto hasNonChannelAgnosticPostOp = [](mlir::Operation* op) {
+        auto layerWithPostOp = mlir::dyn_cast<IE::LayerWithPostOpInterface>(op);
+        if (!layerWithPostOp) {
+            return false;
+        }
+
+        const auto postOp = layerWithPostOp.getPostOp();
+        return postOp != nullptr && !postOp.isChannelAgnostic();
+    };
+
+    // Per-axis quantization scales are indexed by the channel axis; that axis changes after
+    // PermuteCast, so the quantization would apply to the wrong dimension.
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
+    if (hasPerAxisQuantElemType(origOp.getOutput()) || hasPerAxisQuantElemType(addOp.getInput1()) ||
+        hasPerAxisQuantElemType(addOp.getInput2()) || hasPerAxisQuantElemType(addOp.getOutput())) {
+        return mlir::failure();
+    }
+    // GroupConv/Add per-channel post-op parameters are indexed by the channel axis;
+    // after the rewrite the channel axis differs, so only channel-agnostic post-ops are safe.
+    if (hasNonChannelAgnosticPostOp(origOp.getOperation()) || hasNonChannelAgnosticPostOp(addOp.getOperation())) {
+        return mlir::failure();
+    }
+    // Bias length equals origGroups; after the rewrite groups = W (newGroups), which may differ.
+    if (origOp.getBias() != nullptr) {
+        return mlir::failure();
+    }
+
+    // GroupConv/Add padding attributes are axis-sensitive. The rewrite changes logical axis
+    // interpretation, so preserve semantics only when no input/output padding is attached.
+    if (origOp.getInputPaddingAttr() != nullptr || origOp.getOutputPaddingAttr() != nullptr ||
+        addOp.getInputPaddingAttr() != nullptr || addOp.getOutputPaddingAttr() != nullptr) {
+        return mlir::failure();
+    }
+
+    // --- 4. Shape arithmetic: the post-PermuteCast channel value must be legal ---
+
+    // After PermuteCast the W dimension of the original tensor becomes the new channel count.
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(in1ReorderOp.getInput().getType());
+    const auto origInShape = inType.getShape();
+    const auto newChannels = origInShape[Dims4D::Act::W];
+    // Unaligned channel count would require an Expand later, defeating the purpose.
+    auto alignedChannelsIface = mlir::dyn_cast<IE::AlignedChannelsOpInterface>(origOp.getOperation());
+    const auto channelAlignment = alignedChannelsIface ? alignedChannelsIface.getInputChannelAlignment() : 1;
+    if (newChannels % channelAlignment != 0) {
+        return mlir::failure();
+    }
+    // Filter OC = origGroups = C of the original input; the slice [0, newGroups) must fit.
+    const auto origGroups = origInShape[Dims4D::Act::C];
+    if (newChannels > origGroups) {
+        return mlir::failure();
+    }
+
+    const auto filterShape = getShape(origOp.getFilter());
+    // This rewrite relies on depthwise-like eltwise GroupConv semantics where IC per group is 1.
+    // For IC > 1, changing groups from C to W would require remapping IC consistently, which is not
+    // performed by this transform.
+    if (filterShape[Dims4D::Filter::IC] != 1) {
+        return mlir::failure();
+    }
+
+    _log.trace("Replacing Reorder-Add-GroupConv-Reorder with PermuteCast-Add-GroupConv-PermuteCast at '{0}'",
+               origOp->getLoc());
+
+    const auto ctx = rewriter.getContext();
+    const auto identityMap = mlir::AffineMap::getMultiDimIdentityMap(checked_cast<uint32_t>(outType.getRank()), ctx);
+    const auto identityMapAttr = mlir::AffineMapAttr::get(identityMap);
+    const auto groupConvInOrderAttr = mlir::AffineMapAttr::get(groupConvInOrder.toAffineMap(ctx));
+
+    // PermuteCast: reinterpret memory layout without data movement.
+    // Example: NCHW 1x1024x35x256 (mem [1,1024,35,256]) -> NHWC 1x256x1024x35 (same mem, C=256).
+    auto in1PermuteCast = rewriter.create<IE::PermuteCastOp>(
+            takeOpLoc(origOp, "in1_permuteCast"), in1ReorderOp.getInput(), groupConvInOrderAttr, identityMapAttr);
+    auto in2PermuteCast = rewriter.create<IE::PermuteCastOp>(
+            takeOpLoc(origOp, "in2_permuteCast"), in2ReorderOp.getInput(), groupConvInOrderAttr, identityMapAttr);
+
+    // The PermuteCast output has a permuted logical shape (e.g. 1x256x1024x35 NHWC).
+    // C dimension of the permuted shape becomes the new groups count for the eltwise GroupConv.
+    const auto permutedShape = getShape(in1PermuteCast.getOutput());
+    const auto newGroups = permutedShape[Dims4D::Act::C];
+    const auto newGroupsAttr = getIntAttr(ctx, newGroups);
+
+    // Add operates on the permuted shapes directly.
+    const auto origAddElemType = mlir::cast<vpux::NDTypeInterface>(addOp.getType()).getElementType();
+    const auto newAddOutType =
+            mlir::cast<vpux::NDTypeInterface>(in1PermuteCast.getOutput().getType()).changeElemType(origAddElemType);
+    auto newAddOp =
+            rewriter.create<IE::AddOp>(addOp->getLoc(), newAddOutType, in1PermuteCast.getOutput(),
+                                       in2PermuteCast.getOutput(), addOp.getAutoBroadcastAttr(), addOp.getPostOpAttr(),
+                                       addOp.getClampAttr(), addOp.getOutputPaddingAttr(), addOp.getInputPaddingAttr());
+
+    // The GroupConv filter must match the new groups count. Since isEltwiseGroupConv ensures
+    // the filter is a splat constant, slicing OC dim from origGroups to newGroups is semantically equivalent.
+    SmallVector<int64_t> filterSliceOffsets(filterShape.size(), 0);
+    SmallVector<int64_t> filterSliceSizes(filterShape.raw().begin(), filterShape.raw().end());
+    filterSliceSizes[Dims4D::Filter::OC.ind()] = newGroups;
+    auto newFilter = rewriter.create<IE::SliceOp>(takeOpLoc(origOp, "filter_slice"), origOp.getFilter(),
+                                                  getIntArrayAttr(ctx, filterSliceOffsets),
+                                                  getIntArrayAttr(ctx, filterSliceSizes));
+
+    const auto newGroupConvOutType = mlir::cast<vpux::NDTypeInterface>(in1PermuteCast.getOutput().getType())
+                                             .changeElemType(outType.getElementType());
+    auto newGroupConv = rewriter.create<IE::GroupConvolutionOp>(
+            origOp->getLoc(), newGroupConvOutType, newAddOp.getOutput(), newFilter.getResult(), /*bias=*/nullptr,
+            origOp.getStridesAttr(), origOp.getPadsBeginAttr(), origOp.getPadsEndAttr(), origOp.getDilationsAttr(),
+            newGroupsAttr, origOp.getPostOpAttr(), origOp.getClampAttr(), origOp.getOutputPaddingAttr(),
+            origOp.getInputPaddingAttr());
+
+    // PermuteCast back: NHWC 1x256x1024x35 (mem [1,1024,35,256]) -> origInOrder (NCHW) 1x1024x35x256.
+    // Physical memory [1,1024,35,256] interpreted as NCHW [N,C,H,W] gives shape 1x1024x35x256.
+    const auto origInOrderAttr = mlir::AffineMapAttr::get(origInOrder.toAffineMap(ctx));
+    auto outPermuteCast = rewriter.create<IE::PermuteCastOp>(
+            takeOpLoc(origOp, "out_permuteCast"), newGroupConv.getOutput(), origInOrderAttr, identityMapAttr);
+
+    // Always emit the trailing Reorder to reach the original dst order. When the original chain
+    // was a round-trip (dst == NCHW == origInOrder) this becomes a trivial Reorder.
+    auto newOutReorder = rewriter.create<IE::ReorderOp>(takeOpLoc(origOp, "out_reorder"), outPermuteCast.getOutput(),
+                                                        outReorderOp.getDstOrderAttr());
+    rewriter.replaceOp(outReorderOp, newOutReorder.getOutput());
+
+    return mlir::success();
+}
+
+//
 // ReorderWithEltwise
 //
 
@@ -1974,7 +2208,7 @@ mlir::LogicalResult ReorderWithEltwise<ConcreteOp>::matchAndRewrite(ConcreteOp o
     }
     auto orderInfo = layerOp.getLayoutInfo();
     orderInfo.setInput(0, origInOrder);
-    layerOp.inferLayoutInfo(orderInfo, /*seOpsEnabled=*/false, /*seExperimentalOpsEnabled=*/false);
+    layerOp.inferLayoutInfo(orderInfo);
 
     auto identityMap = mlir::AffineMap::getMultiDimIdentityMap(checked_cast<unsigned>(inputType.getRank()), ctx);
     const auto inPermuteCastType = inferNewTypeWithMemPerm(inputType, identityMap, orderInfo.getInput(0));
@@ -2010,22 +2244,16 @@ mlir::LogicalResult ReorderWithEltwise<ConcreteOp>::matchAndRewrite(ConcreteOp o
 
 class OptimizeReordersPass final : public IE::impl::OptimizeReordersBase<OptimizeReordersPass> {
 public:
-    explicit OptimizeReordersPass(const bool seOpsEnabled, const bool seExperimentalOpsEnabled, Logger log)
-            : _seOpsEnabled(seOpsEnabled), _seExperimentalOpsEnabled(seExperimentalOpsEnabled) {
+    explicit OptimizeReordersPass(Logger log) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
 private:
     void safeRunOnFunc() final;
-
-private:
-    bool _seOpsEnabled;
-    bool _seExperimentalOpsEnabled;
 };
 
 void OptimizeReordersPass::safeRunOnFunc() {
     auto& ctx = getContext();
-    (void)_seExperimentalOpsEnabled;
 
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<ReorderWithShapeChange<IE::ReshapeOp>>(&ctx, _log);
@@ -2037,12 +2265,13 @@ void OptimizeReordersPass::safeRunOnFunc() {
     patterns.add<ReorderWithConcat>(&ctx, _log);
     patterns.add<ReorderWithQuantCast>(&ctx, _log);
     patterns.add<ReorderWithTile>(&ctx, _log);
-    patterns.add<ReorderWithLayer>(&ctx, _log, _seOpsEnabled, _seExperimentalOpsEnabled);
+    patterns.add<ReorderWithLayer>(&ctx, _log);
     patterns.add<ReorderWithPermuteCast>(&ctx, _log);
     patterns.add<ReorderWithHWEltwise<IE::AddOp, IE::MVNOp>>(&ctx, _log);
     patterns.add<ReorderWithHWEltwise<IE::AddOp, IE::SubtractOp>>(&ctx, _log);
     patterns.add<ReorderWithHWAddSlice>(&ctx, _log);
     patterns.add<ReorderWithGroupConv>(&ctx, _log);
+    patterns.add<ReorderWithAddAndGroupConv>(&ctx, _log);
     patterns.add<ReorderWithEltwise<IE::GeluOp>>(&ctx, _log);
     IE::ReorderOp::getCanonicalizationPatterns(patterns, &ctx);
 
@@ -2072,7 +2301,6 @@ void OptimizeReordersPass::safeRunOnFunc() {
 // createOptimizeReordersPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::IE::createOptimizeReordersPass(const bool seOpsEnabled,
-                                                                 const bool seExperimentalOpsEnabled, Logger log) {
-    return std::make_unique<OptimizeReordersPass>(seOpsEnabled, seExperimentalOpsEnabled, log);
+std::unique_ptr<mlir::Pass> vpux::IE::createOptimizeReordersPass(Logger log) {
+    return std::make_unique<OptimizeReordersPass>(log);
 }

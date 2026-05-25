@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --init-compiler="vpu-arch=%arch% allow-custom-values=true" --dma-task-profiling-reserve-mem="dma-profiling=true" %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --init-compiler="platform=%platform% allow-custom-values=true" --dma-task-profiling-reserve-mem="dma-profiling=true" %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 module @SimpleGraph {
   net.NetworkInfo entryPoint : @main inputsInfo : {

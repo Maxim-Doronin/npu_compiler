@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --resolve-shaped-type-result-dims %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --resolve-shaped-type-result-dims %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
@@ -1108,4 +1108,93 @@ func.func @ReifyConvertShape(%IN: !InBoundedType) -> (!OutBoundedType, index) {
 
     return %CONVERT, %DIM_3 : !OutBoundedType, index
     // CHECK: return [[CONVERT]], [[DIM_3]]
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+!InterpInType = tensor<1x3x4x6xf16>
+!InterpOutType = tensor<?x?x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 32, 48]> : tensor<4xsi64>, order = #NCHW}>
+
+// CHECK-LABEL: @ReifyInterpolateDynamicScalesShape
+// CHECK-SAME: [[ARG0:%.+]]: tensor<1x3x4x6xf16>, [[ARG1:%.+]]: tensor<2xf32>
+func.func @ReifyInterpolateDynamicScalesShape(%IN: !InterpInType, %SCALES: tensor<2xf32>) -> (!InterpOutType, index, index) {
+    %IDX_2 = arith.constant 2 : index
+    %IDX_3 = arith.constant 3 : index
+    // CHECK: [[CST_W:%.+]] = arith.constant 6.000000e+00 : f64
+    // CHECK: [[C1:%.+]] = arith.constant 1 : index
+    // CHECK: [[CST_H:%.+]] = arith.constant 4.000000e+00 : f64
+    // CHECK: [[C0:%.+]] = arith.constant 0 : index
+
+    %SIZES = const.Declare tensor<2xsi32> = dense<0> : tensor<2xsi32>
+    %AXES = const.Declare tensor<2xsi64> = dense<[2, 3]> : tensor<2xsi64>
+
+    %INTERP = IE.Interpolate(%IN, %SIZES, %SCALES, %AXES) {
+        attr = #IE.Interpolate<mode = <LINEAR>, shape_calc_mode = <SCALES>, coord_mode = <HALF_PIXEL>, nearest_mode = <FLOOR>, antialias = false, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], cube_coeff = -7.500000e-01 : f64>,
+        operandSegmentSizes = array<i32: 1, 1, 1, 1>
+    } : !InterpInType, tensor<2xsi32>, tensor<2xf32>, tensor<2xsi64> -> !InterpOutType
+    // CHECK: [[INTERP:%.+]] = IE.Interpolate([[ARG0]], {{.*}}, [[ARG1]], {{.*}})
+
+    %DIM_2 = tensor.dim %INTERP, %IDX_2 : !InterpOutType
+    %DIM_3 = tensor.dim %INTERP, %IDX_3 : !InterpOutType
+    // CHECK: [[SCALE_H:%.+]] = tensor.extract [[ARG1]]{{\[}}[[C0]]{{\]}} : tensor<2xf32>
+    // CHECK: [[SCALE_H_F64:%.+]] = arith.extf [[SCALE_H]] : f32 to f64
+    // CHECK: [[H_MUL:%.+]] = arith.mulf [[SCALE_H_F64]], [[CST_H]] : f64
+    // CHECK: [[H_I64:%.+]] = arith.fptosi [[H_MUL]] : f64 to i64
+    // CHECK: [[DIM_2_REIFIED:%.+]] = arith.index_cast [[H_I64]] : i64 to index
+    // CHECK: [[SCALE_W:%.+]] = tensor.extract [[ARG1]]{{\[}}[[C1]]{{\]}} : tensor<2xf32>
+    // CHECK: [[SCALE_W_F64:%.+]] = arith.extf [[SCALE_W]] : f32 to f64
+    // CHECK: [[W_MUL:%.+]] = arith.mulf [[SCALE_W_F64]], [[CST_W]] : f64
+    // CHECK: [[W_I64:%.+]] = arith.fptosi [[W_MUL]] : f64 to i64
+    // CHECK: [[DIM_3_REIFIED:%.+]] = arith.index_cast [[W_I64]] : i64 to index
+
+    return %INTERP, %DIM_2, %DIM_3 : !InterpOutType, index, index
+    // CHECK: return [[INTERP]], [[DIM_2_REIFIED]], [[DIM_3_REIFIED]]
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+!In0Type = tensor<1x?x?x1xf16, {bounds = #const.OpaqueI64Elements<[1, 512, 512, 1]> : tensor<4xsi64>, order = #NCHW}>
+!In1Type = tensor<1x?x?x2xf16, {bounds = #const.OpaqueI64Elements<[1, 256, 256, 2]> : tensor<4xsi64>, order = #NCHW}>
+!OutType = tensor<1x?x?x3xf16, {bounds = #const.OpaqueI64Elements<[1, 512, 512, 3]> : tensor<4xsi64>, order = #NCHW}>
+
+// CHECK-LABEL: @ReifyYuvToRgbShape
+// CHECK-SAME:  [[ARG_0:%[^:]+]]: tensor<1x?x?x1xf16, {bounds = #const.OpaqueI64Elements<[1, 512, 512, 1]> : tensor<4xsi64>, order = #NCHW}>,
+// CHECK-SAME:  [[ARG_1:%[^:]+]]: tensor<1x?x?x2xf16, {bounds = #const.OpaqueI64Elements<[1, 256, 256, 2]> : tensor<4xsi64>, order = #NCHW}>
+func.func @ReifyYuvToRgbShape(%arg0: !In0Type, %arg1: !In1Type) -> (!OutType, tensor<4xi64>) {
+    %0 = IE.YuvToRgb(%arg0, %arg1) {inFmt = #IE.color_fmt<NV12>, operandSegmentSizes = array<i32: 1, 1, 0>, outFmt = #IE.color_fmt<RGB>} : !In0Type, !In1Type -> !OutType
+    // CHECK-DAG:       [[RESULT:%.+]] = IE.YuvToRgb([[ARG_0]], [[ARG_1]]) {inFmt = #IE.color_fmt<NV12>, operandSegmentSizes = array<i32: 1, 1, 0>, outFmt = #IE.color_fmt<RGB>}
+
+    %c0 = arith.constant 0 : index
+    %dim = tensor.dim %0, %c0 : !OutType
+    %1 = arith.index_cast %dim : index to i64
+    // CHECK-DAG:       [[DIM_0:%.+]] = arith.constant 1 : i64
+
+    %c1 = arith.constant 1 : index
+    %dim_0 = tensor.dim %0, %c1 : !OutType
+    %2 = arith.index_cast %dim_0 : index to i64
+    // CHECK-DAG:       [[INDEX_1:%.+]] = arith.constant 1 : index
+    // CHECK-DAG:       [[DIM_VALUE_1:%.+]] = tensor.dim [[ARG_0]], [[INDEX_1]] : tensor<1x?x?x1xf16, {bounds = #const.OpaqueI64Elements<[1, 512, 512, 1]> : tensor<4xsi64>, order = #NCHW}>
+    // CHECK-DAG:       [[DIM_1:%.+]] = arith.index_cast [[DIM_VALUE_1]] : index to i64
+
+    %c2 = arith.constant 2 : index
+    %dim_1 = tensor.dim %0, %c2 : !OutType
+    %3 = arith.index_cast %dim_1 : index to i64
+    // CHECK-DAG:       [[INDEX_2:%.+]] = arith.constant 2 : index
+    // CHECK-DAG:       [[DIM_VALUE_2:%.+]] = tensor.dim [[ARG_0]], [[INDEX_2]] : tensor<1x?x?x1xf16, {bounds = #const.OpaqueI64Elements<[1, 512, 512, 1]> : tensor<4xsi64>, order = #NCHW}>
+    // CHECK-DAG:       [[DIM_2:%.+]] = arith.index_cast [[DIM_VALUE_2]] : index to i64
+
+    %c3 = arith.constant 3 : index
+    %dim_2 = tensor.dim %0, %c3 : !OutType
+    %4 = arith.index_cast %dim_2 : index to i64
+    // CHECK-DAG:       [[DIM_3:%.+]] = arith.constant 3 : i64
+
+    %from_elements = tensor.from_elements %1, %2, %3, %4 : tensor<4xi64>
+    // CHECK-DAG:       [[OUT_SHAPE:%.+]] = tensor.from_elements [[DIM_0]], [[DIM_1]], [[DIM_2]], [[DIM_3]] : tensor<4xi64>
+
+    return %0, %from_elements : !OutType, tensor<4xi64>
+    // CHECK:           return [[RESULT]], [[OUT_SHAPE]]
 }

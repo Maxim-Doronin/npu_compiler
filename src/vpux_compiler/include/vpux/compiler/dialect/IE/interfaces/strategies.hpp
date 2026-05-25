@@ -28,8 +28,7 @@ public:
             ArrayRef<mlir::PatternBenefit> benefitLevels, size_t index) = 0;
     virtual std::unique_ptr<IMapBilinearInterpolateOnDPUStrategy> getMapBilinearInterpolateOnDPUStrategy(
             const bool interpolateAsSEOpInStrategy) = 0;
-    virtual std::unique_ptr<IGreedilyPassStrategy> getFuseQuantizedOpsStrategy(const bool seOpsEnabled,
-                                                                               const bool seExperimentalOpsEnabled) = 0;
+    virtual std::unique_ptr<IGreedilyPassStrategy> getFuseQuantizedOpsStrategy(const bool seOpsEnabled) = 0;
     virtual std::unique_ptr<IGreedilyPassStrategy> getFuseOutstandingQuantStrategy() = 0;
     virtual std::unique_ptr<IExpandActivationChannelsStrategy> getExpandActivationChannelsStrategy(bool _seOpsEnabled,
                                                                                                    Logger& _log) = 0;

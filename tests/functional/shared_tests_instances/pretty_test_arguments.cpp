@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -11,6 +11,7 @@
 #include <openvino/core/shape.hpp>
 #include <vpux/utils/core/checked_cast.hpp>
 
+#include <set>
 #include <vector>
 
 namespace {
@@ -30,7 +31,8 @@ ov::PartialShape createPartialShape(const std::vector<BoundedDim>& boundedDims) 
     return ov::PartialShape(dimensions);
 }
 
-std::vector<std::vector<int>> expandEachBoundedDimToThreeStaticDims(const std::vector<BoundedDim>& boundedDims) {
+std::vector<std::vector<int>> expandEachBoundedDimWithCustomRule(
+        const std::vector<BoundedDim>& boundedDims, const DynamicShapeGenerationCallback& runtimeShapeCallback) {
     auto staticDimsVector = std::vector<std::vector<int>>();
     staticDimsVector.reserve(boundedDims.size());
 
@@ -40,7 +42,18 @@ std::vector<std::vector<int>> expandEachBoundedDimToThreeStaticDims(const std::v
             continue;
         }
 
-        auto valuesSet = std::set<int>{1, (boundedDim.bound + 1) / 2, boundedDim.bound};
+        auto rawValues = runtimeShapeCallback(boundedDim);
+        VPUX_THROW_UNLESS(!rawValues.empty(),
+                          "runtimeShapeCallback must return at least one value for dynamic dimension with bound {0}",
+                          boundedDim.bound);
+
+        auto valuesSet = std::set<int>();
+        for (const auto value : rawValues) {
+            VPUX_THROW_UNLESS(value > 0 && value <= boundedDim.bound,
+                              "Dynamic dimension value must be in range [1, {0}], got: {1}", boundedDim.bound, value);
+            valuesSet.insert(value);
+        }
+
         auto values = std::vector<int>(valuesSet.begin(), valuesSet.end());
         staticDimsVector.push_back(values);
     }
@@ -93,10 +106,33 @@ ov::test::InputShape generateTestShape(const ov::Shape& shape) {
 
 // Dynamic shape case
 ov::test::InputShape generateTestShape(const std::vector<BoundedDim>& boundedDims) {
+    // Default callback for dynamic dimensions.
+    // It matches documented default examples:
+    // generateTestShape(5, 20)     -> ov::test::InputShape(PartialShape{5, 20}, std::vector<ov::Shape>{{5, 20}})
+    // generateTestShape(5, 20_Dyn) -> ov::test::InputShape(PartialShape{5, 1..20},
+    //                                                      std::vector<ov::Shape>{{5, 1}, {5, 10}, {5, 20}})
+    const auto defaultRuntimeShapeCallback = [](const BoundedDim& boundedDim) {
+        auto valuesSet = std::set<int>{1, (boundedDim.bound + 1) / 2, boundedDim.bound};
+        return std::vector<int>(valuesSet.begin(), valuesSet.end());
+    };
+
+    return generateTestShape(boundedDims, defaultRuntimeShapeCallback);
+}
+
+ov::test::InputShape generateTestShape(const std::vector<BoundedDim>& boundedDims,
+                                       const DynamicShapeGenerationCallback& runtimeShapeCallback) {
     auto partialShape = createPartialShape(boundedDims);
 
-    auto staticDims = expandEachBoundedDimToThreeStaticDims(boundedDims);
+    auto staticDims = expandEachBoundedDimWithCustomRule(boundedDims, runtimeShapeCallback);
     auto staticShapes = generateShapesFromAllDimPermutations(staticDims);
 
     return ov::test::InputShape(partialShape, staticShapes);
+}
+
+std::vector<int> hostCompileSmallShapesLimitationCallback(const BoundedDim& boundedDim) {
+    // HostCompile does not support shapes with dynamic dimension value below tiling step.
+    // Keep generated runtime values in the upper half of the allowed [1, bound] interval.
+    // Track: E#170856
+    const auto lowerHalf = (boundedDim.bound + 1) / 2;
+    return std::vector<int>{(lowerHalf + boundedDim.bound) / 2, boundedDim.bound};
 }

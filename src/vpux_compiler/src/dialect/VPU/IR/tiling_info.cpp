@@ -186,7 +186,7 @@ OutputTiling lstmDpuOutputTiling(const vpux::TileInfo& firstOutputTile) {
     return {firstOutputTile, std::move(secondTile), std::move(thirdTile)};
 }
 
-OutputTiling FlashSDPAOpOutputTiling(const vpux::TileInfo& firstOutputTile, int64_t qkEmbedding) {
+OutputTiling FlashSDPAOpOutputTiling(const vpux::TileInfo& firstOutputTile) {
     auto maxAndSumTile = TileInfo(firstOutputTile);
 
     maxAndSumTile.shape[Dims4D::Act::C] = firstOutputTile.shape[Dims4D::Act::C];
@@ -202,12 +202,7 @@ OutputTiling FlashSDPAOpOutputTiling(const vpux::TileInfo& firstOutputTile, int6
     maxAndSumTile.offsets[Dims4D::Act::W] = 0;
     maxAndSumTile.axis[Dims4D::Act::W] = 0;
 
-    auto query = TileInfo(firstOutputTile);
-    query.shape[Dims4D::Act::W] = qkEmbedding;
-    query.offsets[Dims4D::Act::W] = 0;
-    query.axis[Dims4D::Act::W] = 0;
-
-    return OutputTiling{firstOutputTile, maxAndSumTile, maxAndSumTile, std::move(query)};
+    return OutputTiling{firstOutputTile, maxAndSumTile, maxAndSumTile};
 }
 
 InputTiling FlashSDPAOpInputTiling(const vpux::TileInfo& firstOutputTile, ShapeRef keyShape,

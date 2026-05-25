@@ -58,11 +58,15 @@ VPUIP::DMATypeOpInterface getDmaTypeOp(mlir::async::ExecuteOp execOp) {
     return nullptr;
 }
 
-bool isDmaDataInOp(mlir::async::ExecuteOp execOp) {
+bool isDmaDDR2CMX(mlir::async::ExecuteOp execOp) {
     return isDmaDataOp(execOp, VPU::MemoryKind::DDR, VPU::MemoryKind::CMX_NN);
 }
 
-bool isDmaDataOutOp(mlir::async::ExecuteOp execOp) {
+bool isDmaCMX2DDR(mlir::async::ExecuteOp execOp) {
     return isDmaDataOp(execOp, VPU::MemoryKind::CMX_NN, VPU::MemoryKind::DDR);
+}
+
+bool isDmaDDR2DDR(mlir::async::ExecuteOp execOp) {
+    return isDmaDataOp(execOp, VPU::MemoryKind::DDR, VPU::MemoryKind::DDR);
 }
 }  // namespace vpux::VPUIP

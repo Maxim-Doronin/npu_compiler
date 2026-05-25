@@ -6,7 +6,7 @@
 #include "vpux/compiler/frontend/ov_batch_detection.hpp"
 #include "intel_npu/config/options.hpp"
 #include "vpux/compiler/utils/batch.hpp"
-#include "vpux/utils/IE/config.hpp"
+#include "vpux/utils/ov/config.hpp"
 
 #include <openvino/core/dimension.hpp>
 #include <openvino/core/preprocess/pre_post_process.hpp>
@@ -14,7 +14,6 @@
 
 #include <transformations/common_optimizations/dimension_tracking.hpp>
 #include <transformations/init_node_info.hpp>
-#include <transformations/utils/utils.hpp>
 
 namespace vpux {
 bool collectDebatchCoeffDescriptionIfPossible(std::ostream& stream, const ov::PartialShape& shape,
@@ -33,13 +32,29 @@ bool collectDebatchCoeffDescriptionIfPossible(std::ostream& stream, const ov::Pa
     return i < shape.size();
 }
 
-bool collectDebatchCoeffDescriptionIfPossible(std::ostream& stream, const ov::Layout& layout,
-                                              const ov::PartialShape& shape) {
+bool hasExplicitBatchInLayout(const ov::Layout& layout, const ov::PartialShape& shape) {
     if (ov::layout::has_batch(layout)) {
         if (shape[ov::layout::batch_idx(layout)] != 1) {
-            stream << DebatchCoeffDescription{Dim{ov::layout::batch_idx(layout)}, 1}.to_string() << ",";
             return true;
         }
+    }
+    return false;
+}
+
+bool hasExplicitBatchInLayoutForbidden(const ov::Layout& layout) {
+    static const ov::Layout emptyLayout;
+    static const ov::Layout undeterminedLayout("...");
+    if (layout != emptyLayout && layout != undeterminedLayout && !ov::layout::has_batch(layout)) {
+        return true;
+    }
+    return false;
+}
+
+bool collectDebatchCoeffDescriptionIfPossible(std::ostream& stream, const ov::Layout& layout,
+                                              const ov::PartialShape& shape) {
+    if (hasExplicitBatchInLayout(layout, shape)) {
+        stream << DebatchCoeffDescription{Dim{ov::layout::batch_idx(layout)}, 1}.to_string() << ",";
+        return true;
     }
 
     // When we face layout "..." having a rank 0, we don't know what exactly we are dealing with.
@@ -85,6 +100,37 @@ bool isExplicitCfgBatchMethodOptionRequested(const intel_npu::Config& config, vp
     }
     return false;
 }
+
+bool isBatchForbiddenExplicitly(const std::shared_ptr<ov::Model>& model, vpux::Logger& logger) {
+    VPUX_THROW_WHEN(model == nullptr, "isBatchForbiddenExplicitly must receive a model not a nullptr");
+    size_t explicitNonBatchedLayoutCount = 0;
+    const auto& params = model->get_parameters();
+    for (size_t input_id = 0; input_id < params.size(); input_id++) {
+        const auto& input = params[input_id];
+        const auto& shape = input->get_partial_shape();
+        ov::Layout layout = ov::layout::get_layout(input);
+        logger.trace("input: {0}, layout: {1}, shape: {2}", input_id, layout.to_string(), shape.to_string());
+        if (hasExplicitBatchInLayoutForbidden(layout)) {
+            explicitNonBatchedLayoutCount++;
+        }
+    }
+    // Although outputs are not used by DebatcherPass while preprocessing,
+    // we collect coefficients anyway to enhance debatching algorithm if necessary
+    for (const auto& output : model->get_results()) {
+        const auto& shape = output->get_output_partial_shape(0);
+        ov::Layout layout = ov::layout::get_layout(output);
+        logger.trace("output layout: {0}, shape: {1}", layout.to_string(), shape.to_string());
+        if (hasExplicitBatchInLayoutForbidden(layout)) {
+            explicitNonBatchedLayoutCount++;
+        }
+    }
+
+    // check integrity, do not apply debatching compile method if all input/outputs are explicitly set on-batched
+    logger.debug("Total explicitNonBatchedLayoutCount: {0}, inputs: {1}, outputs: {2}", explicitNonBatchedLayoutCount,
+                 params.size(), model->get_results().size());
+    return (explicitNonBatchedLayoutCount == params.size() + model->get_results().size());
+}
+
 std::tuple<bool, std::string> isBatchDetectedByUserLayouts(const std::shared_ptr<ov::Model>& model,
                                                            vpux::Logger& logger) {
     const auto& params = model->get_parameters();
@@ -264,10 +310,6 @@ std::string_view chooseAppropriateDebatchingMethod(const intel_npu::Config& conf
 
 std::tuple<intel_npu::Config, bool> autoDetectBatchedModelIfPossible(const std::shared_ptr<ov::Model>& model,
                                                                      const intel_npu::Config& config) {
-    std::set<ov::Output<const ov::Node>> batchedInputs;
-    std::set<ov::Output<const ov::Node>> batchedOutputs;
-    std::set<size_t> sBatchSize;
-
     vpux::Logger logger("autoDetectBatchedModelIfPossible", getLogLevel(config));
 
     if (!config.has<intel_npu::BATCH_MODE>()) {
@@ -285,6 +327,11 @@ std::tuple<intel_npu::Config, bool> autoDetectBatchedModelIfPossible(const std::
 
     logger.debug("=== Check whether batch compilation requested explicitly ===");
     if (isExplicitCfgBatchMethodOptionRequested(config, logger)) {
+        return {config, false};
+    }
+
+    logger.debug("=== Check whether batch compilation forbidden explicitly ===");
+    if (isBatchForbiddenExplicitly(model, logger)) {
         return {config, false};
     }
 
@@ -308,7 +355,7 @@ std::tuple<intel_npu::Config, bool> autoDetectBatchedModelIfPossible(const std::
                 autoDebatcherOptions->injectInto(config.get<intel_npu::BATCH_COMPILER_MODE_SETTINGS>());
 
         intel_npu::Config newConfig = config;
-        newConfig.update(toUpdate, intel_npu::OptionMode::CompileTime);
+        newConfig.update(toUpdate);
         return newConfig;
     };
 

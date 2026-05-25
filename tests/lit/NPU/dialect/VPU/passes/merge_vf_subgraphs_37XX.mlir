@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --merge-vertical-fusion-subgraphs %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW" --merge-vertical-fusion-subgraphs %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -844,4 +844,92 @@ func.func @MergeSubgraphsWithCompatibleDistributedTensorType(%arg0: tensor<1x96x
     //CHECK:        VPU.Yield [[DWCONV0]]
 
     //CHECK: return [[VERTICAL_FUSION]] : tensor<1x96x176x176xf16, {order = #NHWC}>
+}
+
+// -----
+
+!qElemType = !quant.uniform<i4:f16, 1.000000e+00:8>
+!qElemType1 = !quant.uniform<u8:f16, 0.081176862529679844:128>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @HandleSpatialDim1Ops
+// CHECK-SAME:  [[INPUT0:%.+]]: tensor<16384x2048x1x1x!qElemType, {order = #NHWC}>,
+// CHECK-SAME:  [[INPUT1:%.+]]: tensor<1x2048x1x1xf16, {order = #NHWC}>
+func.func @HandleSpatialDim1Ops(%arg0: tensor<16384x2048x1x1x!qElemType, {order = #NHWC}>,
+                                 %arg1: tensor<1x2048x1x1xf16, {order = #NHWC}>) -> tensor<1x16384x1x1x!qElemType1, {order = #NHWC}> {
+    %weightsTable = const.Declare tensor<16384x1x1x4xsi32> = dense<1> : tensor<16384x1x1x4xsi32>
+
+    %0 = VPU.VerticalFusion (%arg0 as %arg2: tensor<16384x2048x1x1x!qElemType, {order = #NHWC}>) attributes {tilingStrategy = [15, 1, 1, 1]} -> tensor<16384x2048x1x1xf16, {order = #NHWC}> {
+        %2 = VPU.Dequantize(%arg2) {dstElemType = f16, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>} : tensor<16384x2048x1x1x!qElemType, {order = #NHWC}> -> tensor<16384x2048x1x1xf16, {order = #NHWC}>
+        VPU.Yield %2
+    }
+
+    %1 = VPU.VerticalFusion (%arg1 as %arg2: tensor<1x2048x1x1xf16, {order = #NHWC}>, %0 as %arg3: tensor<16384x2048x1x1xf16, {order = #NHWC}>, %weightsTable as %arg4: tensor<16384x1x1x4xsi32>) attributes {tilingStrategy = [1, 64, 1, 1]} -> tensor<1x16384x1x1x!qElemType1, {order = #NHWC}> {
+        %2 = VPU.NCE.Convolution(%arg2, %arg3, %arg4) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEStub<>, rawFilterShape = [16384, 2048, 1, 1], strides = [1, 1]} : tensor<1x2048x1x1xf16, {order = #NHWC}>, tensor<16384x2048x1x1xf16, {order = #NHWC}>, tensor<16384x1x1x4xsi32> -> tensor<1x16384x1x1x!qElemType1, {order = #NHWC}>
+        VPU.Yield %2
+    }
+
+    return %1 : tensor<1x16384x1x1x!qElemType1, {order = #NHWC}>
+
+    // CHECK: [[VF:%.+]] = VPU.VerticalFusion
+    // CHECK-SAME: scenario = #VPU.vf_scenario<FULL_PREFETCHING>
+    // CHECK-SAME: tilingStrategy = [1, 64, 1, 1]
+    // CHECK:     VPU.Dequantize
+    // CHECK:     VPU.NCE.Convolution
+    // CHECK:     VPU.Yield
+
+    // CHECK: return [[VF]]
+
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+!qElemType = !quant.uniform<u8:f16, 0.013744638480392157:128>
+!qElemType1 = !quant.uniform<u8:f16:0, {0.0038832720588235295:128,0.0031929764093137254:128,0.0036142386642156864:128,0.0036563648897058824:128,0.0035060508578431374:128,0.0039905024509803919:128,0.0036659390318627451:128,0.0031968060661764705:128,0.0035213694852941177:128,0.0032619102328431374:128,0.0038411458333333331:128,0.0035251991421568628:128,0.003833486519607843:128,0.003372012867647059:128,0.0035816865808823528:128,0.0037023207720588234:128,0.0038200827205882352:128,0.0036123238357843139:128,0.003345205269607843:128,0.0031163832720588237:128,0.0036506204044117647:128,0.0034888174019607845:128,0.0038736979166666668:128,0.0033758425245098041:128,0.003058938419117647:128,0.0037176393995098037:128,0.0034562653186274508:128,0.0033260569852941175:128,0.003349034926470588:128,0.0041475183823529412:128,0.0041207107843137256:128,0.003490732230392157:128}>
+
+// CHECK-LABEL: @NotBuildDiffMCSSubgraph
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x256x256x!qElemType, {order = #NHWC}>)
+func.func @NotBuildDiffMCSSubgraph(%arg0: tensor<1x16x256x256x!qElemType, {order = #NHWC}>) -> tensor<1x32x256x256x!qElemType, {order = #NHWC}> {
+    %cst_0 = const.Declare tensor<32x16x3x3x!qElemType1, {order = #NHWC}> = dense<1.0> : tensor<32x16x3x3xf16>, [#const.CastElemType<ui8>, #const.CastElemType<!qElemType1>, #const.Reorder<#NHWC>]
+    %cst_2 = const.Declare tensor<32x32x3x3x!qElemType1, {order = #NHWC}> = dense<1.0> : tensor<32x32x3x3xf16>, [#const.CastElemType<ui8>, #const.CastElemType<!qElemType1>, #const.Reorder<#NHWC>]
+
+    %0 = VPU.VerticalFusion (%arg0 as %arg1: tensor<1x16x256x256x!qElemType, {order = #NHWC}>, %cst_0 as %arg2: tensor<32x16x3x3x!qElemType1, {order = #NHWC}>) attributes {tilingStrategy = [1, 1, 1, 1]} -> tensor<1x32x256x256x!qElemType, {order = #NHWC}> {
+      %3 = VPU.NCE.Convolution(%arg1, %arg2)
+         {multiClusterStrategy = #VPU.multi_cluster_strategy<Clustering>,
+         ppe = #VPU.PPEStub<>,
+         pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
+         rawFilterShape = [32, 16, 3, 3], strides = [1, 1]} : tensor<1x16x256x256x!qElemType, {order = #NHWC}>, tensor<32x16x3x3x!qElemType1, {order = #NHWC}> -> tensor<1x32x256x256x!qElemType, {order = #NHWC}>
+      VPU.Yield %3
+    }
+    %1 = VPU.VerticalFusion (%0 as %arg1: tensor<1x32x256x256x!qElemType, {order = #NHWC}>, %cst_2 as %arg2: tensor<32x32x3x3x!qElemType1, {order = #NHWC}>) attributes {tilingStrategy = [1, 1, 2, 1]} -> tensor<1x32x256x256x!qElemType, {order = #NHWC}> {
+      %3 = VPU.NCE.Convolution(%arg1, %arg2)
+         {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
+         ppe = #VPU.PPEStub<>,
+         pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
+         rawFilterShape = [32, 32, 3, 3], strides = [1, 1]} : tensor<1x32x256x256x!qElemType, {order = #NHWC}>, tensor<32x32x3x3x!qElemType1, {order = #NHWC}> -> tensor<1x32x256x256x!qElemType, {order = #NHWC}>
+      VPU.Yield %3
+    }
+    return %1 : tensor<1x32x256x256x!qElemType, {order = #NHWC}>
+
+    // CHECK-DAG:   [[CST:%.+]] = const.Declare tensor<32x16x3x3x!qElemType1, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x16x3x3xf16>
+    // CHECK-DAG:   [[CST_0:%.+]] = const.Declare tensor<32x32x3x3x!qElemType1, {order = #NHWC}> = dense<1.000000e+00> : tensor<32x32x3x3xf16>
+
+    //CHECK:      [[VERTICAL_FUSION0:%.+]] = VPU.VerticalFusion ([[ARG_0]] as [[ARG_1:%[^:]+]]: tensor<1x16x256x256x!qElemType, {order = #NHWC}>,
+    //CHECK-SAME:                         [[CST]] as [[ARG_2:%[^:]+]]: tensor<32x16x3x3x!qElemType1, {order = #NHWC}>)
+    //CHECK-SAME:                         attributes {tilingStrategy = [1, 1, 1, 1]} -> tensor<1x32x256x256x!qElemType, {order = #NHWC}> {
+    //CHECK:      [[CONV0:%.+]] = VPU.NCE.Convolution([[ARG_1]], [[ARG_2]])
+    //CHECK-SAME:       multiClusterStrategy = #VPU.multi_cluster_strategy<Clustering>
+    //CHECK:      VPU.Yield [[CONV0]]
+
+    //CHECK:      [[VERTICAL_FUSION1:%.+]] = VPU.VerticalFusion ([[VERTICAL_FUSION0]] as [[ARG_1:%[^:]+]]: tensor<1x32x256x256x!qElemType, {order = #NHWC}>,
+    //CHECK-SAME:                         [[CST_0]] as [[ARG_2:%[^:]+]]: tensor<32x32x3x3x!qElemType1, {order = #NHWC}>)
+    //CHECK-SAME:                         attributes {tilingStrategy = [1, 1, 2, 1]} -> tensor<1x32x256x256x!qElemType, {order = #NHWC}> {
+    //CHECK:      [[CONV1:%.+]] = VPU.NCE.Convolution([[ARG_1]], [[ARG_2:%[^:]+]])
+    //CHECK-SAME:       multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>
+    //CHECK:      VPU.Yield [[CONV1]]
+
+    //CHECK: return [[VERTICAL_FUSION1]] : tensor<1x32x256x256x!qElemType, {order = #NHWC}>
+
 }

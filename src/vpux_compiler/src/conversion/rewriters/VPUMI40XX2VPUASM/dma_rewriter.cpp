@@ -224,6 +224,9 @@ mlir::FailureOr<SymbolizationResult> NNDMARewriter::symbolize(VPUMI40XX::NNDMAOp
     auto dmaHwpIdAttr = op.getDmaHwpIdAttr();
     auto addressingModeAttr = op.getAddressingModeAttr();
 
+    auto skipDmaAttr = op.getSkipDmaAttr();
+    auto fetchDmaAttr = op.getFetchDmaAttr();
+
     auto descriptor = op.getDmaDescriptorAttr();
 
     // Prioritize the newer DMATransactionAttr
@@ -232,11 +235,11 @@ mlir::FailureOr<SymbolizationResult> NNDMARewriter::symbolize(VPUMI40XX::NNDMAOp
         VPUX_THROW_WHEN(!descriptor, "Failed to lower DMA descriptor parameters");
     }
 
-    auto newOp = rewriter.create<VPUASM::NNDMAOp>(op.getLoc(), symName, taskIdx, taskLocation, nextLink, input, outputs,
-                                                  waitAttr, updateAttr, startAfter, cleanAfter, accelerationMode,
-                                                  op.getIsOutOfOrder(), op.getIsCritical(), op.getEnableMsc(),
-                                                  actCompressionSizeEntryAttr, sparsityMapAttr, transaction, descriptor,
-                                                  dmaHwpIdAttr, cmxTiles, indicesAttr, addressingModeAttr);
+    auto newOp = rewriter.create<VPUASM::NNDMAOp>(
+            op.getLoc(), symName, taskIdx, taskLocation, nextLink, input, outputs, waitAttr, updateAttr, startAfter,
+            cleanAfter, accelerationMode, op.getIsOutOfOrder(), op.getIsCritical(), op.getEnableMsc(),
+            actCompressionSizeEntryAttr, sparsityMapAttr, transaction, descriptor, dmaHwpIdAttr, cmxTiles, indicesAttr,
+            addressingModeAttr, skipDmaAttr, fetchDmaAttr);
 
     if (auto strided = op->getAttr(vpux::stridedInputAttrName)) {
         newOp->setAttr(vpux::stridedInputAttrName, strided);

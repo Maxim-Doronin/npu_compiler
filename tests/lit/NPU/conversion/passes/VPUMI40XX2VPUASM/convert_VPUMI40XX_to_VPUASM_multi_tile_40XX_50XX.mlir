@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --vpu-arch=%arch% --convert-VPUMI40XX-to-VPUASM %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --platform=%platform% --convert-VPUMI40XX-to-VPUASM %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -45,7 +45,7 @@ func.func @multiple_clusters_dpu_soh_f16_f16_f16() {
   %miV = VPUMI40XX.MappedInferenceVersion(11 _ 4 _ 10) -> !VPURegMapped.Index<0:0:0>
 
   %18 = VPUMI40XX.MappedInference invariants(%14, %15 : !VPURegMapped.Index<0:0:0>, !VPURegMapped.Index<1:0:0>) variants(%16, %17 : !VPURegMapped.Index<0:0:0>, !VPURegMapped.Index<1:0:0>) dmaCount([[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]) invariantCount([1, 1, 0, 0, 0, 0]) variantCount([1, 1, 0, 0, 0, 0]) actKernelRangesCount([[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]) actKernelInvocationsCount([[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]) mediaCount(0) barrierCount(0) mappedInferenceVersion(%miV : !VPURegMapped.Index<0:0:0>) -> !VPURegMapped.Index<0:0:0>
-  ELF.ABIVersion {sym_name = "LoaderABIVersion"}
+  ELF.ABIVersion
   VPUMI40XX.OpRanges
 }
 
@@ -134,7 +134,7 @@ func.func @multiple_clusters_dpu_sok_f16_f16_f16() {
   %25 = VPUMI40XX.DPUVariant taskLocation(%1 : !VPURegMapped.Index<1:0:0>) calls(%23 : !VPURegMapped.Index<1:0:0>) weight_table(%13 : memref<32x1x1x4xsi32, #NHWC, [@CMX_NN, 0]>) <{inStart = [0, 0, 0], inEnd = [15, 15, 15], end = [15, 15, 63], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, start = [0, 0, 32], nce_task_type = #VPUIP.nce_task_type<CONV>}> -> !VPURegMapped.Index<1:0:0>
   %miV = VPUMI40XX.MappedInferenceVersion(11 _ 4 _ 10) -> !VPURegMapped.Index<0:0:0>
   %26 = VPUMI40XX.MappedInference dmas((%21) : (!VPURegMapped.Index<0:0:0>)) invariants(%22, %23 : !VPURegMapped.Index<0:0:0>, !VPURegMapped.Index<1:0:0>) variants(%24, %25 : !VPURegMapped.Index<0:0:0>, !VPURegMapped.Index<1:0:0>) dmaCount([[1, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]) invariantCount([1, 1, 0, 0, 0, 0]) variantCount([1, 1, 0, 0, 0, 0]) actKernelRangesCount([[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]) actKernelInvocationsCount([[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]) mediaCount(0) barrierCount(0) mappedInferenceVersion(%miV : !VPURegMapped.Index<0:0:0>) -> !VPURegMapped.Index<0:0:0>
-  ELF.ABIVersion {sym_name = "LoaderABIVersion"}
+  ELF.ABIVersion
   VPUMI40XX.OpRanges
 }
 

@@ -7,8 +7,7 @@
 #include "vpux/compiler/dialect/VPU/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
-#include "vpux/compiler/dialect/VPU/transforms/factories/nce_workload_channels.hpp"
-#include "vpux/compiler/dialect/VPU/transforms/factories/workload_size_constraint.hpp"
+#include "vpux/compiler/dialect/VPU/interfaces/strategies.hpp"
 #include "vpux/compiler/dialect/VPU/utils/auto_padding_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
@@ -49,6 +48,10 @@ void vpux::VPU::WorkloadSplitter::correctInvalidWorkload(const VPU::SparsityCons
         }
 
         auto supportedChannels = getSupportedChannels(producerNCEOps, sparsityConstraint);
+        if (NCEInvariant::doesOpSupportSmallKernelOptimization(nceOp)) {
+            supportedChannels = filterSupportedChannelsBySmallKernelOptimization(nceOp, supportedChannels);
+        }
+
         const auto invalidDepthwiseOps = findInvalidDepthwiseOps(producerNCEOps, supportedChannels);
         const auto invalidNCEPermuteOps = findInvalidNCEPermuteOps(producerNCEOps);
         if (invalidSparseOps.empty() && invalidDepthwiseOps.empty() && invalidNCEPermuteOps.empty()) {
@@ -59,9 +62,11 @@ void vpux::VPU::WorkloadSplitter::correctInvalidWorkload(const VPU::SparsityCons
         auto channelPadding = int64_t(0);  // used for NCEPermute
 
         int64_t opIdx = 1;
+        auto ctx = nceOp->getContext();
+        const auto& strategyFactory = VPU::getVPUStrategyFactory(ctx);
         for (auto op : producerNCEOps) {
-            auto nceOp = mlir::dyn_cast<VPU::NCEOpInterface>(op);
-            VPUX_THROW_UNLESS(nceOp != nullptr, "Expected NCE op, got '{0}'", op);
+            auto nceOpi = mlir::dyn_cast<VPU::NCEOpInterface>(op);
+            VPUX_THROW_UNLESS(nceOpi != nullptr, "Expected NCE op, got '{0}'", op);
 
             auto isInvalidDepthwise = invalidDepthwiseOps.contains(op);
             auto isInvalidSparsity = invalidSparseOps.contains(op);
@@ -70,14 +75,13 @@ void vpux::VPU::WorkloadSplitter::correctInvalidWorkload(const VPU::SparsityCons
                        "'{2}', sparsity '{3}' ({4}/{5}), remove padding '{6}'",
                        op->getName(), op->getLoc(), isInvalidDepthwise, isInvalidSparsity, opIdx++,
                        producerNCEOps.size(), isInvalidNCEPermuteOp);
-
-            const auto offsetsCorrectionNeeded = VPU::isNCEPermuteOffsetsCorrectionNeeded(nceOp);
+            const auto offsetsCorrectionNeeded = strategyFactory->isNCEPermuteOffsetsCorrectionNeeded(nceOpi);
             if (isInvalidNCEPermuteOp) {
                 channelPadding =
                         mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType()).getShape()[Dims4D::Act::C] -
                         mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType()).getShape()[Dims4D::Act::C];
             }
-            auto workloads = to_small_vector(nceOp.getWorkloads().getOps<VPU::DPUWorkloadOp>());
+            auto workloads = to_small_vector(nceOpi.getWorkloads().getOps<VPU::DPUWorkloadOp>());
             // The workloads must have the same channel size when there's output sparsity
             // It's because the workloads share the unique storage element size
             // However the last workload can have any channel size which is smaller than the previous workloads
@@ -185,6 +189,32 @@ mlir::DenseSet<int64_t> vpux::VPU::WorkloadSplitter::getWorkloadsChannels(
     }
 
     return workloadsChannels;
+}
+
+SmallVector<int64_t> vpux::VPU::WorkloadSplitter::filterSupportedChannelsBySmallKernelOptimization(
+        mlir::Operation* op, ArrayRef<int64_t> supportedChannels) {
+    auto nceOp = mlir::dyn_cast<VPU::NCEOpInterface>(op);
+    VPUX_THROW_UNLESS(nceOp != nullptr, "Expected NCE op, got '{0}'", op);
+    auto workloads = nceOp.getWorkloads().getOps<VPU::DPUWorkloadOp>();
+    SmallVector<int64_t> workloadsChannels =
+            to_container<SmallVector<int64_t>>(workloads | transformed([](VPU::DPUWorkloadOp workload) -> int64_t {
+                                                   const auto wlSizes = workload.getConstOutputSizes();
+                                                   return wlSizes[Dims4D::Act::C.ind()];
+                                               }));
+
+    const auto maxSlotsSum = VPUIP::getBarrierMaxVariantSum(nceOp);
+    const auto& strategyFactory = VPU::getVPUStrategyFactory(nceOp->getContext());
+    const auto channelsSupportedByKernelOptimization = strategyFactory->getChannelsSupportedByKernelOptimization(
+            workloadsChannels, static_cast<int64_t>(maxSlotsSum));
+
+    const ArrayRef<int64_t> resultChannels = channelsSupportedByKernelOptimization.empty()
+                                                     ? supportedChannels
+                                                     : ArrayRef<int64_t>(channelsSupportedByKernelOptimization);
+
+    _log.trace("filterSupportedChannelsBySmallKernelOptimization: supportedChannels {0} for nceOp {1} at {2}",
+               resultChannels, nceOp->getName(), nceOp->getLoc());
+
+    return SmallVector<int64_t>(resultChannels.begin(), resultChannels.end());
 }
 
 // Find the operations which can consume the given value. The value should be of sparse type, therefore the
@@ -481,8 +511,9 @@ SmallVector<int64_t> vpux::VPU::WorkloadSplitter::getSupportedChannels(
     VPUX_THROW_UNLESS(nceOp != nullptr, "Expected NCE op, got '{0}'", *nceOps.begin());
 
     // Filter supported channels through errata conditions for small spatial compute DW ops
-    const auto arch = config::getArch(nceOp);
-    auto workloadSizeConstraint = VPU::getWorkloadSizeConstraint(arch);
+    auto ctx = nceOp.getContext();
+    const auto& strategyFactory = VPU::getVPUStrategyFactory(ctx);
+    auto workloadSizeConstraint = strategyFactory->getWorkloadSizeConstraint();
     if (workloadSizeConstraint.doesDWOperationNeedWorkloadSplit(nceOp)) {
         supportedChannels = workloadSizeConstraint.getChannelsSupportedBySmallSpatialComputeDwOp(supportedChannels);
     }
@@ -498,62 +529,6 @@ SmallVector<int64_t> vpux::VPU::WorkloadSplitter::getSupportedChannels(
         }
     }
 
-    const auto kernelSize = nceOp.getKernelSizeVal();
-    const auto KX = kernelSize[Dims4D::Kernel::X.ind()];
-    const auto kernelStride = nceOp.getStridesVal();
-    const auto SX = kernelStride[Dims4D::Strides::X.ind()];
-    const auto outputType = mlir::cast<vpux::NDTypeInterface>(nceOp.getOperation()->getResult(0).getType());
-    const auto OC = outputType.getShape()[vpux::Dims4D::Act::C];
-    const auto hasSparseInput = mlir::isa<VPU::SparseTensorType>(nceOp->getOperand(0).getType());
-
-    if (VPU::hasAnyChannelSupportedByKernelOptimization(*nceOps.begin(), supportedChannels, KX, SX) &&
-        nceOps.size() == 1 && isDepthwiseOp(*nceOps.begin()) && !hasSparseInput && !hasSparseOutput) {
-        SmallVector<int64_t> workloadsChannels = {OC};
-        // Get a set containing all the channels from the workloads of the given NCE operation if workloads has created
-        // in current phase
-        auto workloads = nceOp.getWorkloads().getOps<VPU::DPUWorkloadOp>();
-        if (!workloads.empty()) {  // Already owns workloads
-            workloadsChannels = to_container<SmallVector<int64_t>>(
-                    workloads | transformed([](VPU::DPUWorkloadOp workload) -> int64_t {
-                        const auto wlSizes = workload.getConstOutputSizes();
-                        return wlSizes[Dims4D::Act::C.ind()];
-                    }));
-        } else {  // No workloads split
-            const auto getPerClusterShapes = [&]() {
-                auto clusterOp = mlir::dyn_cast<VPU::ClusteredOpInterface>(*nceOps.begin());
-                if (clusterOp == nullptr || !clusterOp.getMultiClusterStrategy().has_value()) {
-                    return SmallVector<Shape>{outputType.getShape().raw()};
-                }
-                // multi cluster case
-                auto strategy = clusterOp.getMultiClusterStrategy().value();
-                auto numClusters = VPU::getOptimalNumClusters(clusterOp, outputType.getShape(), strategy);
-                auto distributedType = mlir::cast<VPU::DistributedTensorType>(
-                        getDistributedOutputTypeFromOp(clusterOp, outputType, numClusters, strategy)
-                                .getDistributedTypes()
-                                .front());
-                return distributedType.getPerClusterComputeShapes();
-            };
-
-            const auto perClusterShapes = getPerClusterShapes();
-            if (!perClusterShapes.empty()) {
-                workloadsChannels = to_container<SmallVector<int64_t>>(
-                        perClusterShapes | transformed([](ShapeRef clusterShape) -> int64_t {
-                            return clusterShape[Dims4D::Act::C];
-                        }));
-            }
-        }
-
-        const auto maxSlotsSum = VPUIP::getBarrierMaxVariantSum(nceOp);
-        const auto channelsSupportedByKernelOptimization = VPU::getChannelsSupportedByKernelOptimization(
-                *nceOps.begin(), workloadsChannels, static_cast<int64_t>(maxSlotsSum));
-
-        if (!channelsSupportedByKernelOptimization.empty()) {
-            supportedChannels = std::move(channelsSupportedByKernelOptimization);
-        }
-    }
-
-    _log.trace("getSupportedChannels: supportedChannels {0} on {1} for nceOp {2}", supportedChannels,
-               stringifyArchKind(config::ArchKind(config::getArch(*nceOps.begin()))), (*nceOps.begin())->getLoc());
     return supportedChannels;
 }
 

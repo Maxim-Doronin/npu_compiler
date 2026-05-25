@@ -25,12 +25,12 @@ def VPURegMapped_Dialect : Dialect {
         assist with compilation. In addition, these operations are not serialized into
         the final binary output.
 
-        For example, the **TaskBufferLayoutOp** operation is placed in the VPURegMapped
-        dialect because it is only used to create task location buffers in the
-        VPUMI40XX dialect's `CreateResolveTaskLocationPass`. Since it is an
-        architecture-agnostic operation and only partially involved in the lowering pass,
-        it is appropriate to include it in the VPURegMapped dialect.
-        }];
+        For example, the **ExecutionGroupOp** operation is placed in the VPURegMapped dialect 
+        because it is used only to group tasks that are fetched into CMX together. During compilation,
+        it is used with VPUMI40XX dialect passes (e.g. group-exec-ops). Since it is an
+        architecture-agnostic operation and only partially involved in the lowering pass
+        (it does not get lowered to VPUASM), it is appropriate to include it in the VPURegMapped dialect.
+    }];
 
 
 

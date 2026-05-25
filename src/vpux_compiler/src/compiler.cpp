@@ -26,7 +26,6 @@
 #include "vpux/compiler/dialect/HostExec/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
-#include "vpux/compiler/dialect/VPU/interfaces/singleton_initializer.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
@@ -41,9 +40,10 @@
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/frontend/IE.hpp"
 #include "vpux/compiler/frontend/ov_batch_detection.hpp"
-#include "vpux/compiler/init.hpp"
+#include "vpux/compiler/init/dialects_registry.hpp"
 #include "vpux/compiler/init/hw_strategy_registry.hpp"
-#include "vpux/compiler/interfaces_registry.hpp"
+#include "vpux/compiler/init/interfaces_registry.hpp"
+#include "vpux/compiler/init/singleton_initializer.hpp"
 #include "vpux/compiler/pipelines/developer_config.hpp"
 #include "vpux/compiler/pipelines/options_mapper.hpp"
 #include "vpux/compiler/utils/logging.hpp"
@@ -51,11 +51,12 @@
 #include "vpux/compiler/utils/pipeline_strategies.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
-#include "vpux/utils/IE/itt.hpp"
-#include "vpux/utils/IE/private_properties.hpp"
+#include "vpux/utils/core/env.hpp"
 #include "vpux/utils/core/error.hpp"
 #include "vpux/utils/core/memory_usage.hpp"
 #include "vpux/utils/core/optional.hpp"
+#include "vpux/utils/ov/itt.hpp"
+#include "vpux/utils/ov/private_properties.hpp"
 #include "vpux/utils/profiling/reports/api.hpp"
 
 #include <mlir/IR/Dialect.h>
@@ -80,7 +81,6 @@
 
 #include <transformations/common_optimizations/dimension_tracking.hpp>
 #include <transformations/init_node_info.hpp>
-#include <transformations/utils/utils.hpp>
 
 #include <algorithm>
 #include <regex>
@@ -103,7 +103,6 @@ void checkPlatformSupportedForCompilation(const std::string_view platform) {
         VPUX_THROW(UNSUPPORTED_PLATFORM_ERROR_MESSAGE.data(), platform, intel_npu::PLATFORM::key());
     }
 }
-constexpr uint32_t SUPPORTED_OPSET = 11;
 
 //
 // createDialectPipelineStrategyFn
@@ -250,9 +249,30 @@ void backendHostCompilation(mlir::OwningOpRef<mlir::ModuleOp>& hostModule, const
     auto hostExecTiming = compileNetworkTiming.nest("HostExec pipeline");
     mlir::PassManager hostExecPm(hostModule.get()->getName(), mlir::OpPassManager::Nesting::Implicit);
     devConf.setup(hostExecPm, config);
-    vpux::HostExec::buildHostExecPipeline(hostExecPm, log);
+
+    auto enablePipelinedCmdListRecording =
+            getEnablePipelinedCmdListRecording(config).value_or(HostExec::defaultEnablePipelinedCmdListRecording);
+    vpux::HostExec::buildHostExecPipeline(hostExecPm, enablePipelinedCmdListRecording, log);
 
     auto compileResult = compileNetwork(hostModule.get(), hostExecPm, hostExecTiming);
+    VPUX_THROW_WHEN(mlir::failed(compileResult), "Compilation failed");
+}
+
+static config::HostBackendMode resolveHostBackendMode() {
+    static constexpr auto envVarName = "IE_NPU_ENABLE_BYTECODE_BACKEND";
+    const auto envVar = env::getEnvVar(envVarName);
+    return (envVar.has_value() && envVar.value() == "1") ? config::HostBackendMode::Interpreter
+                                                         : config::HostBackendMode::JIT;
+}
+
+void backendBytecodeCompilation(mlir::OwningOpRef<mlir::ModuleOp>& hostModule, const DeveloperConfig& devConf,
+                                const intel_npu::Config& config, mlir::TimingScope& compileNetworkTiming, Logger log) {
+    auto bytecodeTiming = compileNetworkTiming.nest("Bytecode backend pipeline");
+    mlir::PassManager bytecodePm(hostModule.get()->getName(), mlir::OpPassManager::Nesting::Implicit);
+    devConf.setup(bytecodePm, config);
+    vpux::HostExec::buildBytecodeBackendPipeline(bytecodePm, log);
+
+    auto compileResult = compileNetwork(hostModule.get(), bytecodePm, bytecodeTiming);
     VPUX_THROW_WHEN(mlir::failed(compileResult), "Compilation failed");
 }
 
@@ -281,13 +301,14 @@ auto exportToELF(mlir::ModuleOp module, Logger log) {
     }
 }
 
-auto exportToELF(mlir::ModuleOp module, Logger log, BlobAllocator& allocator) {
+auto exportToELF(mlir::ModuleOp module, Logger log, BlobAllocator& allocator,
+                 bool generateCompatibilityString = false) {
     const auto arch = config::getArch(module);
     switch (arch) {
     case config::ArchKind::NPU37XX:
-        return vpux::ELFNPU37XX::exportToELF(module, allocator, log);
+        return vpux::ELFNPU37XX::exportToELF(module, allocator, log, generateCompatibilityString);
     default:
-        return vpux::ELF::exportToELF(module, allocator, log);
+        return vpux::ELF::exportToELF(module, allocator, log, generateCompatibilityString);
     }
 }
 
@@ -329,12 +350,13 @@ NetworkDescription exportNetwork(mlir::ModuleOp module, const intel_npu::Config&
 }
 
 NetworkDescriptionView exportNetwork(mlir::ModuleOp module, const intel_npu::Config& config, Logger log,
-                                     BlobAllocator& allocator) {
+                                     BlobAllocator& allocator, bool generateCompatibilityString = false) {
     const auto hostCompilationMode = getCompilationMode(config) == vpux::config::CompilationMode::HostCompile;
     if (!hostCompilationMode) {
-        auto blobView = exportToELF(module, log, allocator);
-        return NetworkDescriptionView(blobView, VPUMI37XX::getNetworkMetadata(mlir::ArrayRef(
-                                                        blobView.ptr, static_cast<size_t>(blobView.size))));
+        auto blobView = exportToELF(module, log, allocator, generateCompatibilityString);
+        return NetworkDescriptionView(blobView.first, blobView.second,
+                                      VPUMI37XX::getNetworkMetadata(mlir::ArrayRef(
+                                              blobView.first.ptr, static_cast<size_t>(blobView.first.size))));
     } else {
         auto blobView = exportLLVM(module, allocator, log);
         return NetworkDescriptionView(blobView, VPUMI37XX::getNetworkMetadata(module));
@@ -474,7 +496,6 @@ bool isTypeSupportedNPU37xx(ov::element::Type_t elemType) {
     case ov::element::Type_t::u16:
     case ov::element::Type_t::u32:
     case ov::element::Type_t::u64:
-    case ov::element::Type_t::nf4:
         return true;
     default:
         return false;
@@ -485,6 +506,7 @@ bool isTypeSupportedNPU37xx(ov::element::Type_t elemType) {
 bool isTypeSupportedNPU40xx(ov::element::Type_t elemType) {
     switch (elemType) {
     case ov::element::Type_t::u2:
+    case ov::element::Type_t::nf4:
         return true;
     default:
         return isTypeSupportedNPU37xx(elemType);
@@ -578,7 +600,13 @@ mlir::OwningOpRef<mlir::ModuleOp> compileModel(mlir::MLIRContext& ctx, const std
             // submodule will not be erased.
             sm.release();
         }
-        backendHostCompilation(module, devConf, config, compileNetworkTiming, log);
+        const auto hostBackendMode = resolveHostBackendMode();
+        config::setHostBackendMode(module.get(), hostBackendMode);
+        if (hostBackendMode == config::HostBackendMode::Interpreter) {
+            backendBytecodeCompilation(module, devConf, config, compileNetworkTiming, log);
+        } else {
+            backendHostCompilation(module, devConf, config, compileNetworkTiming, log);
+        }
     } else {
         backendCompilation(module, devConf, config, compileNetworkTiming, log);
     }
@@ -605,10 +633,11 @@ auto createContext(mlir::DialectRegistry& registry, config::ArchKind arch) {
 }
 
 std::unique_ptr<llvm::DefaultThreadPool> createThreadpool(const intel_npu::Config& config) {
-    // Set the number of threads in the pool to be the total number of threads of the compilation minus one: one for the
-    // main thread and the rest for the MLIR thread pool. If user didn't specify the number of threads, default to 8
-    // threads for the pool. By default MLIR will attempt to use all of the threads available on the system which might
-    // cause large peak memory usage during constant-related passes such as constant-folding, hence a limit is set
+    // Set the number of threads in the pool to be the total number of threads of the compilation minus one: one for
+    // the main thread and the rest for the MLIR thread pool. If user didn't specify the number of threads, default
+    // to 8 threads for the pool. By default MLIR will attempt to use all of the threads available on the system
+    // which might cause large peak memory usage during constant-related passes such as constant-folding, hence a
+    // limit is set
     const bool hasThreadLimit = config.has<intel_npu::COMPILATION_NUM_THREADS>();
     const auto totalThreadCount = hasThreadLimit ? config.get<intel_npu::COMPILATION_NUM_THREADS>() : 9;
 
@@ -652,6 +681,7 @@ CompilerSetup::CompilerSetup(const intel_npu::Config& config) {
     config::registerConstraints(registry, platform);
     IE::registerStrategies(registry, arch);
     VPU::initializeSingletons(registry, VPU::DeviceVersion{platform, arch});
+    VPU::registerStrategies(registry, arch);
     VPUIP::registerStrategies(registry, arch);
 
     ctx = createContext(registry, arch);
@@ -743,8 +773,8 @@ CompilationResult compileImpl(std::unique_ptr<CompilerSetup>& setup, const std::
     auto [newConfig, autoBatchingEnabled] = autoDetectBatchedModelIfPossible(model, config);
     if (autoBatchingEnabled) {
         try {
-            // Try method "debatch" at first, because it supports more real models providing better performance numbers
-            // than "unroll"
+            // Try method "debatch" at first, because it supports more real models providing better performance
+            // numbers than "unroll"
             auto moduleOp = compileModel(*setup->ctx, model, originalParameters, originalResults, devConf, rootTiming,
                                          newConfig, log);
             if (!moduleOp) {
@@ -752,9 +782,9 @@ CompilationResult compileImpl(std::unique_ptr<CompilerSetup>& setup, const std::
             }
             return CompilationResult{std::move(moduleOp), model};
         } catch (const std::exception& ex) {
-            log.warning(
-                    "Cannot compile a model using auto-batch compiler detection method, error: {0}\nTrying default...",
-                    ex.what());
+            log.warning("Cannot compile a model using auto-batch compiler detection method, error: {0}\nTrying "
+                        "default...",
+                        ex.what());
             // TODO E####-160706
             // For simplicity we create a new MLIRContext as the old one may be spoiled and inconsisted as it is not
             // exception safety
@@ -794,10 +824,6 @@ CompilerImpl::CompilerImpl() {
 #endif
 }
 
-uint32_t CompilerImpl::getSupportedOpsetVersion() const {
-    return SUPPORTED_OPSET;
-}
-
 NetworkDescription CompilerImpl::compile(const std::shared_ptr<ov::Model>& model,
                                          const intel_npu::Config& config) const {
     OV_ITT_SCOPED_TASK(itt::domains::VPUXPlugin, "CompilerImpl::compile");
@@ -825,7 +851,7 @@ NetworkDescription CompilerImpl::compile(const std::shared_ptr<ov::Model>& model
 }
 
 NetworkDescriptionView CompilerImpl::compile(const std::shared_ptr<ov::Model>& model, const intel_npu::Config& config,
-                                             BlobAllocator& allocator) const {
+                                             BlobAllocator& allocator, bool generateCompatibilityString) const {
     OV_ITT_SCOPED_TASK(itt::domains::VPUXPlugin, "CompilerImpl::compile");
     checkPlatformSupportedForCompilation(config.get<intel_npu::PLATFORM>());
     checkCompilerOptions(config);
@@ -837,7 +863,8 @@ NetworkDescriptionView CompilerImpl::compile(const std::shared_ptr<ov::Model>& m
     auto compilationResult = compileImpl(setup, model, config, log);
 
     OV_ITT_TASK_CHAIN(COMPILER_IMPLEMENTATION, itt::domains::VPUXPlugin, "CompilerImpl::compile", "exportNetwork");
-    auto allocatedCompliedNetwork = exportNetwork(compilationResult.moduleOp.get(), config, log, allocator);
+    auto allocatedCompiledNetwork =
+            exportNetwork(compilationResult.moduleOp.get(), config, log, allocator, generateCompatibilityString);
     OV_ITT_TASK_SKIP(COMPILER_IMPLEMENTATION);
 
     auto peakMemEnd = getPeakMemoryUsage();
@@ -847,11 +874,12 @@ NetworkDescriptionView CompilerImpl::compile(const std::shared_ptr<ov::Model>& m
     // Note: Following log is parsed by CI. Take care when modifying it.
     log.info("Compilation memory usage: Peak {0} KB", peakMemEnd.count() - peakMemStart.count());
 
-    return allocatedCompliedNetwork;
+    return allocatedCompiledNetwork;
 }
 
 NetworkDescriptionView CompilerImpl::compile(const std::shared_ptr<const ov::Model>& origModel,
-                                             const intel_npu::Config& config, BlobAllocator& allocator) const {
+                                             const intel_npu::Config& config, BlobAllocator& allocator,
+                                             bool generateCompatibilityString) const {
     OV_ITT_SCOPED_TASK(itt::domains::VPUXPlugin, "CompilerImpl::compile");
     OV_ITT_TASK_CHAIN(COMPILER_IMPLEMENTATION, itt::domains::VPUXPlugin, "CompilerImpl::compile", "clone_model");
 
@@ -860,7 +888,7 @@ NetworkDescriptionView CompilerImpl::compile(const std::shared_ptr<const ov::Mod
 
     OV_ITT_TASK_SKIP(COMPILER_IMPLEMENTATION);
 
-    return compile(std::move(model), config, allocator);
+    return compile(std::move(model), config, allocator, generateCompatibilityString);
 }
 
 NetworkDescription CompilerImpl::compile(const std::shared_ptr<const ov::Model>& origModel,
@@ -902,7 +930,6 @@ void compileIEtoVPU(mlir::OwningOpRef<mlir::ModuleOp>& moduleOp,
 
         const auto grc = getDefaultGreedyRewriteConfig();
         ieToVPUpm.addPass(mlir::createCanonicalizerPass(grc));
-        ieToVPUpm.addPass(IE::createDumpStatisticsOfIeOpsPass(log));
     }
 
     auto ieToVPUTiming = rootTiming.nest("IE to VPU pipeline");
@@ -993,6 +1020,7 @@ std::vector<CompilationResult> compileImplWsOneShot(
     for (int64_t initPart = 0; initPart < totalInitPartCount; ++initPart) {
         log.info("Compile Init[{0}]", initPart);
         auto moduleInit = mlir::OwningOpRef<mlir::ModuleOp>(moduleMain.get().clone());
+        moduleInit->setSymName(formatv("{0}_init_{1}", moduleMain->getSymName().value_or("module"), initPart).str());
 
         mlir::DefaultTimingManager initTm;
         devConf.setup(initTm);
@@ -1038,6 +1066,9 @@ void compileModelWsIterative(DeveloperConfig& devConf, mlir::TimingScope& rootTi
         log.info("Compile Init[{0}]", initPart.value());
         auto initPipelineStrategy = factoryMethod(config::CompilationMode::WSInit);
         auto moduleInit = mlir::OwningOpRef<mlir::ModuleOp>(moduleOp.get().clone());
+        moduleInit->setSymName(
+                formatv("{0}_init_{1}", moduleOp->getSymName().value_or("module"), initPart.value()).str());
+
         mlir::DefaultTimingManager initTm;
         devConf.setup(initTm);
         auto rootInitTiming = initTm.getRootScope();
@@ -1383,5 +1414,11 @@ BlobView::BlobView(uint8_t* _ptr, uint64_t _size): ptr(_ptr), size(_size) {
 }
 
 NetworkDescriptionView::NetworkDescriptionView(BlobView blob, NetworkMetadata&& meta)
-        : compiledNetwork(std::move(blob)), metadata(std::move(meta)) {
+        : compiledNetwork(std::move(blob)), compatibilityString{nullptr, 0}, metadata(std::move(meta)) {
+}
+
+NetworkDescriptionView::NetworkDescriptionView(BlobView blob, BlobView compatibilityString, NetworkMetadata&& meta)
+        : compiledNetwork(std::move(blob)),
+          compatibilityString(std::move(compatibilityString)),
+          metadata(std::move(meta)) {
 }

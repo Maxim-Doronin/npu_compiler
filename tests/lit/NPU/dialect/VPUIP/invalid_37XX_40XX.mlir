@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt %s --split-input-file --init-compiler="vpu-arch=%arch%" --verify-diagnostics
-// REQUIRES: arch-NPU37XX || arch-NPU40XX
+// RUN: vpux-opt %s --split-input-file --init-compiler="platform=%platform%" --verify-diagnostics
+// REQUIRES: platform-NPU3720 || platform-NPU4000
 
 func.func @verifyNNDMA(%arg0: memref<97x257x673xui8>, %arg1: memref<97x257x673xui8>) -> memref<97x257x673xui8> {
 // expected-error@+1 {{The size of the DMA transaction 16777217 Byte for a [97, 257, 673] tensor is greater than the limit 16777215 Byte}}

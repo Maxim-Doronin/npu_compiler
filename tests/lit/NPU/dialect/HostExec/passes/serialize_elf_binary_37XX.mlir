@@ -3,11 +3,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --vpu-arch=%arch% --serialize-elf-to-binary %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --platform=%platform% --serialize-elf-to-binary %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 // CHECK-LABEL: @OneInputOneOutput
-module @OneInputOneOutput attributes {config.arch = #config.arch_kind<NPU37XX>, config.compilationMode = #config.compilation_mode<HostCompile>, config.revisionID = #config.revision_id<REVISION_NONE>} {
+module @OneInputOneOutput attributes {config.compilationMode = #config.compilation_mode<HostCompile>, config.platform = #config.platform<NPU3720>, config.revisionID = #config.revision_id<REVISION_NONE>} {
   config.PipelineOptions @Options {
     config.Option @config.FP16CompressedConv : false
     config.Option @config.ReduceSupported : false
@@ -32,7 +32,7 @@ module @OneInputOneOutput attributes {config.arch = #config.arch_kind<NPU37XX>, 
   } outputsInfo : {
     DataInfo "output" : tensor<1x3x60x60xf16>
   }
-  module @module0 attributes {config.arch = #config.arch_kind<NPU37XX>} {
+  module @module0 attributes {config.platform = #config.platform<NPU3720>} {
     net.NetworkInfo {inferenceTiming = 2282 : i64} entryPoint : @dma_copy inputsInfo : {
       DataInfo "input" : tensor<1x3x60x60xf16>
     } outputsInfo : {
@@ -66,7 +66,6 @@ module @OneInputOneOutput attributes {config.arch = #config.arch_kind<NPU37XX>, 
         VPUMI37XX.MappedInferenceVersion(7 _ 0 _ 4)
       }
       %12 = ELFNPU37XX.CreateSection secType(VPU_SHT_PLATFORM_INFO) secFlags("SHF_NONE") {secAddrAlign = 8 : i64, secInfo = 0 : i64, secName = ".meta.PlatformInfo"} -> !ELFNPU37XX.Section {
-        VPUMI37XX.PlatformInfo {archKind = #config.arch_kind<NPU37XX>}
       }
       %13 = ELFNPU37XX.Symbol %5 name("sym_dmaSection0") : !ELFNPU37XX.Section
       %14 = ELFNPU37XX.Symbol %6 name("sym_barrierSection") : !ELFNPU37XX.Section
@@ -168,6 +167,6 @@ module @OneInputOneOutput attributes {config.arch = #config.arch_kind<NPU37XX>, 
   // CHECK:   func.func private @dma_copy(memref<1x3x60x60xf16, @DDR>, memref<1x3x60x60xf16, @DDR>) -> memref<1x3x60x60xf16, @DDR>
   // CHECK:   }
   // CHECK:   func.func @main([[ARG_0:%[^:]+]]: memref<1x3x60x60xf16, @DDR>, [[ARG_1:%[^:]+]]: memref<1x3x60x60xf16>) -> memref<1x3x60x60xf16> {
-  // CHECK:   %alloc = memref.alloc() : memref<1x3x60x60xf16, @DDR>
-  // CHECK:   Core.NestedCall @module0::@dma_copy([[ARG_0]], %alloc) : (memref<1x3x60x60xf16, @DDR>, memref<1x3x60x60xf16, @DDR>) -> memref<1x3x60x60xf16, @DDR>
+  // CHECK:   [[ALLOC:%.+]] = memref.alloc() : memref<1x3x60x60xf16, @DDR>
+  // CHECK:   Core.NestedCall @module0::@dma_copy([[ARG_0]], [[ALLOC]]) : (memref<1x3x60x60xf16, @DDR>, memref<1x3x60x60xf16, @DDR>) -> memref<1x3x60x60xf16, @DDR>
 }

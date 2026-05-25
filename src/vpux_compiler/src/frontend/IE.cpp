@@ -49,9 +49,10 @@
 #include "vpux/utils/core/error.hpp"
 #include "vpux/utils/core/range.hpp"
 #include "vpux/utils/core/small_vector.hpp"
-
+#include "vpux/utils/ov/format.hpp"
 #if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
-#include "vpux/compiler/core/developer_build_utils.hpp"
+#include "vpux/utils/core/developer_build_utils.hpp"
+#include "vpux/utils/core/developer_path_utils.hpp"
 #endif
 
 #include "intel_npu/config/config.hpp"
@@ -142,8 +143,8 @@
 #include <transformations/op_conversions/normalize_l2_decomposition.hpp>
 #include <transformations/op_conversions/scaled_dot_product_attention_decomposition.hpp>
 #include <transformations/op_conversions/softmax_decomposition.hpp>
+#include <transformations/rt_info/disable_fp16_compression.hpp>
 #include <transformations/rt_info/fused_names_attribute.hpp>
-#include <transformations/utils/utils.hpp>
 
 #include <algorithm>
 #include <cstddef>
@@ -282,13 +283,14 @@ private:
     uint64_t _order = 0;
 };
 
-template <typename ResType>
-ResType getSparsityStatsFieldChecked(const std::shared_ptr<ov::Model>& model, const std::string& primaryKey,
-                                     const std::string& secondaryKey) {
+template <typename ResType, typename KeyType1, typename KeyType2>
+ResType getSparsityStatsFieldChecked(const std::shared_ptr<ov::Model>& model, KeyType1&& primaryKey,
+                                     KeyType2&& secondaryKey) {
     VPUX_THROW_UNLESS(model->has_rt_info(NGRAPH_ACT_SPARSITY_STATS_KEY, primaryKey, secondaryKey),
                       "Failed to query '{0}/{1}/{2}' from runtime statistics", NGRAPH_ACT_SPARSITY_STATS_KEY,
                       primaryKey, secondaryKey);
-    return model->get_rt_info<ResType>(NGRAPH_ACT_SPARSITY_STATS_KEY, primaryKey, secondaryKey);
+    return model->get_rt_info<ResType>(NGRAPH_ACT_SPARSITY_STATS_KEY, std::forward<KeyType1>(primaryKey),
+                                       std::forward<KeyType2>(secondaryKey));
 }
 
 SmallVector<int64_t> importShape(const ov::PartialShape& shape) {
@@ -322,7 +324,8 @@ std::shared_ptr<const T> getParentNodeAs(InputType input) {
 NGraphImporter::Callback NGraphImporter::getParser(const std::shared_ptr<ov::Node>& op) {
     using DispatchMap = std::map<ov::NodeTypeInfo, Callback>;
 
-#define MAP_ENTRY(_NodeType_) {_NodeType_::get_type_info_static(), &NGraphImporter::parseDispatch<_NodeType_>}
+#define MAP_ENTRY(_NodeType_) \
+    { _NodeType_::get_type_info_static(), &NGraphImporter::parseDispatch<_NodeType_> }
 
     static const DispatchMap dispatchMap{
             {ov::op::v0::Parameter::get_type_info_static(), &NGraphImporter::parseEmpty},
@@ -469,6 +472,8 @@ NGraphImporter::Callback NGraphImporter::getParser(const std::shared_ptr<ov::Nod
             MAP_ENTRY(ov::op::v13::BitwiseOr),
             MAP_ENTRY(ov::op::v13::BitwiseXor),
             MAP_ENTRY(ov::op::v13::BitwiseNot),
+            MAP_ENTRY(ov::op::v15::BitwiseRightShift),
+            MAP_ENTRY(ov::op::v15::BitwiseLeftShift),
             MAP_ENTRY(ov::opset1::SpaceToDepth),
             MAP_ENTRY(ov::opset2::BatchToSpace),
             MAP_ENTRY(ov::opset2::SpaceToBatch),
@@ -511,6 +516,7 @@ NGraphImporter::Callback NGraphImporter::getParser(const std::shared_ptr<ov::Nod
             MAP_ENTRY(ov::op::v16::Identity),
             MAP_ENTRY(ov::opset10::IsNaN),
             MAP_ENTRY(ov::opset10::IsInf),
+            MAP_ENTRY(ov::opset10::IsFinite),
             MAP_ENTRY(ov::intel_npu::op::FlashAttentionTile),
     };
 
@@ -573,8 +579,11 @@ mlir::Type importPrecision(mlir::MLIRContext* ctx, const ov::element::Type& prec
         return getUInt2Type(ctx);
     case ov::element::Type_t::boolean:
         return getBool8Type(ctx);
-    case ov::element::Type_t::nf4:
-        return vpux::type::QuantileFloatType::getNF4(ctx, getUInt4Type(ctx), mlir::Float16Type::get(ctx));
+    case ov::element::Type_t::nf4: {
+        // Ensure QuantileDialect is loaded before creating QuantileType types
+        ctx->loadDialect<vpux::type::QuantileDialect>();
+        return vpux::type::NF4Type::get(ctx, getUInt4Type(ctx), mlir::Float16Type::get(ctx), {});
+    }
     default:
         VPUX_THROW("Unsupported precision : '{0}'", precision);
     }
@@ -710,13 +719,14 @@ mlir::func::FuncOp NGraphImporter::buildMainFunc(mlir::OpBuilder& moduleBuilder,
 
     OpBuilderLogger builderLog(_log.nest());
     auto builder = mlir::OpBuilder::atBlockBegin(func.addEntryBlock(), &builderLog);
+    const vpux::StringRef parameterNodeType = "Parameter";
 
     for (const auto& p : _netGraph->get_parameters() | indexed) {
         const auto& paramNode = p.value();
         const auto paramIndex = checked_cast<uint32_t>(p.index());
 
         _log.trace("Convert network Parameter {0}", paramNode->get_friendly_name());
-        const auto paramLoc = createLayerLocation(_ctx, paramNode->get_friendly_name(), "Parameter");
+        const auto paramLoc = createLayerLocation(_ctx, paramNode->get_friendly_name(), parameterNodeType);
 
         auto funcInputVal = func.getArgument(paramIndex);
         funcInputVal.setLoc(paramLoc);
@@ -736,7 +746,7 @@ mlir::func::FuncOp NGraphImporter::buildMainFunc(mlir::OpBuilder& moduleBuilder,
 
         if (parser != nullptr) {
             mlir::Operation* op = (this->*parser)(builder, origNode);
-            VPUX_THROW_WHEN(op == nullptr && origNode->get_type_name() != std::string("Parameter") &&
+            VPUX_THROW_WHEN(op == nullptr && origNode->get_type_name() != parameterNodeType &&
                                     origNode->get_type_name() != std::string("Result") &&
                                     origNode->get_type_name() != std::string("Identity"),
                             "Valid parser but NULL operation.\n");
@@ -1021,11 +1031,11 @@ mlir::Operation* NGraphImporter::parseNode(mlir::OpBuilder& builder,
 }
 
 namespace {
-mlir::RankedTensorType patchQuantileFloatForConstImport(mlir::RankedTensorType tensorType) {
-    if (auto quantileFloat = mlir::dyn_cast<vpux::type::QuantileFloatType>(tensorType.getElementType())) {
-        VPUX_THROW_UNLESS(mlir::isa<mlir::IntegerType>(quantileFloat.getStorageType()),
+mlir::RankedTensorType patchQuantileTypeForConstImport(mlir::RankedTensorType tensorType) {
+    if (auto quantile = mlir::dyn_cast<vpux::type::QuantileType>(tensorType.getElementType())) {
+        VPUX_THROW_UNLESS(mlir::isa<mlir::IntegerType>(quantile.getStorageType()),
                           "Thus far only int storage type is supported in quantile-float");
-        return mlir::cast<RankedTensorType>(tensorType.cloneWith(std::nullopt, quantileFloat.getStorageType()));
+        return mlir::cast<RankedTensorType>(tensorType.cloneWith(std::nullopt, quantile.getStorageType()));
     }
     return tensorType;
 }
@@ -1041,11 +1051,11 @@ mlir::Operation* NGraphImporter::parseNode(mlir::OpBuilder& builder,
                       origNode->get_friendly_name(), inputs.size());
 
     auto tensorType = importTensor(origNode->get_output_partial_shape(0), origNode->get_output_element_type(0));
-    // QuantileFloat types (such as NF4) cannot be directly imported. Instead,
+    // QuantileType types (such as NF4) cannot be directly imported. Instead,
     // the underlying data is set to be of storage type and there's an explicit
-    // cast to the QuantileFloat right after. This is aligned to
+    // cast to the QuantileType right after. This is aligned to
     // mlir::quant::QuantizedType handling.
-    tensorType = patchQuantileFloatForConstImport(tensorType);
+    tensorType = patchQuantileTypeForConstImport(tensorType);
 
     const Bit elemTypeSize = getElemTypeSize(tensorType);
     const auto bitWidth = elemTypeSize.count();
@@ -1101,7 +1111,7 @@ mlir::Operation* NGraphImporter::parseNode(mlir::OpBuilder& builder,
     Const::ContentSetup contentSetup(value.getType());
 
     auto dataType = importPrecision(_ctx, origNode->get_output_element_type(0));
-    if (vpux::Const::isSubByte(bitWidth) || mlir::isa<vpux::type::QuantileFloatType>(dataType)) {
+    if (vpux::Const::isSubByte(bitWidth) || mlir::isa<vpux::type::QuantileType>(dataType)) {
         mlir::Type conversionType =
                 dataType.isSignedInteger() ? getSInt8Type(builder.getContext()) : getUInt8Type(builder.getContext());
         contentSetup = contentSetup.convertElemType(conversionType).castElemType(dataType);
@@ -1706,7 +1716,7 @@ mlir::Operation* NGraphImporter::parseNode(mlir::OpBuilder& builder,
 
     auto secondInput = inputs.size() == 1 ? nullptr : inputs[1];
     auto op = builder.create<IE::YuvToRgbOp>(createLocation(origNode), inputs[0], secondInput, nullptr,
-                                             IE::ColorFmt::NV12, IE::ColorFmt::RGB);
+                                             IE::ColorFmt::NV12, IE::ColorFmt::RGB, builder.getF32FloatAttr(1.0f));
 
     addOutputs(origNode, op);
     return op;
@@ -1724,7 +1734,7 @@ mlir::Operation* NGraphImporter::parseNode(mlir::OpBuilder& builder,
 
     auto secondInput = inputs.size() == 1 ? nullptr : inputs[1];
     auto op = builder.create<IE::YuvToRgbOp>(createLocation(origNode), inputs[0], secondInput, nullptr,
-                                             IE::ColorFmt::NV12, IE::ColorFmt::BGR);
+                                             IE::ColorFmt::NV12, IE::ColorFmt::BGR, builder.getF32FloatAttr(1.0f));
 
     addOutputs(origNode, op);
     return op;
@@ -1742,8 +1752,9 @@ mlir::Operation* NGraphImporter::parseNode(mlir::OpBuilder& builder,
 
     auto secondInput = inputs.size() == 1 ? nullptr : inputs[1];
     auto thirdInput = inputs.size() == 1 ? nullptr : inputs[2];
-    IE::YuvToRgbOp op = builder.create<IE::YuvToRgbOp>(createLocation(origNode), inputs[0], secondInput, thirdInput,
-                                                       IE::ColorFmt::I420, IE::ColorFmt::RGB);
+    IE::YuvToRgbOp op =
+            builder.create<IE::YuvToRgbOp>(createLocation(origNode), inputs[0], secondInput, thirdInput,
+                                           IE::ColorFmt::I420, IE::ColorFmt::RGB, builder.getF32FloatAttr(1.0f));
 
     addOutputs(origNode, op);
     return op;
@@ -1761,8 +1772,9 @@ mlir::Operation* NGraphImporter::parseNode(mlir::OpBuilder& builder,
 
     auto secondInput = inputs.size() == 1 ? nullptr : inputs[1];
     auto thirdInput = inputs.size() == 1 ? nullptr : inputs[2];
-    IE::YuvToRgbOp op = builder.create<IE::YuvToRgbOp>(createLocation(origNode), inputs[0], secondInput, thirdInput,
-                                                       IE::ColorFmt::I420, IE::ColorFmt::BGR);
+    IE::YuvToRgbOp op =
+            builder.create<IE::YuvToRgbOp>(createLocation(origNode), inputs[0], secondInput, thirdInput,
+                                           IE::ColorFmt::I420, IE::ColorFmt::BGR, builder.getF32FloatAttr(1.0f));
 
     addOutputs(origNode, op);
     return op;
@@ -1777,7 +1789,7 @@ mlir::Operation* NGraphImporter::parseNode(mlir::OpBuilder& builder,
     VPUX_THROW_UNLESS(inputs.size() == 3, "nGraph RandomUniform node '{0}' has unsupported number of inputs '{1}'",
                       origNode->get_friendly_name(), inputs.size());
 
-    const auto shapeConstant = dynamic_cast<ov::opset7::Constant*>(origNode->input_value(0).get_node());
+    const auto shapeConstant = ov::as_type<ov::opset7::Constant>(origNode->input_value(0).get_node());
     VPUX_THROW_UNLESS(shapeConstant != nullptr,
                       "nGraph RandomUniform node '{0}' must have Constant shape input in order to infer output shape.",
                       origNode->get_friendly_name());
@@ -3280,8 +3292,8 @@ mlir::Operation* NGraphImporter::parseNode(mlir::OpBuilder& builder,
 
     const auto directionAttr = importRNNSequenceDirection(origNode->get_direction());
 
-    auto seqLenNodeConst = dynamic_cast<ov::opset7::Constant*>(origNode->input_value(3).get_node());
-    auto seqLenParam = dynamic_cast<ov::opset7::Parameter*>(origNode->input_value(3).get_node());
+    auto seqLenNodeConst = ov::as_type<ov::opset7::Constant>(origNode->input_value(3).get_node());
+    auto seqLenParam = ov::as_type<ov::opset7::Parameter>(origNode->input_value(3).get_node());
 
     IE::LSTMSequenceOp op;
 
@@ -3475,14 +3487,12 @@ mlir::Operation* NGraphImporter::parseNode(mlir::OpBuilder& builder,
     static_assert(std::is_same<std::decay<decltype(*origNode)>::type, ov::op::internal::RoPE>::value,
                   "opset operation mismatch");
     const auto inputs = getInputs(origNode);
-    const auto& ropeConfig = origNode->get_config();
-    const bool isInterleaved = ropeConfig.is_interleaved;
 
     VPUX_THROW_UNLESS(inputs.size() == 3, "nGraph RoPE node '{0}' has unsupported number of inputs '{1}'",
                       origNode->get_friendly_name(), inputs.size());
 
-    const auto interleavedAttr = isInterleaved ? mlir::UnitAttr::get(_ctx) : nullptr;
-    auto op = builder.create<IE::RoPEOp>(createLocation(origNode), inputs[0], inputs[1], inputs[2], interleavedAttr);
+    const auto modeAttr = importRoPEMode(origNode->get_config());
+    auto op = builder.create<IE::RoPEOp>(createLocation(origNode), inputs[0], inputs[1], inputs[2], modeAttr);
     addOutputs(origNode, op);
     return op;
 }
@@ -3494,12 +3504,13 @@ mlir::Operation* NGraphImporter::parseNode(mlir::OpBuilder& builder,
 
     const auto inputs = getInputs(origNode);
     const auto size = inputs.size();
-    VPUX_THROW_UNLESS(size >= 3 && size <= 5,
+    VPUX_THROW_UNLESS(size >= 3 && size <= 6,
                       "nGraph ScaledDotProductAttention node '{0}' has unsupported number of inputs '{1}'",
                       origNode->get_friendly_name(), inputs.size());
 
     mlir::Value attentionMask = nullptr;
     mlir::Value scale = nullptr;
+    mlir::Value sink = nullptr;
 
     if (size == 4) {
         attentionMask = inputs[3];
@@ -3511,12 +3522,19 @@ mlir::Operation* NGraphImporter::parseNode(mlir::OpBuilder& builder,
             attentionMask = inputs[3];
         }
         scale = inputs[4];
+    } else if (size == 6) {  // NOLINT magic number
+        const auto maskType = mlir::cast<vpux::NDTypeInterface>(inputs[3].getType());
+        if (maskType.getShape().totalSize() > 1) {
+            attentionMask = inputs[3];
+        }
+        scale = inputs[4];
+        sink = inputs[5];
     }
 
     auto causal = origNode->get_causal() ? mlir::UnitAttr::get(_ctx) : nullptr;
 
     auto op = builder.create<IE::SDPAOp>(createLocation(origNode), inputs[0], inputs[1], inputs[2], attentionMask,
-                                         scale, causal);
+                                         scale, sink, causal);
     addOutputs(origNode, op);
     return op;
 }
@@ -3788,6 +3806,40 @@ mlir::Operation* NGraphImporter::parseNode(mlir::OpBuilder& builder,
         op = builder.create<IE::BitwiseNotOp>(createLocation(origNode), inputs[0]);
     }
 
+    addOutputs(origNode, op);
+    return op;
+}
+
+mlir::Operation* NGraphImporter::parseNode(mlir::OpBuilder& builder,
+                                           const std::shared_ptr<ov::op::v15::BitwiseRightShift>& origNode) {
+    static_assert(std::is_same<std::decay<decltype(*origNode)>::type, ov::op::v15::BitwiseRightShift>::value,
+                  "opset operation mismatch");
+
+    const auto inputs = getInputs(origNode);
+    VPUX_THROW_UNLESS(inputs.size() == 2, "nGraph BitwiseRightShift node '{0}' has unsupported number of inputs '{1}'",
+                      origNode->get_friendly_name(), inputs.size());
+
+    const auto& autob = origNode->get_autob();
+
+    auto op = builder.create<IE::BitwiseRightShiftOp>(createLocation(origNode), inputs[0], inputs[1],
+                                                      importBroadcastType(autob.m_type));
+    addOutputs(origNode, op);
+    return op;
+}
+
+mlir::Operation* NGraphImporter::parseNode(mlir::OpBuilder& builder,
+                                           const std::shared_ptr<ov::op::v15::BitwiseLeftShift>& origNode) {
+    static_assert(std::is_same<std::decay<decltype(*origNode)>::type, ov::op::v15::BitwiseLeftShift>::value,
+                  "opset operation mismatch");
+
+    const auto inputs = getInputs(origNode);
+    VPUX_THROW_UNLESS(inputs.size() == 2, "nGraph BitwiseLeftShift node '{0}' has unsupported number of inputs '{1}'",
+                      origNode->get_friendly_name(), inputs.size());
+
+    const auto& autob = origNode->get_autob();
+
+    auto op = builder.create<IE::BitwiseLeftShiftOp>(createLocation(origNode), inputs[0], inputs[1],
+                                                     importBroadcastType(autob.m_type));
     addOutputs(origNode, op);
     return op;
 }
@@ -4170,7 +4222,7 @@ mlir::Operation* NGraphImporter::parseNode(mlir::OpBuilder& builder,
                       "nGraph GRUSequence node '{0}' has unsupported activations '{1}'", origNode->get_friendly_name(),
                       origNode->get_activations());
 
-    const auto seqLenConstant = dynamic_cast<ov::opset7::Constant*>(origNode->input_value(2).get_node());
+    const auto seqLenConstant = ov::as_type<ov::opset7::Constant>(origNode->input_value(2).get_node());
     VPUX_THROW_UNLESS(seqLenConstant != nullptr,
                       "nGraph GRUSequence node '{0}' has unsupported sequenceLengths input. It must be a Constant node",
                       origNode->get_friendly_name());
@@ -4685,6 +4737,14 @@ mlir::Operation* NGraphImporter::parseNode(mlir::OpBuilder& builder,
     return op;
 }
 
+mlir::Operation* NGraphImporter::parseNode(mlir::OpBuilder& builder,
+                                           const std::shared_ptr<ov::opset10::IsFinite>& origNode) {
+    const auto inputs = getInputs(origNode);
+    auto op = builder.create<IE::IsFiniteOp>(createLocation(origNode), inputs[0]);
+    addOutputs(origNode, op);
+    return op;
+}
+
 // Node parsing for default OV Op dispatch
 // Such cases are treated as OV Custom Operators
 mlir::Operation* NGraphImporter::parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::op::Op>& origNode) {
@@ -5016,6 +5076,17 @@ IE::OneHotModeAttr NGraphImporter::importOneHotMode(const ov::op::v16::OneHot::N
         VPUX_THROW("Unknown OneHotModeAttr");
     }
     return attr;
+}
+
+IE::RoPEModeAttr NGraphImporter::importRoPEMode(const ov::op::internal::RoPE::Config& cfg) {
+    if (cfg.is_interleaved) {
+        return IE::RoPEModeAttr::get(_ctx, IE::RoPEMode::INTERLEAVED);
+    }
+    const bool isPairwise = cfg.cos_sin_ndims > 0 && cfg.rotary_ndims == 2 * cfg.cos_sin_ndims;
+    if (isPairwise) {
+        return IE::RoPEModeAttr::get(_ctx, IE::RoPEMode::PAIRWISE);
+    }
+    return IE::RoPEModeAttr::get(_ctx, IE::RoPEMode::SPLIT_HALF);
 }
 
 IE::DetectionOutputCodeTypeAttr NGraphImporter::importDetectionOutputCodeType(const std::string& codeType) {
@@ -5597,8 +5668,8 @@ static void addCommonOptimizationsPasses(ov::pass::Manager& manager, const Impor
     decomp->add_matcher<ov::pass::EinsumDecomposition>();
     decomp->add_matcher<ov::pass::DropoutWithRandomUniformReplacer>();
 
+    decomp->add_matcher<ov::pass::GroupQueryAttentionDecomposition>();
     if (importCfg.enableDecomposeSDPA) {
-        decomp->add_matcher<ov::pass::GroupQueryAttentionDecomposition>();
         decomp->add_matcher<ov::pass::ScaledDotProductAttentionDecomposition>();
     }
 
@@ -5705,11 +5776,26 @@ void NGraphPasses::runNGraphPasses(const std::shared_ptr<ov::Model>& netGraph, m
     manager.register_pass<ov::pass::ConvertSqueeze15ToSqueeze0>();
 
 #if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
-    if (const auto serializeCanonicalModel = std::getenv("NPU_SERIALIZE_CANONICAL_MODEL")) {
-        if (intel_npu::envVarStrToBool("NPU_SERIALIZE_CANONICAL_MODEL", serializeCanonicalModel)) {
-            const std::string graphName = netGraph->get_friendly_name();
-            manager.register_pass<ov::pass::Serialize>(graphName + "_canonical.xml", graphName + "_canonical.bin");
+    const auto serializeCanonicalModelVar = std::getenv("NPU_SERIALIZE_CANONICAL_MODEL");
+    const bool serializeCanonicalModelEnabled =
+            serializeCanonicalModelVar != nullptr &&
+            intel_npu::envVarStrToBool("NPU_SERIALIZE_CANONICAL_MODEL", serializeCanonicalModelVar);
+    const bool perfDebugModeEnabled = isPerfDebugMode();
+
+    if (serializeCanonicalModelEnabled || perfDebugModeEnabled) {
+        const auto& graphName = netGraph->get_friendly_name();
+
+        std::string xmlPath, binPath;
+        if (perfDebugModeEnabled) {
+            auto modelDir = getPerfDebugFilePath("model");
+            createDirectory(modelDir);
+            xmlPath = concatenatePath(modelDir, graphName + "_canonical.xml");
+            binPath = concatenatePath(modelDir, graphName + "_canonical.bin");
+        } else {
+            xmlPath = graphName + "_canonical.xml";
+            binPath = graphName + "_canonical.bin";
         }
+        manager.register_pass<ov::pass::Serialize>(xmlPath, binPath);
     }
 #endif
 
@@ -5786,7 +5872,7 @@ net::DataInfoOp createDataInfoOp(mlir::OpBuilder infoBuilder, mlir::MLIRContext*
 template <typename NodeT>
 bool isIoWithDynamicStrides(std::shared_ptr<const ov::Node> node, const std::set<std::string>& ioWithDynamicStrides) {
     std::vector<std::string> nodeNames{node->get_name(), node->get_friendly_name()};
-    auto typedNode = std::dynamic_pointer_cast<NodeT>(node);
+    auto typedNode = ov::as_type_ptr<NodeT>(node);
     VPUX_THROW_UNLESS(typedNode, "Couldn't cast node");
     auto tensorNames = typedNode->output(0).get_tensor().get_names();
 
@@ -5863,11 +5949,14 @@ void addSparsityStatistics(const std::shared_ptr<ov::Model>& model, mlir::Module
     auto statsBuilder = mlir::OpBuilder::atBlockBegin(&statsOp.getSparsityInfo().front(), builder.getListener());
 
     auto actSparsityStats = model->get_rt_info<RTMap>(NGRAPH_ACT_SPARSITY_STATS_KEY);
+    static const std::string nodeNameField = "node_name";
+    static const std::string portIdField = "port_id";
+    static const std::string statisticField = "statistic";
     for (const auto& x : actSparsityStats) {
         const auto key = x.first;
-        const auto nodeName = getSparsityStatsFieldChecked<std::string>(model, key, "node_name");
-        const auto portId = getSparsityStatsFieldChecked<int>(model, key, "port_id");
-        const auto ratio = getSparsityStatsFieldChecked<double>(model, key, "statistic");
+        const auto nodeName = getSparsityStatsFieldChecked<std::string>(model, key, nodeNameField);
+        const auto portId = getSparsityStatsFieldChecked<int>(model, key, portIdField);
+        const auto ratio = getSparsityStatsFieldChecked<double>(model, key, statisticField);
 
         const auto nameAttr = mlir::StringAttr::get(ctx, nodeName);
         const auto inputAttr = getIntAttr(ctx, portId);
@@ -5902,8 +5991,8 @@ mlir::OwningOpRef<mlir::ModuleOp> vpux::IE::importNetwork(
 
     log.trace("Load IE::FrontEnd dependent Dialects");
     // BuiltInDialect with BuiltInTypes will be initialized when MLIRContext is initialized.
-    // Therefore, we should also explicitly initialize QuantileFloatDialect asap.
-    ctx->loadDialect<vpux::type::QuantileFloatDialect>();
+    // Therefore, we should also explicitly initialize QuantileDialect asap.
+    ctx->loadDialect<vpux::type::QuantileDialect>();
     ctx->loadDialect<IE::IEDialect>();
 
     if (importCfg.dynamicShapeToStatic && model->is_dynamic()) {
@@ -5942,8 +6031,9 @@ mlir::OwningOpRef<mlir::ModuleOp> vpux::IE::importNetwork(
 //
 
 bool isIR10(const ov::Model& model) {
+    static const std::string version_key = "version";
     const auto& rtInfo = model.get_rt_info();
-    const auto it = rtInfo.find("version");
+    const auto it = rtInfo.find(version_key);
     if (it != rtInfo.end()) {
         const int64_t irVersion = it->second.as<int64_t>();
         return irVersion == 10;

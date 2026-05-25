@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-sub-gru-sequence-to-conv %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --convert-sub-gru-sequence-to-conv %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 // CHECK-LABEL: @ConvertSubGRUSequenceToConv
 // CHECK-SAME:      [[INPUT0:%arg[0-9]]]: tensor<1x80x256xf16>

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --vpu-arch=%arch% %s | FileCheck %s --match-full-lines
-// REQUIRES: arch-NPU40XX
+// RUN: vpux-opt --split-input-file --platform=%platform% %s | FileCheck %s --match-full-lines
+// REQUIRES: platform-NPU4000
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module @Test_1 {

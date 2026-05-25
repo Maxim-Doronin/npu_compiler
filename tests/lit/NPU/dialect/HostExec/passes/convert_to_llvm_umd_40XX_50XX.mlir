@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --vpu-arch=%arch% --mlir-elide-elementsattrs-if-larger 8 --convert-to-llvm-umd-calls  %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --platform=%platform% --mlir-elide-elementsattrs-if-larger 8 --convert-to-llvm-umd-calls  %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #map = affine_map<(d0)[s0] -> (-d0 + s0, 47)>
@@ -105,7 +105,7 @@ module @ConvChain attributes {config.compilationMode = #config.compilation_mode<
 
 // -----
 
-module @StaticEltwiseNHWC attributes {config.arch = #config.arch_kind<NPU40XX>, config.revisionID = #config.revision_id<REVISION_NONE>, config.compilationMode = #config.compilation_mode<HostCompile>} {
+module @StaticEltwiseNHWC attributes {config.revisionID = #config.revision_id<REVISION_NONE>, config.compilationMode = #config.compilation_mode<HostCompile>} {
   //CHECK: llvm.mlir.global internal constant @main1_kernel
   config.PipelineOptions @Options {
     config.Option @config.EnableExtraStaticShapeOps : true
@@ -314,7 +314,7 @@ module @EltwiseWithOutputShape attributes {config.compilationMode = #config.comp
   } outputsInfo : {
     DataInfo "Add_15" friendlyName = "Result_16" : tensor<1x16x?x1280xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 1280, 1280]> : tensor<4xsi64>, order = #NCHW}>
   }
-  // CHECK: func.func @output_shape(%arg0: memref<1x16x?x1280xf16>, %arg1: memref<1x16x?x1280xf16>, %arg2: memref<4xi64>) attributes {config.pureHostCompileFunc} {
+  // CHECK: func.func @output_shape({{%[^:]+}}: memref<1x16x?x1280xf16>, {{%[^:]+}}: memref<1x16x?x1280xf16>, {{%[^:]+}}: memref<4xi64>) attributes {config.pureHostCompileFunc} {
   func.func @output_shape(%arg0: memref<1x16x?x1280xf16>, %arg1: memref<1x16x?x1280xf16>, %arg2: memref<4xi64>) -> memref<4xi64> attributes {config.pureHostCompileFunc} {
     %0 = llvm.mlir.constant(3 : index) : i64
     %1 = builtin.unrealized_conversion_cast %0 : i64 to index
@@ -348,7 +348,7 @@ module @EltwiseWithOutputShape attributes {config.compilationMode = #config.comp
     HostExec.BinaryData @serialized_main_func0_static <object = "\7FELF\02\01\00\00\00\00\00">
     func.func private @main_func0_static(memref<1x16x15x1280xf16>, memref<1x16x15x1280xf16>, memref<1x16x15x1280xf16>) -> memref<1x16x15x1280xf16>
   }
-  // CHECK: func.func @main(%arg0: memref<1x16x?x1280xf16>, %arg1: memref<1x16x?x1280xf16>, %arg2: memref<1x16x?x1280xf16>, %arg3: !llvm.ptr, %arg4: !llvm.ptr, %arg5: !llvm.ptr, %arg6: !llvm.ptr, %arg7: i64, %arg8: !llvm.ptr, %arg9: !llvm.ptr, %arg10: !llvm.ptr, %arg11: !llvm.ptr) attributes {config.pureHostCompileFunc} {
+  // CHECK: func.func @main({{%[^:]+}}: memref<1x16x?x1280xf16>, {{%[^:]+}}: memref<1x16x?x1280xf16>, {{%[^:]+}}: memref<1x16x?x1280xf16>, {{%[^:]+}}: !llvm.ptr, {{%[^:]+}}: !llvm.ptr, {{%[^:]+}}: !llvm.ptr, {{%[^:]+}}: !llvm.ptr, {{%[^:]+}}: i64, {{%[^:]+}}: !llvm.ptr, {{%[^:]+}}: !llvm.ptr, {{%[^:]+}}: !llvm.ptr, {{%[^:]+}}: !llvm.ptr) attributes {config.pureHostCompileFunc} {
   func.func @main(%arg0: memref<1x16x?x1280xf16>, %arg1: memref<1x16x?x1280xf16>, %arg2: memref<1x16x?x1280xf16>) -> memref<1x16x?x1280xf16> attributes {config.pureHostCompileFunc} {
     %0 = llvm.mlir.constant(15 : index) : i64
     %1 = builtin.unrealized_conversion_cast %0 : i64 to index
@@ -454,7 +454,7 @@ module @StaticEltwiseWithOutputShape attributes {config.compilationMode = #confi
   } outputsInfo : {
     DataInfo "Add_15" friendlyName = "Result_16" : tensor<1x16x1280x1280xf16>
   }
-  // CHECK: func.func @output_shape(%arg0: memref<1x16x1280x1280xf16>, %arg1: memref<1x16x1280x1280xf16>, %arg2: memref<4xi64>) attributes {config.pureHostCompileFunc} {
+  // CHECK: func.func @output_shape({{%[^:]+}}: memref<1x16x1280x1280xf16>, {{%[^:]+}}: memref<1x16x1280x1280xf16>, {{%[^:]+}}: memref<4xi64>) attributes {config.pureHostCompileFunc} {
   func.func @output_shape(%arg0: memref<1x16x1280x1280xf16>, %arg1: memref<1x16x1280x1280xf16>, %arg2: memref<4xi64>) -> memref<4xi64> attributes {config.pureHostCompileFunc} {
     %0 = memref.get_global @__constant_4xi64 : memref<4xi64>
     // CHECK-NOT: memref.get_global @__constant_4xi64
@@ -476,7 +476,7 @@ module @StaticEltwiseWithOutputShape attributes {config.compilationMode = #confi
     HostExec.BinaryData @serialized_main_func2_static <object = "\7FELF\02\01\00\00\00\00\00">
     func.func private @main_func2_static(memref<1x33x1280x16xf16>, memref<1x33x1280x16xf16>, memref<1x16x33x1280xf16>) -> memref<1x16x33x1280xf16>
   }
-  // CHECK: @main(%arg0: memref<1x16x1280x1280xf16>, %arg1: memref<1x16x1280x1280xf16>, %arg2: memref<1x16x1280x1280xf16>, %arg3: !llvm.ptr, %arg4: !llvm.ptr, %arg5: !llvm.ptr, %arg6: !llvm.ptr, %arg7: i64, %arg8: !llvm.ptr, %arg9: !llvm.ptr, %arg10: !llvm.ptr, %arg11: !llvm.ptr) attributes {config.pureHostCompileFunc} {
+  // CHECK: @main({{%[^:]+}}: memref<1x16x1280x1280xf16>, {{%[^:]+}}: memref<1x16x1280x1280xf16>, {{%[^:]+}}: memref<1x16x1280x1280xf16>, {{%[^:]+}}: !llvm.ptr, {{%[^:]+}}: !llvm.ptr, {{%[^:]+}}: !llvm.ptr, {{%[^:]+}}: !llvm.ptr, {{%[^:]+}}: i64, {{%[^:]+}}: !llvm.ptr, {{%[^:]+}}: !llvm.ptr, {{%[^:]+}}: !llvm.ptr, {{%[^:]+}}: !llvm.ptr) attributes {config.pureHostCompileFunc} {
   func.func @main(%arg0: memref<1x16x1280x1280xf16>, %arg1: memref<1x16x1280x1280xf16>, %arg2: memref<1x16x1280x1280xf16>) -> memref<1x16x1280x1280xf16> attributes {config.pureHostCompileFunc} {
     %0 = llvm.mlir.constant(1247 : index) : i64
     %1 = llvm.mlir.constant(1230 : index) : i64
@@ -561,4 +561,124 @@ module @StaticEltwiseWithOutputShape attributes {config.compilationMode = #confi
   // CHECK-NOT: async.await_all
   // CHECK:     llvm.call @npu_level_zero_execute_graph
   // CHECK:     llvm.call @npu_level_zero_submit_commandlist
+}
+
+// -----
+
+module @ExecuteGraphViewInputElementByteSize attributes {config.compilationMode = #config.compilation_mode<HostCompile>} {
+  net.NetworkInfo entryPoint : @main inputsInfo : {
+    DataInfo "input0" : tensor<1x?x?x3xf16, {bounds = #const.OpaqueI64Elements<[1, 64, 64, 3]> : tensor<4xsi64>}>
+  } outputsInfo : {
+    DataInfo "output" : tensor<1x?x?x3xf16, {bounds = #const.OpaqueI64Elements<[1, 64, 64, 3]> : tensor<4xsi64>}>
+  }
+
+  HostExec.Binary @Module0 {
+    HostExec.BinaryData @serialized_main_func0 <object = "\7FELF\02\01\00\00">
+    func.func private @main_func0(memref<1x?x?x3xf16>, memref<1x?x?x3xf16>) -> memref<1x?x?x3xf16>
+  }
+
+  func.func @main(%arg0: memref<1x?x?x3xf16>) -> memref<1x?x?x3xf16> attributes {config.pureHostCompileFunc} {
+    %0 = llvm.mlir.constant(0 : index) : i64
+    %1 = builtin.unrealized_conversion_cast %0 : i64 to index
+    %2 = llvm.mlir.constant(1 : index) : i64
+    %3 = builtin.unrealized_conversion_cast %2 : i64 to index
+    %4 = llvm.mlir.constant(2 : index) : i64
+    %5 = builtin.unrealized_conversion_cast %4 : i64 to index
+
+    %dim = memref.dim %arg0, %3 : memref<1x?x?x3xf16>
+    %dim_0 = memref.dim %arg0, %5 : memref<1x?x?x3xf16>
+    %dim_i64 = builtin.unrealized_conversion_cast %dim : index to i64
+    %dim_0_i64 = builtin.unrealized_conversion_cast %dim_0 : index to i64
+    %bytes_per_row = llvm.mlir.constant(6 : i64) : i64
+    %bytes_i64_0 = llvm.mul %dim_i64, %dim_0_i64 : i64
+    %bytes_i64 = llvm.mul %bytes_i64_0, %bytes_per_row : i64
+    %bytes = builtin.unrealized_conversion_cast %bytes_i64 : i64 to index
+
+    %alloc = memref.alloc(%bytes) : memref<?xi8>
+    %view = memref.view %alloc[%1][%dim, %dim_0] : memref<?xi8> to memref<1x?x?x3xf16>
+    %alloc_out = memref.alloc(%dim, %dim_0) : memref<1x?x?x3xf16>
+
+    %token, %bodyResults = async.execute -> !async.value<memref<1x?x?x3xf16>> {
+      %6 = Core.NestedCall @Module0::@main_func0(%view, %alloc_out) : (memref<1x?x?x3xf16>, memref<1x?x?x3xf16>) -> memref<1x?x?x3xf16>
+      async.yield %alloc_out : memref<1x?x?x3xf16>
+    }
+    %7 = async.await %bodyResults : !async.value<memref<1x?x?x3xf16>>
+    return %7 : memref<1x?x?x3xf16>
+
+    // CHECK-LABEL: module @ExecuteGraphViewInputElementByteSize
+    // CHECK: [[IN_DESC:%.*]] = llvm.alloca {{.*}}!llvm.struct<(ptr, i64, i64, i64, i64, array<5 x i64>, array<5 x i64>)>
+    // CHECK: [[OUT_DESC:%.*]] = llvm.alloca {{.*}}!llvm.struct<(ptr, i64, i64, i64, i64, array<5 x i64>, array<5 x i64>)>
+    // CHECK: [[IN_ELEM_SIZE_PTR:%.*]] = llvm.getelementptr [[IN_DESC]][0, 2]
+    // CHECK-NOT: [[C1:%.*]] = llvm.mlir.constant(1 : i64) : i64
+    // CHECK: [[C1:%.*]] = llvm.mlir.constant(2 : i64) : i64
+    // CHECK: llvm.store [[C1]], [[IN_ELEM_SIZE_PTR]] : i64, !llvm.ptr
+    // CHECK: [[OUT_ELEM_SIZE_PTR:%.*]] = llvm.getelementptr [[OUT_DESC]][0, 2]
+    // CHECK: [[C2:%.*]] = llvm.mlir.constant(2 : i64) : i64
+    // CHECK: llvm.store [[C2]], [[OUT_ELEM_SIZE_PTR]] : i64, !llvm.ptr
+    // CHECK: llvm.call @npu_level_zero_execute_graph([[IN_DESC]], {{.*}}, [[OUT_DESC]],
+  }
+}
+
+// -----
+
+module @AccumulateViewOffset attributes {config.compilationMode = #config.compilation_mode<HostCompile>} {
+  HostExec.Binary @Module0 {
+    HostExec.BinaryData @serialized_main_func0_static <object = "\7FELF\02\01\00">
+    func.func private @main_func0_static(memref<1x16x720x1280xf32>, memref<1x16x720x1280xf16>) -> memref<1x16x720x1280xf16>
+  }
+  HostExec.Binary @Module1 {
+    HostExec.BinaryData @serialized_main_func1_static <object = "\7FELF\02\01\00">
+    func.func private @main_func1_static(memref<1x16x720x1280xf16>, memref<1x720x1280x16xf16>) -> memref<1x720x1280x16xf16>
+  }
+  HostExec.Binary @Module2 {
+    HostExec.BinaryData @serialized_main_func2_static <object = "\7FELF\02\01\00">
+    func.func private @main_func2_static(memref<1x720x1280x16xf16>, memref<1x16x720x1280xf32>) -> memref<1x16x720x1280xf32>
+  }
+
+  // Test: Accumulation of subview and view offsets in main function
+  func.func @main(%input: memref<1x16x720x1280xf32>, %output: memref<1x16x720x1280xf32>) -> memref<1x16x720x1280xf32> attributes {HostExec.HostCompileInferenceExec, config.pureHostCompileFunc} {
+    %0 = llvm.mlir.constant(58982400 : index) : i64
+    %1 = llvm.mlir.constant(0 : index) : i64
+    %2 = llvm.mlir.constant(29491200 : index) : i64
+    %3 = builtin.unrealized_conversion_cast %0 : i64 to index
+    %4 = builtin.unrealized_conversion_cast %1 : i64 to index
+    %5 = builtin.unrealized_conversion_cast %2 : i64 to index
+    %temp = memref.alloc(%3) {alignment = 64 : i64} : memref<?xi8>
+
+    // View chain
+    %temp_view1 = memref.view %temp[%4][] : memref<?xi8> to memref<1x16x720x1280xf16>
+    %temp_view2 = memref.view %temp[%5][] : memref<?xi8> to memref<1x720x1280x16xf16>
+
+    // Subview to get correct type
+    %temp_sub1 = memref.subview %temp_view1[0,0,0,0] [1,16,720,1280] [1,1,1,1] : memref<1x16x720x1280xf16> to memref<1x16x720x1280xf16>
+    %temp_sub2 = memref.subview %temp_view2[0,0,0,0] [1,720,1280,16] [1,1,1,1] : memref<1x720x1280x16xf16> to memref<1x720x1280x16xf16>
+
+    %sub1 = memref.subview %input[0,0,0,0] [1,16,720,1280] [1,1,1,1] : memref<1x16x720x1280xf32> to memref<1x16x720x1280xf32>
+    async.execute -> !async.value<memref<1x16x720x1280xf16>> {
+      %res = Core.NestedCall @Module0::@main_func0_static(%sub1, %temp_sub1) : (memref<1x16x720x1280xf32>, memref<1x16x720x1280xf16>) -> memref<1x16x720x1280xf16>
+      async.yield %res : memref<1x16x720x1280xf16>
+    }
+
+    async.execute -> !async.value<memref<1x720x1280x16xf16>> {
+      %res2 = Core.NestedCall @Module1::@main_func1_static(%temp_sub1, %temp_sub2) : (memref<1x16x720x1280xf16>, memref<1x720x1280x16xf16>) -> memref<1x720x1280x16xf16>
+      async.yield %res2 : memref<1x720x1280x16xf16>
+    }
+
+    async.execute -> !async.value<memref<1x16x720x1280xf32>> {
+      %res2 = Core.NestedCall @Module2::@main_func2_static(%temp_sub2, %output) : (memref<1x720x1280x16xf16>, memref<1x16x720x1280xf32>) -> memref<1x16x720x1280xf32>
+      async.yield %res2 : memref<1x16x720x1280xf32>
+    }
+
+    // CHECK-LABEL: module @AccumulateViewOffset
+    // CHECK-LABEL: func @main
+    // CHECK: llvm.mlir.addressof @main_func1_static_kernel
+    // CHECK: %[[EXTRACT:.*]] = llvm.extractvalue {{.*}}[2]
+    // CHECK: %[[CAST:.*]] = arith.index_cast {{.*}} : index to i64
+    // CHECK: %[[CONST:.*]] = llvm.mlir.constant(2 : i64) : i64
+    // CHECK: %[[SDIV:.*]] = llvm.sdiv %[[CAST]], %[[CONST]] : i64
+    // CHECK: %[[ADD:.*]] = llvm.add %[[EXTRACT]], %[[SDIV]] : i64
+    // CHECK: llvm.store %[[ADD]], {{.*}} : i64, !llvm.ptr
+
+    return %output : memref<1x16x720x1280xf32>
+  }
 }

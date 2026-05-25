@@ -3,12 +3,19 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include <mlir/Dialect/Affine/IR/AffineOps.h>
+#include <mlir/Dialect/Tensor/IR/Tensor.h>
+#include <mlir/IR/BuiltinTypeInterfaces.h>
 #include "vpux/compiler/core/tiling.hpp"
+#include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/image.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/error.hpp"
+#include "vpux/compiler/utils/infer_output_shape.hpp"
+#include "vpux/utils/core/numeric.hpp"
 
 using namespace vpux;
 
@@ -24,22 +31,27 @@ mlir::LogicalResult vpux::VPU::YuvToRgbOp::inferReturnTypes(mlir::MLIRContext* c
         return mlir::failure();
     }
 
-    const auto inType = mlir::cast<vpux::NDTypeInterface>(colorConv.getInput1().getType());
-    const auto shape = inType.getShape().raw();
-    if (shape[3] != 1) {
-        return errorAt(loc, "Incorrect input shape format: '{0}'", shape);
+    const auto input = colorConv.getInput1();
+    const auto inType = mlir::cast<NDTypeInterface>(input.getType());
+    const auto shape = inType.getShape();
+    if (shape[Dims4D::Act::W] != 1) {
+        return errorAt(loc, "Incorrect input shape format. Expected Y input to have Width '1', got '{0}'", shape);
     }
 
-    SmallVector<int64_t> outShape{shape[0], shape[1], shape[2], 3};
+    auto [outStaticShape, outBounds, outDimMask] = callOnShapeOf(inType, [&](const auto& inShape) {
+        auto outShape = copyShape(inShape);
+        outShape[Dims4D::Act::W] = 3;
 
-    if (colorConv.getInput2() == nullptr) {
-        VPUX_THROW_UNLESS(colorConv.getInput3() == nullptr, "1xPlane config error");
-        VPUX_THROW_UNLESS(((outShape[1] * 2) % 3) == 0, "Invalid height");
-        outShape[1] = outShape[1] * 2 / 3;
-    }
+        if (colorConv.getInput2() == nullptr) {
+            outShape[Dims4D::Act::C] = outShape[Dims4D::Act::C] * 2 / 3;
+        }
 
-    const auto outType =
-            mlir::RankedTensorType::get(outShape, inType.getElementType(), createTensorAttrFromType(inType));
+        return splitShapeAndRepresentation(outShape);
+    });
+
+    auto outDesc = vpux::getTensorAttr(ctx, DimsOrder::fromValue(input), inType.getMemSpace(), outBounds, outDimMask);
+
+    const auto outType = mlir::RankedTensorType::get(outStaticShape.raw(), inType.getElementType(), outDesc);
     inferredReturnTypes.push_back(outType);
 
     return mlir::success();
@@ -110,33 +122,72 @@ mlir::FailureOr<OutputTiling> vpux::VPU::YuvToRgbOp::getTilingStrategy(TilingMod
 
     auto tilingInfo = mlir::dyn_cast<VPU::TilingInfoOpInterface>(op);
     const auto outputType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
-    const auto outputShape = outputType.getShape();
-    Shape nTilesOnDimforYuv2RGB(outputShape.size(), 1);
+    const auto outputBoundedShape = getBoundedShape(outputType);
+    Shape tilingStrategy(outputBoundedShape.size(), 1);
 
-    const auto isSupportedTileSize = [op, &tilingInfo, outputShape, log](ShapeRef nTilesOnDim,
-                                                                         TilingMode tilingMode) -> bool {
-        const auto tiles = fillDividedTiles(op, nTilesOnDim, outputShape);
+    const auto isSupportedTileSize = [op, &tilingInfo, outputBoundedShape, log](ShapeRef nTilesOnDim,
+                                                                                TilingMode tilingMode) -> bool {
+        const auto tiles = fillDividedTiles(op, nTilesOnDim, outputBoundedShape);
         if (mlir::failed(tiles)) {
             return false;
         }
         return tilingInfo.isSupportedTiling(tiles.value(), tilingMode, log);
     };
 
-    while (!isSupportedTileSize(nTilesOnDimforYuv2RGB, tilingMode)) {
-        if (2 * nTilesOnDimforYuv2RGB[Dims4D::Act::C] < outputShape[Dims4D::Act::C]) {
-            nTilesOnDimforYuv2RGB[Dims4D::Act::C]++;
-            continue;
+    if (mlir::isa<Core::BoundedTensorType>(outputType)) {
+        auto tilingDims = getTileDimOrder(op, tilingMode, log.nest());
+        auto alignment = Shape(getAlignment(op, {}, {}));
+        auto ndims = outputType.getRank();
+
+        auto tile = Shape(outputBoundedShape);
+        auto strategy = SmallVector<int64_t>(ndims, 1);
+
+        // HACK: force scf.for tiling by strarting with "divide by 2" on all dynamic dimensions
+        // The problem is that if initially upper bounds are so small that the operation fits the CMX,
+        // the getTilingStrategy would not be called and operation will not have scf.for loops.
+        auto dynamicOutputShape = outputType.getShape();
+        for (auto i : irange(dynamicOutputShape.size())) {
+            auto dimSize = dynamicOutputShape[Dim(i)];
+            if (mlir::ShapedType::isStatic(dimSize)) {
+                continue;
+            }
+
+            auto dimBound = outputBoundedShape[Dim(i)];
+            VPUX_THROW_UNLESS(dimBound >= (2 * alignment[Dim(i)]),
+                              "Output upper bound for YuvToRgb layer is too small for tiling strategy algorithm at {0}",
+                              op->getLoc());
+
+            strategy[i] = 2;
         }
 
-        if (2 * nTilesOnDimforYuv2RGB[Dims4D::Act::H] < outputShape[Dims4D::Act::H]) {
-            nTilesOnDimforYuv2RGB[Dims4D::Act::H]++;
-            continue;
-        }
+        while (!isSupportedTileSize(tilingStrategy, tilingMode)) {
+            auto maxTileDimIndex = std::distance(tile.begin(), std::max_element(tile.begin(), tile.end()));
+            auto maxTileDim = Dim(maxTileDimIndex);
 
-        VPUX_THROW("Operation 'Yuv2RGB' cannot be tiled");
+            VPUX_THROW_UNLESS(tile[maxTileDim] > alignment[maxTileDim], "Not enough CMX to tile '{0}' at {1}",
+                              op->getName(), op->getLoc());
+
+            tilingStrategy[maxTileDim]++;
+            auto newTileDimSize = divUp(outputBoundedShape[maxTileDim], tilingStrategy[maxTileDim]);
+            tile[maxTileDim] = alignValUp(newTileDimSize, alignment[maxTileDim]);
+        }
+    } else {
+        while (!isSupportedTileSize(tilingStrategy, tilingMode)) {
+            if (2 * tilingStrategy[Dims4D::Act::C] < outputBoundedShape[Dims4D::Act::C]) {
+                tilingStrategy[Dims4D::Act::C]++;
+                continue;
+            }
+
+            if (2 * tilingStrategy[Dims4D::Act::H] < outputBoundedShape[Dims4D::Act::H]) {
+                tilingStrategy[Dims4D::Act::H]++;
+                continue;
+            }
+
+            VPUX_THROW("Operation 'Yuv2RGB' cannot be tiled");
+        }
     }
 
-    return vpux::fillDividedTiles(op, nTilesOnDimforYuv2RGB, outputShape);
+    return vpux::fillDividedTiles(op, tilingStrategy, outputBoundedShape);
 }
 
 //
@@ -232,21 +283,32 @@ bool vpux::VPU::YuvToRgbOp::supportCycleCostCalculation() {
 }
 
 //
+// ReifyRankedShapedTypeOpInterface
+//
+
+mlir::LogicalResult vpux::VPU::YuvToRgbOp::reifyResultShapes(mlir::OpBuilder& builder,
+                                                             mlir::ReifiedRankedShapedTypeDims& reifiedReturnShapes) {
+    return reifyYuvToRgbTensors(getOperation(), builder, reifiedReturnShapes);
+}
+
+//
 // build
 //
 
 void vpux::VPU::YuvToRgbOp::build(::mlir::OpBuilder& builder, ::mlir::OperationState& state, ::mlir::Value input1,
-                                  vpux::IE::ColorFmtAttr inFmt, vpux::IE::ColorFmtAttr outFmt) {
-    build(builder, state, input1, nullptr, nullptr, inFmt, outFmt, {});
+                                  vpux::IE::ColorFmtAttr inFmt, vpux::IE::ColorFmtAttr outFmt,
+                                  ::mlir::FloatAttr scale) {
+    build(builder, state, input1, nullptr, nullptr, inFmt, outFmt, scale, {});
 }
 
 void vpux::VPU::YuvToRgbOp::build(::mlir::OpBuilder& builder, ::mlir::OperationState& state, ::mlir::Value input1,
-                                  ::mlir::Value input2, vpux::IE::ColorFmtAttr inFmt, vpux::IE::ColorFmtAttr outFmt) {
-    build(builder, state, input1, input2, nullptr, inFmt, outFmt, {});
+                                  ::mlir::Value input2, vpux::IE::ColorFmtAttr inFmt, vpux::IE::ColorFmtAttr outFmt,
+                                  ::mlir::FloatAttr scale) {
+    build(builder, state, input1, input2, nullptr, inFmt, outFmt, scale, {});
 }
 
 void vpux::VPU::YuvToRgbOp::build(::mlir::OpBuilder& builder, ::mlir::OperationState& state, ::mlir::Value input1,
                                   ::mlir::Value input2, ::mlir::Value input3, vpux::IE::ColorFmtAttr inFmt,
-                                  vpux::IE::ColorFmtAttr outFmt) {
-    build(builder, state, input1, input2, input3, inFmt, outFmt, {});
+                                  vpux::IE::ColorFmtAttr outFmt, ::mlir::FloatAttr scale) {
+    build(builder, state, input1, input2, input3, inFmt, outFmt, scale, {});
 }

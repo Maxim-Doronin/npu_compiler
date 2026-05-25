@@ -14,11 +14,10 @@ void IE::OptimizeActivationsPipelineStrategy::registerRewriters(RewriterRegistry
     registerSwapOperationsRewriters(registry, benefitLevels, 0, _enableSEOps, log);
     registerInsertIdentityPoolBeforeOpRewriters(registry, benefitLevels, 1, log);
     registerSwapMaxpoolWithActivation(registry, benefitLevels, 2, log);
-    registerFuseActivationOpsRewriters(registry, _enableFuseClamp, log);
+    registerFuseActivationOpsRewriters(registry, log);
 }
 
 std::unique_ptr<IDynamicRewriterStrategy> IE::createOptimizeActivationsPipelineStrategy(mlir::func::FuncOp,
-                                                                                        bool enableSEOps,
-                                                                                        bool enableFuseClamp) {
-    return std::make_unique<IE::OptimizeActivationsPipelineStrategy>(enableSEOps, enableFuseClamp);
+                                                                                        bool enableSEOps) {
+    return std::make_unique<IE::OptimizeActivationsPipelineStrategy>(enableSEOps);
 }

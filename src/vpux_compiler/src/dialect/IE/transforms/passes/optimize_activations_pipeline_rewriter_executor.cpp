@@ -6,6 +6,7 @@
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/transforms/factories/optimize_activations_pipeline_strategy_getter.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/dynamic_rewriter/dynamic_rewriter_factory.hpp"
 #include "vpux/compiler/utils/passes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -30,18 +31,13 @@ class OptimizeActivationsPipelineRewriterExecutorPass final :
 public:
     using Base = impl::OptimizeActivationsPipelineRewriterExecutorBase<OptimizeActivationsPipelineRewriterExecutorPass>;
 
-    explicit OptimizeActivationsPipelineRewriterExecutorPass(const IE::OptimizeActivationsOptions& options, Logger log)
-            : _enableSEOps(options.enableSEPtrsOperations.getValue() ||
-                           options.enableExperimentalSEPtrsOperations.getValue()),
-              _enableFuseClamp(options.enableFuseClampOperations) {
+    explicit OptimizeActivationsPipelineRewriterExecutorPass(Logger log) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
 private:
     mlir::LogicalResult initialize(mlir::MLIRContext* ctx) final;
     void safeRunOnFunc() final;
-    bool _enableSEOps = false;
-    bool _enableFuseClamp = false;
 };
 
 mlir::LogicalResult OptimizeActivationsPipelineRewriterExecutorPass::initialize(mlir::MLIRContext* ctx) {
@@ -52,22 +48,17 @@ mlir::LogicalResult OptimizeActivationsPipelineRewriterExecutorPass::initialize(
         setRewriterName(rewriterName.getValue());
     }
 
-    if (enableSEOps.hasValue()) {
-        _enableSEOps = enableSEOps.getValue();
-    }
-
-    if (enableFuseClamp.hasValue()) {
-        _enableFuseClamp = enableFuseClamp.getValue();
-    }
-
     return mlir::success();
 }
 
 void OptimizeActivationsPipelineRewriterExecutorPass::safeRunOnFunc() {
     auto func = getOperation();
     auto& ctx = getContext();
+    const auto moduleOp = getModuleOp(func);
 
-    auto strategy = IE::createOptimizeActivationsPipelineStrategy(func, _enableSEOps, _enableFuseClamp);
+    auto strategy = IE::createOptimizeActivationsPipelineStrategy(
+            func,
+            config::hasEnableSEPtrsOperations(moduleOp) || config::hasEnableExperimentalSEPtrsOperations(moduleOp));
     auto customRegistry = vpux::RegistryManager::createCustomRegistry();
     strategy->registerRewriters(*customRegistry, _log);
 
@@ -78,11 +69,6 @@ void OptimizeActivationsPipelineRewriterExecutorPass::safeRunOnFunc() {
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> vpux::IE::createOptimizeActivationsPipelineRewriterExecutorPass(
-        const IE::OptimizeActivationsOptions& options, Logger log) {
-    return std::make_unique<OptimizeActivationsPipelineRewriterExecutorPass>(options, log);
-}
-
 std::unique_ptr<mlir::Pass> vpux::IE::createOptimizeActivationsPipelineRewriterExecutorPass(Logger log) {
-    return createOptimizeActivationsPipelineRewriterExecutorPass(IE::OptimizeActivationsOptions{}, log);
+    return std::make_unique<OptimizeActivationsPipelineRewriterExecutorPass>(log);
 }

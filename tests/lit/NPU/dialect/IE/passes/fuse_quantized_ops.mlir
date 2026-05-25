@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --fuse-quantized-ops %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --fuse-quantized-ops %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 !qElemType = !quant.uniform<u8<1:255>:f16:0, {0.010680671751968504:128,0.0081200787401574797:128,0.010596087598425197:128}>
 // CHECK-DAG: [[QTYPE:!.+]] = !quant.uniform<u8<1:255>:f16:0, {0.010680671751968504:128,0.0081200787401574797:128,0.010596087598425197:128}>
@@ -983,4 +983,196 @@ func.func @DoNotFusePerChannelAvgPool(%arg0: tensor<1x4x16x16x!qElemType>) -> te
     //CHECK:  [[AVGPOOL:%.+]] = IE.AvgPool([[DEQUANT]]) {kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x4x16x16xf16> -> tensor<1x4x16x16xf16>
     //CHECK:  [[QUANT:%.+]] = IE.Quantize([[AVGPOOL]])
     //CHECK:  return [[QUANT]]
+}
+
+// -----
+
+!qElemType = !quant.uniform<u8:f16, 1.1534313725490195:128>
+!qElemType1 = !quant.uniform<u8:f16, 2.4627450980392158>
+
+//CHECK:  !qElemType = !quant.uniform<u8:f16, 1.1534313725490195:128>
+//CHECK:  !qElemType1 = !quant.uniform<u8:f16, 2.4627450980392158>
+
+// CHECK-LABEL: @FuseQuantParamsIntoInterp
+module @FuseQuantParamsIntoInterp {
+
+config.PipelineOptions @Options {
+        config.Option @config.EnableSEPtrsOperations : true
+    }
+
+//CHECK: func.func @main
+func.func @main(%arg0: tensor<1x16x10x10xf16>) -> tensor<1x16x20x20xf16> {
+  %1 = IE.Quantize(%arg0) {dstElemType = !qElemType} : tensor<1x16x10x10xf16> -> tensor<1x16x10x10x!qElemType>
+  %2 = IE.Dequantize(%1) {dstElemType = f16} : tensor<1x16x10x10x!qElemType> -> tensor<1x16x10x10xf16>
+  %4 = IE.Interpolate(%2) {
+            attr = #IE.Interpolate<mode = <NEAREST>,
+                                   shape_calc_mode = <SCALES>,
+                                   coord_mode = <ASYMMETRIC>,
+                                   nearest_mode = <FLOOR>,
+                                   antialias = false,
+                                   pads_begin = [0, 0, 0, 0],
+                                   pads_end = [0, 0, 0, 0],
+                                   cube_coeff = -7.500000e-01 : f64>,
+                                   axes_attr = [2, 3],
+                                   operandSegmentSizes = array<i32: 1, 0, 0, 0>,
+                                   scales_attr = [2.000000e+00, 2.000000e+00],
+                                   sizes_attr = [20, 20]} :
+        tensor<1x16x10x10xf16> -> tensor<1x16x20x20xf16>
+  %5 = IE.Quantize(%4) {dstElemType = !qElemType1}: tensor<1x16x20x20xf16> -> tensor<1x16x20x20x!qElemType1>
+  %6 = IE.Dequantize(%5) {dstElemType = f16} : tensor<1x16x20x20x!qElemType1> -> tensor<1x16x20x20xf16>
+
+  return %6 : tensor<1x16x20x20xf16>
+
+  //CHECK:      [[QUANT:%.+]] = IE.Quantize(%arg0) {dstElemType = !qElemType}
+  //CHECK-SAME:   tensor<1x16x10x10xf16> -> tensor<1x16x10x10x!qElemType>
+
+  //CHECK:      [[INTERP:%.+]] = IE.Interpolate([[QUANT]])
+  //CHECK-SAME:   tensor<1x16x10x10x!qElemType> -> tensor<1x16x20x20x!qElemType1>
+
+  //CHECK:      [[DEQUANT:%.+]] = IE.Dequantize([[INTERP]]) {dstElemType = f16}
+  //CHECK-SAME:   tensor<1x16x20x20x!qElemType1> -> tensor<1x16x20x20xf16>
+
+  //CHECK:      return [[DEQUANT]] : tensor<1x16x20x20xf16>
+}
+}
+
+// -----
+
+!qElemType = !quant.uniform<u8:f16, 1.1534313725490195:128>
+!qElemType1 = !quant.uniform<u8:f16, 2.4627450980392158>
+
+// Do not quantize interoplate that will not be run on NCE due to non integer scales
+
+// CHECK:  !qElemType = !quant.uniform<u8:f16, 1.1534313725490195:128>
+// CHECK:  !qElemType1 = !quant.uniform<u8:f16, 2.4627450980392158>
+
+// CHECK-LABEL: @DoNotFuseQuantParamsIntoInterp
+module @DoNotFuseQuantParamsIntoInterp {
+
+config.PipelineOptions @Options {
+        config.Option @config.EnableSEPtrsOperations : true
+    }
+
+// CHECK: func.func @main
+func.func @main(%arg0: tensor<1x16x10x10xf16>) -> tensor<1x16x25x25xf16> {
+  %1 = IE.Quantize(%arg0) {dstElemType = !qElemType} : tensor<1x16x10x10xf16> -> tensor<1x16x10x10x!qElemType>
+  %2 = IE.Dequantize(%1) {dstElemType = f16} : tensor<1x16x10x10x!qElemType> -> tensor<1x16x10x10xf16>
+  %4 = IE.Interpolate(%2) {
+            attr = #IE.Interpolate<mode = <NEAREST>,
+                                   shape_calc_mode = <SCALES>,
+                                   coord_mode = <ASYMMETRIC>,
+                                   nearest_mode = <FLOOR>,
+                                   antialias = false,
+                                   pads_begin = [0, 0, 0, 0],
+                                   pads_end = [0, 0, 0, 0],
+                                   cube_coeff = -7.500000e-01 : f64>,
+                                   axes_attr = [2, 3],
+                                   operandSegmentSizes = array<i32: 1, 0, 0, 0>,
+                                   scales_attr = [2.500000e+00, 2.500000e+00],
+                                   sizes_attr = [25, 25]} :
+        tensor<1x16x10x10xf16> -> tensor<1x16x25x25xf16>
+  %5 = IE.Quantize(%4) {dstElemType = !qElemType1}: tensor<1x16x25x25xf16> -> tensor<1x16x25x25x!qElemType1>
+  %6 = IE.Dequantize(%5) {dstElemType = f16} : tensor<1x16x25x25x!qElemType1> -> tensor<1x16x25x25xf16>
+
+  return %6 : tensor<1x16x25x25xf16>
+
+  //CHECK:      [[QUANT:%.+]] = IE.Quantize(%arg0) {dstElemType = !qElemType}
+  //CHECK-SAME:   tensor<1x16x10x10xf16> -> tensor<1x16x10x10x!qElemType>
+
+  //CHECK:      [[DEQUANT:%.+]] = IE.Dequantize([[QUANT]]) {dstElemType = f16}
+  //CHECK-SAME:   tensor<1x16x10x10x!qElemType> -> tensor<1x16x10x10xf16>
+
+  //CHECK:      [[INTERP:%.+]] = IE.Interpolate([[DEQUANT]])
+  //CHECK-SAME:   tensor<1x16x10x10xf16> -> tensor<1x16x25x25xf16>
+
+  //CHECK:      [[QUANT_OUT:%.+]] = IE.Quantize([[INTERP]]) {dstElemType = !qElemType1}
+  //CHECK-SAME:   tensor<1x16x25x25xf16> -> tensor<1x16x25x25x!qElemType1>
+
+  //CHECK:      [[DEQUANT_OUT:%.+]] = IE.Dequantize([[QUANT_OUT]]) {dstElemType = f16}
+  //CHECK-SAME:   tensor<1x16x25x25x!qElemType1> -> tensor<1x16x25x25xf16>
+
+  //CHECK:      return [[DEQUANT_OUT]] : tensor<1x16x25x25xf16>
+}
+}
+
+// -----
+
+!qElemType = !quant.uniform<u8:f16:1, {1.000000e-01:128,2.000000e-01:128,3.000000e-01:128,4.000000e-01:128}>
+
+// CHECK:  !qElemType = !quant.uniform<u8:f16:1, {1.000000e-01:128,2.000000e-01:128,3.000000e-01:128,4.000000e-01:128}>
+
+// CHECK-LABEL: @DoNotFuseQuantPerAxisParamsIntoInterp
+module @DoNotFuseQuantPerAxisParamsIntoInterp {
+
+config.PipelineOptions @Options {
+        config.Option @config.EnableSEPtrsOperations : true
+    }
+
+// CHECK: func.func @main
+// CHECK-SAME:     ([[ARG0:%.+]]: tensor<1x4x10x10xf16>)
+func.func @main(%arg0: tensor<1x4x10x10xf16>) -> tensor<1x4x25x25xf16> {
+  %quantize0 = IE.Quantize(%arg0) {dstElemType = !qElemType} : tensor<1x4x10x10xf16> -> tensor<1x4x10x10x!qElemType>
+  %dequantize0 = IE.Dequantize(%quantize0) {dstElemType = f16} : tensor<1x4x10x10x!qElemType> -> tensor<1x4x10x10xf16>
+  %interpolate = IE.Interpolate(%dequantize0) {
+            attr = #IE.Interpolate<mode = <NEAREST>,
+                                   shape_calc_mode = <SCALES>,
+                                   coord_mode = <ASYMMETRIC>,
+                                   nearest_mode = <FLOOR>,
+                                   antialias = false,
+                                   pads_begin = [0, 0, 0, 0],
+                                   pads_end = [0, 0, 0, 0],
+                                   cube_coeff = -7.500000e-01 : f64>,
+                                   axes_attr = [2, 3],
+                                   operandSegmentSizes = array<i32: 1, 0, 0, 0>,
+                                   scales_attr = [2.500000e+00, 2.500000e+00],
+                                   sizes_attr = [25, 25]} :
+        tensor<1x4x10x10xf16> -> tensor<1x4x25x25xf16>
+  %quantize1 = IE.Quantize(%interpolate) {dstElemType = !qElemType}: tensor<1x4x25x25xf16> -> tensor<1x4x25x25x!qElemType>
+  %dequantize1 = IE.Dequantize(%quantize1) {dstElemType = f16} : tensor<1x4x25x25x!qElemType> -> tensor<1x4x25x25xf16>
+
+  return %dequantize1 : tensor<1x4x25x25xf16>
+
+  //CHECK:      [[QUANT0:%.+]] = IE.Quantize([[ARG0]]) {dstElemType = !qElemType}
+  //CHECK-SAME:   tensor<1x4x10x10xf16> -> tensor<1x4x10x10x!qElemType>
+
+  //CHECK:      [[DEQUANT0:%.+]] = IE.Dequantize([[QUANT0]]) {dstElemType = f16}
+  //CHECK-SAME:   tensor<1x4x10x10x!qElemType> -> tensor<1x4x10x10xf16>
+
+  //CHECK:      [[INTERP:%.+]] = IE.Interpolate([[DEQUANT0]])
+  //CHECK-SAME:   tensor<1x4x10x10xf16> -> tensor<1x4x25x25xf16>
+
+  //CHECK:      [[QUANT1:%.+]] = IE.Quantize([[INTERP]]) {dstElemType = !qElemType}
+  //CHECK-SAME:   tensor<1x4x25x25xf16> -> tensor<1x4x25x25x!qElemType>
+
+  //CHECK:      [[DEQUANT1:%.+]] = IE.Dequantize([[QUANT1]]) {dstElemType = f16}
+  //CHECK-SAME:   tensor<1x4x25x25x!qElemType> -> tensor<1x4x25x25xf16>
+
+  //CHECK:      return [[DEQUANT1]] : tensor<1x4x25x25xf16>
+}
+}
+
+// -----
+
+!qElemType = !quant.uniform<u8:f16, 0.0078431372549019607:128>
+!qElemType1 = !quant.uniform<u8:f16:0, {0.01:128, 0.02:128, 0.03:128, 0.04:128}>
+
+// CHECK-LABEL: @FuseConvWithReluPostOp
+// CHECK-SAME:      [[ARG0:%.+]]: tensor<1x3x224x224x!qElemType>
+func.func @FuseConvWithReluPostOp(%arg0: tensor<1x3x224x224x!qElemType>) -> tensor<1x4x112x112x!qElemType> {
+    %cst_filter = const.Declare tensor<4x3x3x3x!qElemType1> = dense<1> : tensor<4x3x3x3xui8>, [#const.CastElemType<!qElemType1>]
+
+    %dequant_act = IE.Dequantize(%arg0) {dstElemType = f16} : tensor<1x3x224x224x!qElemType> -> tensor<1x3x224x224xf16>
+    %dequant_filter = IE.Dequantize(%cst_filter) {dstElemType = f16} : tensor<4x3x3x3x!qElemType1> -> tensor<4x3x3x3xf16>
+    %conv = IE.Convolution(%dequant_act, %dequant_filter) {
+        dilations = [1, 1], pads_begin = [1, 1], pads_end = [0, 0], post_op = #IE.Relu<>, strides = [2, 2]
+    } : tensor<1x3x224x224xf16>, tensor<4x3x3x3xf16> -> tensor<1x4x112x112xf16>
+    %quant = IE.Quantize(%conv) {dstElemType = !qElemType} : tensor<1x4x112x112xf16> -> tensor<1x4x112x112x!qElemType>
+
+    return %quant : tensor<1x4x112x112x!qElemType>
+
+    // CHECK-DAG: [[CST_FILTER:%.+]] = const.Declare tensor<4x3x3x3x!qElemType1>
+    // CHECK: [[CONV:%.+]] = IE.Convolution([[ARG0]], [[CST_FILTER]])
+    // CHECK-SAME: post_op = #IE.Relu
+    // CHECK-SAME: -> tensor<1x4x112x112x!qElemType>
+    // CHECK: return [[CONV]] : tensor<1x4x112x112x!qElemType>
 }

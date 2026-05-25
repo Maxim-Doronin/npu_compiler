@@ -284,6 +284,47 @@ void FeasibleMemorySchedulerSpilling::removeComputeOpRelocationSpills(
                 continue;
             }
 
+            auto origExecOp = _depsInfo.getExecuteOpAtIndex(origOp.op_);
+            mlir::DenseMap<vpux::AddressType, mlir::DenseSet<mlir::Value>> addressForOtherUsers;
+            for (const auto alias : _aliasInfo.getAllAliases(spillBuf)) {
+                auto otherUserExecOp = alias.getDefiningOp<mlir::async::ExecuteOp>();
+                if (otherUserExecOp == nullptr || origExecOp == otherUserExecOp) {
+                    continue;
+                }
+
+                // Find the scheduled operation corresponding to this input operation
+                const auto schedOpId = findScheduledOpsVecIndexByOpIndex(_depsInfo.getIndex(otherUserExecOp));
+                const auto& schedOp = scheduledOps[schedOpId];
+
+                // Store address for each output resource that uses the spill buffer
+                for (size_t resourceIdx = 0; resourceIdx < schedOp.numOfOutputResources(); resourceIdx++) {
+                    if (schedOp.isActiveOutputResource(resourceIdx) &&
+                        schedOp.getOutputBuffer(resourceIdx) == spillBuf) {
+                        addressForOtherUsers[schedOp.beginOutputResource(resourceIdx)].insert(spillBuf);
+                    }
+                }
+            }
+
+            if (addressForOtherUsers.size() > 1) {
+                /*
+                    clang-format off
+
+                    op = '106'	 executor = 'DPU'	 type = 'ORIGINAL'	 'cycles = 1026815 -> 1029777'	 inputs = '[1056768 1130496] size = 73728, [1327104 1400832] size = 73728, ' outputs = '[1327104 1400832] size = 73728
+                    op = '107'	 executor = 'DPU'	 type = 'ORIGINAL'	 'cycles = 1030718 -> 1033680'	 inputs = '[1130496 1204224] size = 73728, [1327104 1400832] size = 73728, ' outputs = '[1327104 1400832] size = 73728
+                    op = '107'	 executor = 'DMA_NN_CMX [0,1]'	 type = 'IMPLICIT_SPILL_WRITE'	 'cycles = 1033680 -> 1037583'	 inputs = '[1327104 1400832] size = 73728, ' outputs = '<none>'
+                    op = '107'	 executor = 'DMA_NN_DDR [0,1]'	 type = 'IMPLICIT_SPILL_READ'	 'cycles = 1037583 -> 1041486'	 inputs = '<none>' outputs = '[1056768 1130496] size = 73728
+
+                    clang-format on
+
+                    E#205932 results in 107 writing to [1056768 1130496]
+                    and 106 reading both inputs from [1056768 1130496] and writing to [1056768 1130496]
+                    accuracy issue
+                */
+                _log.trace("Spill buffer has multiple offsets - '{0}', need to correctly replace users",
+                           addressForOtherUsers.size());
+                continue;
+            }
+
             // Identified COMPUTEOP -> SPILL_WRITE -> SPILL_READ sequence that can be optimized
             _log.trace("Identified COMPUTEOP -> SPILL_WRITE -> SPILL_READ sequence that can be optimized");
 
@@ -298,7 +339,6 @@ void FeasibleMemorySchedulerSpilling::removeComputeOpRelocationSpills(
             bool hasSharedOutputBuffer = false;
 
             const auto spillRootBuffer = _aliasInfo.getRoot(spillBuf);
-            auto origExecOp = _depsInfo.getExecuteOpAtIndex(origOp.op_);
             const auto allAlias = _aliasInfo.getAllAliases(spillRootBuffer);
 
             for (const auto alias : allAlias) {
@@ -397,24 +437,9 @@ void FeasibleMemorySchedulerSpilling::removeComputeOpRelocationSpills(
                         // to spilling. The final memory offset is determined by the last allocation operation. Since
                         // this spill buffer is being replaced by a new buffer, we need to restore the original
                         // allocation offset for other users to maintain memory consistency
-                        for (const auto alias : _aliasInfo.getAllAliases(spillBuf)) {
-                            auto otherUserExecOp = alias.getDefiningOp<mlir::async::ExecuteOp>();
-                            if (otherUserExecOp == nullptr || origExecOp == otherUserExecOp) {
-                                continue;
-                            }
-
-                            // Find the scheduled operation corresponding to this input operation
-                            const auto schedOpId =
-                                    findScheduledOpsVecIndexByOpIndex(_depsInfo.getIndex(otherUserExecOp));
-                            const auto& schedOp = scheduledOps[schedOpId];
-
-                            // Update address for each output resource that uses the spill buffer
-                            for (size_t resourceIdx = 0; resourceIdx < schedOp.numOfOutputResources(); resourceIdx++) {
-                                if (schedOp.isActiveOutputResource(resourceIdx) &&
-                                    schedOp.getOutputBuffer(resourceIdx) == spillBuf) {
-                                    // Restore the original allocation offset for this shared buffer user
-                                    _scan.handler().setAddress(spillBuf, schedOp.beginOutputResource(resourceIdx));
-                                }
+                        for (const auto& [address, buffers] : addressForOtherUsers) {
+                            for (const auto& buffer : buffers) {
+                                _scan.handler().setAddress(buffer, address);
                             }
                         }
                     }
@@ -424,7 +449,6 @@ void FeasibleMemorySchedulerSpilling::removeComputeOpRelocationSpills(
                 }
             }
             VPUX_THROW_UNLESS(foundMatchingBuffer, "Matching buffer not found for relocation spilling optimization");
-            origOp.modifiedMemoryRange_ = true;
 
             if (removeSpillOps) {
                 // SPILL_WRITE and SPILL_READ operations can be removed
@@ -562,70 +586,113 @@ llvm::DenseSet<size_t> FeasibleMemorySchedulerSpilling::identifyDataOpsWithInput
     return illegalDataOpsWithInputResources;
 }
 
-// Check if the execute operation contains a SubViewOp with strided layout
-// Returns true if a strided SubViewOp is found, false otherwise
-bool hasStridedSubView(mlir::async::ExecuteOp execOp) {
-    auto* bodyBlock = execOp.getBody();
+bool isStridedSubView(VPUIP::SubViewOp subViewOp) {
+    // Get the output type and check if it has a layout
+    auto outputType = subViewOp.getResult().getType();
+    auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(outputType);
+    if (ndType == nullptr) {
+        return false;
+    }
 
+    auto dimsOrder = ndType.getDimsOrder();
+    if (dimsOrder.numDims() == 0) {
+        return false;
+    }
+
+    // Get the source type to determine which dimensions are being split
+    auto sourceType = subViewOp.getSource().getType();
+    auto sourceNdType = mlir::dyn_cast<vpux::NDTypeInterface>(sourceType);
+    if (sourceNdType == nullptr) {
+        return false;
+    }
+
+    auto staticOffsets = parseIntArrayAttr<int64_t>(subViewOp.getStaticOffsetsAttr());
+    auto staticSizes = parseIntArrayAttr<int64_t>(subViewOp.getStaticSizesAttr());
+    auto sourceShape = sourceNdType.getShape();
+
+    // Find the highest (outermost) memory dimension that has actual data (size > 1)
+    MemDim highestMemDimWithData = MemDim(0);
+    for (size_t memDimIdx = 0; memDimIdx < dimsOrder.numDims(); ++memDimIdx) {
+        auto logicalDim = dimsOrder.toDim(MemDim(memDimIdx));
+        if (sourceShape[logicalDim] > 1) {
+            highestMemDimWithData = MemDim(memDimIdx);
+            break;
+        }
+    }
+
+    // Find which dimensions are split (offset != 0 or size < source size)
+    for (size_t dim = 0; dim < staticOffsets.size(); ++dim) {
+        bool isSplit = (staticOffsets[dim] != 0) || (staticSizes[dim] != sourceShape[Dim(dim)]);
+        if (!isSplit) {
+            continue;
+        }
+
+        // Get the memory dimension for this logical dimension
+        auto memDim = dimsOrder.toMemDim(Dim(dim));
+
+        // Check if this is NOT the highest dimension with data in memory layout
+        // If we split on any dimension other than the highest with data, we get non-contiguous strides
+        if (memDim != highestMemDimWithData) {
+            // This dimension is split but not the highest in memory layout
+            // which means the SubView creates a strided result
+            return true;
+        }
+    }
+    return false;
+}
+
+// Return true when the body contains a SubView pattern that is not supported by re-read optimization.
+// Unsupported case 1: a strided SubView (split on a non-outermost memory dimension),
+// which may require non-contiguous accesses.
+// Unsupported case 2: the same root buffer is subviewed by another async.execute with
+// different offsets/sizes; re-reading one view could invalidate assumptions for the other.
+bool hasSubViewInBody(mlir::async::ExecuteOp execOp, AliasesInfo& aliasInfo, VPU::MemoryKind memKind) {
+    auto* bodyBlock = execOp.getBody();
     for (auto& op : bodyBlock->getOperations()) {
         auto subViewOp = mlir::dyn_cast<VPUIP::SubViewOp>(&op);
-        if (!subViewOp) {
+        if (subViewOp == nullptr) {
             continue;
         }
 
-        // Get the output type and check if it has a layout
-        auto outputType = subViewOp.getResult().getType();
-        auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(outputType);
-        if (!ndType) {
+        if (isStridedSubView(subViewOp)) {
+            // Strided SubViews are not supported for this optimization
+            // as they may have more complex memory access patterns
+            return true;
+        }
+
+        // Skip SubViews whose source is not in the target memory space (e.g., DDR buffers
+        // when using CMX_NN-only alias analysis). The source may be a ConcatView result
+        // in DDR which is not tracked by the filtered aliasInfo.
+        const auto sourceType = mlir::dyn_cast<vpux::NDTypeInterface>(subViewOp.getSource().getType());
+        if (sourceType == nullptr || sourceType.getMemoryKind() != memKind) {
             continue;
         }
 
-        auto dimsOrder = ndType.getDimsOrder();
-        if (dimsOrder.numDims() == 0) {
-            continue;
-        }
+        // Get the root buffer of the SubView's source
+        auto rootBuffer = aliasInfo.getRoot(subViewOp.getSource());
+        auto currentOffsets = parseIntArrayAttr<int64_t>(subViewOp.getStaticOffsetsAttr());
+        auto currentSizes = parseIntArrayAttr<int64_t>(subViewOp.getStaticSizesAttr());
 
-        // Get the source type to determine which dimensions are being split
-        auto sourceType = subViewOp.getSource().getType();
-        auto sourceNdType = mlir::dyn_cast<vpux::NDTypeInterface>(sourceType);
-        if (!sourceNdType) {
-            continue;
-        }
-
-        auto staticOffsets = parseIntArrayAttr<int64_t>(subViewOp.getStaticOffsetsAttr());
-        auto staticSizes = parseIntArrayAttr<int64_t>(subViewOp.getStaticSizesAttr());
-        auto sourceShape = sourceNdType.getShape();
-
-        // Find the highest (outermost) memory dimension that has actual data (size > 1)
-        MemDim highestMemDimWithData = MemDim(0);
-        for (size_t memDimIdx = 0; memDimIdx < dimsOrder.numDims(); ++memDimIdx) {
-            auto logicalDim = dimsOrder.toDim(MemDim(memDimIdx));
-            if (sourceShape[logicalDim] > 1) {
-                highestMemDimWithData = MemDim(memDimIdx);
-                break;
-            }
-        }
-
-        // Find which dimensions are split (offset != 0 or size < source size)
-        for (size_t dim = 0; dim < staticOffsets.size(); ++dim) {
-            bool isSplit = (staticOffsets[dim] != 0) || (staticSizes[dim] != sourceShape[Dim(dim)]);
-            if (!isSplit) {
+        // Check if another async.execute also subviews the same root buffer with
+        // a different region (offsets/sizes).
+        for (auto alias : aliasInfo.getAllAliases(rootBuffer)) {
+            auto otherSubViewOp = alias.getDefiningOp<VPUIP::SubViewOp>();
+            if (otherSubViewOp == nullptr) {
                 continue;
             }
 
-            // Get the memory dimension for this logical dimension
-            auto memDim = dimsOrder.toMemDim(Dim(dim));
+            auto definingExecOp = otherSubViewOp->getParentOfType<mlir::async::ExecuteOp>();
+            if (definingExecOp == nullptr || definingExecOp == execOp) {
+                continue;
+            }
 
-            // Check if this is NOT the highest dimension with data in memory layout
-            // If we split on any dimension other than the highest with data, we get non-contiguous strides
-            if (memDim != highestMemDimWithData) {
-                // This dimension is split but not the highest in memory layout
-                // which means the SubView creates a strided result
+            auto otherOffsets = parseIntArrayAttr<int64_t>(otherSubViewOp.getStaticOffsetsAttr());
+            auto otherSizes = parseIntArrayAttr<int64_t>(otherSubViewOp.getStaticSizesAttr());
+            if (currentOffsets != otherOffsets || currentSizes != otherSizes) {
                 return true;
             }
         }
     }
-
     return false;
 }
 
@@ -822,15 +889,16 @@ void FeasibleMemorySchedulerSpilling::optimizeDataOpsSpills(FeasibleMemorySchedu
                 // as in this case the dataOp may write to other parts of the buffer
                 const auto spillOpIdx = scheduledOps[origOrSpillReadOpIndex].op_;
                 auto opThatWasSpilled = _depsInfo.getExecuteOpAtIndex(spillOpIdx);
-                // Check if spill op is strided
-                // If the original DMA task is strided (read non-consistent memory from DDR)
-                // then don't do re-read optimization because the cost of strided-re-read is not always lower than
-                // spill_write + consistent spill_read
-                // This limitation could be removed once the DMA cost is accurate
-                if (hasStridedSubView(opThatWasSpilled)) {
-                    _log.nest(2).trace(
-                            "Skip re-read optimization for spill op '{0}' as it has strided subview in its body",
-                            spillOpIdx);
+                // Two cases of re-read optimization are currently disabled by code:
+                // 1. Strided SubViews
+                // 2. SubViews that share the same root buffer with another view
+                // Strided SubViews may become supported once DMA cost modeling is more accurate.
+                // Shared-root-buffer SubViews may become supported with more general spill optimization.
+                if (hasSubViewInBody(opThatWasSpilled, _aliasInfo, _memKind)) {
+                    _log.nest(2).trace("Skip re-read optimization for spill op '{0}' as it has strided subview or "
+                                       "subview with shared root "
+                                       "buffer",
+                                       spillOpIdx);
                     continue;
                 }
                 _log.trace("Re-read of operation {0} {1}", spillOpIdx,

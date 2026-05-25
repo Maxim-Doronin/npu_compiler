@@ -5,9 +5,12 @@
 
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/core/IR/memref_attr.hpp"
+#include "vpux/compiler/dialect/core/IR/ops.hpp"
 #include "vpux/compiler/dialect/core/interfaces/ops_interfaces.hpp"
 
 #include "vpux/compiler/core/aliases_info.hpp"
+#include "vpux/compiler/utils/memref_attr_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include <mlir/Dialect/MemRef/IR/MemRef.h>
@@ -121,10 +124,11 @@ void SetMemorySpacePass::updateAliases(AliasesInfo& aliasInfo, mlir::Value value
 
             var.setType(newFutureType);
         } else {
-            const auto origType = mlir::dyn_cast<vpux::NDTypeInterface>(var.getType());
-            VPUX_THROW_UNLESS(origType != nullptr, "Got non vpux::NDTypeInterface Type '{0}'", var.getType());
+            auto type = var.getType();
+            const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(type);
+            VPUX_THROW_UNLESS(ndType != nullptr, "Got non vpux::NDTypeInterface Type '{0}'", type);
 
-            const auto newType = origType.changeMemSpace(_memKind);
+            const auto newType = ndType.changeMemSpace(_memKind);
             var.setType(newType);
         }
     }

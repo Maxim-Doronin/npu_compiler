@@ -3,11 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+// RUN: vpux-opt --platform=%platform% --update-ELF-section-flags %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
-// RUN: vpux-opt --vpu-arch=%arch% --update-ELF-section-flags %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
-
-module @mainModule attributes {config.arch = #config.arch_kind<NPU40XX>} {
+module @mainModule attributes {config.platform = #config.platform<NPU4000>} {
 
   VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096]
   module @VPU.SW {
@@ -23,15 +22,17 @@ module @mainModule attributes {config.arch = #config.arch_kind<NPU40XX>} {
     DataInfo "Minimum_226" : tensor<64x32x32x16xf16>
   }
 
-  VPUASM.IOBindings inputDeclarations : {
+  VPUASM.InputBindings inputDeclarations : {
     VPUASM.DeclareBuffer @Parameter_224_buffDecl !VPUASM.Buffer< "NetworkInput"[0] <0> : memref<64x32x32x16xf16, @DDR> :  swizzling(0)>
-  } outputDeclarations : {
+  }
+  VPUASM.OutputBindings outputDeclarations : {
     VPUASM.DeclareBuffer @Minimum_226_buffDecl !VPUASM.Buffer< "NetworkOutput"[0] <0> : memref<64x32x32x16xf16, @DDR> :  swizzling(0)>
-  } profilingBuffDeclarations : {
+  }
+  VPUASM.ProfilingBindings profilingDeclarations : {
   }
 
 func.func @main() {
-  ELF.Main @ELFMain {
+  ELF.Main {
     // CHECK:    ELF.CreateLogicalSection @io.NetworkInput0
     // CHECK-SAME:    secFlags("SHF_WRITE|SHF_ALLOC|VPU_SHF_USERINPUT|VPU_SHF_PROC_SHAVE")
     ELF.CreateLogicalSection @io.NetworkInput0 aligned(1) secType(SHT_NOBITS) secFlags("VPU_SHF_USERINPUT|SHF_WRITE|SHF_ALLOC") secLocation(<NetworkInput>) {
@@ -87,7 +88,7 @@ func.func @main() {
       VPUASM.MappedInference @MappedInference : dmas([]) actKernelRanges([@ActKernelRange_0_0]) actKernelInvocations([@ActKernelInvocation_0_0]) barriers(@program.barrier::@ConfigureBarrier_0_0) actShaveRt(@shave.runtime::@ActShaveRt) dmaCount([[0, 0], [0, 0]]) invariantCount([0, 0]) variantCount([0, 0]) actKernelRangesCount([2, 0]) actKernelInvocationsCount([2, 0]) mediaCount(0) barrierCount(3) mappedInferenceVersion(@note.MappedInferenceVersion::@MappedInferenceVersion_0_0)
     }
     ELF.CreateSection @note.LoaderABIVersion aligned(4) secType(SHT_NOTE) secFlags("SHF_NONE") secLocation(<DDR>) {
-      ELF.ABIVersion {sym_name = "LoaderABIVersion"}
+      ELF.ABIVersion
     }
     ELF.CreateSymbolTableSection @symtab secFlags("SHF_NONE") {
       ELF.Symbol @elfsym.buffer.Constant.0.constant of(@buffer.Constant.0.constant) type(<STT_SECTION>) size(0) value(0)

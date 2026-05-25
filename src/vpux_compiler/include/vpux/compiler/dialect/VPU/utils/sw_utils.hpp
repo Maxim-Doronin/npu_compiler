@@ -69,7 +69,7 @@ VPU::DistributionMode getSWInputTensorDistributionMode(VPU::RoPEOp op, VPU::Mult
                                                        mlir::Value operand);
 VPU::DistributionMode getSWInputTensorDistributionMode(VPU::SDPAOp op, VPU::MultiClusterStrategy strategy,
                                                        mlir::Value operand);
-VPU::DistributionMode getSWInputTensorDistributionMode(VPU::SDPAExtendedOp op, VPU::MultiClusterStrategy strategy,
+VPU::DistributionMode getSWInputTensorDistributionMode(VPU::AttentionOp op, VPU::MultiClusterStrategy strategy,
                                                        mlir::Value operand);
 VPU::DistributionMode getSWInputTensorDistributionMode(VPU::ReverseOp op, VPU::MultiClusterStrategy strategy);
 VPU::DistributionMode getSWInputTensorDistributionMode(VPU::ReverseSequenceOp op, VPU::MultiClusterStrategy strategy,
@@ -151,7 +151,7 @@ SmallVector<int64_t> getSWInputTensorNumTiles(VPU::RoPEOp op, int64_t numCluster
 SmallVector<int64_t> getSWInputTensorNumTiles(VPU::SDPAOp op, int64_t numClustersAvailableForCompilation,
                                               VPU::MultiClusterStrategy strategy, mlir::Value operand,
                                               vpux::NDTypeInterface inputType);
-SmallVector<int64_t> getSWInputTensorNumTiles(VPU::SDPAExtendedOp op, int64_t numClustersAvailableForCompilation,
+SmallVector<int64_t> getSWInputTensorNumTiles(VPU::AttentionOp op, int64_t numClustersAvailableForCompilation,
                                               VPU::MultiClusterStrategy strategy, mlir::Value operand,
                                               vpux::NDTypeInterface inputType);
 SmallVector<int64_t> getSWInputTensorNumTiles(VPU::ReverseOp op, int64_t numClustersAvailableForCompilation,
@@ -191,6 +191,9 @@ std::optional<SmallVector<int64_t>> getSWEltwiseAlignment(mlir::Operation* op, S
 bool isSWEltwiseAndNeedsAlignment(mlir::Operation* op);
 
 std::optional<SmallVector<int64_t>> getSWAlignment(mlir::Operation* op, ShapeRef divisors, ShapeRef shape);
+
+// Check if the op has accurate VPUNN cost
+bool opHasAccurateCost(mlir::Operation* op);
 
 // Check if DepthToSpace satisfies the condition of optimal SW implementation
 bool satisfiesOptimizedDepthToSpace(VPU::DepthToSpaceOp d2sOp, config::ArchKind arch);

@@ -11,7 +11,7 @@
 #include "vpux/compiler/dialect/VPUIP/transforms/passes/unroll_distributed_ops.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
-#include "vpux/compiler/init.hpp"
+#include "vpux/compiler/init/dialects_registry.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/types.hpp"
 #include "vpux/utils/core/scope_exit.hpp"

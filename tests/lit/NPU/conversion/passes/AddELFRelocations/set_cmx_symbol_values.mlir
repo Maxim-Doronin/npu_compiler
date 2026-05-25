@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --init-compiler="vpu-arch=%arch%" --set-cmx-symbol="cmx-workspace-addr=1075937280 cmx-workspace-size=1474560 cmx-metadata-addr=1075854336 cmx-metadata-size=82944" %s | FileCheck %s
-// REQUIRES: dev-build && (arch-NPU40XX || arch-NPU50XX)
+// RUN: vpux-opt --init-compiler="platform=%platform%" --set-cmx-symbol="cmx-workspace-addr=1075937280 cmx-workspace-size=1474560 cmx-metadata-addr=1075854336 cmx-metadata-size=82944" %s | FileCheck %s
+// REQUIRES: dev-build && (platform-NPU4000 || platform-NPU5010)
 
 module @setCMXSymbols {
   net.NetworkInfo entryPoint : @main inputsInfo : {
@@ -13,7 +13,7 @@ module @setCMXSymbols {
     DataInfo "output_0" : tensor<1x2x3x4xf16>
   }
   func.func @main() attributes {inliner_dispatch = #VPUIP.VPUIPInlinerDispatch} {
-    ELF.Main @ELFMain {
+    ELF.Main {
       ELF.CreateLogicalSection @io.NetworkInput.0 aligned(64) secType(SHT_NOBITS) secFlags("SHF_WRITE|SHF_ALLOC|VPU_SHF_USERINPUT|VPU_SHF_PROC_DMA") secLocation(<NetworkInput>) {
       }
       ELF.CreateLogicalSection @io.NetworkOutput.0 aligned(64) secType(SHT_NOBITS) secFlags("SHF_WRITE|SHF_ALLOC|VPU_SHF_USEROUTPUT|VPU_SHF_PROC_DMA") secLocation(<NetworkOutput>) {

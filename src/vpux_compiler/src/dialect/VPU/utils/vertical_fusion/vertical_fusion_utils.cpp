@@ -11,6 +11,7 @@
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v2/vertical_fusion_config.hpp"
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vf_axis_increment.hpp"
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
+#include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/dma.hpp"
 #include "vpux/compiler/utils/strings.hpp"
@@ -116,6 +117,12 @@ mlir::FailureOr<TilingStorage> vpux::VPU::calculateTilingRegions(mlir::Operation
                                 !tilingInfoOp.isSupportedTiling({tile}, TilingMode::ISOLATED, log)) {
                                 return mlir::failure();
                             }
+                            if (auto channelAlignOp = mlir::dyn_cast<IE::AlignedChannelsOpInterface>(currentOp)) {
+                                const auto channelDim = tile.shape.size() == 5 ? DimsGroups5D::Act::C : Dims4D::Act::C;
+                                if (tile.shape[channelDim] % channelAlignOp.getOutputChannelAlignment() != 0) {
+                                    return mlir::failure();
+                                }
+                            }
                         }
                     }
                 }
@@ -134,8 +141,7 @@ mlir::FailureOr<TilingStorage> vpux::VPU::calculateTilingRegions(mlir::Operation
         // Store the tiling info for the current operation
         if (opStorage != nullptr) {
             opStorage->insert(currentOp, tileNumber, std::make_pair(inputTiling, tile));
-            log.trace("TileInfo inserted for operation at loc {0} tile {1}, {2}", currentOp->getLoc(), tileNumber,
-                      tile);
+            log.trace("TileInfo inserted for operation at {0} tile {1}, {2}", currentOp->getLoc(), tileNumber, tile);
         }
 
         // Process each operand of the current operation
@@ -145,7 +151,7 @@ mlir::FailureOr<TilingStorage> vpux::VPU::calculateTilingRegions(mlir::Operation
 
             if (auto arg = mlir::dyn_cast<mlir::BlockArgument>(operand)) {
                 // Store block argument info
-                storage.insert(arg.getArgNumber(), tileNumber, inputTiling.tiles[indexOp]);
+                storage.insert(std::make_pair(arg.getArgNumber(), currentOp), tileNumber, inputTiling.tiles[indexOp]);
                 log.trace("TileInfo inserted for argument {0} tile {1}, {2}", arg.getArgNumber(), tileNumber,
                           inputTiling.tiles[indexOp]);
                 continue;
@@ -157,7 +163,7 @@ mlir::FailureOr<TilingStorage> vpux::VPU::calculateTilingRegions(mlir::Operation
 
             // Create the tile for the operand and add it to the work queue
             auto& oneTile = inputTiling.tiles[indexOp];
-            auto inputTile = TileInfo(oneTile.shape, oneTile.offsets, tile.axis, tile.isCompletedTile);
+            auto inputTile = TileInfo(oneTile.shape, oneTile.offsets, oneTile.axis, tile.isCompletedTile);
             workQueue.push(std::make_tuple(operand.getDefiningOp(), inputTile, tileNumber));
         }
     }
@@ -183,7 +189,7 @@ int64_t vpux::VPU::getTilingLimit(Dim axis, ArrayRef<mlir::Operation*> operation
             if (tilingOnHW) {
                 limit = divUp(limit, (MINIMUM_LENGTH_TILING * MINIMUM_LENGTH_TILING));
             } else {
-                limit = limit / MINIMUM_LENGTH_TILING;
+                limit = std::max(limit / MINIMUM_LENGTH_TILING, int64_t(1));
             }
         }
         limit = std::min(limit, VPU::NCEInvariant::VPU_DIMENSION_LIMIT / MINIMUM_LENGTH_TILING);
@@ -261,6 +267,10 @@ DimArr vpux::VPU::getAllowedDims(ArrayRef<mlir::Operation*> operations, Logger l
             }
 
             if (auto tilingViewLikeOp = mlir::dyn_cast<VPU::TilingViewLikeOpInterface>(curOp)) {
+                if (!tilingViewLikeOp.isSupportedTilingDim({curAxis})) {
+                    isAllowed = false;
+                    break;
+                }
                 curAxis = tilingViewLikeOp.backInferTilingDim(curAxis);
             }
 
@@ -372,7 +382,7 @@ mlir::FailureOr<SmallVector<vpux::Dim>> vpux::VPU::backInferVFTilingDim(
 
 VPU::VerticalFusionOp vpux::VPU::fuseOpsInBlock(mlir::OpBuilder& rewriter, VPU::VerticalFusionOp vfOp,
                                                 mlir::Operation* prevOp, mlir::ArrayAttr tilingInfo /*nullptr*/,
-                                                bool isManuallConfigured /*false*/) {
+                                                bool isManualConfigured /*false*/) {
     SmallVector<mlir::Operation*> prevOperations;
     auto prevOperands = prevOp->getOperands();
     SmallVector<mlir::Value> prevBlockArgs = prevOp->getOperands();
@@ -477,7 +487,131 @@ VPU::VerticalFusionOp vpux::VPU::fuseOpsInBlock(mlir::OpBuilder& rewriter, VPU::
     if (tilingInfo == nullptr) {
         tilingInfo = vfOp.getTilingStrategy();
     }
-    mlir::UnitAttr isManualConfiguredAttr = isManuallConfigured ? mlir::UnitAttr::get(vfOp.getContext()) : nullptr;
+    mlir::UnitAttr isManualConfiguredAttr = isManualConfigured ? mlir::UnitAttr::get(vfOp.getContext()) : nullptr;
+    return rewriter.create<VPU::VerticalFusionOp>(vfOp.getLoc(), vfOp->getResultTypes(), newOperands, bodyBuilder,
+                                                  tilingInfo, isManualConfiguredAttr);
+}
+
+// fuseSingleViewOpsChainInBlock is needed when the predecessor is a linear chain of pure
+// view-like ops (e.g. Reshape -> MemPermute -> QuantizeCast) rather than a single op or an
+// existing VPU::VerticalFusionOp. Avoid calling fuseOpsInBlock in a loop; it causes spurious
+// intermediate VF blocks that corrupt the IR.
+//
+// Procedure:
+//   1. Validates adjacency so every pair is a true producer-consumer link.
+//   2. Collects external inputs of the whole chain as new VF block arguments in one pass,
+//      avoiding duplicate operand entries.
+//   3. Clones the chain ops in topological order (farthest first) before cloning vfOp's body,
+//      so SSA dominance is maintained in the new block.
+//   4. Replaces old VF block arguments that were fed by chain outputs with the cloned results,
+//      while external-operand arguments are re-wired to the corresponding new block arguments.
+VPU::VerticalFusionOp vpux::VPU::fuseSingleViewOpsChainInBlock(mlir::OpBuilder& rewriter, VPU::VerticalFusionOp vfOp,
+                                                               ArrayRef<mlir::Operation*> prevOpChain,
+                                                               mlir::ArrayAttr tilingInfo /*nullptr*/,
+                                                               bool isManualConfigured /*false*/) {
+    VPUX_THROW_WHEN(prevOpChain.empty(), "Cannot fuse an empty producer chain into {0}", vfOp);
+
+    // Validate that each adjacent pair forms one producer-consumer link in the chain.
+    for (size_t i = 0; i + 1 < prevOpChain.size(); ++i) {
+        auto* childOp = prevOpChain[i];
+        auto* parentOp = prevOpChain[i + 1];
+        const auto isLinked = llvm::any_of(childOp->getOperands(), [&](mlir::Value operand) {
+            return operand.getDefiningOp() == parentOp;
+        });
+        VPUX_THROW_WHEN(!isLinked, "Invalid producer chain: op {0} is not fed by op {1}", childOp->getName(),
+                        parentOp->getName());
+    }
+
+    const auto isOpInChain = [&](mlir::Operation* op) {
+        return llvm::is_contained(prevOpChain, op);
+    };
+
+    // Clone from farthest producer to the one closest to vfOp.
+    SmallVector<mlir::Operation*> chainOps(prevOpChain.begin(), prevOpChain.end());
+    std::reverse(chainOps.begin(), chainOps.end());
+
+    SmallVector<mlir::Value> newOperands;
+    mlir::DenseMap<mlir::Value, size_t> operandToIdx;
+    const auto appendOperand = [&](mlir::Value operand) {
+        if (operandToIdx.count(operand) == 0) {
+            operandToIdx[operand] = newOperands.size();
+            newOperands.push_back(operand);
+        }
+    };
+
+    // 1) Collect chain external inputs.
+    for (auto* op : chainOps) {
+        for (auto operand : op->getOperands()) {
+            if (!isOpInChain(operand.getDefiningOp())) {
+                appendOperand(operand);
+            }
+        }
+    }
+
+    // 2) Collect current VF external inputs and remember which block args are fed by chain values.
+    SmallVector<size_t> vfArgNumsFromChain;
+    vfArgNumsFromChain.reserve(vfOp.getBody()->getNumArguments());
+    mlir::DenseMap<size_t, mlir::Value> vfArgToChainValue;
+    mlir::DenseMap<size_t, size_t> vfArgToExternalOperandIdx;
+    for (auto arg : vfOp.getBody()->getArguments()) {
+        const auto argNum = arg.getArgNumber();
+        const auto operand = vfOp.getOperand(argNum);
+        if (isOpInChain(operand.getDefiningOp())) {
+            vfArgNumsFromChain.push_back(argNum);
+            vfArgToChainValue[argNum] = operand;
+            continue;
+        }
+        appendOperand(operand);
+        vfArgToExternalOperandIdx[argNum] = operandToIdx[operand];
+    }
+
+    const auto bodyBuilder = [&](mlir::OpBuilder& builder, mlir::Location loc, mlir::ValueRange blockArgs) {
+        mlir::IRMapping mapper;
+        const auto curBlockArgs = vfOp.getBody()->getArguments();
+
+        // Map newly created block arguments back to original external values.
+        for (size_t i = 0; i < newOperands.size(); ++i) {
+            mapper.map(newOperands[i], blockArgs[i]);
+        }
+
+        // Clone the whole producer chain first.
+        for (auto* op : chainOps) {
+            if (!mlir::isa<VPU::YieldOp>(op)) {
+                builder.clone(*op, mapper);
+            }
+        }
+
+        // Map old VF block args that were connected to the chain to cloned chain results.
+        for (auto argNum : vfArgNumsFromChain) {
+            mapper.map(curBlockArgs[argNum], mapper.lookupOrDefault(vfArgToChainValue[argNum]));
+        }
+
+        // Map old VF block args that were external operands.
+        for (const auto& item : vfArgToExternalOperandIdx) {
+            mapper.map(curBlockArgs[item.first], blockArgs[item.second]);
+        }
+
+        SmallVector<mlir::Value> newResults;
+        const auto getOpPointer = [](auto& op) -> mlir::Operation* {
+            return &op;
+        };
+        for (auto* op : vfOp.getBody()->getOperations() | transformed(getOpPointer)) {
+            if (!mlir::isa<VPU::YieldOp>(op)) {
+                builder.clone(*op, mapper);
+                continue;
+            }
+            for (auto operand : op->getOperands()) {
+                newResults.push_back(mapper.lookupOrDefault(operand));
+            }
+        }
+
+        builder.create<VPU::YieldOp>(loc, newResults.back());
+    };
+
+    if (tilingInfo == nullptr) {
+        tilingInfo = vfOp.getTilingStrategy();
+    }
+    mlir::UnitAttr isManualConfiguredAttr = isManualConfigured ? mlir::UnitAttr::get(vfOp.getContext()) : nullptr;
     return rewriter.create<VPU::VerticalFusionOp>(vfOp.getLoc(), vfOp->getResultTypes(), newOperands, bodyBuilder,
                                                   tilingInfo, isManualConfiguredAttr);
 }
@@ -586,6 +720,12 @@ bool vpux::VPU::isOpTiled(mlir::Operation* op) {
 }
 
 bool vpux::VPU::onlySupportPartialTilingDims(vpux::VPU::TilingViewLikeOpInterface viewOp) {
+    auto inputRank = mlir::cast<vpux::NDTypeInterface>(viewOp->getOperand(0).getType()).getRank();
+    auto outputRank = mlir::cast<vpux::NDTypeInterface>(viewOp->getResult(0).getType()).getRank();
+    if (inputRank != outputRank) {
+        return true;
+    }
+
     auto dims = DimsOrder::fromValue(viewOp->getResult(0)).toPermutation();
     return llvm::any_of(dims, [&](auto dim) {
         return !viewOp.isSupportedTilingDim({dim});
@@ -605,6 +745,37 @@ SmallVector<mlir::Operation*> vpux::VPU::getParentViewLikeOpsInVF(mlir::Operatio
         return op1->isBeforeInBlock(op2);
     });
     return parents;
+}
+
+VPU::DistributedTensorType vpux::VPU::inferDistributedTypeThroughViewOps(VPU::DistributedTensorType srcType,
+                                                                         ArrayRef<mlir::Operation*> viewOps) {
+    vpux::NDTypeInterface type =
+            vpux::getTensorType(srcType.getShape(), srcType.getElementType(), srcType.getDimsOrder(),
+                                srcType.getMemSpace(), getBounds(srcType), getDynamicDimsMask(srcType));
+    auto distribution = VPU::DistributionInfo::getClassFromAttr(srcType.getDistribution());
+    for (auto viewOp : viewOps) {
+        if (auto distCastOp = mlir::dyn_cast<VPU::DistributedCastOpInterface>(viewOp)) {
+            auto castedTypeWithDistribution = distCastOp.inferCastedTypeAndDistribution(type, distribution);
+            if (mlir::failed(castedTypeWithDistribution)) {
+                return nullptr;
+            }
+            type = mlir::cast<vpux::NDTypeInterface>(castedTypeWithDistribution.value().first);
+            distribution = castedTypeWithDistribution.value().second;
+        }
+    }
+    TensorDistributionMap distributionMap;
+    distributionMap.insert(std::make_pair(type, distribution));
+    return mlir::cast<VPU::DistributedTensorType>(getDistributedTypeFromDistributionMap(type, distributionMap));
+};
+
+mlir::BlockArgument vpux::VPU::getLinkedArgumentBetweenVFOps(VerticalFusionOp currentOp, VPU::VerticalFusionOp prevOp) {
+    for (auto blockArg : currentOp.getBody()->getArguments()) {
+        auto operand = currentOp.getOperand(blockArg.getArgNumber());
+        if (operand.getDefiningOp() == prevOp.getOperation()) {
+            return blockArg;
+        }
+    }
+    return nullptr;
 }
 
 // Explicit instantiation of the template function for V1/V2 VFConfig

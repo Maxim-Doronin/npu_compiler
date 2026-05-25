@@ -10,7 +10,7 @@ vpux-translate --import-IE --mlir-print-debuginfo --vpux-profiling $PATH_TO_XML 
 ```
 
 - Then shrink IR to few layers(e.g. to first 3 layers), adjust model outputs.
-- Using `vpux-opt --default-hw-mode="--vpu-arch=NPU37XX profiling=true" --mlir-print-debuginfo tmp.mlir -o tmp-ex.mlir` generate IR for LIT test.
+- Using `vpux-opt --platform=NPU3720 --default-hw-mode="profiling=true" --mlir-print-debuginfo tmp.mlir -o tmp-ex.mlir` generate IR for LIT test.
 
 To generate `profiling-0.bin` run InferenceManagerDemo with blob from lit/utils/profiling-*.mlir.txt and copy generated profiling-0.bin form inference results.
 

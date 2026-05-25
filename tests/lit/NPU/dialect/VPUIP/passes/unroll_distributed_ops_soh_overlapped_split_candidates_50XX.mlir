@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --unroll-distributed-ops --canonicalize  %s | FileCheck %s
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --unroll-distributed-ops --canonicalize  %s | FileCheck %s
+// REQUIRES: platform-NPU5010
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
@@ -120,7 +120,7 @@ func.func @UnrollNceSoHOutputOverlappedSplitCandidates(%input: !Input_DDR, %outp
         VPUIP.NNDMA <{port = 0 : i64}> inputs(%parent_in: !Input_DDR) outputs(%parent_input_cmx: !InputDistributed) -> !InputDistributed
     }
     // Select cluster 2 as candidate for split
-    // CHECK:   VPUIP.NNDMA <{port = 0 : i64, split_candidate}>
+    // CHECK:   VPUIP.NNDMA <{port = 0 : i64, split_candidate = true}>
     // CHECK-SAME:      memref<1x16x12x33xf16, #NHWC, @DDR>
     // CHECK-SAME:      memref<1x16x12x33xf16, #NHWC, [@CMX_NN, 2]>
 
@@ -136,7 +136,7 @@ func.func @UnrollNceSoHOutputOverlappedSplitCandidates(%input: !Input_DDR, %outp
 
     // Cluster tiling
     VPURT.Task waits(%bar0: !VPURT.Barrier) updates(%bar1: !VPURT.Barrier) {
-        %1:2 = VPUIP.NCEClusterTask <{
+        %1:2 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 1, 0, 0, 0, 0>} <{
                     kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
                     kernel_size = [3, 3],
                     kernel_strides = [1, 1],
@@ -182,7 +182,7 @@ func.func @UnrollNceSoHOutputOverlappedSplitCandidates(%input: !Input_DDR, %outp
         VPUIP.NNDMA <{port = 0 : i64}> inputs(%parent_out_cmx: !OutputDistributed) outputs(%parent_out: !Output_DDR) -> !Output_DDR
     }
     // Select cluster 2 as candidate for split
-    // CHECK:   VPUIP.NNDMA <{port = 0 : i64, split_candidate}>
+    // CHECK:   VPUIP.NNDMA <{port = 0 : i64, split_candidate = true}>
     // CHECK-SAME:      memref<1x16x11x33xf16, #NHWC, [@CMX_NN, 2]>
     // CHECK-SAME:      memref<1x16x11x33xf16, #NHWC, @DDR>
 

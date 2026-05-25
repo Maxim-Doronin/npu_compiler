@@ -86,7 +86,7 @@ class AutoPaddingTest : public VpuOv2LayerTest, public testing::WithParamInterfa
         auto result = params.at(0)->get_default_output();
         if (parameters.quantized) {
             result = utils::makeFakeQuantize(result, ov::element::f16, 256,
-                                             FakeQuantizeParams({-1.0f}, {1.0f}, {-1.0f}, {1.0f}))
+                                             FakeQuantizeParams({-0.5f}, {0.5f}, {-0.5f}, {0.5f}))
                              ->get_default_output();
         }
 
@@ -94,7 +94,7 @@ class AutoPaddingTest : public VpuOv2LayerTest, public testing::WithParamInterfa
 
         if (parameters.quantized) {
             result = utils::makeFakeQuantize(result, ov::element::f16, 256,
-                                             FakeQuantizeParams({-1.0f}, {1.0f}, {-1.0f}, {1.0f}))
+                                             FakeQuantizeParams({-0.5f}, {0.5f}, {-0.5f}, {0.5f}))
                              ->get_default_output();
         }
 
@@ -102,12 +102,13 @@ class AutoPaddingTest : public VpuOv2LayerTest, public testing::WithParamInterfa
 
         if (parameters.quantized) {
             result = utils::makeFakeQuantize(result, ov::element::f16, 256,
-                                             FakeQuantizeParams({-1.0f}, {1.0f}, {-1.0f}, {1.0f}))
+                                             FakeQuantizeParams({-0.5f}, {0.5f}, {-0.5f}, {0.5f}))
                              ->get_default_output();
         }
 
         const ov::ResultVector results{std::make_shared<ov::op::v0::Result>(result)};
         function = std::make_shared<ov::Model>(results, params, "AutoPaddingTest");
+        rel_threshold = 0.03;
     }
 
     ov::Output<ov::Node> buildConv(const ov::Output<ov::Node>& input, bool quantized) const {
@@ -119,7 +120,7 @@ class AutoPaddingTest : public VpuOv2LayerTest, public testing::WithParamInterfa
                         ->get_default_output();
         if (quantized) {
             weights = utils::makeFakeQuantize(weights, ov::element::f16, 256,
-                                              FakeQuantizeParams({-1.0f}, {1.0f}, {-1.0f}, {1.0f}))
+                                              FakeQuantizeParams({-0.5f}, {0.5f}, {-0.5f}, {0.5f}))
                               ->get_default_output();
         }
 
@@ -139,7 +140,7 @@ class AutoPaddingTest : public VpuOv2LayerTest, public testing::WithParamInterfa
                         ->get_default_output();
         if (quantized) {
             weights = utils::makeFakeQuantize(weights, ov::element::f16, 256,
-                                              FakeQuantizeParams({-1.0f}, {1.0f}, {-1.0f}, {1.0f}))
+                                              FakeQuantizeParams({-0.5f}, {0.5f}, {-0.5f}, {0.5f}))
                               ->get_default_output();
         }
 

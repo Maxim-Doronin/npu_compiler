@@ -280,7 +280,7 @@ std::vector<ELF::RelocationInfo> vpux::NPUReg50XX::MappedInferenceOp::getRelocat
                 [&](mlir::Attribute attr) {
                     if (auto symRef = mlir::dyn_cast<mlir::SymbolRefAttr>(attr)) {
                         auto stacks = symRefMap.lookupSymbol(symRef);
-                        auto stackOp = mlir::cast<VPUASM::ShaveStackFrameOp>(stacks);
+                        auto stackOp = mlir::cast<VPUASM::ShaveStackFrameBuffOp>(stacks);
                         auto stackSize = stackOp.getStackSize();
                         // SHAVE stack grows backwards!
                         // set the addend to the top of the allocated section so it does not override

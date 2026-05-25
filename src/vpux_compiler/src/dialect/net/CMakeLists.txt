@@ -7,5 +7,14 @@ file(GLOB_RECURSE SRC_FILES *.cpp)
 add_npu_library(npu_compiler_dialect_net
     ${SRC_FILES}
     DIALECT_LIB
-    LINK_LIBS PRIVATE
-        npu_llvm_utils)
+    LINK_LIBS
+      PUBLIC
+        npu_compiler_core
+        npu_compiler_utils
+        npu_logger
+      PRIVATE
+        npu_compiler_dialect_config
+        npu_compiler_dialect_core
+        npu_compiler_dialect_hostexec_transforms
+        npu_core_utils
+)

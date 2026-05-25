@@ -19,6 +19,7 @@
 
 #include "vpux/compiler/core/interfaces/dialect_cache.hpp"
 #include "vpux/utils/core/func_ref.hpp"
+#include "vpux/utils/core/numeric.hpp"
 #include "vpux/utils/core/range.hpp"
 #include "vpux/utils/core/small_vector.hpp"
 
@@ -26,6 +27,7 @@
 #include <mlir/IR/Builders.h>
 #include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/BuiltinDialect.h>
+#include <mlir/IR/Dialect.h>
 #include <mlir/IR/DialectImplementation.h>
 #include <mlir/IR/DialectInterface.h>
 #include <mlir/IR/DialectResourceBlobManager.h>
@@ -66,7 +68,7 @@ struct ConstInlinerInterface : public mlir::DialectInlinerInterface {
 /// expensive to calculate manually).
 class SplatnessCache final : public mlir::DialectInterface::Base<SplatnessCache> {
     using ValueType = std::pair<mlir::ArrayRef<char>, bool>;
-    mlir::DenseMap<StringRef, ValueType> _cache;
+    mlir::DenseMap<mlir::DenseResourceElementsAttr, ValueType> _cache;
 
 public:
     // required by MLIR's internal type-id infrastructure:
@@ -313,12 +315,11 @@ std::pair<mlir::ArrayRef<char>, bool> getRawDataAndSplatness(mlir::ElementsAttr 
 }
 
 void SplatnessCache::cacheRawDataAndSplatness(mlir::DenseResourceElementsAttr denseResource) {
-    auto key = denseResource.getRawHandle().getKey();
     // dense resource doesn't support splat detection in MLIR itself
     auto blob = denseResource.getRawHandle().getBlob();
     if (blob != nullptr) {
         std::lock_guard<std::recursive_mutex> lock(_cacheMutex);
-        auto& entry = _cache[key];
+        auto& entry = _cache[denseResource];
 
         // Note: In an unlikely but possible event, the same dense_resource<>
         // can already be cached (OV model is compressed). In this case, there
@@ -333,12 +334,11 @@ void SplatnessCache::cacheRawDataAndSplatness(mlir::DenseResourceElementsAttr de
 
 typename SplatnessCache::ValueType SplatnessCache::getRawDataAndSplatness(
         mlir::DenseResourceElementsAttr denseResource) {
-    auto key = denseResource.getRawHandle().getKey();
     std::lock_guard<std::recursive_mutex> lock(_cacheMutex);
-    auto it = _cache.find(key);
+    auto it = _cache.find(denseResource);
     if (it == _cache.end()) {
         cacheRawDataAndSplatness(denseResource);
-        it = _cache.find(key);
+        it = _cache.find(denseResource);
         return it != _cache.end() ? it->second : std::make_pair(ArrayRef<char>{}, false);
     }
     return it->second;
@@ -395,6 +395,10 @@ mlir::DenseResourceElementsAttr Const::createExternalConstContent(mlir::ShapedTy
         }
 
         if (auto existingBlob = builtinDialectManager.getBlobManager().lookup(resourceName)) {
+            assert(existingBlob->getBlob() != nullptr);
+            assert(existingBlob->getBlob()->getData().size() == rawData.size() &&
+                   "When existing blob is found, its data buffer must match new constant's data. This is guaranteed by "
+                   "OpenVINO.");
             return mlir::DenseResourceElementsHandle(
                     existingBlob,
                     mlir::cast<mlir::DenseResourceElementsHandle::Dialect>(builtinDialectManager.getDialect()));
@@ -792,6 +796,15 @@ llvm::hash_code StableHashStorage<AffineReshapeAttrStorage>::calculateStableHash
     return llvm::hash_combine(AffineReshapeAttr::getMnemonic(),
                               llvm::hash_combine_range(dimMappingRefs.begin(), dimMappingRefs.end()),
                               llvm::hash_value(ArrayRef<int64_t>(shapeValue)));
+}
+
+template <>
+llvm::hash_code StableHashStorage<GatherElementsAttrStorage>::calculateStableHash() const {
+    const auto indicesDense = this->indices;
+    const auto indicesRaw = indicesDense.getRawData();
+    return llvm::hash_combine(GatherElementsAttr::getMnemonic(), this->axis.getValue(),
+                              getStableHash(this->indices.getType()),
+                              llvm::hash_combine_range(indicesRaw.begin(), indicesRaw.end()));
 }
 }  // namespace details
 

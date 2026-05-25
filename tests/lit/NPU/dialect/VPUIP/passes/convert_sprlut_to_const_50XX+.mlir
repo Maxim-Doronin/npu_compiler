@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-sprlut-to-const %s | FileCheck %s
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --convert-sprlut-to-const %s | FileCheck %s
+// REQUIRES: platform-NPU5010
 
 // -----
 
@@ -50,7 +50,7 @@ func.func @ConvertSprLUTToConstWithDistributedOp(%data: !InputDistributedType,
                                                  %weights: !WeightsDistributedType)
                                                  -> !OutputDistributedType {
     %conv_cmx_outbuf = VPURT.AllocDistributed -> !OutputDistributedType
-    %output = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 366 : i64} <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<CONV>}>
+    %output = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 366 : i64, resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<CONV>}>
         input(%data : !InputDistributedType)
         weights(%weights : !WeightsDistributedType)
         parent_input(%data : !InputDistributedType)
@@ -91,7 +91,7 @@ func.func @ConvertSprLUTToConstMemRef(%data: memref<1x16x16x16xf16, #NHWC, @CMX_
                                       -> memref<1x16x16x16xf16, #NHWC, @CMX_NN> {
     %conv_cmx_outbuf = memref.alloc() : memref<1x16x16x16xf16, #NHWC, @CMX_NN>
 
-    %nce_output = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 366 : i64} <{
+    %nce_output = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 366 : i64, resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
                             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                             kernel_size = [1, 1],
                             kernel_strides = [1, 1],
@@ -172,7 +172,7 @@ func.func @ConvertSprLUTToConstDistrBuf(%data: !InputDistributedType,
                                         -> !OutputDistributedType {
     %conv_cmx_outbuf = VPURT.AllocDistributed -> !OutputDistributedType
 
-    %nce_output = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 366 : i64} <{
+    %nce_output = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 366 : i64, resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
                             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                             kernel_size = [1, 1],
                             kernel_strides = [1, 1],

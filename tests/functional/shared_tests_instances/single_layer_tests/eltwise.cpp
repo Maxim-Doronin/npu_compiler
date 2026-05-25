@@ -128,7 +128,7 @@ void EltwiseLayerTestCommon::SetUp() {
 
 class EltwiseLayerTestF32Common : public EltwiseLayerTestCommon {
     void configure_model() override {
-        configuration[ov::intel_npu::compilation_mode_params.name()] = "convert-precision-to-fp16=false";
+        configuration[ov::intel_npu::compilation_mode_params.name()] = "disabled-passes=convert-precision-to-fp16";
     }
 };
 
@@ -241,15 +241,9 @@ TEST_P(EltwiseLayerTestCommon, NPU3720_HW) {
     run(Platform::NPU3720);
 }
 
-TEST_P(EltwiseLayerTestCommon, NPU4000_SW) {
-    abs_threshold = 0.6;
-    setReferenceSoftwareMode();
-    run(Platform::NPU4000);
-}
-
-TEST_P(EltwiseLayerTestF32Common, NPU4000_SW) {
-    setReferenceSoftwareMode();
-    run(Platform::NPU4000);
+TEST_P(EltwiseEmptyShapeInputLayerTest, NPU3720_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU3720);
 }
 
 TEST_P(EltwiseLayerTestF32Common, NPU3720_SW) {
@@ -269,6 +263,27 @@ TEST_P(EltwiseLayerTestF32Common, NPU3720_HW) {
 
     setDefaultHardwareMode();
     run(Platform::NPU3720);
+}
+
+TEST_P(EltwiseEmptyShapeInputLayerTest, NPU4000_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU4000);
+}
+
+TEST_P(EltwiseLayerTestCommon, NPU4000_SW) {
+    abs_threshold = 0.6;
+    setReferenceSoftwareMode();
+    run(Platform::NPU4000);
+}
+
+TEST_P(EltwiseLayerTestF32Common, NPU4000_SW) {
+    setReferenceSoftwareMode();
+    run(Platform::NPU4000);
+}
+
+TEST_P(EltwiseLayerTestSCFTiling, NPU4000_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU4000);
 }
 
 TEST_P(EltwiseLayerTestCommon, NPU5010_SW) {
@@ -299,16 +314,6 @@ TEST_P(EltwiseLayerTestF32Common, NPU5020_SW) {
 TEST_P(EltwiseLayerTestSCFTiling, NPU5020_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5020);
-}
-
-TEST_P(EltwiseEmptyShapeInputLayerTest, NPU3720_HW) {
-    setDefaultHardwareMode();
-    run(Platform::NPU3720);
-}
-
-TEST_P(EltwiseEmptyShapeInputLayerTest, NPU4000_HW) {
-    setDefaultHardwareMode();
-    run(Platform::NPU4000);
 }
 
 void setCommonSkipCompilationCallback(EltwiseIntegerLayerTest* test) {
@@ -662,7 +667,8 @@ std::vector<std::vector<ov::Shape>> bitwiseInput = {{{1, 1, 256, 56}, {1, 1, 256
 
 std::vector<ov::test::ElementType> bitwiseNetPrecisions = {ov::element::i32};
 
-std::set<EltwiseTypes> bitwiseTypes = {EltwiseTypes::BITWISE_AND, EltwiseTypes::BITWISE_OR, EltwiseTypes::BITWISE_XOR};
+std::set<EltwiseTypes> bitwiseTypes = {EltwiseTypes::BITWISE_AND, EltwiseTypes::BITWISE_OR, EltwiseTypes::BITWISE_XOR,
+                                       EltwiseTypes::RIGHT_SHIFT, EltwiseTypes::LEFT_SHIFT};
 
 const auto bitwiseParams =
         ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(bitwiseInput)),
@@ -674,11 +680,33 @@ const auto bitwiseParams =
 INSTANTIATE_TEST_SUITE_P(precommit_Bitwise, EltwiseLayerTestCommon, bitwiseParams,
                          EltwiseLayerTestCommon::getTestCaseName);
 
+const auto bitwiseParamsTiling =
+        ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(bigShape)),
+                           ::testing::ValuesIn(bitwiseTypes), ::testing::ValuesIn(secondaryInputTypes),
+                           ::testing::ValuesIn(opTypes), ::testing::ValuesIn(bitwiseNetPrecisions),
+                           ::testing::Values(ov::element::dynamic), ::testing::Values(ov::element::dynamic),
+                           ::testing::Values(test_utils::TARGET_DEVICE), ::testing::Values(ov::test::Config{}));
+
+INSTANTIATE_TEST_SUITE_P(smoke_Bitwise_Tiling, EltwiseLayerTestCommon, bitwiseParamsTiling,
+                         EltwiseLayerTestCommon::getTestCaseName);
+
+std::vector<std::vector<ov::Shape>> broadcastBitwiseInputShape = {{{1, 32, 128, 128}, {1, 32, 1, 1}}};
+
+const auto broadcastBitwiseParams = ::testing::Combine(
+        ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(broadcastBitwiseInputShape)),
+        ::testing::ValuesIn(bitwiseTypes), ::testing::ValuesIn(secondaryInputTypes), ::testing::ValuesIn(opTypes),
+        ::testing::ValuesIn(bitwiseNetPrecisions), ::testing::Values(ov::element::dynamic),
+        ::testing::Values(ov::element::dynamic), ::testing::Values(test_utils::TARGET_DEVICE),
+        ::testing::Values(ov::test::Config{}));
+
+INSTANTIATE_TEST_SUITE_P(smoke_Bitwise_Broadcast_Tiling, EltwiseLayerTestCommon, broadcastBitwiseParams,
+                         EltwiseLayerTestCommon::getTestCaseName);
+
 std::vector<std::vector<ov::Shape>> bitwiseInputi8 = {{{1, 1, 256, 56}, {1, 1, 256, 1}}};
 
 std::vector<ov::test::ElementType> bitwiseNetPrecisionsi8 = {ov::element::i8};
 
-std::set<EltwiseTypes> bitwiseTypesi8 = {EltwiseTypes::BITWISE_OR};
+std::set<EltwiseTypes> bitwiseTypesi8 = {EltwiseTypes::BITWISE_OR, EltwiseTypes::RIGHT_SHIFT, EltwiseTypes::LEFT_SHIFT};
 
 const auto bitwiseParamsi8 =
         ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(bitwiseInputi8)),
@@ -759,7 +787,7 @@ class ShaveCodeGenEltwiseLayerTestCommon : public EltwiseLayerTest, virtual publ
 class ShaveCodeGenEltwiseLayerTestF32Common : public ShaveCodeGenEltwiseLayerTestCommon {
     void configure_model() override {
         configuration[ov::intel_npu::compilation_mode_params.name()] =
-                "enable-shave-code-gen=true convert-precision-to-fp16=false";
+                "enable-shave-code-gen=true disabled-passes=convert-precision-to-fp16";
     }
 };
 

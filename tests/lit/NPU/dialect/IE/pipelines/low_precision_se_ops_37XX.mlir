@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --low-precision="enable-se-ptrs-operations=true" %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --low-precision %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 !qElemType = !quant.uniform<u8:f32, 1.000000e+00>
 
@@ -12,8 +12,15 @@
 // CHECK:   !qElemType1 = !quant.uniform<u8:f32, 5.000000e-01>
 
 // CHECK-LABEL: @QuantizedInterpolate
-// CHECK-SAME:      ([[INPUT:%.+]]: tensor<1x16x10x10xui8>) -> tensor<1x16x20x20xf32>
-func.func @QuantizedInterpolate(%input: tensor<1x16x10x10xui8>) -> tensor<1x16x20x20xf32> {
+module @QuantizedInterpolate {
+
+config.PipelineOptions @Options {
+        config.Option @config.EnableSEPtrsOperations : true
+}
+
+// CHECK:   func.func @main
+// CHECK:      ([[INPUT:%.+]]: tensor<1x16x10x10xui8>) -> tensor<1x16x20x20xf32>
+func.func @main(%input: tensor<1x16x10x10xui8>) -> tensor<1x16x20x20xf32> {
     %0 = IE.Convert(%input) {dstElemType = f32} : tensor<1x16x10x10xui8> -> tensor<1x16x10x10xf32>
 
     %input_low = const.Declare tensor<f32> = dense<0.0> : tensor<f32>
@@ -60,4 +67,6 @@ func.func @QuantizedInterpolate(%input: tensor<1x16x10x10xui8>) -> tensor<1x16x2
     // CHECK-SAME:     tensor<1x16x20x20x!qElemType1>, tensor<1x16x20x20x!qElemType1> -> tensor<1x16x20x20xf32>
 
     // CHECK:     return [[OUT_DEQ]] : tensor<1x16x20x20xf32>
+}
+
 }

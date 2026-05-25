@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-eltwise-layers-to-math %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --convert-eltwise-layers-to-math %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 
 // BitwiseAnd
@@ -119,10 +119,10 @@ module @BitwiseNotLayer {
     return %0 : tensor<1x1x1x1000xui32>
 
 // CHECK-NOT:     IE.BitwiseNot
+// CHECK:      [[ALLONES:%.+]] = arith.constant -1 : i32
 // CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi32>
 // CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}} : tensor<1x1x1x1000xi32>) outs([[EMPTY]] : tensor<1x1x1x1000xi32>) {
 // CHECK-NEXT:    ^bb0([[VAL:%.+]]: i32, {{%.+}}: i32):
-// CHECK-NEXT:      [[ALLONES:%.+]] = arith.constant -1 : i32
 // CHECK-NEXT:      [[OP:%.+]] = arith.xori [[VAL]], [[ALLONES]] : i32
 // CHECK-NEXT:      linalg.yield [[OP]] : i32
 // CHECK-NEXT:    } -> tensor<1x1x1x1000xi32>

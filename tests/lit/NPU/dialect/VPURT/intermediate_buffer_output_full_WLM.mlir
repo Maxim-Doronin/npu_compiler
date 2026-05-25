@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --init-compiler="vpu-arch=%arch% allow-custom-values=true" --intermediate-buffer-output="op-index=3 insertion-index=3 buffer-index=1" %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --init-compiler="platform=%platform% allow-custom-values=true" --intermediate-buffer-output="op-index=3 insertion-index=3 buffer-index=1" %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 !qElemType = !quant.uniform<u8:f16, 1.000000e+00>
 !qElemType1 = !quant.uniform<u8:f16, 1.000000e+00>
@@ -52,7 +52,7 @@ module @TestBufferOutput {
       %0 = VPUIP.BarProgDMA <{port = 0 : i64}> inputs(%dummy_buf : memref<0x0x0x0xi32, @DDR>) outputs(%dummy_buf : memref<0x0x0x0xi32, @DDR>) physical_barrier_range(<0 : i64 to 47 : i64>) -> memref<0x0x0x0xi32, @DDR>
     }
     VPURT.Task updates(%bar0 : !VPURT.Barrier) wlmPage(0)  {
-      %0 = VPUIP.FetchDMA <{port = 0 : i64}> inputs(%dummy_buf : memref<0x0x0x0xi32, @DDR>) outputs(%dummy_buf : memref<0x0x0x0xi32, @DDR>) fetch_dma(<<SHAVE_ACT>, tile = 1 : i64, list = 0 : i64, group = 0 : i64>) -> memref<0x0x0x0xi32, @DDR>
+      %0 = VPUIP.FetchDMA <{port = 0 : i64}> inputs(%dummy_buf : memref<0x0x0x0xi32, @DDR>) outputs(%dummy_buf : memref<0x0x0x0xi32, @DDR>) fetch_dma(<<SHAVE_ACT>, tile = 1 : i64, list = 0 : i64, fetchType = <DescriptorGroup>, group = 0 : i64>) -> memref<0x0x0x0xi32, @DDR>
     }
     VPURT.Task waits(%bar0 : !VPURT.Barrier) wlmPage(0)  {
       %0 = VPUIP.EnqueueDMA <{port = 0 : i64}> inputs(%dummy_buf : memref<0x0x0x0xi32, @DDR>) outputs(%dummy_buf : memref<0x0x0x0xi32, @DDR>) enqueue_dma_attr(<<SHAVE_ACT>, tile = 0 : i64, list = 0 : i64, startTask = 0 : i64, endTask = 138 : i64>) -> memref<0x0x0x0xi32, @DDR>

@@ -71,7 +71,7 @@ def IE_ConvertLikeOp :
 def IE_DequantizeOp :
         IE_LayerOp<"Dequantize",
             [
-                DeclareOpInterfaceMethods<IE_ShaveCodeGenSupportedOpInterface>,
+                DeclareOpInterfaceMethods<IE_ShaveCodeGenSupportedOpInterface,  ["shouldJITCompile"]>,
                 IE_EltwiseOp
             ]
         > {
@@ -247,7 +247,7 @@ def IE_FakeQuantizeOp :
 def IE_QuantizeOp :
         IE_LayerOp<"Quantize",
             [
-                DeclareOpInterfaceMethods<IE_ShaveCodeGenSupportedOpInterface>,
+                DeclareOpInterfaceMethods<IE_ShaveCodeGenSupportedOpInterface,  ["shouldJITCompile"]>,
                 IE_EltwiseOp
             ]
         > {

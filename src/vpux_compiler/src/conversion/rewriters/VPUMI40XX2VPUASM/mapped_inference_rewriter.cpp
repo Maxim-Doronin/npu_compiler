@@ -30,6 +30,8 @@ mlir::FailureOr<SymbolizationResult> MappedInferenceRewriter::symbolize(
     if (miFormat == config::NPUConstraints::MappedInferenceFormat::MappedInference) {
         auto newOp = symbolizeMappedInference(op, symName, rewriter);
         mapper[result] = moveOpToSection(newOp.getOperation(), *_sectionMap, rewriter);
+        assert(mapper[result] != nullptr);
+
         if (newOp.getManagedMappedInference().has_value()) {
             newOp.setManagedMappedInferenceAttr(
                     ELF::cloneSectionSymbol(mapper[result], newOp.getManagedMappedInference().value()));
@@ -135,7 +137,8 @@ VPUASM::MappedInferenceOp MappedInferenceRewriter::symbolizeMappedInference(
             actKernelInvocations.size() ? mlir::ArrayAttr::get(ctx, actKernelInvocations) : nullptr;
     mlir::ArrayAttr actKernelInvoCountAttr = rewriter.getI64ArrayAttr(ArrayRef(invoCount));
     mlir::SymbolRefAttr mediaTasksAttr = op.getMediaTasks() ? findSym(op.getMediaTasks()) : nullptr;
-    mlir::SymbolRefAttr barrierTasksAttr = op.getBarrierTasks() ? findSym(op.getBarrierTasks()) : nullptr;
+    mlir::SymbolRefAttr barrierTasksAttr =
+            (!op.getBarrierTasks() || _skipBarrierLowering) ? nullptr : findSym(op.getBarrierTasks());
     mlir::SymbolRefAttr actShaveRtAttr = op.getActShaveRt() ? findSym(op.getActShaveRt()) : nullptr;
     mlir::ArrayAttr actShaveStacksAttr = actShaveStacks.size() ? mlir::ArrayAttr::get(ctx, actShaveStacks) : nullptr;
     mlir::SymbolRefAttr dmaHwpBase = op.getDmaHwpBase() ? findSym(op.getDmaHwpBase()) : nullptr;
@@ -180,14 +183,19 @@ void MappedInferenceRewriter::symbolizeManagedMappedInference(VPUMI40XX::MappedI
     auto shvPerTile = static_cast<size_t>(tileOp.getSubExecutor(config::ExecutorKind::SHAVE_ACT).getCount());
     if (shvPerTile > defaultStacksNum) {
         auto stackFramesSymName = mlir::StringAttr::get(ctx, symName.str() + std::string("_stackFrames"));
-        auto stackFrames = rewriter.create<VPUASM::StackFramesOp>(op.getLoc(), stackFramesSymName,
-                                                                  VPUASM::getCMXStackFrames(moduleOp));
+        // If shave stack frames are in CMX, get hardcoded addresses, else if shave stack frames are in DDR
+        // allocate empty array of proper size, actual addresses are patched by per-entry relocations.
+        auto addresses = actShaveStacks.size() ? SmallVector<uint32_t>(actShaveStacks.size(), 0)
+                                               : VPUASM::getCMXStackFrames(moduleOp);
+        auto stackFrames =
+                rewriter.create<VPUASM::StackFrameAddrsOp>(op.getLoc(), stackFramesSymName, std::move(addresses));
         fullStackFramesSectionName =
                 ELF::cloneSectionSymbol(moveOpToSection(stackFrames.getOperation(), *_sectionMap, rewriter),
                                         mlir::FlatSymbolRefAttr::get(stackFramesSymName));
     }
 
-    mlir::SymbolRefAttr barrierTasksAttr = op.getBarrierTasks() ? findSym(op.getBarrierTasks()) : nullptr;
+    mlir::SymbolRefAttr barrierTasksAttr =
+            (!op.getBarrierTasks() || _skipBarrierLowering) ? nullptr : findSym(op.getBarrierTasks());
     mlir::SymbolRefAttr actShaveRtAttr = op.getActShaveRt() ? findSym(op.getActShaveRt()) : nullptr;
     mlir::ArrayAttr actShaveStacksAttr = actShaveStacks.size() ? mlir::ArrayAttr::get(ctx, actShaveStacks) : nullptr;
     mlir::SymbolRefAttr dmaHwpBase = op.getDmaHwpBase() ? findSym(op.getDmaHwpBase()) : nullptr;
@@ -199,6 +207,7 @@ void MappedInferenceRewriter::symbolizeManagedMappedInference(VPUMI40XX::MappedI
                                                             actShaveRtAttr, actShaveStacksAttr,
                                                             fullStackFramesSectionName, dmaHwpBase, workpointCfg);
     auto fullNNRtConfigSectionName = moveOpToSection(nnRtConfig.getOperation(), *_sectionMap, rewriter);
+    assert(fullNNRtConfigSectionName != nullptr);
 
     llvm::SmallVector<llvm::SmallVector<mlir::Attribute>> managedDmas;
     for (auto tileDmas : llvm::enumerate(op.getDmaTasks())) {

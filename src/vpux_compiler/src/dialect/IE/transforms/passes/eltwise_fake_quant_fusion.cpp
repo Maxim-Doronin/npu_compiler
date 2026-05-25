@@ -210,8 +210,7 @@ mlir::LogicalResult EltwiseFakeQuantizeFusion<ConcreteOp>::matchAndRewrite(IE::F
         scalarConstantValue = dequantize(scalarConstantValue, concreteScaleValue, concreteZeroPointValue);
     }
 
-    // TODO(E#129083): Remove this condition and isAdaptiveStrippingEnabled
-    //                 when adaptive-stripping is enabled by default.
+    // NOTE: Fallback for when adaptive stripping is disabled
     // In case of cst-FQ-Mul, fusing Mul-FQ will generate redundant DQ-Q pair.
     // This pair can be optimized by adaptive-stripping.
     //   (FuseOutstandingDequant removes DQ, and ConvertToMixedPrecision removes Q)

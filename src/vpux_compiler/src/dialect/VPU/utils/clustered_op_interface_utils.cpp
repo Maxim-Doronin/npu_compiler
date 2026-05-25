@@ -6,6 +6,7 @@
 #include "vpux/compiler/dialect/VPU/utils/clustered_op_interface_utils.hpp"
 #include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/core/layers.hpp"
+#include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/dpu.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPU/utils/auto_padding_utils.hpp"
@@ -106,6 +107,40 @@ bool VPU::isOperationSplitOverHeightCompatible(mlir::Operation* op, const vpux::
     return isSOHCompatible;
 }
 
+bool VPU::isNCEOpSplitOverHeightCompatible(mlir::Operation* op, mlir::Value input, ShapeRef defaultOutputShape,
+                                           const vpux::TileInfo& oriOutputTile, bool checkAlignment) {
+    auto outputShape = ShapeRef(oriOutputTile.shape);
+    auto offset = ShapeRef(oriOutputTile.offsets);
+    auto axis = ShapeRef(oriOutputTile.axis);
+    if (outputShape.empty()) {
+        outputShape = defaultOutputShape;
+    }
+    vpux::TileInfo outputTile{outputShape, offset, axis, oriOutputTile.isCompletedTile};
+    if (!VPU::isOperationSplitOverHeightCompatible(op, outputTile)) {
+        return false;
+    }
+
+    auto tilingBuilder = mlir::dyn_cast<VPU::TilingBuilderOpInterface>(op);
+    VPUX_THROW_WHEN(tilingBuilder == nullptr, "Op {0} does not implement TilingBuilderOpInterface", op->getLoc());
+    Shape inputShape = getBoundedShape(input).toValues();
+    auto inputType = mlir::cast<vpux::NDTypeInterface>(input.getType());
+    if (outputShape != defaultOutputShape) {
+        VPUX_THROW_WHEN(offset.empty() || axis.empty(),
+                        "Offsets and axis must have value when create TileInfo. Loc: {0}", op->getLoc());
+        outputTile.isCompletedTile = true;
+        auto computerShape = tilingBuilder.backInferTileInfo(outputTile, Logger::global());
+        inputShape = computerShape.tiles.front().shape;
+        auto inputOffset = computerShape.tiles.front().offsets;
+        inputType = inputType.extractDenseTile(inputOffset, inputShape);
+    }
+
+    auto moduleOp = op->getParentOfType<mlir::ModuleOp>();
+    auto tileOp = config::getTileExecutor(moduleOp);
+    const auto numTiles = tileOp.getCount();
+
+    return isSOHSupportedByDPU(inputType, inputShape, numTiles, checkAlignment, config::getArch(op));
+}
+
 bool VPU::isOperationSplitOverWidthCompatible(mlir::Operation* op, ShapeRef outputShape, ShapeRef /*offset*/,
                                               ShapeRef /*axis*/) {
     auto clusteredOp = mlir::dyn_cast_or_null<VPU::ClusteredOpInterface>(op);
@@ -172,6 +207,7 @@ bool VPU::isOperationSplitOverKernelCompatible(mlir::Operation* op, ShapeRef out
     }
 
     const auto numTiles = config::getNumOfTiles(op);
+    VPUX_THROW_WHEN(numTiles <= 0, "Number of tiles must be greater than zero");
 
     if (outputShape == ShapeRef()) {
         outputShape = getShape(clusteredOp->getResult(0));
@@ -217,15 +253,17 @@ bool VPU::isOperationSplitOverKernelCompatible(mlir::Operation* op, ShapeRef out
             auto newShape = Shape(origType.getShape().raw());
             newShape[Dims4D::Filter::OC] = OC;
             auto elemType = origType.getElementType();
-            if (auto qElemType = mlir::dyn_cast<mlir::quant::QuantileQuantizedPerAxisType>(elemType)) {
-                elemType = mlir::quant::QuantileQuantizedType::get(
-                        qElemType.getFlags(), qElemType.getStorageType(), qElemType.getQuantileType(),
-                        qElemType.getExpressedType(), qElemType.getQuantiles(), /*scale=*/1.0,
-                        /*zeroPoint=*/0, qElemType.getStorageTypeMin(), qElemType.getStorageTypeMax());
-            } else if (auto qElemType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(elemType)) {
-                elemType = mlir::quant::UniformQuantizedType::get(
-                        qElemType.getFlags(), qElemType.getStorageType(), qElemType.getExpressedType(), /*scale=*/1.0,
-                        /*zeroPoint=*/0, qElemType.getStorageTypeMin(), qElemType.getStorageTypeMax());
+            if (auto qElemType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(elemType)) {
+                if (auto quantileStorage = mlir::dyn_cast<vpux::type::QuantileType>(qElemType.getStorageType())) {
+                    elemType = mlir::quant::UniformQuantizedType::get(
+                            qElemType.getFlags(), quantileStorage, qElemType.getExpressedType(), /*scale=*/1.0,
+                            /*zeroPoint=*/0, qElemType.getStorageTypeMin(), qElemType.getStorageTypeMax());
+                } else {
+                    elemType = mlir::quant::UniformQuantizedType::get(qElemType.getFlags(), qElemType.getStorageType(),
+                                                                      qElemType.getExpressedType(), /*scale=*/1.0,
+                                                                      /*zeroPoint=*/0, qElemType.getStorageTypeMin(),
+                                                                      qElemType.getStorageTypeMax());
+                }
             }
             const auto newType = origType.changeShapeElemType(newShape, elemType);
 
@@ -253,7 +291,6 @@ bool VPU::isOperationSplitOverKernelCompatible(mlir::Operation* op, ShapeRef out
             }
         }
     }
-
     return true;
 }
 

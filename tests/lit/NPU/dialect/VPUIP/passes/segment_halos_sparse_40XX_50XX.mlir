@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --segment-halos %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW" --segment-halos %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
@@ -73,7 +73,7 @@ func.func @main(%arg0:  memref<1x16x17x32xf16, #NHWC, [@CMX_NN, 0]>, %arg1:  mem
     %output_sm1 = VPURT.DeclareBuffer <CMX_NN> [1] <39680> -> !OutputITISparse1
 
     VPURT.Task {
-        VPUIP.NCEClusterTask <{
+        VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 1, 0, 0, 0, 0>} <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
@@ -112,7 +112,7 @@ func.func @main(%arg0:  memref<1x16x17x32xf16, #NHWC, [@CMX_NN, 0]>, %arg1:  mem
     }
 
     VPURT.Task {
-        VPUIP.NCEClusterTask <{
+        VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 1, 0, 0, 0, 0>} <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],

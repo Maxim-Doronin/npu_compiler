@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-eltwise-layers-to-math %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --convert-eltwise-layers-to-math %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 
 // CHECK: [[NCHW:#.+]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
@@ -23,10 +23,10 @@ module @ReLU {
     } -> tensor<1x1x1x1000xf16>
     return %0 : tensor<1x1x1x1000xf16>
 // CHECK-NOT:     IE.ReLU
+// CHECK:      [[ZERO:%.+]] = arith.constant 0.000000e+00 : f16
 // CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xf16>
 // CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}} : tensor<1x1x1x1000xf16>) outs([[EMPTY]] : tensor<1x1x1x1000xf16>) {
 // CHECK-NEXT:    ^bb0([[IN:%.+]]: f16, {{%.+}}: f16):
-// CHECK-NEXT:      [[ZERO:%.+]] = arith.constant 0.000000e+00 : f16
 // CHECK-NEXT:      [[CMP:%.+]] = arith.cmpf ole, [[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
 // CHECK-NEXT:      [[OP:%.+]] = arith.select [[CMP]], [[ZERO]], [[IN]] : f16
 // CHECK-NEXT:      linalg.yield [[OP]] : f16
@@ -53,14 +53,14 @@ module @LeakyReLU {
     } -> tensor<1x1x1x1000xf16>
     return %0 : tensor<1x1x1x1000xf16>
 // CHECK-NOT:     IE.LeakyRelu
+// CHECK:      [[SLOPE:%.+]] = arith.constant 2.500000e-01 : f16
+// CHECK:      [[ZERO:%.+]] = arith.constant 0.000000e+00 : f16
 // CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xf16>
 // CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}} : tensor<1x1x1x1000xf16>) outs([[EMPTY]] : tensor<1x1x1x1000xf16>) {
 // CHECK-NEXT:    ^bb0([[IN:%.+]]: f16, {{%.+}}: f16):
-// CHECK-NEXT:      [[ZERO:%.+]] = arith.constant 0.000000e+00 : f16
 // CHECK-NEXT:      [[CMP:%.+]] = arith.cmpf ole, [[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
 // CHECK-NEXT:      [[POSITIVE:%.+]] = arith.select [[CMP]], [[ZERO]], [[IN]] : f16
 // CHECK-NEXT:      [[NEGATIVE:%.+]] = arith.select [[CMP]], [[IN]], [[ZERO]] : f16
-// CHECK-NEXT:      [[SLOPE:%.+]] = arith.constant 2.500000e-01 : f16
 // CHECK-NEXT:      [[SLOPED_NEGATIVE:%.+]] = arith.mulf [[NEGATIVE]], [[SLOPE]] : f16
 // CHECK-NEXT:      [[OP:%.+]] = arith.addf [[POSITIVE]], [[SLOPED_NEGATIVE]] : f16
 // CHECK-NEXT:      linalg.yield [[OP]] : f16
@@ -87,14 +87,14 @@ module @ClampU16 {
     } -> tensor<1x1x1x1000xui16>
     return %0 : tensor<1x1x1x1000xui16>
 // CHECK-NOT:     IE.Clamp
+// CHECK:      [[HIGH:%.+]] = arith.constant 6 : i16
+// CHECK:      [[LOW:%.+]] = arith.constant 1 : i16
 // CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi16>
 // CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}} : tensor<1x1x1x1000xi16>) outs([[EMPTY]] : tensor<1x1x1x1000xi16>) {
 // CHECK-NEXT:    ^bb0([[IN:%.+]]: i16, {{%.+}}: i16):
-// CHECK-NEXT:      [[LOW:%.+]] = arith.constant 1 : i16
-// CHECK-NEXT:      [[HIGH:%.+]] = arith.constant 6 : i16
 // CHECK-NEXT:      [[CMP_LOW:%.+]] = arith.cmpi ule, [[IN]], [[LOW]] : i16
 // CHECK-NEXT:      [[CLAMPED_LOW:%.+]] = arith.select [[CMP_LOW]], [[LOW]], [[IN]] : i16
-// CHECK-NEXT:      [[CMP_HIGH:%.+]] = arith.cmpi ule, [[HIGH]], [[CLAMPED_LOW]] : i16
+// CHECK-NEXT:      [[CMP_HIGH:%.+]] = arith.cmpi uge,  [[CLAMPED_LOW]], [[HIGH]] : i16
 // CHECK-NEXT:      [[OP:%.+]] = arith.select [[CMP_HIGH]], [[HIGH]], [[CLAMPED_LOW]] : i16
 // CHECK-NEXT:      linalg.yield [[OP]] : i16
 // CHECK-NEXT:    } -> tensor<1x1x1x1000xi16>
@@ -120,14 +120,14 @@ module @ClampU16NonRepresentable {
     } -> tensor<1x1x1x1000xui16>
     return %0 : tensor<1x1x1x1000xui16>
 // CHECK-NOT:     IE.Clamp
+// CHECK:      [[HIGH:%.+]] = arith.constant -1 : i16
+// CHECK:      [[LOW:%.+]] = arith.constant 0 : i16
 // CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi16>
 // CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}} : tensor<1x1x1x1000xi16>) outs([[EMPTY]] : tensor<1x1x1x1000xi16>) {
 // CHECK-NEXT:    ^bb0([[IN:%.+]]: i16, {{%.+}}: i16):
-// CHECK-NEXT:      [[LOW:%.+]] = arith.constant 0 : i16
-// CHECK-NEXT:      [[HIGH:%.+]] = arith.constant -1 : i16
 // CHECK-NEXT:      [[CMP_LOW:%.+]] = arith.cmpi ule, [[IN]], [[LOW]] : i16
 // CHECK-NEXT:      [[CLAMPED_LOW:%.+]] = arith.select [[CMP_LOW]], [[LOW]], [[IN]] : i16
-// CHECK-NEXT:      [[CMP_HIGH:%.+]] = arith.cmpi ule, [[HIGH]], [[CLAMPED_LOW]] : i16
+// CHECK-NEXT:      [[CMP_HIGH:%.+]] = arith.cmpi uge, [[CLAMPED_LOW]], [[HIGH]] : i16
 // CHECK-NEXT:      [[OP:%.+]] = arith.select [[CMP_HIGH]], [[HIGH]], [[CLAMPED_LOW]] : i16
 // CHECK-NEXT:      linalg.yield [[OP]] : i16
 // CHECK-NEXT:    } -> tensor<1x1x1x1000xi16>
@@ -153,14 +153,14 @@ module @ClampS16 {
     } -> tensor<1x1x1x1000xsi16>
     return %0 : tensor<1x1x1x1000xsi16>
 // CHECK-NOT:     IE.Clamp
+// CHECK:      [[HIGH:%.+]] = arith.constant 6 : i16
+// CHECK:      [[LOW:%.+]] = arith.constant 1 : i16
 // CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi16>
 // CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}} : tensor<1x1x1x1000xi16>) outs([[EMPTY]] : tensor<1x1x1x1000xi16>) {
 // CHECK-NEXT:    ^bb0([[IN:%.+]]: i16, {{%.+}}: i16):
-// CHECK-NEXT:      [[LOW:%.+]] = arith.constant 1 : i16
-// CHECK-NEXT:      [[HIGH:%.+]] = arith.constant 6 : i16
 // CHECK-NEXT:      [[CMP_LOW:%.+]] = arith.cmpi sle, [[IN]], [[LOW]] : i16
 // CHECK-NEXT:      [[CLAMPED_LOW:%.+]] = arith.select [[CMP_LOW]], [[LOW]], [[IN]] : i16
-// CHECK-NEXT:      [[CMP_HIGH:%.+]] = arith.cmpi sle, [[HIGH]], [[CLAMPED_LOW]] : i16
+// CHECK-NEXT:      [[CMP_HIGH:%.+]] = arith.cmpi sge, [[CLAMPED_LOW]], [[HIGH]] : i16
 // CHECK-NEXT:      [[OP:%.+]] = arith.select [[CMP_HIGH]], [[HIGH]], [[CLAMPED_LOW]] : i16
 // CHECK-NEXT:      linalg.yield [[OP]] : i16
 // CHECK-NEXT:    } -> tensor<1x1x1x1000xi16>
@@ -187,14 +187,14 @@ module @ClampS16NonRepresentable {
     return %0 : tensor<1x1x1x1000xsi16>
 
 // CHECK-NOT:     IE.Clamp
+// CHECK:      [[HIGH:%.+]] = arith.constant 32767 : i16
+// CHECK:      [[LOW:%.+]] = arith.constant -32768 : i16
 // CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xi16>
 // CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}} : tensor<1x1x1x1000xi16>) outs([[EMPTY]] : tensor<1x1x1x1000xi16>) {
 // CHECK-NEXT:    ^bb0([[IN:%.+]]: i16, {{%.+}}: i16):
-// CHECK-NEXT:      [[LOW:%.+]] = arith.constant -32768 : i16
-// CHECK-NEXT:      [[HIGH:%.+]] = arith.constant 32767 : i16
 // CHECK-NEXT:      [[CMP_LOW:%.+]] = arith.cmpi sle, [[IN]], [[LOW]] : i16
 // CHECK-NEXT:      [[CLAMPED_LOW:%.+]] = arith.select [[CMP_LOW]], [[LOW]], [[IN]] : i16
-// CHECK-NEXT:      [[CMP_HIGH:%.+]] = arith.cmpi sle, [[HIGH]], [[CLAMPED_LOW]] : i16
+// CHECK-NEXT:      [[CMP_HIGH:%.+]] = arith.cmpi sge, [[CLAMPED_LOW]], [[HIGH]] : i16
 // CHECK-NEXT:      [[OP:%.+]] = arith.select [[CMP_HIGH]], [[HIGH]], [[CLAMPED_LOW]] : i16
 // CHECK-NEXT:      linalg.yield [[OP]] : i16
 // CHECK-NEXT:    } -> tensor<1x1x1x1000xi16>
@@ -221,11 +221,11 @@ module @ClampF16 {
     return %0 : tensor<1x1x1x1000xf16>
 
 // CHECK-NOT:     IE.Clamp
+// CHECK:      [[HIGH:%.+]] = arith.constant 6.500000e+00 : f16
+// CHECK:      [[LOW:%.+]] = arith.constant 5.000000e-01 : f16
 // CHECK:         [[EMPTY:%.+]] = tensor.empty() : tensor<1x1x1x1000xf16>
 // CHECK-NEXT:    [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins({{%.+}} : tensor<1x1x1x1000xf16>) outs([[EMPTY]] : tensor<1x1x1x1000xf16>) {
 // CHECK-NEXT:    ^bb0([[IN:%.+]]: f16, {{%.+}}: f16):
-// CHECK-NEXT:      [[LOW:%.+]] = arith.constant 5.000000e-01 : f16
-// CHECK-NEXT:      [[HIGH:%.+]] = arith.constant 6.500000e+00 : f16
 // CHECK-NEXT:      [[CMP_LOW:%.+]] = arith.cmpf ole, [[IN]], [[LOW]] fastmath<nnan,nsz> : f16
 // CHECK-NEXT:      [[CLAMPED_LOW:%.+]] = arith.select [[CMP_LOW]], [[LOW]], [[IN]] : f16
 // CHECK-NEXT:      [[CMP_HIGH:%.+]] = arith.cmpf ole, [[CLAMPED_LOW]], [[HIGH]] fastmath<nnan,nsz> : f16

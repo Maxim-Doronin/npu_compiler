@@ -11,7 +11,7 @@
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
-#include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Transforms/WalkPatternRewriteDriver.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_INSERTREORDERBETWEENLAYERANDCONCAT
@@ -34,6 +34,42 @@ int64_t deduceAxis(const mlir::Value in, const mlir::Value out) {
     }
 
     return -1;
+}
+
+bool shouldConvertConcatOp(IE::ConcatOp op) {
+    const auto concatInputList = op.getInputs();
+    if (concatInputList.size() != 2) {
+        return false;
+    }
+
+    if (op.getPerAxis().has_value() && op.getPerAxisAttr().getOffset()) {
+        return false;
+    }
+
+    if (op.getPerAxis().has_value() && op.getPerAxisAttr().getStride()) {
+        return false;
+    }
+
+    const auto hasRequiredParent = llvm::any_of(concatInputList, [&](auto input) {
+        return mlir::isa_and_nonnull<IE::TransposeOp, IE::AffineReshapeOp>(input.getDefiningOp());
+    });
+    if (!hasRequiredParent) {
+        return false;
+    }
+
+    const auto hasApprovedParent = llvm::any_of(concatInputList, [&](auto input) {
+        return mlir::isa_and_nonnull<IE::FakeQuantizeOp, IE::AlignedChannelsOpInterface>(input.getDefiningOp());
+    });
+
+    if (!hasApprovedParent) {
+        auto concatAxis = IE::getConcatAxis(op);
+        if (!(concatAxis.has_value() && concatAxis.value().ind() == Dims4D::Act::W.ind())) {
+            return false;
+        }
+    }
+
+    // If concat op's layout is NCHW and concat axis is W, we should insert reorder op for better performance.
+    return true;
 }
 
 //
@@ -75,6 +111,10 @@ private:
 
 mlir::LogicalResult InsertReorderBetweenLayerAndConcat::ConcatOpConverter::matchAndRewrite(
         IE::ConcatOp origOp, mlir::PatternRewriter& rewriter) const {
+    if (!shouldConvertConcatOp(origOp)) {
+        return mlir::failure();
+    }
+
     const auto concatInputList = origOp.getInputs();
     VPUX_THROW_UNLESS(concatInputList.size() == 2, "ConcatOpConverter: must have two inputs");
     const auto nhwcOrder = DimsOrder::NHWC;
@@ -104,55 +144,10 @@ mlir::LogicalResult InsertReorderBetweenLayerAndConcat::ConcatOpConverter::match
 void InsertReorderBetweenLayerAndConcat::safeRunOnFunc() {
     auto& ctx = getContext();
 
-    const auto checkPatternInput = [](IE::ConcatOp op) -> bool {
-        const auto concatInputList = op.getInputs();
-        if (concatInputList.size() != 2) {
-            return true;
-        }
-
-        if (op.getPerAxis().has_value() && op.getPerAxisAttr().getOffset()) {
-            return true;
-        }
-
-        if (op.getPerAxis().has_value() && op.getPerAxisAttr().getStride()) {
-            return true;
-        }
-
-        const auto hasRequiredParent = llvm::any_of(concatInputList, [&](auto input) {
-            return mlir::isa_and_nonnull<IE::TransposeOp, IE::AffineReshapeOp>(input.getDefiningOp());
-        });
-        if (!hasRequiredParent) {
-            return true;
-        }
-
-        const auto hasApprovedParent = llvm::any_of(concatInputList, [&](auto input) {
-            return mlir::isa_and_nonnull<IE::FakeQuantizeOp, IE::AlignedChannelsOpInterface>(input.getDefiningOp());
-        });
-
-        if (hasApprovedParent) {
-            return false;
-        }
-
-        auto concatAxis = IE::getConcatAxis(op);
-        if (concatAxis.has_value() && concatAxis.value().ind() == Dims4D::Act::W.ind()) {
-            // If concat op's layout is NCHW and concat axis is W, we should insert reorder op for better performance.
-            return false;
-        }
-
-        return true;
-    };
-
-    mlir::ConversionTarget target(ctx);
-    target.addDynamicallyLegalOp<IE::ConcatOp>(checkPatternInput);
-    target.addLegalOp<IE::ReorderOp>();
-
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<InsertReorderBetweenLayerAndConcat::ConcatOpConverter>(&ctx, _log);
 
-    auto func = getOperation();
-    if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
-        signalPassFailure();
-    }
+    walkAndApplyPatterns(getOperation(), std::move(patterns));
 }
 
 }  // namespace

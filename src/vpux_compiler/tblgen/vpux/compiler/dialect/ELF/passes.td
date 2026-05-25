@@ -104,7 +104,16 @@ def SetEntryPoint : PassBase<"set-elf-entrypoint", "vpux::FunctionPass"> {
 //
 
 def AddNetworkMetadata : PassBase<"add-network-metadata", "vpux::FunctionPass"> {
-    let summary = "Adds the network metadata OP";
+    let summary = "Create ELF metadata section with NetworkMetadataOp";
+
+    let description = [{
+        AI-generated summary
+
+        Creates an ELF MetadataSection inside the ELF.MainOp and inserts a
+        VPUASM.NetworkMetadataOp into it. After inserting the metadata op, the
+        section alignment is updated to match the metadata op's alignment
+        requirements for the target architecture.
+    }];
 
     let constructor = "vpux::ELF::createAddNetworkMetadataPass()";
 
@@ -229,6 +238,40 @@ def SetCMXSymbolValue : PassBase<"set-cmx-symbol", "vpux::ModulePass"> {
             "uint64_t", "0",
             "CMX metadata size."
         >
+    ];
+}
+
+def FinalizeSkipDmaChains : PassBase<"finalize-skip-dma-chains", "vpux::FunctionPass"> {
+    let summary = "Patches the fetch DMAs for skip DMAs";
+
+    let description = [{
+        This pass updates the Fetch DMA operations to correctly reference the corresponding
+        Skip DMA.
+
+        The pass performs the following key steps:
+
+        1. Collect all DMA operations:
+           - Builds mappings from DMA symbols to ELF sections.
+           - Maps Fetch DMA descriptors by descriptor ID.
+           - Maps Skip DMA descriptors by descriptor ID
+           - Maps KernelParams by skip descriptor ID
+
+        2. Resolve release descriptors for Skip DMAs:
+           - Follows the chain of Skip DMAs to find the first DMA without a taskLocation.
+           - Updates the KernelParams's release descriptor attribute to point to the corresponding DMA
+
+        3. Close Skip DMA loops across tiles:
+           - Ensures sequential Skip DMA chains within the same logical task are properly linked.
+           - Wraps the last Skip DMA back to the first in the group to form a circular chain.
+
+        4. Patch Fetch DMAs:
+           - Connects Fetch DMAs to the correct Skip DMA descriptors for data prefetching.
+    }];
+
+    let constructor = "vpux::ELF::createFinalizeSkipDmaChainsPass()";
+
+    let dependentDialects = [
+        "vpux::ELF::ELFDialect"
     ];
 }
 

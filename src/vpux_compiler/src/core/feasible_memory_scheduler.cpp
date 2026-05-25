@@ -34,14 +34,12 @@ using operationIdxType = FeasibleMemoryScheduler::operationIdxType;
 // 2. Un-scheduling operations: freeing CMX space and updating dependencies, creating new ready
 //      operations which will be allocated at the next available cycle.
 
-FeasibleMemoryScheduler::FeasibleMemoryScheduler(VPU::MemoryKind memKind, VPU::MemoryKind secondLvlMemKind,
-                                                 MemLiveRangeInfo& liveRangeInfo, AsyncDepsInfo& depsInfo, Logger log,
-                                                 LinearScan<mlir::Value, LinearScanHandler>& scan,
-                                                 config::ArchKind arch, VPUNN::VPUDevice vpuDevice,
-                                                 std::shared_ptr<VPUNN::VPUCostModel> costModel,
-                                                 int64_t nceClusterCount, int64_t dmaCount,
-                                                 bool enableScheduleStatistics, bool optimizeFragmentation,
-                                                 bool activelySpillForPrefetching, const ComputeRegionVec& loopRegions)
+FeasibleMemoryScheduler::FeasibleMemoryScheduler(
+        VPU::MemoryKind memKind, VPU::MemoryKind secondLvlMemKind, MemLiveRangeInfo& liveRangeInfo,
+        AsyncDepsInfo& depsInfo, Logger log, LinearScan<mlir::Value, LinearScanHandler>& scan, config::ArchKind arch,
+        VPUNN::VPUDevice vpuDevice, std::shared_ptr<VPUNN::VPUCostModel> costModel, int64_t nceClusterCount,
+        int64_t dmaCount, bool enableScheduleStatistics, bool optimizeFragmentation, bool activelySpillForPrefetching,
+        ComputeRegionsSchedule computeRegionsSchedule, ComputeRegionVec loopRegions)
         : _log(log),
           _memKind(memKind),
           _secondLvlMemKind(secondLvlMemKind),
@@ -56,7 +54,8 @@ FeasibleMemoryScheduler::FeasibleMemoryScheduler(VPU::MemoryKind memKind, VPU::M
           _enableScheduleStatistics(enableScheduleStatistics),
           _optimizeFragmentation(optimizeFragmentation),
           _activelySpillForPrefetching(activelySpillForPrefetching),
-          _loopRegions(loopRegions) {
+          _computeRegionsSchedule(std::move(computeRegionsSchedule)),
+          _loopRegions(std::move(loopRegions)) {
     _log.setName("feasible-memory-scheduler-allocator");
 
     auto dmaChannels = getDMAChannelsWithIndependentLinkAgents(arch);
@@ -65,48 +64,6 @@ FeasibleMemoryScheduler::FeasibleMemoryScheduler(VPU::MemoryKind memKind, VPU::M
         queueType.execKind = config::ExecutorKind::DMA_NN;
         queueType.id = getDMAQueueIdEncoding(dmaChannel);
         _executorPipelines[queueType].assign(dmaCount, 1);
-    }
-
-    buildLoopOperationIndices();
-}
-
-/// Build operation index sets for loop region scheduling.
-///
-/// This function scans all loop regions and categorizes their operations into two sets:
-/// 1. _loopRegionInd: Contains operation indices that belong to loop bodies and require
-///    special loop scheduling (ping-pong buffer allocation). These operations are excluded
-///    from normal prefetching and compute scheduling to ensure they are handled by the
-///    dedicated loop scheduling logic in scheduleLoopRegions().
-///
-/// 2. _loopPrefetchInd: Contains DATA_IN operation indices within loops. These are input
-///    data transfer operations (typically DMAs) that can still be prefetched during normal
-///    scheduling, as prefetching input data doesn't interfere with the loop's ping-pong
-///    buffer management strategy.
-///
-/// Called once during scheduler initialization before the main scheduling loop begins.
-void FeasibleMemoryScheduler::buildLoopOperationIndices() {
-    for (const auto& computeRegion : _loopRegions) {
-        // Skip non-loop regions (regions without loop scheduling requirements)
-        if (computeRegion.getLoopType() == LoopType::None) {
-            continue;
-        }
-        _log.trace("{0}", computeRegion);
-
-        // Iterate through all loop iterations (loop bodies) in this compute region
-        for (const auto& loop : computeRegion.schedulingLoop->loopBodies) {
-            // Categorize each operation in the loop body
-            for (const auto& alloc : loop) {
-                if (alloc.allocationType == AllocationType::DATA_IN) {
-                    // DATA_IN operations (input DMAs) can be prefetched normally
-                    // as they bring data into CMX before the loop iteration starts
-                    _loopPrefetchInd.insert(alloc.opIdx);
-                    continue;
-                }
-                // All other operations (COMPUTE, DATA_OUT, etc.) require special
-                // loop scheduling with ping-pong buffer management
-                _loopRegionInd.insert(alloc.opIdx);
-            }
-        }
     }
 }
 
@@ -525,23 +482,6 @@ bool FeasibleMemoryScheduler::isDataOp(operationIdxType opIdx) {
 
 // Compute operation that depends only on constants and function inputs.
 bool FeasibleMemoryScheduler::isNoInputDepComputeOp(operationIdxType opIdx) {
-    // #E163065 - hang to be investigated. Limit to SW dequantize only.
-    auto execOp = _depsInfo.getExecuteOpAtIndex(opIdx);
-    if (VPUIP::VPUIPDialect::getExecutorKind(execOp) != config::ExecutorKind::SHAVE_ACT) {
-        return false;
-    }
-    auto isSWDequant = false;
-    execOp.getBody()->walk([&](mlir::Operation* op) {
-        if (auto swKernelOp = mlir::dyn_cast_or_null<VPUIP::SwKernelOp>(op)) {
-            if (getSwKernelEntryName(swKernelOp) == "dequantize") {
-                isSWDequant = true;
-            }
-        }
-    });
-    if (!isSWDequant) {
-        return false;
-    }
-
     auto opDeps = _depsInfo.getOpDeps(opIdx);
     for (auto& dep : opDeps) {
         // Depends on data op which has no other dependencies
@@ -737,12 +677,12 @@ SmallVector<mlir::Value> FeasibleMemoryScheduler::sortUsedBuffers(mlir::DenseSet
     return orderedBufs;
 }
 
-size_t FeasibleMemoryScheduler::scheduleSpilledOpBuffer(operationIdxType opIdx, mlir::Value* buffer) {
+size_t FeasibleMemoryScheduler::scheduleSpilledOpBuffer(operationIdxType opIdx, mlir::Value buffer) {
     // schedule the spilled dependency
-    const auto queueAndCycle = getCurrentCycleAndExecutorInstanceMaskForSpill(*buffer, EOpType::IMPLICIT_SPILL_READ_OP);
+    const auto queueAndCycle = getCurrentCycleAndExecutorInstanceMaskForSpill(buffer, EOpType::IMPLICIT_SPILL_READ_OP);
     _log.nest().trace("Scheduling spilled op:'{0}' at cycle {1}", opIdx, queueAndCycle.cycle);
     // also store the buffer spilled
-    auto spilledReadBuffer = *buffer;
+    const auto spilledReadBuffer = buffer;
     VPUX_THROW_UNLESS(_readySpilledOps.find(spilledReadBuffer) != _readySpilledOps.end(),
                       "Failed to find spill buffer");
     _readySpilledOps.erase(spilledReadBuffer);
@@ -809,7 +749,7 @@ size_t FeasibleMemoryScheduler::scheduleDependencies(operationIdxType opIdx) {
         // special case for spilled reads
         auto bufferProducer = _bufferProducer.find(val);
         VPUX_THROW_UNLESS(bufferProducer != _bufferProducer.end(), "Failed to find buffer producer for '{0}'", val);
-        scheduleSpilledOpBuffer(bufferProducer->second, &val);
+        scheduleSpilledOpBuffer(bufferProducer->second, val);
     }
 
     // schedule required dependencies order based on earliest scheduling cycle and IR order
@@ -849,7 +789,7 @@ size_t FeasibleMemoryScheduler::scheduleOp(operationIdxType opIdx, EOpType opTyp
 
     // schedule op
     updateCurrentCycleForExecutor(queueAndCycle.queueType, queueAndCycle.execMask, nextAvailableCycle);
-    if (_loopPrefetchInd.count(opIdx)) {
+    if (_computeRegionsSchedule.loopPrefetchInd.count(opIdx)) {
         opType = EOpType::LOOP_OP;
     }
     pushToCycleBeginHeap(HeapElement(opIdx, queueAndCycle, opCycleCost, opType));
@@ -951,7 +891,7 @@ std::map<size_t, std::set<operationIdxType>> FeasibleMemoryScheduler::getPrefetc
     for (auto& dataOp : _readyDataOps) {
         // Skip operations belonging to loop regions
         // Loop operations are handled separately by scheduleLoopRegions()
-        if (_loopRegionInd.count(dataOp)) {
+        if (_computeRegionsSchedule.loopRegionInd.count(dataOp)) {
             continue;
         }
 
@@ -976,7 +916,7 @@ std::map<size_t, std::set<operationIdxType>> FeasibleMemoryScheduler::getPrefetc
     // to be brought back into CMX
     for (auto& spillOp : _readySpilledOps) {
         // Skip loop region operations
-        if (_loopRegionInd.count(spillOp.second)) {
+        if (_computeRegionsSchedule.loopRegionInd.count(spillOp.second)) {
             continue;
         }
 
@@ -1051,7 +991,7 @@ size_t FeasibleMemoryScheduler::executePrefetch(operationIdxType opIdx) {
             // that can be scheduled as part of this prefetching iteration also depends on it
             _scan.handler().markAsAlive(val);
             _log.nest().trace("Mark as alive '{0}'", val);
-            scheduleSpilledOpBuffer(opIdx, &val);
+            scheduleSpilledOpBuffer(opIdx, val);
         }
         // Return number of spill-read DMAs scheduled
         return spilledBuffersVec.size();
@@ -1112,7 +1052,7 @@ void FeasibleMemoryScheduler::prefetchOps(ArrayRef<std::pair<operationIdxType, s
                 continue;
             }
 
-            // avoid barriers for next compute dependencies using level check
+            // skip prefetch candidates too far ahead that would finish after the next compute op
             if (lastScheduledCycle != 0 && lastScheduledLevel + 1 < _opLevelVec[opIdx] &&
                 scheduleCycle >= lastScheduledCycle) {
                 _log.nest(2).trace("Would be scheduled after compute: '{0}'", opIdx);
@@ -1183,6 +1123,17 @@ std::vector<size_t> FeasibleMemoryScheduler::getReadyLoopOps() {
         nonLoopNextIdx[queue.first] = *firstOpInQueue;
     }
 
+    // ensure data out ops scheduled
+    const auto& aliveVals = _scan.handler().getAliveValues();
+    for (const auto& opIdx : _readyDMAOps) {
+        auto op = _depsInfo.getExecuteOpAtIndex(opIdx);
+        for (auto& buffer : _liveRangeInfo.getUsedBuffers(op)) {
+            if (aliveVals.count(buffer)) {
+                return {};
+            }
+        }
+    }
+
     std::vector<size_t> readyLoopOps;
     for (size_t idx = 0; idx < _loopRegions.size(); idx++) {
         const auto& computeRegion = _loopRegions[idx];
@@ -1190,6 +1141,9 @@ std::vector<size_t> FeasibleMemoryScheduler::getReadyLoopOps() {
             continue;
         }
         if (_scheduledLoopRegionInd.count(idx)) {
+            continue;
+        }
+        if (_computeRegionsSchedule.scheduleResults.count(idx) == 0) {
             continue;
         }
 
@@ -1241,319 +1195,219 @@ std::vector<size_t> FeasibleMemoryScheduler::getReadyLoopOps() {
     return readyLoopOps;
 }
 
-// Clean up schedule status by unscheduling operations and collecting ready ops
-// This prepares the scheduler state for loop scheduling
-void FeasibleMemoryScheduler::cleanupBeforeLoopScheduling(SmallVector<operationIdxType>& readyOps) {
-    // Move all operations from cycle begin to cycle end heap
-    moveFromCycleBeginToCycleEndHeap();
-
-    // Unschedule all operations in the cycle end heap
-    // This may include spilled buffers that need to be deallocated
-    for (auto& nextOp : llvm::make_early_inc_range(_cycleEndHeap)) {
-        _log.nest(2).trace("Unschedule opIdx '{0}'", nextOp.op_);
-
-        // Free memory resources if possible
-        if (freeMemoryResources(nextOp)) {
-            // Align executors only if memory resources were freed
-            alignExecutors(nextOp.cycleEnd_);
-        }
-
-        // Collect new ready operations that become available after unscheduling
-        const auto newReadyOps = unlockNewReadyOps(nextOp);
-        readyOps.insert(readyOps.end(), newReadyOps.begin(), newReadyOps.end());
-
-        // Remove operation from heap
-        _cycleEndHeap.erase(nextOp);
-    }
-}
-
-// Schedule dependencies that must execute before the loop starts
-// These are operations that produce inputs required by the loop
-void FeasibleMemoryScheduler::schedulePreLoopDependencies(const ComputeRegion& computeRegion) {
-    for (auto& opIdx : computeRegion.dependencies) {
-        // Skip if already scheduled
-        if (_opIdxEndCycleMap.count(opIdx)) {
-            _log.nest(2).trace("Already scheduled dependency {0}", opIdx);
-            continue;
-        }
-
-        // Schedule the dependency operation
-        _log.nest().trace("Schedule dependency {0}", opIdx);
-        scheduleOp(opIdx);
-
-        // Remove from ready data ops if present
-        if (_readyDataOps.count(opIdx)) {
-            _readyDataOps.erase(opIdx);
-        }
-    }
-}
-
-// Schedule spill operations for shared buffers that are dynamically spilled
-// Shared buffers are marked as alive and spill-read operations are scheduled
-void FeasibleMemoryScheduler::scheduleLoopSpills(const ComputeRegion& computeRegion) {
-    for (auto val : computeRegion.sharedExternalBuffers) {
-        // Mark buffer as alive for the duration of the loop
-        // If the buffer is already alive, nothing is changed
-        _scan.handler().markAsAlive(val);
-        _log.nest().trace("Mark as alive '{0}'", val);
-
-        // Check if buffer is dynamically spilled
-        if (!_scan.handler().isDynamicSpill(val)) {
-            continue;
-        }
-
-        // Schedule spill-read operation for this buffer
-        auto bufferProducer = _bufferProducer.find(val);
-        VPUX_THROW_UNLESS(bufferProducer != _bufferProducer.end(), "Failed to find buffer producer for '{0}'", val);
-        _log.nest(2).trace("scheduleSpilledOpBuffer {0}", bufferProducer->second);
-        scheduleSpilledOpBuffer(bufferProducer->second, &val);
-    }
-}
-
-// Verify buffer usage across all loop iterations and collect information about:
-// - Dynamic spill buffers: buffers that are spilled and need special handling
-// - Prefetch buffers: buffers that can be prefetched before the loop starts
-void FeasibleMemoryScheduler::verifyAndCollectLoopBuffers(
-        const ComputeRegion& computeRegion, mlir::DenseMap<size_t, mlir::DenseSet<mlir::Value>>& dynamicSpillBuffers,
-        mlir::DenseMap<mlir::Value, vpux::AddressType>& prefetchBuffers) {
-    const auto& sharedBuffers = computeRegion.sharedExternalBuffers;
-    // Verify each loop iteration
-    for (size_t i = 0; i < computeRegion.schedulingLoop->loopBodies.size(); i++) {
-        const auto& loop = computeRegion.schedulingLoop->loopBodies[i];
-        _log.nest().trace("Verify ops from loop {0}", i + 1);
-
-        for (auto& allocInfo : loop) {
-            const auto opIdx = allocInfo.opIdx;
-            _log.nest(2).trace("Verify loop op {0}", opIdx);
-
-            const auto usedLocalBuffers = getLocalUsedBuffers(allocInfo, sharedBuffers);
-
-            if (_opIdxEndCycleMap.count(opIdx)) {
-                // Operation was pre-scheduled (before loop scheduling started)
-                // Two situations can lead to pre-scheduling:
-                // 1. The operation is prefetched (not spilling). Save it into prefetchBuffers for later address
-                // assignment
-                // 2. The operation is prefetched but spilled.
-                _log.nest(3).trace("Pre-scheduled op {0}", opIdx);
-
-                // Verify all pre-scheduled ops are either spilled or prefetchable
-                for (auto buffer : usedLocalBuffers) {
-                    if (!_scan.handler().isDynamicSpill(buffer)) {
-                        // Case 1: DATA_IN operations can be prefetched (and not spilled)
-                        if (allocInfo.allocationType == vpux::AllocationType::DATA_IN) {
-                            VPUX_THROW_UNLESS(usedLocalBuffers.size() == 1,
-                                              "Prefetch op should have only 1 buffer, got {0}",
-                                              usedLocalBuffers.size());
-                            // If the operation is scheduled and not spilled which means this buffer is still in CMX
-                            // then directly record its address
-                            prefetchBuffers[buffer] = _scan.handler().getAddress(buffer);
-                            continue;
-                        }
-                        cleanUpAndLogSchedule(_scheduledOps);
-                        VPUX_THROW("Loop op should be spilled {0}", opIdx);
-                    } else {
-                        // Case 2: prefetched but spilled
-                        _log.nest(4).trace("Spilled buffer from loop op {0}", opIdx);
-                    }
-                }
-            } else {
-                // Operation not yet scheduled - collect dynamically spilled buffers
-                for (auto& buffer : usedLocalBuffers) {
-                    if (_scan.handler().isDynamicSpill(buffer)) {
-                        dynamicSpillBuffers[opIdx].insert(buffer);
-                    }
-                }
-            }
-        }
-    }
-
-    // Free buffers that are no longer alive
-    _scan.freeDeadRanges();
-}
-
-// Unschedule operations up to a target cycle
-// This helper iterates through the cycle end heap and removes operations
-// that complete at or before the target cycle, freeing their memory resources
+/// Removes all completed operations from the cycle-end heap whose cycleEnd <= @p targetUnscheduleCycle,
+/// freeing their CMX memory, and advances every executor pipeline to at least @p targetUnscheduleCycle.
+///
+/// Unlike @c unscheduleAllCompletingOps, this function does not unlock new ready operations
+/// and does not propagate dependency reductions. The caller is responsible for managing
+/// ready-list updates when needed.
+///
+/// @param targetUnscheduleCycle  Upper cycle bound (inclusive) for operations to remove.
 void FeasibleMemoryScheduler::unscheduleOpsToCycle(size_t targetUnscheduleCycle) {
     for (auto& nextOp : llvm::make_early_inc_range(_cycleEndHeap)) {
         if (nextOp.cycleEnd_ > targetUnscheduleCycle) {
-            // Do not unschedule operations past target cycle
             break;
         }
-
-        _log.nest(2).trace("Unschedule opIdx '{0}'", nextOp.op_);
+        _log.nest(2).trace("Loop unschedule opIdx '{0}'", nextOp.op_);
         if (freeMemoryResources(nextOp)) {
-            // Align executors only if memory resources were freed
             alignExecutors(nextOp.cycleEnd_);
         }
-
-        // Remove operation from heap
         _cycleEndHeap.erase(nextOp);
     }
-}
 
-// Unschedule operations from a specific loop iteration
-// This helper unschedules operations up to the loop's end cycle and spills
-// all local buffers that are still alive to ensure correct loop iteration overlap
-void FeasibleMemoryScheduler::unscheduleLoopOps(size_t loopIdx, size_t targetUnscheduleCycle,
-                                                const SmallVector<mlir::Value>& loopBuffersForIndex) {
-    // Unschedule operations to target cycle
-    unscheduleOpsToCycle(targetUnscheduleCycle);
-
-    // Spill all local alive buffers from the loop
-    const auto aliveValues = _scan.handler().getAliveValues();
-    mlir::DenseSet<mlir::Value> processedBuffers;
-    for (const auto& buffer : loopBuffersForIndex) {
-        if (!aliveValues.count(buffer) || processedBuffers.count(buffer)) {
-            continue;
-        }
-        processedBuffers.insert(buffer);
-
-        // Memory will be re-used, need to spill for all future uses
-        // This should be optimized in DMA spill optimization
-        VPUX_THROW_UNLESS(_bufferProducer.find(buffer) != _bufferProducer.end(),
-                          "Buffer not scheduled yet, invalid eviction candidate");
-        auto executeOpIdx = _bufferProducer[buffer];
-        // In special case of multiple output buffers, store output index
-        auto outputIdx = getOpBufferOutputIdx(executeOpIdx, buffer);
-        auto evictionCandidate = EvictionCandidate(/*priority=*/0UL, /*earliestConsumerIdx=*/0UL, /*size=*/1,
-                                                   executeOpIdx, outputIdx, buffer);
-
-        _log.nest(2).trace("performEvictionAndScheduling '{0}'", executeOpIdx);
-        // Ensure prefetch functional for next loop iteration, do not align executors here
-        auto cycleAfterSpill = performEvictionAndScheduling(evictionCandidate, false);
-        moveFromCycleBeginToCycleEndHeap();
-        _evictionCandidatesCache.clear();
-
-        // For overlapped loops, cycles are aligned here
-        targetUnscheduleCycle = std::max(targetUnscheduleCycle, cycleAfterSpill);
-    }
-
-    _log.nest().trace("Unschedule loopIdx {0} align cycles to {1}", loopIdx, targetUnscheduleCycle);
+    _log.nest().trace("Unschedule ops and align cycles to {0}", targetUnscheduleCycle);
     for (auto& [queue, instances] : _executorPipelines) {
         for (auto& instance : instances) {
             instance = std::max(instance, targetUnscheduleCycle);
         }
     }
-
-    // Unschedule operations from cycle end heap to target cycle end
-    unscheduleOpsToCycle(targetUnscheduleCycle);
 }
 
-// Schedule all iterations of the loop with double buffering
-// This is the core loop scheduling logic that handles:
-// - Double buffering to overlap loop iterations
-// - Full pipelining (unschedules loop-2 when scheduling current loop)
-// - Buffer address assignment alternating between two buffer sets
-void FeasibleMemoryScheduler::scheduleLoopIterationAtIndex(
-        const ComputeRegion& computeRegion, size_t loopIndex, vpux::AddressType reserveOffset,
-        mlir::DenseMap<size_t, size_t>& loopCycleEnd, mlir::DenseMap<size_t, SmallVector<mlir::Value>>& loopBuffers,
-        const mlir::DenseMap<size_t, mlir::DenseSet<mlir::Value>>& dynamicSpillBuffers,
-        const mlir::DenseMap<mlir::Value, vpux::AddressType>& prefetchBuffers, size_t& loopMaxCycleEnd) {
-    const auto& localAddressMap = computeRegion.bufferAddressVec.first;
-    const auto& local2AddressMap = computeRegion.bufferAddressVec.second;
-    const auto& sharedBuffers = computeRegion.sharedExternalBuffers;
-    const auto prefetchOpCount = computeRegion.prefetchOpCount;
+/// Unschedules all operations that complete no later than the latest user of any buffer in
+/// @p targetBuffers.
+///
+/// Does nothing if none of the scheduled operations reference the given buffers.
+/// Does not unlock ready operations — the caller must handle dependency propagation.
+///
+/// @param targetBuffers  Buffers whose last scheduled users determine the unschedule boundary.
+void FeasibleMemoryScheduler::unscheduleOpsUsingBuffers(const SmallVector<mlir::Value>& targetBuffers) {
+    size_t targetCycle = 0;
+    for (const auto& op : _cycleEndHeap) {
+        const auto execOp = _depsInfo.getExecuteOpAtIndex(op.op_);
+        if (llvm::any_of(targetBuffers, [&](mlir::Value buf) {
+                return _liveRangeInfo.isBufferUsedByOp(buf, execOp);
+            })) {
+            targetCycle = std::max(targetCycle, op.cycleEnd_);
+        }
+    }
+    if (targetCycle == 0) {
+        return;
+    }
+    unscheduleOpsToCycle(targetCycle);
+}
 
-    size_t bufIndex = 0;
-    size_t currPrefetchCount = 0;
-    mlir::DenseMap<mlir::Value, vpux::AddressType> bufferAddresses;
+/// Flushes both scheduler heaps: first moves pending operations from the cycle-begin heap
+/// to the cycle-end heap, then removes every operation from the cycle-end heap, freeing
+/// CMX memory and collecting newly unlocked ready operations into @p readyOps.
+///
+/// The caller must pass the accumulated @p readyOps to @c distributeReadyOps to populate
+/// the ready lists.
+///
+/// @param readyOps  Output vector; newly ready operation indices are appended (not cleared).
+void FeasibleMemoryScheduler::drainAndCollectReadyOps(SmallVector<operationIdxType>& readyOps) {
+    moveFromCycleBeginToCycleEndHeap();
+    for (auto& nextOp : llvm::make_early_inc_range(_cycleEndHeap)) {
+        _log.nest(2).trace("Pre-loop unschedule opIdx '{0}'", nextOp.op_);
+        if (freeMemoryResources(nextOp)) {
+            alignExecutors(nextOp.cycleEnd_);
+        }
 
-    // Unschedule loop-2 for full pipelining
-    // This allows overlap between loop iterations: loop[i], loop[i-1], and loop[i-2]
-    if (loopIndex > 1) {
-        auto targetUnscheduleCycle = loopCycleEnd[loopIndex - 2];
-        unscheduleLoopOps(loopIndex - 2, targetUnscheduleCycle, loopBuffers[loopIndex - 2]);
+        const auto newReadyOps = unlockNewReadyOps(nextOp);
+        readyOps.insert(readyOps.end(), newReadyOps.begin(), newReadyOps.end());
+
+        _cycleEndHeap.erase(nextOp);
+    }
+}
+
+std::tuple<size_t, size_t, size_t> FeasibleMemoryScheduler::getScheduledInfo(const ComputeRegion& computeRegion,
+                                                                             size_t loopIdx) const {
+    size_t lastScheduledOp = 0;
+    size_t lastScheduledLevel = 0;
+    size_t lastScheduledCycle = 0;
+    for (const auto& allocInfo : computeRegion.schedulingLoop->loopBodies[loopIdx]) {
+        lastScheduledOp = std::max(lastScheduledOp, allocInfo.opIdx);
+        lastScheduledLevel = std::max(lastScheduledLevel, _opLevelVec[allocInfo.opIdx]);
+        auto findPtr = _opIdxEndCycleMap.find(allocInfo.opIdx);
+        VPUX_THROW_UNLESS(findPtr != _opIdxEndCycleMap.end(), "Failed to find scheduled op '{0}'", allocInfo.opIdx);
+        lastScheduledCycle = std::max(lastScheduledCycle, findPtr->second);
+    }
+    return std::make_tuple(lastScheduledOp, lastScheduledLevel, lastScheduledCycle);
+}
+
+mlir::DenseSet<mlir::Value> FeasibleMemoryScheduler::loopPrefetch(const ComputeRegion& computeRegion, size_t loopIdx) {
+    auto [lastScheduledOp, lastScheduledLevel, lastScheduledCycle] = getScheduledInfo(computeRegion, loopIdx);
+    _log.nest(3).trace("lastScheduledOp {0} lastScheduledLevel {1} lastScheduledCycle {2}", lastScheduledOp,
+                       lastScheduledLevel, lastScheduledCycle);
+    auto sortedCandidates = getPrefetchCandidates(lastScheduledOp, lastScheduledLevel);
+
+    mlir::DenseSet<mlir::Value> buffersToPrefetch;
+    for (auto& entry : sortedCandidates) {
+        for (const auto& opIdx : entry.second) {
+            // get info about prefetch
+            auto [scheduleCycle, operationBuffers] = getPrefetchInfo(opIdx);
+
+            if (operationBuffers.empty()) {
+                _log.nest(2).trace("No buffers to allocate for: '{0}'", opIdx);
+                continue;
+            }
+
+            // Skip prefetch candidates too far ahead that would finish after the next compute op
+            if (lastScheduledCycle != 0 && lastScheduledLevel + 1 < _opLevelVec[opIdx] &&
+                scheduleCycle >= lastScheduledCycle) {
+                _log.nest(2).trace("Would be scheduled after compute: '{0}'", opIdx);
+                return buffersToPrefetch;
+            }
+
+            operationBuffers.insert(buffersToPrefetch.begin(), buffersToPrefetch.end());
+            if (!canAllocBuffers(operationBuffers)) {
+                _log.nest(2).trace("Can not fit: '{0}'", opIdx);
+                return buffersToPrefetch;
+            }
+
+            // need to allocate more buffers
+            buffersToPrefetch = std::move(operationBuffers);
+
+            // schedule prefetch op
+            executePrefetch(opIdx);
+        }
     }
 
-    // Schedule each operation in the current loop iteration
-    for (const auto& allocInfo : computeRegion.schedulingLoop->loopBodies[loopIndex]) {
-        // Check if can prefetch more or need to unschedule previous loop
-        if (loopIndex > 0 && currPrefetchCount >= prefetchOpCount) {
-            // Without full pipelining prefetching may be limited
-            auto targetUnscheduleCycle = loopCycleEnd[loopIndex - 1];
-            unscheduleLoopOps(loopIndex - 1, targetUnscheduleCycle, loopBuffers[loopIndex - 1]);
-        }
+    return buffersToPrefetch;
+}
 
-        const auto opIdx = allocInfo.opIdx;
-        _log.nest(2).trace("Schedule loop op {0}", opIdx);
-        auto usedLocalBuffers = getLocalUsedBuffers(allocInfo, sharedBuffers);
-        loopBuffers[loopIndex].insert(loopBuffers[loopIndex].end(), usedLocalBuffers.begin(), usedLocalBuffers.end());
-        // Assign addresses to buffers (alternating between two sets for double buffering)
-        for (const auto& buffer : usedLocalBuffers) {
-            vpux::AddressType address = 0;
-            if (bufferAddresses.find(buffer) != bufferAddresses.end()) {
-                address = bufferAddresses[buffer];
-            } else if (prefetchBuffers.count(buffer)) {
-                address = prefetchBuffers.at(buffer);
-                ++bufIndex;
-            } else {
-                const auto bufferOffset = (loopIndex % 2 != 0) ? local2AddressMap[bufIndex] : localAddressMap[bufIndex];
-                address = reserveOffset + bufferOffset;
-                ++bufIndex;
+size_t FeasibleMemoryScheduler::applyIterationSchedule(const IterationSchedule& iterSchedule,
+                                                       vpux::AddressType reserveOffset, size_t loopCycleEnd) {
+    for (const auto& [allocInfo, deallocations, allocations] : iterSchedule) {
+        const auto& opIdx = allocInfo.opIdx;
+        // perform necessary deallocations
+        moveFromCycleBeginToCycleEndHeap();
+        unscheduleOpsUsingBuffers(deallocations);
+        auto aliveValues = _scan.handler().getAliveValues();
+        for (const auto& buffer : deallocations) {
+            if (!aliveValues.count(buffer)) {
+                continue;
             }
-            _scan.handler().setAddress(buffer, address);
-            bufferAddresses[buffer] = address;
+
+            // Buffer has no remaining consumers — free directly without spill-write DMA
+            if (!_liveRangeInfo.hasRemainingUsers(buffer)) {
+                _log.nest(2).trace("No remaining users for buffer, free without spill");
+                _scan.handler().markAsDead(buffer);
+                _scan.freeDeadRanges();
+                aliveValues.erase(buffer);
+                continue;
+            }
+
+            // memory will be re-used, need to spill for all future uses
+            auto it = _bufferProducer.find(buffer);
+            VPUX_THROW_UNLESS(it != _bufferProducer.end(), "Buffer not scheduled yet, invalid eviction candidate");
+            auto executeOpIdx = it->second;
+            // in special case of multiple output buffers store output idx
+            auto outputIdx = getOpBufferOutputIdx(executeOpIdx, buffer);
+            auto evictionCandidate = EvictionCandidate(0UL, 0UL, 1, executeOpIdx, outputIdx, buffer);
+
+            _log.nest(2).trace("performEvictionAndScheduling '{0}'", executeOpIdx);
+            // ensure prefetch functional for next loop iteration, do not align executors here
+            auto cycleAfterSpill = performEvictionAndScheduling(evictionCandidate, false);
+            moveFromCycleBeginToCycleEndHeap();
+            unscheduleOpsToCycle(cycleAfterSpill);
+            _evictionCandidatesCache.clear();
+            aliveValues.erase(buffer);
         }
 
-        // This conditional handles two distinct execution paths:
-        //   Operation was pre-scheduled (in _opIdxEndCycleMap) - handle spilled buffers
-        //   Operation not yet scheduled - schedule it now
-        if (_opIdxEndCycleMap.count(opIdx)) {
-            // For pre-scheduled operation
-            // This operation was already scheduled in an earlier phase. This can happen
-            // when:
-            //   1. The operation was prefetched before the loop started
-            //   2. The operation was scheduled as a pre-loop dependency
-            //   3. The operation was scheduled in a previous loop iteration that's
-            //      still active due to pipelining
-            //
-            // Since the operation is already scheduled, we only need to handle any
-            // buffers that were dynamically spilled to DDR to free up CMX space.
-            _log.nest(2).trace("Pre-scheduled op {0}", opIdx);
+        // perform necessary allocations
+        for (const auto& [buffer, bufferOffset] : allocations) {
+            if (aliveValues.count(buffer)) {
+                continue;
+            }
 
-            // Iterate through all buffers used by this operation
-            for (auto& buffer : usedLocalBuffers) {
-                // Check if this buffer was dynamically spilled (moved from CMX to DDR)
-                // Dynamic spilling happens when the scheduler ran out of CMX memory and
-                // had to evict some buffers to DDR to make room for new operations
-                if (!_scan.handler().isDynamicSpill(buffer)) {
-                    continue;  // Buffer is still in CMX and the op is scheduled, no action needed
-                }
+            const auto bufferAddress = reserveOffset + bufferOffset;
+            _scan.handler().markAsAlive(buffer);
+            _scan.handler().setAddress(buffer, bufferAddress);
+            VPUX_THROW_UNLESS(_scan.allocDefinedRange(buffer), "Failed to allocate defined range at {0}",
+                              bufferAddress);
 
-                // The buffer was spilled to DDR, so we need to read it back to CMX
-                // before this operation can use it. Find the operation that produced
-                // this buffer
+            if (_scan.handler().isDynamicSpill(buffer)) {
                 auto bufferProducer = _bufferProducer.find(buffer);
                 VPUX_THROW_UNLESS(bufferProducer != _bufferProducer.end(), "Failed to find buffer producer for '{0}'",
                                   buffer);
-
-                // Schedule a DMA operation to read the spilled buffer from DDR back to CMX
-                // This creates an implicit spill-read operation that will be scheduled
-                // before the current operation can execute
                 _log.nest(3).trace("Need to read spilled buffer of op {0}", bufferProducer->second);
-                scheduleSpilledOpBuffer(bufferProducer->second, &buffer);
+                const auto nextAvailableCycle = scheduleSpilledOpBuffer(bufferProducer->second, buffer);
+                loopCycleEnd = std::max(loopCycleEnd, nextAvailableCycle);
             }
-        } else {
-            // The operation has not been scheduled yet, so we need to:
-            //   1. Ensure all dependencies are satisfied (op is "ready")
-            //   2. Schedule the operation (allocate resources, assign cycle time)
-            //   3. Update tracking data structures
-            //   4. Remove from ready lists
+        }
 
-            // If the operation is not already in a ready list, we need to check if it
-            // can become ready by reducing the in-degree of its dependencies
+        if (_opIdxEndCycleMap.count(opIdx) == 0) {
             if (!_readyDataOps.count(opIdx)) {
                 auto newReadyOps = reduceInDegreeOfAdjacentOperations(opIdx);
                 distributeReadyOps(newReadyOps);
             }
 
-            auto nextAvailableCycle = scheduleOp(opIdx, EOpType::LOOP_OP);
+            // schedule op
+            const auto nextAvailableCycle = scheduleOp(opIdx, EOpType::LOOP_OP);
+            loopCycleEnd = std::max(loopCycleEnd, nextAvailableCycle);
 
-            // Update the maximum cycle end time across all operations in the loop
-            // This tracks when the entire loop iteration will complete
-            loopMaxCycleEnd = std::max(loopMaxCycleEnd, nextAvailableCycle);
-            loopCycleEnd[loopIndex] = loopMaxCycleEnd;
+            // scheduleDependencies (called by scheduleOp) may mark spilled buffers as alive
+            // without setting their address. Allocate any alive-but-unallocated buffers so
+            // subsequent SPILL_READ processing can retrieve their address.
+            mlir::DenseSet<mlir::Value> spilledUnallocated;
+            for (auto& val : _scan.handler().getAliveValues()) {
+                if (!_scan.handler().isAllocated(val)) {
+                    spilledUnallocated.insert(val);
+                }
+            }
+            if (!spilledUnallocated.empty()) {
+                sortAndAllocateBuffers(spilledUnallocated);
+            }
 
             // remove from ready ops
             if (_readyDataOps.count(opIdx)) {
@@ -1563,237 +1417,147 @@ void FeasibleMemoryScheduler::scheduleLoopIterationAtIndex(
             } else if (_readyDMAOps.count(opIdx)) {
                 _readyDMAOps.erase(opIdx);
             } else {
-                // ERROR: Operation was not in any ready list, but we tried to schedule it
-                // This should never happen - log dependencies for debugging
                 for (auto dep : _depsInfo.getOpDeps(opIdx)) {
                     _log.nest().trace("Dep {0}", dep);
                 }
                 VPUX_THROW("Loop op not ready {0}", opIdx);
             }
         }
-
-        if (dynamicSpillBuffers.count(opIdx)) {
-            for (auto& buffer : dynamicSpillBuffers.at(opIdx)) {
-                if (_scan.handler().isDynamicSpill(buffer)) {
-                    VPUX_THROW("Spilled buffer should be scheduled");
-                }
-            }
-        }
-
-        ++currPrefetchCount;
     }
-    // schedule profiling ops
-    scheduleNonComputeOps();
     moveFromCycleBeginToCycleEndHeap();
+    return loopCycleEnd;
 }
 
-// Handle prefetching for the last two loop iterations (boundary conditions)
-// This optimizes the loop epilogue by prefetching operations after the loop
-void FeasibleMemoryScheduler::handleLoopBoundaryPrefetch(
-        const ComputeRegion& computeRegion, vpux::AddressType reserveOffset,
-        const mlir::DenseMap<size_t, size_t>& loopCycleEnd,
-        const mlir::DenseMap<size_t, SmallVector<mlir::Value>>& loopBuffers,
-        const mlir::DenseMap<mlir::Value, vpux::AddressType>& prefetchBuffers) {
-    // Get reserved addresses for the last two loops: loops at index loopSize-2 and loopSize-1
-    mlir::DenseSet<mlir::Value> usedBufferSet;
-    SmallVector<std::pair<vpux::AddressType, vpux::AddressType>> loop1Addresses;
-    for (auto& buffer : loopBuffers.at(computeRegion.schedulingLoop->loopBodies.size() - 1)) {
-        if (usedBufferSet.count(buffer) || prefetchBuffers.count(buffer)) {
+std::optional<vpux::AddressType> FeasibleMemoryScheduler::prepareLoopRegion(const ComputeRegion& computeRegion,
+                                                                            const LoopScheduleResult& scheduleResult) {
+    // 1. Get all "shared" buffers
+    mlir::DenseSet<mlir::Value> buffersToAllocate;
+    for (const auto& shared : scheduleResult.sharedExternalBuffers) {
+        if (_scan.handler().isAlive(shared)) {
             continue;
         }
-        usedBufferSet.insert(buffer);
-        const auto address = _scan.handler().getAddress(buffer);
-        const auto size = _scan.handler().getSize(buffer);
-        loop1Addresses.push_back({address, size});
+        buffersToAllocate.insert(shared);
     }
-    // loop-2 uses all reserved memory
-    SmallVector<std::pair<vpux::AddressType, vpux::AddressType>> loop2Addresses;
-    loop2Addresses.push_back({reserveOffset, computeRegion.size});
 
-    auto getScheduledInfo = [&](size_t loopIdx) {
-        size_t lastScheduledOp = 0;
-        size_t lastScheduledLevel = 0;
-        size_t lastScheduledCycle = 0;
-        for (const auto& allocInfo : computeRegion.schedulingLoop->loopBodies[loopIdx]) {
-            lastScheduledOp = std::max(lastScheduledOp, allocInfo.opIdx);
-            lastScheduledLevel = std::max(lastScheduledLevel, _opLevelVec[allocInfo.opIdx]);
-            auto findPtr = _opIdxEndCycleMap.find(allocInfo.opIdx);
-            VPUX_THROW_UNLESS(findPtr != _opIdxEndCycleMap.end(), "Failed to find scheduled op '{0}'", allocInfo.opIdx);
-            lastScheduledCycle = std::max(lastScheduledCycle, findPtr->second);
-        }
-        return std::make_tuple(lastScheduledOp, lastScheduledLevel, lastScheduledCycle);
-    };
+    // 2. Try to fit shared + loop demand
+    _log.nest().trace("totalFreeSize {0}", _scan.totalFreeSize());
+    _log.nest().trace("maxFreeSize {0}", _scan.maxFreeSize());
+    _log.nest().trace("Need to allocate reserve {0} with alignment {1}", scheduleResult.reservedSize,
+                      scheduleResult.baseAlignment);
+    for (auto& buf : buffersToAllocate) {
+        _log.nest(2).trace("Shared buffer size '{0}'", _scan.handler().getSize(buf));
+    }
+    if (!canAllocBuffersWithReservedSize(buffersToAllocate, scheduleResult.reservedSize,
+                                         scheduleResult.baseAlignment)) {
+        _log.nest().trace("Failed to allocate");
+        return std::nullopt;
+    }
 
-    auto loopPrefetch = [&](size_t loopIdx,
-                            SmallVector<std::pair<vpux::AddressType, vpux::AddressType>>& reservedRanges) {
-        auto [lastScheduledOp, lastScheduledLevel, lastScheduledCycle] = getScheduledInfo(loopIdx);
-        _log.nest(3).trace("lastScheduledOp {0} lastScheduledLevel {1} lastScheduledCycle {2}", lastScheduledOp,
-                           lastScheduledLevel, lastScheduledCycle);
-        auto sortedCandidates = getPrefetchCandidates(lastScheduledOp, lastScheduledLevel);
+    // there may be spilled buffers in heap, need to deallocate them
+    SmallVector<operationIdxType> readyOps;
+    drainAndCollectReadyOps(readyOps);
 
-        mlir::DenseSet<mlir::Value> buffersToPrefetch;
-        for (auto& entry : sortedCandidates) {
-            for (const auto& opIdx : entry.second) {
-                // get info about prefetch
-                auto [scheduleCycle, operationBuffers] = getPrefetchInfo(opIdx);
-
-                if (operationBuffers.empty()) {
-                    _log.nest(2).trace("No buffers to allocate for: '{0}'", opIdx);
-                    continue;
-                }
-
-                // avoid barriers for next compute dependencies using level check
-                if (lastScheduledCycle != 0 && lastScheduledLevel + 1 < _opLevelVec[opIdx] &&
-                    scheduleCycle >= lastScheduledCycle) {
-                    _log.nest(2).trace("Would be scheduled after compute: '{0}'", opIdx);
-                    return buffersToPrefetch;
-                }
-
-                operationBuffers.insert(buffersToPrefetch.begin(), buffersToPrefetch.end());
-                if (!canAllocBuffersWithReservedRanges(reservedRanges, operationBuffers)) {
-                    _log.nest(2).trace("Can not fit: '{0}'", opIdx);
-                    return buffersToPrefetch;
-                }
-
-                // need to allocate more buffers
-                buffersToPrefetch = std::move(operationBuffers);
-
-                // schedule prefetch op
-                executePrefetch(opIdx);
-            }
+    // 3. Schedule pre-loop dependencies
+    for (auto& opIdx : computeRegion.dependencies) {
+        if (_opIdxEndCycleMap.count(opIdx)) {
+            _log.nest(2).trace("Already scheduled dependency {0}", opIdx);
+            continue;
         }
 
-        return buffersToPrefetch;
-    };
+        _log.nest().trace("Schedule dependency {0}", opIdx);
+        scheduleOp(opIdx);
+        if (_readyDataOps.count(opIdx)) {
+            _readyDataOps.erase(opIdx);
+        }
+    }
 
-    for (size_t i = computeRegion.schedulingLoop->loopBodies.size() - 2;
-         i < computeRegion.schedulingLoop->loopBodies.size(); i++) {
-        // prefetch operations for loop-2 and loop-1
-        _log.nest(2).trace("Try to prefetch for loop -{0}", computeRegion.schedulingLoop->loopBodies.size() - i);
-        auto& reservedRanges =
-                i == computeRegion.schedulingLoop->loopBodies.size() - 2 ? loop2Addresses : loop1Addresses;
-        auto buffersToPrefetch = loopPrefetch(i, reservedRanges);
+    // 4. Schedule spills
+    for (auto val : scheduleResult.sharedExternalBuffers) {
+        _scan.handler().markAsAlive(val);
+        _log.nest().trace("Mark loop shared buffer as alive '{0}'", val);
+        if (!_scan.handler().isDynamicSpill(val)) {
+            continue;
+        }
+        // special case for spilled reads
+        auto bufferProducer = _bufferProducer.find(val);
+        VPUX_THROW_UNLESS(bufferProducer != _bufferProducer.end(), "Failed to find buffer producer for '{0}'", val);
+        _log.nest(2).trace("scheduleSpilledOpBuffer {0}", bufferProducer->second);
+        scheduleSpilledOpBuffer(bufferProducer->second, val);
+    }
+
+    // 5. Allocate memory
+    const auto reserveOffset = sortAndAllocateBuffersWithReservedSize(buffersToAllocate, scheduleResult.reservedSize,
+                                                                      scheduleResult.baseAlignment);
+    _log.nest(2).trace("reserveOffset '{0}'", reserveOffset);
+
+    // 6. Drain remaining heap after dependency scheduling
+    drainAndCollectReadyOps(readyOps);
+    distributeReadyOps(readyOps);
+
+    return reserveOffset;
+}
+
+void FeasibleMemoryScheduler::applyLoopSchedule(const ComputeRegion& computeRegion,
+                                                const LoopScheduleResult& scheduleResult,
+                                                vpux::AddressType reserveOffset) {
+    // get FIFO states to determine initial cycle end
+    auto maxFifoCycle = std::numeric_limits<size_t>::min();
+    for (auto& [queue, instances] : _executorPipelines) {
+        for (auto& instance : instances) {
+            maxFifoCycle = std::max(maxFifoCycle, instance);
+        }
+    }
+    const auto loopMaxCycleEnd = maxFifoCycle;
+
+    // apply all predefined loop iterations
+    mlir::DenseMap<size_t, size_t> loopCycleEnd;
+    const auto& explicitSchedule = scheduleResult.schedule;
+    for (const auto& loopIteration : irange(explicitSchedule.size())) {
+        _log.nest().trace("Schedule loop iteration {0}", loopIteration);
+        const auto& iterationSchedule = explicitSchedule[loopIteration];
+
+        if (loopIteration > 1) {
+            // every 2nd loop overlaps
+            const auto iterationMinusTwoCycleEnd = loopCycleEnd[loopIteration - 2];
+            unscheduleOpsToCycle(iterationMinusTwoCycleEnd);
+        }
+
+        loopCycleEnd[loopIteration] = applyIterationSchedule(iterationSchedule, reserveOffset, loopMaxCycleEnd);
+    }
+
+    // prefetch operations for the last two loop iterations
+    for (const auto& loopIteration : irange(explicitSchedule.size() - 2, explicitSchedule.size())) {
+        _log.nest(2).trace("Try to prefetch for loop {0}", loopIteration);
+        auto buffersToPrefetch = loopPrefetch(computeRegion, loopIteration);
         // allocate prefetch ops
-        sortAndAllocateBuffersWithReservedRanges(reservedRanges, buffersToPrefetch);
-        // Finally unschedule loop
-        auto targetUnscheduleCycle = loopCycleEnd.at(i);
-        unscheduleLoopOps(i, targetUnscheduleCycle, loopBuffers.at(i));
+        sortAndAllocateBuffers(buffersToPrefetch);
+        // unschedule last two iterations
+        unscheduleOpsToCycle(loopCycleEnd[loopIteration]);
     }
 }
 
-// Schedule loop regions with specialized ping-pong memory allocation for pipelining.
-// This function orchestrates the scheduling of loop compute regions (e.g., tiled operations)
-// by allocating ping-pong buffers and scheduling iterations with double-buffering support.
-//
-// Workflow:
-// 1. Check memory requirements (shared buffers + loop working set must fit in CMX)
-// 2. Clean up scheduler state by unscheduling completing operations
-// 3. Schedule pre-loop global dependencies (e.g., shared input DMAs that must complete before loop starts)
-// 4. Schedule spill-read operations for any shared buffers that were dynamically spilled
-// 5. Allocate shared buffers and reserve contiguous space for loop local buffers
-// 6. Schedule each loop iteration
-// 7. Handle boundary prefetching after the last two iterations
-//    to enable prefetching between the last loop (loop-1) and the previous loop than the last loop (loop-2)
-// 8. Recursively schedule more ready loop regions if any were successfully scheduled
-//
-// Returns true if at least one loop region was scheduled, false otherwise.
 bool FeasibleMemoryScheduler::scheduleLoopRegions() {
-    auto readyLoopOps = getReadyLoopOps();
     bool scheduledLoop = false;
 
-    for (auto& readyLoopOp : readyLoopOps) {
-        _log.trace("Ready loop idx {0}", readyLoopOp);
-        const auto& computeRegion = _loopRegions[readyLoopOp];
+    const auto readyLoopOps = getReadyLoopOps();
+    for (const auto ready : readyLoopOps) {
+        _log.trace("Ready loop idx {0}", ready);
+        const auto& computeRegion = _loopRegions[ready];
+        const auto& scheduleResult = _computeRegionsSchedule.scheduleResults.at(ready);
 
-        // Step 1: Check if loop fits in memory (shared buffers + loop working set)
-        // Only schedule the loop region when the buffers are ready to be allocated
-        mlir::DenseSet<mlir::Value> buffersToAllocate;
-
-        // Collect shared buffers that need allocation
-        // Shared buffers are allocated outside the loop and kept alive across iterations
-        for (auto& shared : computeRegion.sharedExternalBuffers) {
-            if (_scan.handler().isAlive(shared)) {
-                continue;
-            }
-            buffersToAllocate.insert(shared);
-        }
-
-        _log.trace("Loop step 1. Memory requirement check for loop {0}", readyLoopOp);
-        _log.nest().trace("totalFreeSize {0}", _scan.totalFreeSize());
-        _log.nest().trace("Need to allocate reserve {0} with alignment {1}", computeRegion.size,
-                          computeRegion.baseAlignment);
-        if (!canAllocBuffersWithReservedSize(buffersToAllocate, computeRegion.size, computeRegion.baseAlignment)) {
-            _log.nest().trace("Failed to allocate memory for loop {0}", readyLoopOp);
+        const auto reserveOffset = prepareLoopRegion(computeRegion, scheduleResult);
+        if (!reserveOffset) {
             return false;
         }
 
-        // Step 2: Clean up the schedule status and prepare for loop scheduling
-        SmallVector<operationIdxType> readyOps;
-        _log.trace("Loop step 2. Clean up the schedule status");
-        cleanupBeforeLoopScheduling(readyOps);
+        _log.nest().trace("Schedule loop idx {0}", ready);
+        applyLoopSchedule(computeRegion, scheduleResult, *reserveOffset);
 
-        // Step 3: Schedule dependencies that must execute before the loop starts
-        _log.trace("Loop step 3. Schedule pre-loop dependencies");
-        schedulePreLoopDependencies(computeRegion);
-
-        // Step 4: Schedule spill operations for shared buffers
-        _log.trace("Loop step 4. Schedule spills for shared buffers");
-        scheduleLoopSpills(computeRegion);
-
-        // Step 5: Allocate memory for shared buffers and reserve space for loop working set
-        _log.trace("Loop step 5. Allocate memory for shared buffers");
-        const auto reserveOffset = sortAndAllocateBuffersWithReservedSize(buffersToAllocate, computeRegion.size,
-                                                                          computeRegion.baseAlignment);
-        _log.nest().trace("reserveOffset '{0}'", reserveOffset);
-
-        // 6. Clean up after scheduling dependencies
-        // unschedule dependency operations, propagate ready status
-        // and free memory resources to prepare for loop scheduling
-        _log.trace("Loop step 6. Clean up the schedule status");
-        cleanupBeforeLoopScheduling(readyOps);
-
-        // 7. Schedule loop
-        _log.trace("Loop step 7. Schedule loop idx {0}", readyLoopOp);
-        mlir::DenseMap<size_t, mlir::DenseSet<mlir::Value>> dynamicSpillBuffers;
-        mlir::DenseMap<mlir::Value, vpux::AddressType> prefetchBuffers;
-        // Verify buffer usage and collect information about dynamic spills and prefetches
-        verifyAndCollectLoopBuffers(computeRegion, dynamicSpillBuffers, prefetchBuffers);
-
-        // Get FIFO states and initialize loop scheduling
-        auto maxFifoCycle = std::numeric_limits<size_t>::min();
-        for (auto& [queue, instances] : _executorPipelines) {
-            for (auto& instance : instances) {
-                maxFifoCycle = std::max(maxFifoCycle, instance);
-            }
-        }
-        auto loopMaxCycleEnd = maxFifoCycle;
-        distributeReadyOps(readyOps);
-
-        // Track cycle ends and buffers for each loop iteration
-        mlir::DenseMap<size_t, size_t> loopCycleEnd;
-        mlir::DenseMap<size_t, SmallVector<mlir::Value>> loopBuffers;
-
-        // Schedule each loop iteration with double buffering
-        for (size_t loopIndex = 0; loopIndex < computeRegion.schedulingLoop->loopBodies.size(); loopIndex++) {
-            scheduleLoopIterationAtIndex(computeRegion, loopIndex, reserveOffset, loopCycleEnd, loopBuffers,
-                                         dynamicSpillBuffers, prefetchBuffers, loopMaxCycleEnd);
-        }
-
-        // Step 8: Handle prefetching for the last two loop iterations (boundary conditions)
-        _log.nest().trace("Loop step 8. Schedule the last two loops {0} and {1}",
-                          computeRegion.schedulingLoop->loopBodies.size() - 2,
-                          computeRegion.schedulingLoop->loopBodies.size() - 1);
-        handleLoopBoundaryPrefetch(computeRegion, reserveOffset, loopCycleEnd, loopBuffers, prefetchBuffers);
-        _log.nest().trace("data ops {0}", _readyDataOps);
-        _log.nest().trace("compute ops {0}", _readyComputeOps);
-        _log.nest().trace("DMA ops {0}", _readyDMAOps);
-
-        _scheduledLoopRegionInd.insert(readyLoopOp);
+        _scheduledLoopRegionInd.insert(ready);
         scheduledLoop = true;
     }
 
     if (scheduledLoop) {
-        // try to schedule more loop regions
         scheduleLoopRegions();
     }
 
@@ -1802,11 +1566,6 @@ bool FeasibleMemoryScheduler::scheduleLoopRegions() {
 
 void FeasibleMemoryScheduler::scheduleComputeOps() {
     // preserve order of compute ops
-    if (!getReadyLoopOps().empty()) {
-        // schedule loops before other compute ops
-        return;
-    }
-
     std::map<FeasibleMemoryScheduler::QueueType, operationIdxType> loopNextIdx;
     for (size_t idx = 0; idx < _loopRegions.size(); idx++) {
         const auto& computeRegion = _loopRegions[idx];
@@ -1814,6 +1573,10 @@ void FeasibleMemoryScheduler::scheduleComputeOps() {
             continue;
         }
         if (_scheduledLoopRegionInd.count(idx)) {
+            continue;
+        }
+        if (_computeRegionsSchedule.scheduleResults.count(idx) == 0) {
+            _log.trace("Loop region {0} has no predefined schedule, skipping", idx);
             continue;
         }
 
@@ -1904,9 +1667,12 @@ void FeasibleMemoryScheduler::scheduleComputeOps() {
 
     selectOpsToSchedule(computeOps);
     if (computeOps.empty()) {
-        // Schedule noInputDepComputeOps as close as possible to its consumers.
-        // Do not schedule them if there are other ready ops which do not fit into CMX yet.
-        selectOpsToSchedule(noInputDepComputeOps);
+        const auto readyLoopOps = getReadyLoopOps();
+        if (readyLoopOps.empty()) {
+            // Schedule noInputDepComputeOps as close as possible to its consumers.
+            // Do not schedule them if there are other ready ops which do not fit into CMX yet.
+            selectOpsToSchedule(noInputDepComputeOps);
+        }
     }
 
     // schedule compute ops
@@ -2047,48 +1813,6 @@ void FeasibleMemoryScheduler::scheduleComputeOps() {
     }
 
     // TODO: E93150 gather all ops to schedule and sort by which-ever can be scheduled earlier
-
-    // allocate buffers
-    sortAndAllocateBuffers(buffersToAllocate);
-}
-
-void FeasibleMemoryScheduler::scheduleNonComputeOps() {
-    mlir::DenseSet<mlir::Value> buffersToAllocate;
-
-    // schedule operation not belonging to main network compute chain as soon as they become
-    // ready so that they execute in the next available cycle since they are not prefetched
-    for (auto& readyOpIdx : llvm::make_early_inc_range(_nonComputeChainOps)) {
-        // Scheduling such operations can only happen once all input dependencies
-        // (both data and compute ops) have already been executed. This is different
-        // to standard compute op which as part of its scheduling can force scheduling
-        // of needed data ops
-        bool areDepsReady = true;
-        for (const auto& dep : _depsInfo.getOpDeps(readyOpIdx)) {
-            if (_spillBufferMap.find(dep) != _spillBufferMap.end()) {
-                areDepsReady = false;
-                break;
-            }
-        }
-        if (!areDepsReady) {
-            continue;
-        }
-
-        auto operationBuffers = getBuffersToAllocateForOp(readyOpIdx);
-        operationBuffers.insert(buffersToAllocate.begin(), buffersToAllocate.end());
-        if (!operationBuffers.empty()) {
-            VPUX_THROW("Non-empty profiling buffers for {0}", readyOpIdx);
-        }
-
-        if (!canAllocBuffers(operationBuffers)) {
-            continue;
-        }
-
-        buffersToAllocate = std::move(operationBuffers);
-
-        _log.trace("Scheduling non compute chain op: '{0}'", readyOpIdx);
-        scheduleOp(readyOpIdx);
-        _nonComputeChainOps.erase(readyOpIdx);
-    }
 
     // allocate buffers
     sortAndAllocateBuffers(buffersToAllocate);
@@ -2425,14 +2149,6 @@ void FeasibleMemoryScheduler::forceScheduleActiveOpEviction() {
                     "readyDataOp: opIdx: {0}, size demand: {1}, available free CMX: {2}, name: {3}, op: {4}, ", readyOp,
                     opTotalSize, freeCmx, execOp.getLoc(), execOp);
         }
-        for (auto& readyOp : _nonComputeChainOps) {
-            auto opTotalSize = getOpCmxDemand(readyOp);
-            auto execOp = _depsInfo.getExecuteOpAtIndex(readyOp);
-            _log.nest().error(
-                    "nonComputeChainOp: opIdx: {0}, size demand: {1}, available free CMX: {2}, name: {3}, op: {4}, ",
-                    readyOp, opTotalSize, freeCmx, execOp.getLoc(), execOp);
-        }
-
         // select a candidate op to be spilled
         cleanUpAndLogSchedule(_scheduledOps);
         VPUX_THROW("Scheduler failure, cannot schedule anything and there is no buffer to spill");
@@ -2467,6 +2183,7 @@ void FeasibleMemoryScheduler::populateScheduledOps(const HeapElement& scheduledO
     SmallVector<IntervalInfo> inputIntervals;
     // store scheduled information
     if (scheduledOp.isSpillWriteOp()) {
+        _log.nest().trace("SpillWrite opIdx {0} buffer {1}", scheduledOp.op_, scheduledOp.spillBuffer_);
         // special case for a spill write with deallocation
         IntervalInfo interval;
         // retrieve and store operation addresses
@@ -2479,6 +2196,7 @@ void FeasibleMemoryScheduler::populateScheduledOps(const HeapElement& scheduledO
         _log.nest().trace("Deallocate, '{0}'", scheduledOp.spillBuffer_);
         _scan.handler().deallocate(scheduledOp.spillBuffer_);
     } else if (scheduledOp.isSpillReadOp()) {
+        _log.nest().trace("SpillRead opIdx {0} buffer {1}", scheduledOp.op_, scheduledOp.spillBuffer_);
         IntervalInfo interval;
         // retrieve and store operation addresses
         interval.begin_ = checked_cast<size_t>(_scan.handler().getAddress(scheduledOp.spillBuffer_));
@@ -2556,7 +2274,7 @@ bool FeasibleMemoryScheduler::init() {
 
     identifyDataOps();
 
-    size_t level = 0;
+    size_t level = 1;
     _opLevelVec.resize(_inDegreeTable.size(), 0);
     for (size_t computeOpIdx = 0; computeOpIdx < _inDegreeTable.size(); ++computeOpIdx) {
         if (_isDataOp[computeOpIdx]) {
@@ -2576,7 +2294,7 @@ bool FeasibleMemoryScheduler::init() {
             _opLevelVec[depInd] = level;
         }
 
-        if (_loopRegionInd.count(computeOpIdx)) {
+        if (_computeRegionsSchedule.loopRegionInd.count(computeOpIdx)) {
             ++level;
             continue;
         }
@@ -2620,11 +2338,9 @@ void FeasibleMemoryScheduler::schedulingLoop() {
             // 2. schedule ready operations
             //  - allocate compute operations along with data dependencies
             //  - update executor pipelines
-            // 2.1. schedule operation not belonging to main network compute chain
-            scheduleNonComputeOps();
-            // 2.2 schedule compute operations
+            // 2.1 schedule compute operations
             scheduleComputeOps();
-            // 2.3 schedule loop regions
+            // 2.2 schedule loop regions
             loopScheduled |= scheduleLoopRegions();
 
             if (_prefetchFailedDueToFragmentation) {

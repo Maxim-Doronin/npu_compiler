@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --convert-mvn6-to-mvn1 %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW" --convert-mvn6-to-mvn1 %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL: func.func @ConvertMVN6ToMVN1Case2D
 // CHECK-SAME:       ([[INPUT:%.+]]: tensor<5x17xf16>)
@@ -30,6 +30,32 @@ func.func @ConvertMVN6ToMVN1Case3D(%arg0: tensor<1x48x48xf16>) -> tensor<1x48x48
     // CHECK:       [[MVN:%.+]] = IE.MVN([[INPUT_RESHAPE]]) {across_channels = false, eps = 9.9999997473787516E-5 : f64, normalize_variance = true} : tensor<1x1x48x48xf16> -> tensor<1x1x48x48xf16>
     // CHECK:       [[OUTPUT:%.+]] = IE.Reshape([[MVN]]) {shape_value = [1, 48, 48]} : tensor<1x1x48x48xf16> -> tensor<1x48x48xf16>
     // CHECK:       return [[OUTPUT]] : tensor<1x48x48xf16>
+}
+
+// -----
+
+// CHECK-LABEL: func.func @ConvertMVN6ToMVN1Case3DAxis1
+// CHECK-SAME:       ([[INPUT:%.+]]: tensor<1x4096x1xf16>)
+func.func @ConvertMVN6ToMVN1Case3DAxis1(%arg0: tensor<1x4096x1xf16>) -> tensor<1x4096x1xf16> {
+    %0 = IE.MVN6(%arg0) {axes_value = [1], eps = 9.9999997473787516E-6 : f64, eps_mode = #IE.mvn_eps_mode<INSIDE_SQRT>, normalize_variance = true, operandSegmentSizes = array<i32: 1, 0, 0, 0>} : tensor<1x4096x1xf16> -> tensor<1x4096x1xf16>
+    return %0 : tensor<1x4096x1xf16>
+
+    // CHECK: [[INPUT_RESHAPE:%.+]] = IE.Reshape([[INPUT]]) {shape_value = [1, 1, 4096, 1]} : tensor<1x4096x1xf16> -> tensor<1x1x4096x1xf16>
+    // CHECK: [[MVN:%.+]] = IE.MVN([[INPUT_RESHAPE]]) {across_channels = false, eps = 9.9999997473787516E-6 : f64, normalize_variance = true} : tensor<1x1x4096x1xf16> -> tensor<1x1x4096x1xf16>
+    // CHECK: [[OUTPUT:%.+]] = IE.Reshape([[MVN]]) {shape_value = [1, 4096, 1]} : tensor<1x1x4096x1xf16> -> tensor<1x4096x1xf16>
+    // CHECK: return [[OUTPUT]] : tensor<1x4096x1xf16>
+}
+
+// -----
+
+// CHECK-LABEL: func.func @ConvertMVN6ToMVN1Case3DAxis1NotApplied
+// CHECK-SAME:       ([[INPUT:%.+]]: tensor<1x4096x64xf16>)
+func.func @ConvertMVN6ToMVN1Case3DAxis1NotApplied(%arg0: tensor<1x4096x64xf16>) -> tensor<1x4096x64xf16> {
+    %0 = IE.MVN6(%arg0) {axes_value = [1], eps = 9.9999997473787516E-6 : f64, eps_mode = #IE.mvn_eps_mode<INSIDE_SQRT>, normalize_variance = true, operandSegmentSizes = array<i32: 1, 0, 0, 0>} : tensor<1x4096x64xf16> -> tensor<1x4096x64xf16>
+    return %0 : tensor<1x4096x64xf16>
+
+    // CHECK:       [[MVN:%.+]] = IE.MVN6([[INPUT]]) {axes_value = [1], eps = 9.9999997473787516E-6 : f64, eps_mode = #IE.mvn_eps_mode<INSIDE_SQRT>, normalize_variance = true, operandSegmentSizes = array<i32: 1, 0, 0, 0>} : tensor<1x4096x64xf16> -> tensor<1x4096x64xf16>
+    // CHECK:       return [[MVN]] : tensor<1x4096x64xf16>
 }
 
 // -----

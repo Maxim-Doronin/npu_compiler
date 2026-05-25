@@ -113,7 +113,7 @@ DimsOrder vpux::moveD0ToTheFront(DimsOrder inOrder) {
 
 // Normalize permutation vector
 // Example: [1, 3, 7, 6] -> [0, 1, 3, 2]
-void normalizePermutation(SmallVector<uint32_t>& vec) {
+static void normalizePermutation(SmallVector<uint32_t>& vec) {
     SmallVector<uint32_t> sorted(vec);
     llvm::DenseMap<uint32_t, uint32_t> helper;
     std::sort(sorted.begin(), sorted.end());

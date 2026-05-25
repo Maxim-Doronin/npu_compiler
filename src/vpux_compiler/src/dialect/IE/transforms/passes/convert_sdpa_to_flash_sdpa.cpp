@@ -17,6 +17,8 @@
 #include "vpux/compiler/utils/types.hpp"
 #include "vpux/utils/core/checked_cast.hpp"
 
+#include <mlir/Transforms/WalkPatternRewriteDriver.h>
+
 namespace vpux::IE {
 #define GEN_PASS_DECL_CONVERTSDPATOFLASHSDPA
 #define GEN_PASS_DEF_CONVERTSDPATOFLASHSDPA
@@ -138,26 +140,10 @@ void ConvertSDPAToFlashSDPA::safeRunOnFunc() {
     auto func = getOperation();
     auto& ctx = getContext();
 
-    mlir::ConversionTarget target(ctx);
-
-    const auto isLegal = [](IE::SDPAOp) {
-        // A more sophisticated condition should be implemented to decide
-        // when this conversion is necessary or favorable
-        return false;
-    };
-
-    target.addDynamicallyLegalOp<IE::SDPAOp>(isLegal);
-    target.addLegalOp<IE::FlashSDPAOp>();
-    target.addLegalOp<IE::MultiplyOp>();
-    target.addLegalOp<IE::ConvertOp>();
-    target.addLegalOp<Const::DeclareOp>();
-
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<SDPARewrite>(&ctx, _log);
 
-    if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
-        signalPassFailure();
-    }
+    walkAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

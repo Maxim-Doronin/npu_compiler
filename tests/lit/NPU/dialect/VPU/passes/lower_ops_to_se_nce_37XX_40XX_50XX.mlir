@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --mlir-elide-elementsattrs-if-larger 128 --mlir-print-elementsattrs-with-hex-if-larger=-1 --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW enable-se-ptrs-operations=true" --lower-ops-to-se-nce %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --mlir-elide-elementsattrs-if-larger 128 --mlir-print-elementsattrs-with-hex-if-larger=-1 --init-compiler="platform=%platform% compilation-mode=DefaultHW enable-se-ptrs-operations=true" --lower-ops-to-se-nce %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 

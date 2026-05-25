@@ -22,6 +22,7 @@ constexpr StringLiteral tilingStrategy = "tilingStrategy";
 constexpr StringLiteral defaultNoValue = "NONE";
 constexpr StringLiteral verticalFusion = "verticalFusion";  // only be used for manual strategy utils
 constexpr StringLiteral verticalFusionHash = "verticalFusionHash";
+constexpr StringLiteral verticalFusionScenario = "VFScenario";
 constexpr StringLiteral layerTypeName = "layerType";
 constexpr StringLiteral updatedVFTiling = "updatedVFTiling";
 constexpr StringLiteral outputPipelining = "outputPipelining";

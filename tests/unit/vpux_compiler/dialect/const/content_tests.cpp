@@ -3,6 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/core/types/quantile_float/dialect.hpp"
+#include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
@@ -133,6 +135,7 @@ public:
     MLIR_ConstContentAttrTest(): MLIR_UnitBase() {
         ctx.appendDialectRegistry(registry);
         ctx.loadDialect<Const::ConstDialect>();
+        ctx.loadDialect<vpux::type::QuantileDialect>();
     }
 };
 
@@ -456,6 +459,64 @@ TEST_F(MLIR_ConstContentAttrTest, ExpositionOnlyDenseResourceDuplicate_Alternati
             << "Two separately created DenseResourceElementsAttr objects must share the same blob as this is "
                "explicitly allowed";
     ASSERT_NE(attrDuplicateWithAnotherType, attr) << "MLIR uniquifier cannot re-use already-created dense_resource<>";
+}
+
+TEST_F(MLIR_ConstContentAttrTest, DuplicateDenseResources_SplatAndNonSplat) {
+    const auto baseTypeSingleInt64 = mlir::RankedTensorType::get({1}, getSInt64Type(&ctx));
+    const auto baseTypeTwoInt32 = mlir::RankedTensorType::get({2}, getSInt32Type(&ctx));
+    const std::vector<int32_t> vals = {10, 42};  // Note: two *distinct* values
+
+    Const::ExternalConstContentCreationOptions options;
+    options.allowDuplicatesForTheSameResourceName = true;
+
+    const auto attr = Const::createExternalConstContent(baseTypeSingleInt64, convertArrayRef(ArrayRef(vals)),
+                                                        "DuplicateDenseResources_SplatAndNonSplat", options);
+    const auto attrDuplicate = Const::createExternalConstContent(baseTypeTwoInt32, convertArrayRef(ArrayRef(vals)),
+                                                                 "DuplicateDenseResources_SplatAndNonSplat", options);
+
+    ASSERT_NE(attrDuplicate, attr) << "Attributes differ, because they have different types";
+    ASSERT_EQ(attrDuplicate.getRawHandle().getKey(), attr.getRawHandle().getKey());
+    ASSERT_EQ(attrDuplicate.getRawHandle().getBlob(), attr.getRawHandle().getBlob());
+
+    const auto contentAttr = Const::ContentAttr::get(attr);
+    const auto content = contentAttr.fold();
+    ASSERT_TRUE(content.isSplat()) << "Single int64 is a splat";
+    ASSERT_EQ(*reinterpret_cast<const int64_t*>(vals.data()), content.getSplatValue<int64_t>())
+            << "Single splat value should match the array of int32 byte-wise";
+
+    const auto contentAttrDuplicate = Const::ContentAttr::get(attrDuplicate);
+    const auto contentDuplicate = contentAttrDuplicate.fold();
+    ASSERT_FALSE(contentDuplicate.isSplat()) << "Two *distinct* int32 values - not a splat";
+    ASSERT_EQ(vals, to_std_vector(contentDuplicate.getValues<int32_t>())) << "Two int32 values should match the array";
+}
+
+TEST_F(MLIR_ConstContentAttrTest, DuplicateDenseResources_SplatAndSplat) {
+    const auto baseTypeSingleInt64 = mlir::RankedTensorType::get({1}, getSInt64Type(&ctx));
+    const auto baseTypeTwoInt32 = mlir::RankedTensorType::get({2}, getSInt32Type(&ctx));
+    const std::vector<int32_t> vals = {10, 10};  // Note: two *identical* values
+
+    Const::ExternalConstContentCreationOptions options;
+    options.allowDuplicatesForTheSameResourceName = true;
+
+    const auto attr = Const::createExternalConstContent(baseTypeSingleInt64, convertArrayRef(ArrayRef(vals)),
+                                                        "DuplicateDenseResources_SplatAndNonSplat", options);
+    const auto attrDuplicate = Const::createExternalConstContent(baseTypeTwoInt32, convertArrayRef(ArrayRef(vals)),
+                                                                 "DuplicateDenseResources_SplatAndNonSplat", options);
+
+    ASSERT_NE(attrDuplicate, attr) << "Attributes differ, because they have different types";
+    ASSERT_EQ(attrDuplicate.getRawHandle().getKey(), attr.getRawHandle().getKey());
+    ASSERT_EQ(attrDuplicate.getRawHandle().getBlob(), attr.getRawHandle().getBlob());
+
+    const auto contentAttr = Const::ContentAttr::get(attr);
+    const auto content = contentAttr.fold();
+    ASSERT_TRUE(content.isSplat()) << "Single int64 is a splat";
+    ASSERT_EQ(*reinterpret_cast<const int64_t*>(vals.data()), content.getSplatValue<int64_t>())
+            << "Single splat value should match the array of int32 byte-wise";
+
+    const auto contentAttrDuplicate = Const::ContentAttr::get(attrDuplicate);
+    const auto contentDuplicate = contentAttrDuplicate.fold();
+    ASSERT_TRUE(contentDuplicate.isSplat()) << "Two *identical* int32 values - splat";
+    ASSERT_EQ(vals, to_std_vector(contentDuplicate.getValues<int32_t>())) << "Two int32 values should match the array";
 }
 
 TEST_F(MLIR_ConstContentAttrTest, ReadAndConvertInCpp) {
@@ -1440,9 +1501,12 @@ TEST_F(MLIR_ConstContentAttrTest, PadUniformQuantileI4) {
 
     std::vector<double> quantileLUT = {0.0, 1.0, 2.0,  3.0,  4.0,  5.0,  6.0,  7.0,
                                        8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0};
-    const auto quantileType = mlir::quant::QuantileQuantizedType::get(
-            mlir::quant::QuantizationFlags::Signed, getSInt8Type(&ctx), getUInt4Type(&ctx),
-            mlir::Float32Type::get(&ctx), quantileLUT, scale, zeroPoint, storageTypeMin, storageTypeMax);
+
+    const auto newQuantileTypeStorage =
+            vpux::type::QuantileType::get(&ctx, getSInt8Type(&ctx), getUInt4Type(&ctx), quantileLUT);
+    const auto quantileType = mlir::quant::UniformQuantizedType::get(
+            mlir::quant::QuantizationFlags::Signed, newQuantileTypeStorage, mlir::Float32Type::get(&ctx), scale,
+            zeroPoint, storageTypeMin, storageTypeMax);
     auto quantContentAttrSetup = baseContentAttrSetup.castElemType(quantileType);
 
     const int64_t PC = 0;
@@ -1489,9 +1553,11 @@ TEST_F(MLIR_ConstContentAttrTest, PadPerAxisQuantileI4) {
     std::vector<double> quantileLUT = {0.0, 1.0, 2.0,  3.0,  4.0,  5.0,  6.0,  7.0,
                                        8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0};
 
-    const auto quantType = mlir::quant::QuantileQuantizedPerAxisType::get(
-            mlir::quant::QuantizationFlags::Signed, getSInt8Type(&ctx), getUInt4Type(&ctx),
-            mlir::Float32Type::get(&ctx), quantileLUT, scales, zeroPoints, 0, storageTypeMin, storageTypeMax);
+    const auto newQuantileTypeStorage =
+            vpux::type::QuantileType::get(&ctx, getSInt8Type(&ctx), getUInt4Type(&ctx), quantileLUT);
+    const auto quantType = mlir::quant::UniformQuantizedPerAxisType::get(
+            mlir::quant::QuantizationFlags::Signed, newQuantileTypeStorage, mlir::Float32Type::get(&ctx), scales,
+            zeroPoints, 0, storageTypeMin, storageTypeMax);
 
     auto quantContentAttrSetup = baseContentAttrSetup.castElemType(quantType);
 
@@ -3265,10 +3331,12 @@ TEST_F(MLIR_ConstContentAttrTest_StableHash, SameValues_CastElemTypeQuantilePerA
     ctx1.appendDialectRegistry(registry);
     ctx1.loadDialect<Const::ConstDialect>();
     ctx1.loadDialect<mlir::quant::QuantDialect>();
+    ctx1.loadDialect<vpux::type::QuantileDialect>();
     mlir::MLIRContext ctx2;
     ctx2.appendDialectRegistry(registry);
     ctx2.loadDialect<Const::ConstDialect>();
     ctx2.loadDialect<mlir::quant::QuantDialect>();
+    ctx2.loadDialect<vpux::type::QuantileDialect>();
 
     const auto getHash = [&](bool secondCall) {
         auto& currentCtx = secondCall ? ctx2 : ctx1;
@@ -3279,9 +3347,10 @@ TEST_F(MLIR_ConstContentAttrTest_StableHash, SameValues_CastElemTypeQuantilePerA
             std::vector<double> quantiles(256, -0.5);  // Note: these are invalid but it doesn't matter for the test
             std::vector<double> scales({2, 0.5});      // Note: different scales!
             std::vector<int64_t> zeroPoints{127, 127};
-            const auto quantType = mlir::quant::QuantileQuantizedPerAxisType::get(
-                    0, getUInt8Type(&currentCtx), mlir::Float32Type::get(&currentCtx),
-                    mlir::Float32Type::get(&currentCtx), quantiles, scales, zeroPoints,
+            const auto newQuantileTypeStorage = vpux::type::QuantileType::get(
+                    &currentCtx, getUInt8Type(&currentCtx), mlir::Float32Type::get(&currentCtx), quantiles);
+            const auto quantType = mlir::quant::UniformQuantizedPerAxisType::get(
+                    0, newQuantileTypeStorage, mlir::Float32Type::get(&currentCtx), scales, zeroPoints,
                     /*quantization dim=*/1, 0, 255);
             return setup.castElemType(quantType);
         });
@@ -3504,5 +3573,84 @@ TEST_F(MLIR_ConstContentAttrTest, Interpolate) {
     std::vector<float> expectedValues = {2.031, 4.219, 10.781, 12.969};
     for (size_t i = 0; i < expectedValues.size(); ++i) {
         EXPECT_NEAR(contentValues[i], expectedValues[i], 1e-3);
+    }
+}
+
+TEST_F(MLIR_ConstContentAttrTest, GatherElements) {
+    const auto baseType = mlir::RankedTensorType::get({2, 3}, mlir::Float32Type::get(&ctx));
+    const auto baseVals = generateValues<float>(baseType.getNumElements());
+    const auto baseAttr = Const::createConstContent(baseType, ArrayRef(baseVals));
+    const auto axisAttr = getIntAttr(&ctx, 1);
+    SmallVector<int64_t> indicesVals = {2, 1, 0, -1};
+    const auto indicesType = mlir::RankedTensorType::get({2, 2}, getSInt64Type(&ctx));
+    auto indicesAttr = mlir::DenseElementsAttr::get(indicesType, ArrayRef<int64_t>(indicesVals));
+
+    Const::ContentSetup contentAttrSetup(baseType);
+    contentAttrSetup = contentAttrSetup.gatherElements(axisAttr, indicesAttr);
+
+    auto contentAttr = Const::ContentAttr::get(baseAttr, contentAttrSetup);
+    const auto content = contentAttr.fold();
+
+    EXPECT_EQ(content.getType(), contentAttr.getType());
+    EXPECT_FALSE(content.isSplat());
+    EXPECT_EQ(contentAttr.isSplat(), content.isSplat());
+
+    const auto contentVals = content.getValues<float>();
+    std::vector<float> expectedValues = {2.0f, 1.0f, 3.0f, 5.0f};
+    EXPECT_EQ(contentVals.size(), expectedValues.size());
+    for (size_t i = 0; i < expectedValues.size(); ++i) {
+        EXPECT_EQ(contentVals[i], expectedValues[i]);
+    }
+}
+
+TEST_F(MLIR_ConstContentAttrTest, GatherElementsWithSplatInput) {
+    const auto baseType = mlir::RankedTensorType::get({2, 3}, mlir::Float32Type::get(&ctx));
+    const float splatVal = 1.5f;
+    const auto baseAttr = Const::createConstContent(baseType, ArrayRef(splatVal));
+    const auto axisAttr = getIntAttr(&ctx, 1);
+    SmallVector<int64_t> indicesVals = {2, 1, 0, -1};
+    const auto indicesType = mlir::RankedTensorType::get({2, 2}, getSInt64Type(&ctx));
+    auto indicesAttr = mlir::DenseElementsAttr::get(indicesType, ArrayRef<int64_t>(indicesVals));
+
+    Const::ContentSetup contentAttrSetup(baseType);
+    contentAttrSetup = contentAttrSetup.gatherElements(axisAttr, indicesAttr);
+
+    auto contentAttr = Const::ContentAttr::get(baseAttr, contentAttrSetup);
+    const auto content = contentAttr.fold();
+
+    EXPECT_EQ(content.getType(), contentAttr.getType());
+    EXPECT_TRUE(content.isSplat());
+    EXPECT_EQ(content.getSplatValue<float>(), splatVal);
+
+    const auto contentVals = content.getValues<float>();
+    EXPECT_EQ(contentVals.size(), 4u);
+    for (size_t i = 0; i < contentVals.size(); ++i) {
+        EXPECT_EQ(contentVals[i], splatVal);
+    }
+}
+
+TEST_F(MLIR_ConstContentAttrTest, GatherElementsWithSplatIndices) {
+    const auto baseType = mlir::RankedTensorType::get({2, 3}, mlir::Float32Type::get(&ctx));
+    const auto baseVals = generateValues<float>(baseType.getNumElements());
+    const auto baseAttr = Const::createConstContent(baseType, ArrayRef(baseVals));
+    const auto axisAttr = getIntAttr(&ctx, 1);
+    const auto indicesType = mlir::RankedTensorType::get({2, 2}, getSInt64Type(&ctx));
+    auto indicesAttr = mlir::DenseElementsAttr::get(indicesType, ArrayRef<int64_t>({1}));
+    EXPECT_TRUE(indicesAttr.isSplat());
+
+    Const::ContentSetup contentAttrSetup(baseType);
+    contentAttrSetup = contentAttrSetup.gatherElements(axisAttr, indicesAttr);
+
+    auto contentAttr = Const::ContentAttr::get(baseAttr, contentAttrSetup);
+    const auto content = contentAttr.fold();
+
+    EXPECT_EQ(content.getType(), contentAttr.getType());
+    EXPECT_FALSE(content.isSplat());
+
+    const auto contentVals = content.getValues<float>();
+    std::vector<float> expectedValues = {1.0f, 1.0f, 4.0f, 4.0f};
+    EXPECT_EQ(contentVals.size(), expectedValues.size());
+    for (size_t i = 0; i < expectedValues.size(); ++i) {
+        EXPECT_EQ(contentVals[i], expectedValues[i]);
     }
 }

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --swap-convert-with-reshape-kind-ops --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --swap-convert-with-reshape-kind-ops --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -344,4 +344,25 @@ func.func @NoPropagateConvertToFuse(%arg0: tensor<1x1152xsi64>) -> tensor<1x1x1x
     // CHECK:   [[CONVERT_1:%.+]] = IE.Convert([[AFFINE_RESHAPE_3]]) {dstElemType = si32} : tensor<1x1x1x1152xf16> -> tensor<1x1x1x1152xsi32>
 
     // CHECK:   return [[CONVERT_1]] : tensor<1x1x1x1152xsi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @PropagateConvertForwardNoInfiniteLoop
+// CHECK-SAME:        [[INPUT:%[^:]+]]: tensor<1x1152xsi64>
+func.func @PropagateConvertForwardNoInfiniteLoop(%arg0: tensor<1x1152xsi64>) -> tensor<1x1x576x2xf16> {
+    %0 = IE.AffineReshape(%arg0) {dim_mapping = [[0, 1, 2], [3]], shape_value = [1, 1, 1, 1152]} : tensor<1x1152xsi64> -> tensor<1x1x1x1152xsi64>
+    %1 = IE.Convert(%0) {dstElemType = si32} : tensor<1x1x1x1152xsi64> -> tensor<1x1x1x1152xsi32>
+    %2 = IE.AffineReshape(%1) {dim_mapping = [[0], [1], [2], [3, 4]], shape_value = [1, 1, 576, 2]} : tensor<1x1x1x1152xsi32> -> tensor<1x1x576x2xsi32>
+    %3 = IE.Convert(%2) {dstElemType = f16} : tensor<1x1x576x2xsi32> -> tensor<1x1x576x2xf16>
+
+    return %3 : tensor<1x1x576x2xf16>
+
+    // CHECK:   [[AFFINE_RESHAPE_0:%.+]] = IE.AffineReshape([[INPUT]])
+    // CHECK-SAME:  : tensor<1x1152xsi64> -> tensor<1x1x1x1152xsi64>
+    // CHECK:   [[CONVERT:%.+]] = IE.Convert([[AFFINE_RESHAPE_0]]) {dstElemType = f16}
+    // CHECK-SAME:  : tensor<1x1x1x1152xsi64> -> tensor<1x1x1x1152xf16>
+    // CHECK:   [[AFFINE_RESHAPE_1:%.+]] = IE.AffineReshape([[CONVERT]])
+    // CHECK-SAME:  : tensor<1x1x1x1152xf16> -> tensor<1x1x576x2xf16>
+    // CHECK:   return [[AFFINE_RESHAPE_1]] : tensor<1x1x576x2xf16>
 }

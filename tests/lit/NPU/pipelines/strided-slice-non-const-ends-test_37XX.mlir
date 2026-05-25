@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-translate --vpu-arch=%arch% --import-IE --set-upper-bounds="3 3" ./IR/strided-slice-non-const-ends-test.xml -o %t
+// RUN: vpux-translate --platform=%platform% --import-IE --set-upper-bounds="3 3" ./IR/strided-slice-non-const-ends-test.xml -o %t
 // RUN: FileCheck %s --input-file %t
-// REQUIRES: arch-NPU37XX
+// REQUIRES: platform-NPU3720
 
 #C = affine_map<(d0) -> (d0)>
 

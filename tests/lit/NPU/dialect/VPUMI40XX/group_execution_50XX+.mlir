@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true enable-sw-kernel-fifo-per-shave-engine=true" --group-execution-ops %s | FileCheck %s
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true enable-sw-kernel-fifo-per-shave-engine=true" --group-execution-ops %s | FileCheck %s
+// REQUIRES: platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
@@ -70,7 +70,7 @@ module @TestConvolution {
 //CHECK:  [[VAL12:%.+]] = VPUMI40XX.ConfigureBarrier
 //CHECK:  [[VAL13:%.+]] = VPUMI40XX.ConfigureBarrier
 
-//CHECK: %startIndexes:2, %endIndexes:2 = "VPURegMapped.ExecutionGroup"([[VAL10]], [[VAL12]]) <{operandSegmentSizes = array<i32: 0, 1, 1>, resultSegmentSizes = array<i32: 2, 2>, task_type = #VPURegMapped.task_type<DPUInvariant>}> ({
+//CHECK: "VPURegMapped.ExecutionGroup"([[VAL10]], [[VAL12]]) <{operandSegmentSizes = array<i32: 0, 1, 1>, resultSegmentSizes = array<i32: 2, 2>, task_type = #VPURegMapped.task_type<DPUInvariant>}> ({
 //CHECK:  [[VAL18:%.+]] = VPUMI40XX.DPUInvariant
 //CHECK:  [[VAL19:%.+]] = VPUMI40XX.DPUInvariant
 //CHECK:  [[VAL20:%.+]] = VPUMI40XX.DPUVariant
@@ -240,37 +240,37 @@ module @Convolution attributes {config.compilationMode = #config.compilation_mod
 //CHECK:  [[VAL64:%.+]] = VPUMI40XX.ConfigureBarrier
 //CHECK:  [[VAL65:%.+]] = VPUMI40XX.ConfigureBarrier
 //CHECK:  [[VAL66:%.+]] = VPUMI40XX.ConfigureBarrier
-//CHECK:  %startIndexes:2, %endIndexes:2 = "VPURegMapped.ExecutionGroup"([[VAL63]], [[VAL65]])
+//CHECK:  "VPURegMapped.ExecutionGroup"([[VAL63]], [[VAL65]])
 //CHECK:  VPUMI40XX.DPUInvariant
 //CHECK:  VPUMI40XX.DPUInvariant
 //CHECK:  VPUMI40XX.DPUVariant
 //CHECK:  VPUMI40XX.DPUVariant
 //CHECK:  "VPURegMapped.GroupYield"
-//CHECK:  %startIndexes_0:2, %endIndexes_1:2 = "VPURegMapped.ExecutionGroup"([[VAL63]], [[VAL65]])
+//CHECK:  "VPURegMapped.ExecutionGroup"([[VAL63]], [[VAL65]])
 //CHECK:  VPUMI40XX.DPUInvariant
 //CHECK:  VPUMI40XX.DPUInvariant
 //CHECK:  VPUMI40XX.DPUVariant
 //CHECK:  VPUMI40XX.DPUVariant
 //CHECK:  "VPURegMapped.GroupYield"
-//CHECK:  %startIndexes_2:2, %endIndexes_3:2 = "VPURegMapped.ExecutionGroup"([[VAL63]], [[VAL65]])
+//CHECK:  "VPURegMapped.ExecutionGroup"([[VAL63]], [[VAL65]])
 //CHECK:  VPUMI40XX.DPUInvariant
 //CHECK:  VPUMI40XX.DPUInvariant
 //CHECK:  VPUMI40XX.DPUVariant
 //CHECK:  VPUMI40XX.DPUVariant
 //CHECK:  "VPURegMapped.GroupYield"
-//CHECK:  %startIndexes_4:2, %endIndexes_5:2 = "VPURegMapped.ExecutionGroup"([[VAL63]], [[VAL65]])
+//CHECK:  "VPURegMapped.ExecutionGroup"([[VAL63]], [[VAL65]])
 //CHECK:  VPUMI40XX.DPUInvariant
 //CHECK:  VPUMI40XX.DPUInvariant
 //CHECK:  VPUMI40XX.DPUVariant
 //CHECK:  VPUMI40XX.DPUVariant
 //CHECK:  "VPURegMapped.GroupYield"
-//CHECK:  %startIndexes_6:2, %endIndexes_7:2 = "VPURegMapped.ExecutionGroup"([[VAL63]], [[VAL65]])
+//CHECK:  "VPURegMapped.ExecutionGroup"([[VAL63]], [[VAL65]])
 //CHECK:  VPUMI40XX.DPUInvariant
 //CHECK:  VPUMI40XX.DPUInvariant
 //CHECK:  VPUMI40XX.DPUVariant
 //CHECK:  VPUMI40XX.DPUVariant
 //CHECK:  "VPURegMapped.GroupYield"
-//CHECK:  %startIndexes_8:2, %endIndexes_9:2 = "VPURegMapped.ExecutionGroup"([[VAL63]], [[VAL65]])
+//CHECK:  "VPURegMapped.ExecutionGroup"([[VAL63]], [[VAL65]])
 //CHECK:  VPUMI40XX.DPUInvariant
 //CHECK:  VPUMI40XX.DPUInvariant
 //CHECK:  VPUMI40XX.DPUVariant

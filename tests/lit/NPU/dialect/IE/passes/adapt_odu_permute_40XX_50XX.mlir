@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --adapt-odu-permute  %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --adapt-odu-permute  %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
@@ -108,7 +108,7 @@ func.func @PermuteODUWithPermuteCastBefore(%arg0: tensor<1x16x1x64xf16, {order =
         pads_end = [0, 1],
         strides = [1, 2],
         rounding_type = #IE.rounding_type<FLOOR>,
-        post_op = #IE.Clamp<min = 0.000000e+00 : f64, max = 6.000000e+00 : f64>
+        clamp = {min = 0.000000e+00 : f64, max = 6.000000e+00 : f64}
     } : tensor<1x16x1x64xf16, {order = #NHWC}>
             -> tensor<1x16x1x33xf16>
 

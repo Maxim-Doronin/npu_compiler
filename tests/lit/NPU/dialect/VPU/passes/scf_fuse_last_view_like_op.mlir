@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --scf-fuse-last-viewlike-op %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --scf-fuse-last-viewlike-op %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
@@ -208,3 +208,147 @@ func.func @FusingLastSliceOperationIntoScfForLoop(%arg0: tensor<1x16x?x1280xf16,
   %2 = VPU.Slice %1 [0, 0, 0, 0] [1, 3, -9223372036854775808, 1280] : tensor<1x16x?x1280xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 1280, 1280]> : tensor<4xsi64>, order = #NCHW}> to tensor<1x3x?x1280xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 1280, 1280]> : tensor<4xsi64>, order = #NCHW}>
   return %2 : tensor<1x3x?x1280xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 1280, 1280]> : tensor<4xsi64>, order = #NCHW}>
 }
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+#map = affine_map<(d0)[s0] -> (-d0 + s0, 90)>
+
+!qElemType = !quant.uniform<u8:f16, 0.0067687005388970467:49>
+
+!qInDynamic = tensor<1x3x?x1920x!qElemType, {bounds = #const.OpaqueI64Elements<[1, 3, 1080, 1920]> : tensor<4xsi64>, order = #NHWC}>
+!qInSliced = tensor<1x3x?x1920x!qElemType, {bounds = #const.OpaqueI64Elements<[1, 3, 90, 1920]> : tensor<4xsi64>, order = #NHWC}>
+!castOutDynamic = tensor<1x3x?x1920xui8, {bounds = #const.OpaqueI64Elements<[1, 3, 1080, 1920]> : tensor<4xsi64>, order = #NHWC}>
+
+// CHECK-LABEL: @FuseQuantizeCastToScf
+func.func @FuseQuantizeCastToScf(%arg0: !qInDynamic) -> !castOutDynamic {
+    %c0 = arith.constant 0 : index
+    %c2 = arith.constant 2 : index
+    %c90 = arith.constant 90 : index
+    %dim = tensor.dim %arg0, %c2 : !qInDynamic
+    %0 = tensor.empty(%dim) : !qInDynamic
+
+    %1 = scf.for %arg1 = %c0 to %dim step %c90 iter_args(%arg2 = %0) -> (!qInDynamic) {
+      %3 = affine.min #map(%arg1)[%dim]
+      %extracted_slice = tensor.extract_slice %arg0[0, 0, %arg1, 0] [1, 3, %3, 1920] [1, 1, 1, 1]
+        : !qInDynamic to !qInSliced
+      %inserted_slice = tensor.insert_slice %extracted_slice into %arg2[0, 0, %arg1, 0] [1, 3, %3, 1920] [1, 1, 1, 1]
+        : !qInSliced into !qInDynamic
+      scf.yield %inserted_slice : !qInDynamic
+    }
+    %2 = VPU.QuantizeCast(%1) {dstElemType = ui8} : !qInDynamic -> !castOutDynamic
+    return %2 : !castOutDynamic
+    
+    // CHECK-DAG: [[ZERO_CST:%.+]] = arith.constant 0 : index
+    // CHECK-DAG: [[TWO_CST:%.+]] = arith.constant 2 : index
+    // CHECK-DAG: [[STEP:%.+]] = arith.constant 90 : index
+
+    // CHECK: [[HEIGHT_DIM:%.+]] = tensor.dim %arg0, [[TWO_CST]]
+    // CHECK: [[OUT_BUFF:%.+]] = tensor.empty([[HEIGHT_DIM]])
+    // CHECK-SAME: : tensor<1x3x?x1920xui8, {bounds = #const.OpaqueI64Elements<[1, 3, 1080, 1920]> : tensor<4xsi64>, order = #NHWC}>
+
+    // CHECK: [[SCF:%.+]] = scf.for [[IDX:%.+]] = [[ZERO_CST]] to [[HEIGHT_DIM]] step [[STEP]] iter_args([[OUT:%.+]] = [[OUT_BUFF]])
+    // CHECK-SAME:  -> (tensor<1x3x?x1920xui8, {bounds = #const.OpaqueI64Elements<[1, 3, 1080, 1920]> : tensor<4xsi64>, order = #NHWC}>)
+
+    // CHECK: [[EXTRACT:%.+]] = tensor.extract_slice
+    // CHECK: [[QC:%.+]] = VPU.QuantizeCast([[EXTRACT]]) {dstElemType = ui8}
+    // CHECK-SAME: -> tensor<1x3x?x1920xui8, {bounds = #const.OpaqueI64Elements<[1, 3, 90, 1920]> : tensor<4xsi64>, order = #NHWC}>
+
+    // CHECK: [[INSERT:%.+]] = tensor.insert_slice [[QC]] into [[OUT]][0, 0, [[IDX]], 0] [1, 3, {{.+}}, 1920] [1, 1, 1, 1]
+    // CHECK-SAME: : tensor<1x3x?x1920xui8, {bounds = #const.OpaqueI64Elements<[1, 3, 90, 1920]> : tensor<4xsi64>, order = #NHWC}>
+    // CHECK-SAME: into tensor<1x3x?x1920xui8, {bounds = #const.OpaqueI64Elements<[1, 3, 1080, 1920]> : tensor<4xsi64>, order = #NHWC}>
+
+    // CHECK: scf.yield [[INSERT]] : tensor<1x3x?x1920xui8, {bounds = #const.OpaqueI64Elements<[1, 3, 1080, 1920]> : tensor<4xsi64>, order = #NHWC}>
+
+    // CHECK: return [[SCF]] : tensor<1x3x?x1920xui8, {bounds = #const.OpaqueI64Elements<[1, 3, 1080, 1920]> : tensor<4xsi64>, order = #NHWC}>
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+#mapH = affine_map<(d0)[s0] -> (-d0 + s0, 90)>
+#mapW = affine_map<(d0)[s0] -> (-d0 + s0, 480)>
+
+!qElemType = !quant.uniform<u8:f16, 0.0067687005388970467:49>
+
+!quantInputFull = tensor<1x3x?x?x!qElemType, {bounds = #const.OpaqueI64Elements<[1, 3, 1080, 1920]> : tensor<4xsi64>, order = #NHWC}>
+!quantInputTile = tensor<1x3x?x?x!qElemType, {bounds = #const.OpaqueI64Elements<[1, 3, 90, 480]> : tensor<4xsi64>, order = #NHWC}>
+!permutedFull = tensor<1x?x?x3x!qElemType, {bounds = #const.OpaqueI64Elements<[1, 1080, 1920, 3]> : tensor<4xsi64>, order = #NCHW}>
+!permutedTile = tensor<1x?x?x3x!qElemType, {bounds = #const.OpaqueI64Elements<[1, 90, 480, 3]> : tensor<4xsi64>, order = #NCHW}>
+!ui8OutputFull = tensor<1x?x?x3xui8, {bounds = #const.OpaqueI64Elements<[1, 1080, 1920, 3]> : tensor<4xsi64>, order = #NCHW}>
+!ui8OutputTile = tensor<1x?x?x3xui8, {bounds = #const.OpaqueI64Elements<[1, 90, 480, 3]> : tensor<4xsi64>, order = #NCHW}>
+
+// Verifies that a view-like op chain (PermuteCast -> QuantizeCast) is fused 
+
+// CHECK: #[[$MAPH:.+]] = affine_map<(d0)[s0] -> (-d0 + s0, 90)>
+// CHECK: #[[$MAPW:.+]] = affine_map<(d0)[s0] -> (-d0 + s0, 480)>
+
+// CHECK-LABEL:   @FusePermuteCastAndQuantizeCastChainToScf
+// CHECK-SAME:    [[INPUT:%arg[0-9]]]: tensor<1x3x?x?x!qElemType, {bounds = #const.OpaqueI64Elements<[1, 3, 1080, 1920]> : tensor<4xsi64>, order = #NHWC}>
+func.func @FusePermuteCastAndQuantizeCastChainToScf(%arg0: !quantInputFull) -> !ui8OutputFull {
+    %c0 = arith.constant 0 : index
+    %c2 = arith.constant 2 : index
+    %c3 = arith.constant 3 : index
+    %c90 = arith.constant 90 : index
+    %c480 = arith.constant 480 : index
+    %dimH = tensor.dim %arg0, %c2 : !quantInputFull
+    %dimW = tensor.dim %arg0, %c3 : !quantInputFull
+    %empty = tensor.empty(%dimH, %dimW) : !quantInputFull
+
+    %loop_h = scf.for %h = %c0 to %dimH step %c90 iter_args(%accH = %empty) -> (!quantInputFull) {
+      %loop_w = scf.for %w = %c0 to %dimW step %c480 iter_args(%accW = %accH) -> (!quantInputFull) {
+        %tileH = affine.min #mapH(%h)[%dimH]
+        %tileW = affine.min #mapW(%w)[%dimW]
+        %extracted = tensor.extract_slice %arg0[0, 0, %h, %w] [1, 3, %tileH, %tileW] [1, 1, 1, 1]
+          : !quantInputFull to !quantInputTile
+        %inserted = tensor.insert_slice %extracted into %accW[0, 0, %h, %w] [1, 3, %tileH, %tileW] [1, 1, 1, 1]
+          : !quantInputTile into !quantInputFull
+        scf.yield %inserted : !quantInputFull
+      }
+      scf.yield %loop_w : !quantInputFull
+    }
+    %permute_cast = VPU.PermuteCast(%loop_h) {dst_order = #NCHW, mem_perm = #NCHW} : !quantInputFull -> !permutedFull
+    %quantize_cast = VPU.QuantizeCast(%permute_cast) {dstElemType = ui8} : !permutedFull -> !ui8OutputFull
+    return %quantize_cast : !ui8OutputFull
+
+    // CHECK-DAG: [[CST_0:%.+]] = arith.constant 0 : index
+    // CHECK-DAG: [[CST_2:%.+]] = arith.constant 2 : index
+    // CHECK-DAG: [[CST_3:%.+]] = arith.constant 3 : index
+    // CHECK-DAG: [[CST_90:%.+]] = arith.constant 90 : index
+    // CHECK-DAG: [[CST_480:%.+]] = arith.constant 480 : index
+
+    // CHECK: [[DIM_H:%.+]] = tensor.dim [[INPUT]], [[CST_2]]
+    // CHECK-SAME: tensor<1x3x?x?x!qElemType, {bounds = #const.OpaqueI64Elements<[1, 3, 1080, 1920]> : tensor<4xsi64>, order = #NHWC}>
+    // CHECK: [[DIM_W:%.+]] = tensor.dim [[INPUT]], [[CST_3]]
+    // CHECK-SAME: tensor<1x3x?x?x!qElemType, {bounds = #const.OpaqueI64Elements<[1, 3, 1080, 1920]> : tensor<4xsi64>, order = #NHWC}>
+    // CHECK: [[OUTPUT_BUFF:%.+]] = tensor.empty([[DIM_H]], [[DIM_W]])
+    // CHECK-SAME: tensor<1x?x?x3xui8, {bounds = #const.OpaqueI64Elements<[1, 1080, 1920, 3]> : tensor<4xsi64>, order = #NCHW}>
+
+    // CHECK: [[LOOP_H:%.+]] = scf.for [[IV_H:%.+]] = [[CST_0]] to [[DIM_H]] step [[CST_90]] iter_args([[ACC_H:%.+]] = [[OUTPUT_BUFF]])
+    // CHECK-SAME: -> (tensor<1x?x?x3xui8, {bounds = #const.OpaqueI64Elements<[1, 1080, 1920, 3]> : tensor<4xsi64>, order = #NCHW}>)
+    // CHECK:   [[LOOP_W:%.+]] = scf.for [[IV_W:%.+]] = [[CST_0]] to [[DIM_W]] step [[CST_480]] iter_args([[ACC_W:%.+]] = [[ACC_H]])
+    // CHECK-SAME: -> (tensor<1x?x?x3xui8, {bounds = #const.OpaqueI64Elements<[1, 1080, 1920, 3]> : tensor<4xsi64>, order = #NCHW}>)
+
+    // CHECK:       [[TILE_H:%.+]] = affine.min #[[$MAPH]]([[IV_H]]){{\[}}[[DIM_H]]]
+    // CHECK:       [[TILE_W:%.+]] = affine.min #[[$MAPW]]([[IV_W]]){{\[}}[[DIM_W]]]
+    // CHECK:       [[EXTRACTED_SLICE:%.+]] = tensor.extract_slice [[INPUT]][0, 0, [[IV_H]], [[IV_W]]] [1, 3, [[TILE_H]], [[TILE_W]]] [1, 1, 1, 1]
+    // CHECK-SAME:    tensor<1x3x?x?x!qElemType, {bounds = #const.OpaqueI64Elements<[1, 3, 1080, 1920]> : tensor<4xsi64>, order = #NHWC}>
+    // CHECK-SAME:    tensor<1x3x?x?x!qElemType, {bounds = #const.OpaqueI64Elements<[1, 3, 90, 480]> : tensor<4xsi64>, order = #NHWC}>
+    // CHECK:       [[PERMUTE_CAST:%.+]] = VPU.PermuteCast([[EXTRACTED_SLICE]]) {dst_order = #NCHW, mem_perm = #NCHW}
+    // CHECK-SAME:    tensor<1x3x?x?x!qElemType, {bounds = #const.OpaqueI64Elements<[1, 3, 90, 480]> : tensor<4xsi64>, order = #NHWC}>
+    // CHECK-SAME:    tensor<1x?x?x3x!qElemType, {bounds = #const.OpaqueI64Elements<[1, 90, 480, 3]> : tensor<4xsi64>, order = #NCHW}>
+    // CHECK:       [[QUANTIZE_CAST:%.+]] = VPU.QuantizeCast([[PERMUTE_CAST]]) {dstElemType = ui8}
+    // CHECK-SAME:    tensor<1x?x?x3x!qElemType, {bounds = #const.OpaqueI64Elements<[1, 90, 480, 3]> : tensor<4xsi64>, order = #NCHW}>
+    // CHECK-SAME:    tensor<1x?x?x3xui8, {bounds = #const.OpaqueI64Elements<[1, 90, 480, 3]> : tensor<4xsi64>, order = #NCHW}>
+
+    // CHECK:       [[INSERTED_SLICE:%.+]] = tensor.insert_slice [[QUANTIZE_CAST]] into [[ACC_W]][0, [[IV_H]], [[IV_W]], 0] [1, [[TILE_H]], [[TILE_W]], 3] [1, 1, 1, 1]
+    // CHECK-SAME:    tensor<1x?x?x3xui8, {bounds = #const.OpaqueI64Elements<[1, 90, 480, 3]> : tensor<4xsi64>, order = #NCHW}>
+    // CHECK-SAME:    tensor<1x?x?x3xui8, {bounds = #const.OpaqueI64Elements<[1, 1080, 1920, 3]> : tensor<4xsi64>, order = #NCHW}>
+    // CHECK:       scf.yield [[INSERTED_SLICE]] : tensor<1x?x?x3xui8, {bounds = #const.OpaqueI64Elements<[1, 1080, 1920, 3]> : tensor<4xsi64>, order = #NCHW}>
+    // CHECK:     scf.yield [[LOOP_W]] : tensor<1x?x?x3xui8, {bounds = #const.OpaqueI64Elements<[1, 1080, 1920, 3]> : tensor<4xsi64>, order = #NCHW}>
+    // CHECK: return [[LOOP_H]] : tensor<1x?x?x3xui8, {bounds = #const.OpaqueI64Elements<[1, 1080, 1920, 3]> : tensor<4xsi64>, order = #NCHW}>
+}
+

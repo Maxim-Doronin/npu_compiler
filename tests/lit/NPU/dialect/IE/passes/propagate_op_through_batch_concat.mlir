@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --run-batch-op-processing-rewriters="rewriter=propagate-op-through-batch-concat-set" %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --run-batch-op-processing-rewriters="rewriter=propagate-op-through-batch-concat-set" %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL: @PropagateSoftmaxThroughBatchUnrolledMatmul
 func.func @PropagateSoftmaxThroughBatchUnrolledMatmul(%arg0: tensor<16x2xf32>, %arg1: tensor<16x2xf32>) -> tensor<2x16x2xf32> {
@@ -435,11 +435,11 @@ func.func @PropagateMultiply(%arg0: tensor<1x16x1x128xf16>, %arg1: tensor<1x16x1
 
     // CHECK-DAG:   [[GAMMA1:%.+]] = const.Declare tensor<128xf16> = dense<1.000000e+00>
     // CHECK-DAG:   [[GAMMA2:%.+]] = const.Declare tensor<128xf16> = dense<2.000000e+00>
-    // CHECK-DAG:   [[CST_MUL:%.+]] = const.Declare tensor<f16> = dense<2.000000e+00>
+    // CHECK-DAG:   [[CST_MUL:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<2.000000e+00> : tensor<f16>, [#const.Reshape<[1, 1, 1, 1]>]
     // CHECK:       [[RMS0:%.+]] = IE.RMS([[INPUT_0]], [[GAMMA1]]) {eps = 9.9999999747524271E-7 : f64} : tensor<1x16x1x128xf16>, tensor<128xf16> -> tensor<1x16x1x128xf16>
     // CHECK:       [[RMS1:%.+]] = IE.RMS([[INPUT_1]], [[GAMMA2]]) {eps = 9.9999999747524271E-7 : f64} : tensor<1x16x1x128xf16>, tensor<128xf16> -> tensor<1x16x1x128xf16>
-    // CHECK:       [[MUL0:%.+]] = IE.Multiply([[RMS0]], [[CST_MUL]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x16x1x128xf16>, tensor<f16> -> tensor<1x16x1x128xf16>
-    // CHECK:       [[MUL1:%.+]] = IE.Multiply([[RMS1]], [[CST_MUL]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x16x1x128xf16>, tensor<f16> -> tensor<1x16x1x128xf16>
+    // CHECK:       [[MUL0:%.+]] = IE.Multiply([[RMS0]], [[CST_MUL]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x16x1x128xf16>, tensor<1x1x1x1xf16> -> tensor<1x16x1x128xf16>
+    // CHECK:       [[MUL1:%.+]] = IE.Multiply([[RMS1]], [[CST_MUL]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x16x1x128xf16>, tensor<1x1x1x1xf16> -> tensor<1x16x1x128xf16>
     // CHECK:       [[CONCAT:%.+]] = IE.Concat([[MUL0]], [[MUL1]]) {per_axis = #IE.Concat<axis = 0 : i64>} : tensor<1x16x1x128xf16>, tensor<1x16x1x128xf16> -> tensor<2x16x1x128xf16>
     // CHECK:       return [[CONCAT]] : tensor<2x16x1x128xf16>
 }
@@ -448,7 +448,8 @@ func.func @PropagateMultiply(%arg0: tensor<1x16x1x128xf16>, %arg1: tensor<1x16x1
 
 // CHECK-LABEL: @NotPropagateMultiply
 // CHECK-SAME:  ([[INPUT_0:%.+]]: tensor<1x16x1x128xf16>, [[INPUT_1:%.+]]: tensor<1x16x1x128xf16>, [[INPUT_2:%.+]]: tensor<128xf16>)
-func.func @NotPropagateMultiply(%arg0: tensor<1x16x1x128xf16>, %arg1: tensor<1x16x1x128xf16>, %arg2: tensor<128xf16>) -> tensor<2x16x1x128xf16> {
+func.func @NotPropagateMultiply(%arg0: tensor<1x16x1x128xf16>, %arg1: tensor<1x16x1x128xf16>, %arg2: tensor<128xf16>) 
+-> (tensor<2x16x1x128xf16>, tensor<1x32x1x64xf16>) {
     %gamma1 = const.Declare tensor<128xf16> = dense<1.000000e+00> : tensor<128xf16>
     %cst_mul = const.Declare tensor<f16> = dense<2.000000e+00> : tensor<f16>
 
@@ -456,8 +457,9 @@ func.func @NotPropagateMultiply(%arg0: tensor<1x16x1x128xf16>, %arg1: tensor<1x1
     %1 = IE.RMS(%arg1, %arg2) {eps = 9.9999999747524271E-7 : f64} : tensor<1x16x1x128xf16>, tensor<128xf16> -> tensor<1x16x1x128xf16>
     %2 = IE.Concat(%0, %1) {per_axis = #IE.Concat<axis = 0>} : tensor<1x16x1x128xf16>, tensor<1x16x1x128xf16> -> tensor<2x16x1x128xf16>
     %3 = IE.Multiply(%2, %cst_mul) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<2x16x1x128xf16>, tensor<f16> -> tensor<2x16x1x128xf16>
+    %4 = IE.Reshape(%1) {shape_value = [1, 32, 1, 64]} : tensor<1x16x1x128xf16> -> tensor<1x32x1x64xf16>
 
-    return %3 : tensor<2x16x1x128xf16>
+    return %3, %4 : tensor<2x16x1x128xf16>, tensor<1x32x1x64xf16>
 
     // CHECK-DAG:   [[GAMMA1:%.+]] = const.Declare tensor<128xf16> = dense<1.000000e+00>
     // CHECK-DAG:   [[CST_MUL:%.+]] = const.Declare tensor<f16> = dense<2.000000e+00>
@@ -465,8 +467,9 @@ func.func @NotPropagateMultiply(%arg0: tensor<1x16x1x128xf16>, %arg1: tensor<1x1
     // CHECK:       [[RMS1:%.+]] = IE.RMS([[INPUT_1]], [[INPUT_2]]) {eps = 9.9999999747524271E-7 : f64} : tensor<1x16x1x128xf16>, tensor<128xf16> -> tensor<1x16x1x128xf16>
     // CHECK:       [[CONCAT:%.+]] = IE.Concat([[RMS0]], [[RMS1]]) {per_axis = #IE.Concat<axis = 0 : i64>} : tensor<1x16x1x128xf16>, tensor<1x16x1x128xf16> -> tensor<2x16x1x128xf16>
     // CHECK:       [[MUL:%.+]] = IE.Multiply([[CONCAT]], [[CST_MUL]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<2x16x1x128xf16>, tensor<f16> -> tensor<2x16x1x128xf16>
+    // CHECK:       [[RESHAPE:%.+]] = IE.Reshape([[RMS1]]) {shape_value = [1, 32, 1, 64]} : tensor<1x16x1x128xf16> -> tensor<1x32x1x64xf16>
 
-    // CHECK:       return [[MUL]] : tensor<2x16x1x128xf16>
+    // CHECK:       return [[MUL]], [[RESHAPE]] : tensor<2x16x1x128xf16>, tensor<1x32x1x64xf16>
 }
 
 // -----
@@ -565,4 +568,178 @@ func.func @NotPropagateMatMulMultipleUses(%arg0: tensor<1x128x128xf16>, %arg1: t
   // CHECK:       [[CONCAT:%.+]] = IE.Concat([[SOFTMAX0]], [[SOFTMAX1]]) {per_axis = #IE.Concat<axis = 0 : i64>}
   // CHECK:       [[MATMUL:%.+]] = IE.MatMul([[CONCAT]], [[ARG2]]) {transpose_b}
   // CHECK:       return [[MATMUL]], [[CONCAT]] : tensor<2x128x64xf16>, tensor<2x128x128xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @PropagateThroughMultiplySoftMax
+// CHECK-SAME:  ([[INPUT_0:%.+]]: tensor<1024x128xf32>, [[INPUT_1:%.+]]: tensor<1024x128xf32>, [[INPUT_2:%.+]]: tensor<1x1x1024x1024xf32>)
+func.func @PropagateThroughMultiplySoftMax(%arg0: tensor<1024x128xf32>, %arg1: tensor<1024x128xf32>, %arg2: tensor<1x1x1024x1024xf32>) -> tensor<1x2x1024x1024xf32> {
+    %cst = const.Declare tensor<1x1x1x1xf32> = dense<2.0> : tensor<1x1x1x1xf32>
+    %0 = IE.MatMul(%arg0, %arg1) {transpose_b} : tensor<1024x128xf32>, tensor<1024x128xf32> -> tensor<1024x1024xf32>
+    %1 = IE.MatMul(%arg0, %arg1) {transpose_b} : tensor<1024x128xf32>, tensor<1024x128xf32> -> tensor<1024x1024xf32>
+
+    
+    %2 = IE.AffineReshape(%0) {dim_mapping = [[0, 1, 2], [3]], shape_value = [1, 1, 1024, 1024]} : tensor<1024x1024xf32> -> tensor<1x1x1024x1024xf32>
+    %3 = IE.AffineReshape(%1) {dim_mapping = [[0, 1, 2], [3]], shape_value = [1, 1, 1024, 1024]} : tensor<1024x1024xf32> -> tensor<1x1x1024x1024xf32>
+
+    %4 = IE.Concat(%2, %3) {per_axis = #IE.Concat<axis = 1 : i64>} : tensor<1x1x1024x1024xf32>, tensor<1x1x1024x1024xf32> -> tensor<1x2x1024x1024xf32>
+    %5 = IE.Multiply(%4, %cst) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x2x1024x1024xf32>, tensor<1x1x1x1xf32> -> tensor<1x2x1024x1024xf32>
+    %6 = IE.Add(%5, %arg2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x2x1024x1024xf32>, tensor<1x1x1024x1024xf32> -> tensor<1x2x1024x1024xf32>
+    %7 = IE.SoftMax(%6) {axisInd = 3 : i64} : tensor<1x2x1024x1024xf32> -> tensor<1x2x1024x1024xf32>
+
+    return %7 : tensor<1x2x1024x1024xf32>
+
+    // CHECK-DAG:   [[CST:%.+]] = const.Declare tensor<1x1x1x1xf32>
+    // CHECK:       [[MATMUL0:%.+]] = IE.MatMul([[INPUT_0]], [[INPUT_1]]) {transpose_b} : tensor<1024x128xf32>, tensor<1024x128xf32> -> tensor<1024x1024xf32>
+    // CHECK:       [[MATMUL1:%.+]] = IE.MatMul([[INPUT_0]], [[INPUT_1]]) {transpose_b} : tensor<1024x128xf32>, tensor<1024x128xf32> -> tensor<1024x1024xf32>
+    // CHECK:       [[RESHAPE0:%.+]] = IE.AffineReshape([[MATMUL0]]) 
+    // CHECK:       [[RESHAPE1:%.+]] = IE.AffineReshape([[MATMUL1]]) 
+    // CHECK:       [[MUL0:%.+]] = IE.Multiply([[RESHAPE0]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x1024x1024xf32>, tensor<1x1x1x1xf32> -> tensor<1x1x1024x1024xf32>
+    // CHECK:       [[MUL1:%.+]] = IE.Multiply([[RESHAPE1]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x1024x1024xf32>, tensor<1x1x1x1xf32> -> tensor<1x1x1024x1024xf32>
+    // CHECK:       [[ADD0:%.+]] = IE.Add([[MUL0]], [[INPUT_2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x1024x1024xf32>, tensor<1x1x1024x1024xf32> -> tensor<1x1x1024x1024xf32>
+    // CHECK:       [[SOFTMAX0:%.+]] = IE.SoftMax([[ADD0]]) {axisInd = 3 : i64} : tensor<1x1x1024x1024xf32> -> tensor<1x1x1024x1024xf32>
+    // CHECK:       [[ADD1:%.+]] = IE.Add([[MUL1]], [[INPUT_2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x1024x1024xf32>, tensor<1x1x1024x1024xf32> -> tensor<1x1x1024x1024xf32>
+    // CHECK:       [[SOFTMAX1:%.+]] = IE.SoftMax([[ADD1]]) {axisInd = 3 : i64} : tensor<1x1x1024x1024xf32> -> tensor<1x1x1024x1024xf32>
+    // CHECK:       [[CONCAT:%.+]] = IE.Concat([[SOFTMAX0]], [[SOFTMAX1]]) {per_axis = #IE.Concat<axis = 1 : i64>} : tensor<1x1x1024x1024xf32>, tensor<1x1x1024x1024xf32> -> tensor<1x2x1024x1024xf32>
+    // CHECK:       return [[CONCAT]] : tensor<1x2x1024x1024xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @PropagateMultiplyWithNonTrivialSplatConst
+// CHECK-SAME:  ([[ARG0:%.+]]: tensor<1x192x8x10xf32>, [[ARG1:%.+]]: tensor<1x192x8x10xf32>, [[ARG2:%.+]]: tensor<1x192x8x10xf32>)
+func.func @PropagateMultiplyWithNonTrivialSplatConst(%arg0: tensor<1x192x8x10xf32>, %arg1: tensor<1x192x8x10xf32>, %arg2: tensor<1x192x8x10xf32>) -> tensor<1x384x8x10xf32> {
+    %cst_mul = const.Declare tensor<1x384x1x1xf32> = dense<2.000000e+00> : tensor<1x384x1x1xf32>
+
+    %0 = IE.Add(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x192x8x10xf32>, tensor<1x192x8x10xf32> -> tensor<1x192x8x10xf32>
+    %1 = IE.Add(%arg0, %arg2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x192x8x10xf32>, tensor<1x192x8x10xf32> -> tensor<1x192x8x10xf32>
+    %2 = IE.Concat(%0, %1) {per_axis = #IE.Concat<axis = 1>} : tensor<1x192x8x10xf32>, tensor<1x192x8x10xf32> -> tensor<1x384x8x10xf32>
+    %3 = IE.Multiply(%2, %cst_mul) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x384x8x10xf32>, tensor<1x384x1x1xf32> -> tensor<1x384x8x10xf32>
+
+    return %3 : tensor<1x384x8x10xf32>
+
+    // CHECK-DAG:   [[CST_MUL0:%.+]] = const.Declare tensor<1x192x1x1xf32> = dense<2.000000e+00> : tensor<1x384x1x1xf32>, [#const.SubView<[0, 0, 0, 0], [1, 192, 1, 1]>]
+    // CHECK-DAG:   [[CST_MUL1:%.+]] = const.Declare tensor<1x192x1x1xf32> = dense<2.000000e+00> : tensor<1x384x1x1xf32>, [#const.SubView<[0, 192, 0, 0], [1, 192, 1, 1]>]
+    // CHECK:       [[ADD0:%.+]] = IE.Add([[ARG0]], [[ARG1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x192x8x10xf32>, tensor<1x192x8x10xf32> -> tensor<1x192x8x10xf32>
+    // CHECK:       [[ADD1:%.+]] = IE.Add([[ARG0]], [[ARG2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x192x8x10xf32>, tensor<1x192x8x10xf32> -> tensor<1x192x8x10xf32>
+    // CHECK:       [[MUL0:%.+]] = IE.Multiply([[ADD0]], [[CST_MUL0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x192x8x10xf32>, tensor<1x192x1x1xf32> -> tensor<1x192x8x10xf32>
+    // CHECK:       [[MUL1:%.+]] = IE.Multiply([[ADD1]], [[CST_MUL1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x192x8x10xf32>, tensor<1x192x1x1xf32> -> tensor<1x192x8x10xf32>
+    // CHECK:       [[CONCAT:%.+]] = IE.Concat([[MUL0]], [[MUL1]]) {per_axis = #IE.Concat<axis = 1 : i64>} : tensor<1x192x8x10xf32>, tensor<1x192x8x10xf32> -> tensor<1x384x8x10xf32>
+    // CHECK:       return [[CONCAT]] : tensor<1x384x8x10xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @PropagateMultiplyWithLowerRankSplatConst
+// CHECK-SAME:  ([[ARG0:%.+]]: tensor<1x192x8x10xf32>, [[ARG1:%.+]]: tensor<1x192x8x10xf32>, [[ARG2:%.+]]: tensor<1x192x8x10xf32>)
+func.func @PropagateMultiplyWithLowerRankSplatConst(%arg0: tensor<1x192x8x10xf32>, %arg1: tensor<1x192x8x10xf32>, %arg2: tensor<1x192x8x10xf32>) -> tensor<1x384x8x10xf32> {
+    %cst_mul = const.Declare tensor<384x1x1xf32> = dense<2.000000e+00> : tensor<384x1x1xf32>
+
+    %0 = IE.Add(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x192x8x10xf32>, tensor<1x192x8x10xf32> -> tensor<1x192x8x10xf32>
+    %1 = IE.Add(%arg0, %arg2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x192x8x10xf32>, tensor<1x192x8x10xf32> -> tensor<1x192x8x10xf32>
+    %2 = IE.Concat(%0, %1) {per_axis = #IE.Concat<axis = 1>} : tensor<1x192x8x10xf32>, tensor<1x192x8x10xf32> -> tensor<1x384x8x10xf32>
+    %3 = IE.Multiply(%2, %cst_mul) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x384x8x10xf32>, tensor<384x1x1xf32> -> tensor<1x384x8x10xf32>
+
+    return %3 : tensor<1x384x8x10xf32>
+
+    // CHECK-DAG:   [[CST_MUL0:%.+]] = const.Declare tensor<1x192x1x1xf32> = dense<2.000000e+00> : tensor<384x1x1xf32>, [#const.SubView<[0, 0, 0], [192, 1, 1]>, #const.Reshape<[1, 192, 1, 1]>]
+    // CHECK-DAG:   [[CST_MUL1:%.+]] = const.Declare tensor<1x192x1x1xf32> = dense<2.000000e+00> : tensor<384x1x1xf32>, [#const.SubView<[192, 0, 0], [192, 1, 1]>, #const.Reshape<[1, 192, 1, 1]>]
+    // CHECK:       [[ADD0:%.+]] = IE.Add([[ARG0]], [[ARG1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x192x8x10xf32>, tensor<1x192x8x10xf32> -> tensor<1x192x8x10xf32>
+    // CHECK:       [[ADD1:%.+]] = IE.Add([[ARG0]], [[ARG2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x192x8x10xf32>, tensor<1x192x8x10xf32> -> tensor<1x192x8x10xf32>
+    // CHECK:       [[MUL0:%.+]] = IE.Multiply([[ADD0]], [[CST_MUL0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x192x8x10xf32>, tensor<1x192x1x1xf32> -> tensor<1x192x8x10xf32>
+    // CHECK:       [[MUL1:%.+]] = IE.Multiply([[ADD1]], [[CST_MUL1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x192x8x10xf32>, tensor<1x192x1x1xf32> -> tensor<1x192x8x10xf32>
+    // CHECK:       [[CONCAT:%.+]] = IE.Concat([[MUL0]], [[MUL1]]) {per_axis = #IE.Concat<axis = 1 : i64>} : tensor<1x192x8x10xf32>, tensor<1x192x8x10xf32> -> tensor<1x384x8x10xf32>
+    // CHECK:       return [[CONCAT]] : tensor<1x384x8x10xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @PropagateMultiplyWithScalarLikeSplatConst
+// CHECK-SAME:  ([[ARG0:%.+]]: tensor<1x192x8x10xf32>, [[ARG1:%.+]]: tensor<1x192x8x10xf32>, [[ARG2:%.+]]: tensor<1x192x8x10xf32>)
+func.func @PropagateMultiplyWithScalarLikeSplatConst(%arg0: tensor<1x192x8x10xf32>, %arg1: tensor<1x192x8x10xf32>, %arg2: tensor<1x192x8x10xf32>) -> tensor<1x384x8x10xf32> {
+    %cst_mul = const.Declare tensor<1x1xf32> = dense<2.000000e+00> : tensor<1x1xf32>
+
+    %0 = IE.Add(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x192x8x10xf32>, tensor<1x192x8x10xf32> -> tensor<1x192x8x10xf32>
+    %1 = IE.Add(%arg0, %arg2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x192x8x10xf32>, tensor<1x192x8x10xf32> -> tensor<1x192x8x10xf32>
+    %2 = IE.Concat(%0, %1) {per_axis = #IE.Concat<axis = 1>} : tensor<1x192x8x10xf32>, tensor<1x192x8x10xf32> -> tensor<1x384x8x10xf32>
+    %3 = IE.Multiply(%2, %cst_mul) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x384x8x10xf32>, tensor<1x1xf32> -> tensor<1x384x8x10xf32>
+
+    return %3 : tensor<1x384x8x10xf32>
+
+    // CHECK-DAG:   [[CST_MUL:%.+]] = const.Declare tensor<1x1x1x1xf32> = dense<2.000000e+00> : tensor<1x1xf32>, [#const.Reshape<[1, 1, 1, 1]>]
+    // CHECK:       [[ADD0:%.+]] = IE.Add([[ARG0]], [[ARG1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x192x8x10xf32>, tensor<1x192x8x10xf32> -> tensor<1x192x8x10xf32>
+    // CHECK:       [[ADD1:%.+]] = IE.Add([[ARG0]], [[ARG2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x192x8x10xf32>, tensor<1x192x8x10xf32> -> tensor<1x192x8x10xf32>
+    // CHECK:       [[MUL0:%.+]] = IE.Multiply([[ADD0]], [[CST_MUL]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x192x8x10xf32>, tensor<1x1x1x1xf32> -> tensor<1x192x8x10xf32>
+    // CHECK:       [[MUL1:%.+]] = IE.Multiply([[ADD1]], [[CST_MUL]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x192x8x10xf32>, tensor<1x1x1x1xf32> -> tensor<1x192x8x10xf32>
+    // CHECK:       [[CONCAT:%.+]] = IE.Concat([[MUL0]], [[MUL1]]) {per_axis = #IE.Concat<axis = 1 : i64>} : tensor<1x192x8x10xf32>, tensor<1x192x8x10xf32> -> tensor<1x384x8x10xf32>
+    // CHECK:       return [[CONCAT]] : tensor<1x384x8x10xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @PropagateMultiplyWith1DLowerRankSplatConst
+// CHECK-SAME:  ([[ARG0:%.+]]: tensor<1x192x8x1xf32>, [[ARG1:%.+]]: tensor<1x192x8x1xf32>, [[ARG2:%.+]]: tensor<1x192x8x1xf32>)
+func.func @PropagateMultiplyWith1DLowerRankSplatConst(%arg0: tensor<1x192x8x1xf32>, %arg1: tensor<1x192x8x1xf32>, %arg2: tensor<1x192x8x1xf32>) -> tensor<1x384x8x384xf32> {
+    %cst_mul = const.Declare tensor<384xf32> = dense<2.000000e+00> : tensor<384xf32>
+
+    %0 = IE.Add(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x192x8x1xf32>, tensor<1x192x8x1xf32> -> tensor<1x192x8x1xf32>
+    %1 = IE.Add(%arg0, %arg2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x192x8x1xf32>, tensor<1x192x8x1xf32> -> tensor<1x192x8x1xf32>
+    %2 = IE.Concat(%0, %1) {per_axis = #IE.Concat<axis = 1>} : tensor<1x192x8x1xf32>, tensor<1x192x8x1xf32> -> tensor<1x384x8x1xf32>
+    %3 = IE.Multiply(%2, %cst_mul) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x384x8x1xf32>, tensor<384xf32> -> tensor<1x384x8x384xf32>
+
+    return %3 : tensor<1x384x8x384xf32>
+
+    // CHECK-DAG:   [[CST_MUL:%.+]] = const.Declare tensor<1x1x1x384xf32> = dense<2.000000e+00> : tensor<384xf32>, [#const.Reshape<[1, 1, 1, 384]>]
+    // CHECK:       [[ADD0:%.+]] = IE.Add([[ARG0]], [[ARG1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x192x8x1xf32>, tensor<1x192x8x1xf32> -> tensor<1x192x8x1xf32>
+    // CHECK:       [[ADD1:%.+]] = IE.Add([[ARG0]], [[ARG2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x192x8x1xf32>, tensor<1x192x8x1xf32> -> tensor<1x192x8x1xf32>
+    // CHECK:       [[MUL0:%.+]] = IE.Multiply([[ADD0]], [[CST_MUL]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x192x8x1xf32>, tensor<1x1x1x384xf32> -> tensor<1x192x8x384xf32>
+    // CHECK:       [[MUL1:%.+]] = IE.Multiply([[ADD1]], [[CST_MUL]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x192x8x1xf32>, tensor<1x1x1x384xf32> -> tensor<1x192x8x384xf32>
+    // CHECK:       [[CONCAT:%.+]] = IE.Concat([[MUL0]], [[MUL1]]) {per_axis = #IE.Concat<axis = 1 : i64>} : tensor<1x192x8x384xf32>, tensor<1x192x8x384xf32> -> tensor<1x384x8x384xf32>
+    // CHECK:       return [[CONCAT]] : tensor<1x384x8x384xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @NotPropagateMultiplyWithNonSplatConst
+// CHECK-SAME:  ([[ARG0:%.+]]: tensor<1x2x8x10xf32>, [[ARG1:%.+]]: tensor<1x2x8x10xf32>, [[ARG2:%.+]]: tensor<1x2x8x10xf32>)
+func.func @NotPropagateMultiplyWithNonSplatConst(%arg0: tensor<1x2x8x10xf32>, %arg1: tensor<1x2x8x10xf32>, %arg2: tensor<1x2x8x10xf32>) -> tensor<1x4x8x10xf32> {
+    // Non-splat per-channel scale: values differ across the 4 channels.
+    %cst_mul = const.Declare tensor<1x4x1x1xf32> = dense<[[[[1.0]], [[2.0]], [[3.0]], [[4.0]]]]> : tensor<1x4x1x1xf32>
+
+    %0 = IE.Add(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x2x8x10xf32>, tensor<1x2x8x10xf32> -> tensor<1x2x8x10xf32>
+    %1 = IE.Add(%arg0, %arg2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x2x8x10xf32>, tensor<1x2x8x10xf32> -> tensor<1x2x8x10xf32>
+    %2 = IE.Concat(%0, %1) {per_axis = #IE.Concat<axis = 1>} : tensor<1x2x8x10xf32>, tensor<1x2x8x10xf32> -> tensor<1x4x8x10xf32>
+    %3 = IE.Multiply(%2, %cst_mul) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x4x8x10xf32>, tensor<1x4x1x1xf32> -> tensor<1x4x8x10xf32>
+
+    return %3 : tensor<1x4x8x10xf32>
+
+    // CHECK-DAG:   [[CST_MUL:%.+]] = const.Declare tensor<1x4x1x1xf32>
+    // CHECK:       [[ADD0:%.+]] = IE.Add([[ARG0]], [[ARG1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x2x8x10xf32>, tensor<1x2x8x10xf32> -> tensor<1x2x8x10xf32>
+    // CHECK:       [[ADD1:%.+]] = IE.Add([[ARG0]], [[ARG2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x2x8x10xf32>, tensor<1x2x8x10xf32> -> tensor<1x2x8x10xf32>
+    // CHECK:       [[CONCAT:%.+]] = IE.Concat([[ADD0]], [[ADD1]]) {per_axis = #IE.Concat<axis = 1 : i64>} : tensor<1x2x8x10xf32>, tensor<1x2x8x10xf32> -> tensor<1x4x8x10xf32>
+    // CHECK:       [[MUL:%.+]] = IE.Multiply([[CONCAT]], [[CST_MUL]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x4x8x10xf32>, tensor<1x4x1x1xf32> -> tensor<1x4x8x10xf32>
+    // CHECK:       return [[MUL]] : tensor<1x4x8x10xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @NotPropagateMultiplyWithHigherRankConst
+// CHECK-SAME:  ([[ARG0:%.+]]: tensor<1x192x8x10xf32>, [[ARG1:%.+]]: tensor<1x192x8x10xf32>, [[ARG2:%.+]]: tensor<1x192x8x10xf32>)
+func.func @NotPropagateMultiplyWithHigherRankConst(%arg0: tensor<1x192x8x10xf32>, %arg1: tensor<1x192x8x10xf32>, %arg2: tensor<1x192x8x10xf32>) -> tensor<1x1x384x8x10xf32> {
+    %cst_mul = const.Declare tensor<1x1x384x1x1xf32> = dense<2.000000e+00> : tensor<1x1x384x1x1xf32>
+
+    %0 = IE.Add(%arg0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x192x8x10xf32>, tensor<1x192x8x10xf32> -> tensor<1x192x8x10xf32>
+    %1 = IE.Add(%arg0, %arg2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x192x8x10xf32>, tensor<1x192x8x10xf32> -> tensor<1x192x8x10xf32>
+    %2 = IE.Concat(%0, %1) {per_axis = #IE.Concat<axis = 1>} : tensor<1x192x8x10xf32>, tensor<1x192x8x10xf32> -> tensor<1x384x8x10xf32>
+    %3 = IE.Multiply(%2, %cst_mul) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x384x8x10xf32>, tensor<1x1x384x1x1xf32> -> tensor<1x1x384x8x10xf32>
+
+    return %3 : tensor<1x1x384x8x10xf32>
+
+    // CHECK-DAG:   [[CST_MUL:%.+]] = const.Declare tensor<1x1x384x1x1xf32>
+    // CHECK:       [[ADD0:%.+]] = IE.Add([[ARG0]], [[ARG1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x192x8x10xf32>, tensor<1x192x8x10xf32> -> tensor<1x192x8x10xf32>
+    // CHECK:       [[ADD1:%.+]] = IE.Add([[ARG0]], [[ARG2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x192x8x10xf32>, tensor<1x192x8x10xf32> -> tensor<1x192x8x10xf32>
+    // CHECK:       [[CONCAT:%.+]] = IE.Concat([[ADD0]], [[ADD1]]) {per_axis = #IE.Concat<axis = 1 : i64>} : tensor<1x192x8x10xf32>, tensor<1x192x8x10xf32> -> tensor<1x384x8x10xf32>
+    // CHECK:       [[MUL:%.+]] = IE.Multiply([[CONCAT]], [[CST_MUL]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x384x8x10xf32>, tensor<1x1x384x1x1xf32> -> tensor<1x1x384x8x10xf32>
+    // CHECK:       return [[MUL]] : tensor<1x1x384x8x10xf32>
 }

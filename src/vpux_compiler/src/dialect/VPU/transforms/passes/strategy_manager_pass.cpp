@@ -8,7 +8,7 @@
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
-#include "vpux/compiler/dialect/VPU/transforms/factories/mc_strategy_getter.hpp"
+#include "vpux/compiler/dialect/VPU/interfaces/strategies.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/layer_vpunn_cost.hpp"
 #include "vpux/compiler/dialect/VPU/utils/generate_tiling.hpp"
 #include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
@@ -49,7 +49,7 @@ private:
     SmallVector<std::pair<Strategy, StrategyCost>> getOperationOptions(mlir::Operation* operation,
                                                                        SiblingOpsAnalysis& siblingsAnalysis,
                                                                        size_t numTiles);
-    SmallVector<VPU::MultiClusterStrategy> getAvailiableStrategies(config::ArchKind arch) const;
+    SmallVector<VPU::MultiClusterStrategy> getAvailiableStrategies(mlir::MLIRContext* ctx) const;
     bool checkDefaultStrategy(MultiClusterStrategy strategy) const;
     void fillInOptions(TilingOptions& options) const;
     bool mcTilingNeeded() const;
@@ -215,8 +215,9 @@ SmallVector<std::pair<Strategy, StrategyCost>> StrategyManagerImplPass::getOpera
     return strategies;
 }
 
-SmallVector<VPU::MultiClusterStrategy> StrategyManagerImplPass::getAvailiableStrategies(config::ArchKind arch) const {
-    auto mcListGetter = createMCStrategyGetter(arch, _numTiles);
+SmallVector<VPU::MultiClusterStrategy> StrategyManagerImplPass::getAvailiableStrategies(mlir::MLIRContext* ctx) const {
+    const auto& strategyFactory = VPU::getVPUStrategyFactory(ctx);
+    auto mcListGetter = strategyFactory->getMultiClusterStrategy(_numTiles);
 
     SmallVector<VPU::MultiClusterStrategy> strategies;
     mcListGetter->getMCStrategies(strategies);
@@ -226,10 +227,11 @@ SmallVector<VPU::MultiClusterStrategy> StrategyManagerImplPass::getAvailiableStr
 void StrategyManagerImplPass::safeRunOnFunc() {
     auto func = getOperation();
     auto module = func->getParentOfType<mlir::ModuleOp>();
+    auto& ctx = getContext();
     auto siblingsAnalysis = getAnalysis<SiblingOpsAnalysis>();
     _costModel = std::make_shared<LayerVPUNNCost>(func);
     _numTiles = config::getTileExecutor(module).getCount();
-    _archStrategies = getAvailiableStrategies(config::getArch(module));
+    _archStrategies = getAvailiableStrategies(&ctx);
 
     // calculate cost for all possible strategies
     // assign strategy with min cost

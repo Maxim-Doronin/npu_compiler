@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-fake-convert-to-fake-quantize --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --convert-fake-convert-to-fake-quantize --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU5010
 
 // CHECK-LABEL: @ConvertFakeConvertToFakeQuantizeF8E3M4
 // CHECK-SAME:  [[INPUT:%.+]]: tensor<1x80x3000xf16>

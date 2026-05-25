@@ -20,6 +20,10 @@ add_subdirectory(vpux-binutils)
 
 add_subdirectory(npureg-tblgen)
 
+if(ENABLE_BYTECODE_INTERPRETER)
+    add_subdirectory(bytecode_interpreter)
+endif()
+
 #
 # install python tools
 #

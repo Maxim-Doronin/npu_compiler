@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --uniquify-branches %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --uniquify-branches %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL: func.func @MoveExpandBeforeMultipleSlices
 // CHECK-SAME:  [[INPUT0:%.+]]: tensor<2x70x4x4xf16>, [[INPUT1:%.+]]: tensor<16x80x1x1xf16>
@@ -620,11 +620,10 @@ func.func @MoveAffineReshapeType1BeforeMultipleSlices(%arg0: tensor<1x2x76x64xf1
 
     // CHECK:       [[RESHAPE:%.+]] = IE.AffineReshape([[INPUT]])
     // CHECK-SAME{LITERAL}:   {dim_mapping = [[0], [0], [0], [1]], shape_value = [128, 76]} : tensor<1x2x76x64xf16> -> tensor<128x76xf16>
-    // CHECK:       [[SLICE1:%.+]] = IE.Slice [[RESHAPE]] [64, 0] [64, 76] : tensor<128x76xf16> to tensor<64x76xf16>
-    // CHECK:       [[SLICE0:%.+]] = IE.Slice [[RESHAPE]] [0, 0] [64, 76] : tensor<128x76xf16> to tensor<64x76xf16>
-    // CHECK:       [[PERMUTE0:%.+]] = IE.PermuteCast([[SLICE0]]) {dst_order = #CN, mem_perm = #NC} : tensor<64x76xf16> -> tensor<76x64xf16, {order = #CN}>
-    // CHECK:       [[PERMUTE1:%.+]] = IE.PermuteCast([[SLICE1]]) {dst_order = #CN, mem_perm = #NC} : tensor<64x76xf16> -> tensor<76x64xf16, {order = #CN}>
-    // CHECK:       return [[PERMUTE0]], [[PERMUTE1]] : tensor<76x64xf16, {order = #CN}>, tensor<76x64xf16, {order = #CN}>
+    // CHECK:       [[PERMUTE:%.+]] = IE.PermuteCast([[RESHAPE]]) {dst_order = #CN, mem_perm = #NC} : tensor<128x76xf16> -> tensor<76x128xf16, {order = #CN}>
+    // CHECK:       [[SLICE0:%.+]] = IE.Slice [[PERMUTE]] [0, 0] [76, 64] : tensor<76x128xf16, {order = #CN}> to tensor<76x64xf16, {order = #CN}>
+    // CHECK:       [[SLICE1:%.+]] = IE.Slice [[PERMUTE]] [0, 64] [76, 64] : tensor<76x128xf16, {order = #CN}> to tensor<76x64xf16, {order = #CN}>
+    // CHECK:       return [[SLICE0]], [[SLICE1]] : tensor<76x64xf16, {order = #CN}>, tensor<76x64xf16, {order = #CN}>
 
 }
 
@@ -901,7 +900,7 @@ func.func @NoMoveReorderBeforeSplitAsSplitDimPos(%arg0: tensor<1x2x96x49xf16, {o
 // -----
 
 !qElemType = !quant.uniform<u4:f16:1, {1.0:128,2.0:128}>
-!qElemType1 = !quant.quantile<u4:f8E4M3FN:f16:1, {-9.000000e+00,-8.000000e+00,-7.000000e+00,-6.000000e+00,-5.000000e+00,-4.000000e+00,-3.000000e+00,-2.000000e+00,-1.000000e+00,0.000000e+00,1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00,5.000000e+00,6.000000e+00}:{4.000000e+00,6.000000e+00}>
+!qElemType1 = !quant.uniform<!QuantileType.quantile<ui4:f8E4M3FN, {-9.000000e+00,-8.000000e+00,-7.000000e+00,-6.000000e+00,-5.000000e+00,-4.000000e+00,-3.000000e+00,-2.000000e+00,-1.000000e+00,0.000000e+00,1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00,5.000000e+00,6.000000e+00}>:f16:1, {4.000000e+00,6.000000e+00}>
 
 // CHECK-LABEL: @MoveQuantizeCastBeforeMultipleSlices
 // CHECK-SAME:      [[INPUT:%.+]]: tensor<4x2x!qElemType>
@@ -922,8 +921,8 @@ func.func @MoveQuantizeCastBeforeMultipleSlices(%arg0: tensor<4x2x!qElemType>) -
 
 // -----
 
-!qElemType = !quant.quantile<u4:f8E4M3FN:f16:1, {-9.000000e+00,-8.000000e+00,-7.000000e+00,-6.000000e+00,-5.000000e+00,-4.000000e+00,-3.000000e+00,-2.000000e+00,-1.000000e+00,0.000000e+00,1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00,5.000000e+00,6.000000e+00}:{2.000000e+00,3.000000e+00}>
-!qElemType1 = !quant.quantile<u4:f8E4M3FN:f16:1, {-9.000000e+00,-8.000000e+00,-7.000000e+00,-6.000000e+00,-5.000000e+00,-4.000000e+00,-3.000000e+00,-2.000000e+00,-1.000000e+00,0.000000e+00,1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00,5.000000e+00,6.000000e+00}:{4.000000e+00,6.000000e+00}>
+!qElemType = !quant.uniform<!QuantileType.quantile<ui4:f8E4M3FN, {-9.000000e+00,-8.000000e+00,-7.000000e+00,-6.000000e+00,-5.000000e+00,-4.000000e+00,-3.000000e+00,-2.000000e+00,-1.000000e+00,0.000000e+00,1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00,5.000000e+00,6.000000e+00}>:f16:1, {2.000000e+00,3.000000e+00}>
+!qElemType1 = !quant.uniform<!QuantileType.quantile<ui4:f8E4M3FN, {-9.000000e+00,-8.000000e+00,-7.000000e+00,-6.000000e+00,-5.000000e+00,-4.000000e+00,-3.000000e+00,-2.000000e+00,-1.000000e+00,0.000000e+00,1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00,5.000000e+00,6.000000e+00}>:f16:1, {4.000000e+00,6.000000e+00}>
 
 // CHECK-LABEL: @MoveQuantizeCastBeforeMultipleSlicesQuantile
 // CHECK-SAME:      [[INPUT:%.+]]: tensor<4x2x!qElemType>
@@ -1178,4 +1177,38 @@ func.func @MoveReorderWithTwoUsesBeforeEltwise(%arg0: tensor<1x160x1x1xf16>) -> 
     // CHECK:       [[REORDER:%.+]] = IE.Reorder
     // CHECK-DAG:   [[SIN:%.+]] = IE.Sin([[REORDER]]) : tensor<1x1x1x160xf16, {order = #NHWC}> -> tensor<1x1x1x160xf16, {order = #NHWC}>
     // CHECK-DAG:   [[COS:%.+]] = IE.Cos([[REORDER]]) : tensor<1x1x1x160xf16, {order = #NHWC}> -> tensor<1x1x1x160xf16, {order = #NHWC}>
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// Verify that MovePermuteCastBeforeSlice is skipped when mem_perm moves a sliced memory axis.
+// Source is NHWC [3, 16, 4, 8]: slice cuts N (logical dim0, memory dim0) and C (logical dim1,
+// memory dim3). mem_perm=#NCWH moves memory dim3 to position 2, so the sliced memory axis 3
+// is reordered. The transformation is blocked to avoid applying a non-trivial mem_perm to the
+// pre-slice source shape.
+
+// CHECK-LABEL: func.func @NoMovePermuteCastBeforeSliceMemPermModifiesSliceAxis
+// CHECK-SAME:  [[INPUT:%.+]]: tensor<3x16x4x8xf16, {order = #NHWC}>
+func.func @NoMovePermuteCastBeforeSliceMemPermModifiesSliceAxis(%arg0: tensor<3x16x4x8xf16, {order = #NHWC}>) -> (tensor<1x4x1x8xf16>, tensor<1x4x1x8xf16>, tensor<1x4x1x8xf16>) {
+    %0 = IE.Slice %arg0 [0, 0, 0, 0] [1, 1, 4, 8] : tensor<3x16x4x8xf16, {order = #NHWC}> to tensor<1x1x4x8xf16, {order = #NHWC}>
+    %1 = IE.Slice %arg0 [1, 0, 0, 0] [1, 1, 4, 8] : tensor<3x16x4x8xf16, {order = #NHWC}> to tensor<1x1x4x8xf16, {order = #NHWC}>
+    %2 = IE.Slice %arg0 [2, 0, 0, 0] [1, 1, 4, 8] : tensor<3x16x4x8xf16, {order = #NHWC}> to tensor<1x1x4x8xf16, {order = #NHWC}>
+
+    %3 = IE.PermuteCast(%0) {dst_order = #NCHW, mem_perm = #NCWH} : tensor<1x1x4x8xf16, {order = #NHWC}> -> tensor<1x4x1x8xf16>
+    %4 = IE.PermuteCast(%1) {dst_order = #NCHW, mem_perm = #NCWH} : tensor<1x1x4x8xf16, {order = #NHWC}> -> tensor<1x4x1x8xf16>
+    %5 = IE.PermuteCast(%2) {dst_order = #NCHW, mem_perm = #NCWH} : tensor<1x1x4x8xf16, {order = #NHWC}> -> tensor<1x4x1x8xf16>
+
+    return %3, %4, %5 : tensor<1x4x1x8xf16>, tensor<1x4x1x8xf16>, tensor<1x4x1x8xf16>
+
+    // CHECK: [[SLICE0:%.+]] = IE.Slice [[INPUT]] [0, 0, 0, 0] [1, 1, 4, 8] : tensor<3x16x4x8xf16, {order = #NHWC}> to tensor<1x1x4x8xf16, {order = #NHWC}>
+    // CHECK: [[SLICE1:%.+]] = IE.Slice [[INPUT]] [1, 0, 0, 0] [1, 1, 4, 8] : tensor<3x16x4x8xf16, {order = #NHWC}> to tensor<1x1x4x8xf16, {order = #NHWC}>
+    // CHECK: [[SLICE2:%.+]] = IE.Slice [[INPUT]] [2, 0, 0, 0] [1, 1, 4, 8] : tensor<3x16x4x8xf16, {order = #NHWC}> to tensor<1x1x4x8xf16, {order = #NHWC}>
+    // CHECK: [[PERMUTECAST0:%.+]] = IE.PermuteCast([[SLICE0]]) {dst_order = #NCHW, mem_perm = #NCWH} : tensor<1x1x4x8xf16, {order = #NHWC}> -> tensor<1x4x1x8xf16>
+    // CHECK: [[PERMUTECAST1:%.+]] = IE.PermuteCast([[SLICE1]]) {dst_order = #NCHW, mem_perm = #NCWH} : tensor<1x1x4x8xf16, {order = #NHWC}> -> tensor<1x4x1x8xf16>
+    // CHECK: [[PERMUTECAST2:%.+]] = IE.PermuteCast([[SLICE2]]) {dst_order = #NCHW, mem_perm = #NCWH} : tensor<1x1x4x8xf16, {order = #NHWC}> -> tensor<1x4x1x8xf16>
+    // CHECK: return [[PERMUTECAST0]], [[PERMUTECAST1]], [[PERMUTECAST2]] : tensor<1x4x1x8xf16>, tensor<1x4x1x8xf16>, tensor<1x4x1x8xf16>
 }

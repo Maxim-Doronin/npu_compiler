@@ -3,10 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --init-compiler="vpu-arch=%arch% allow-custom-values=true" --split-input-file --convert-VPUASM-to-NPUReg40XX --create-elf-relocations %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --init-compiler="platform=%platform% allow-custom-values=true" --split-input-file --convert-VPUASM-to-NPUReg40XX --create-elf-relocations %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
-module @OneDMAWithoutAttributes attributes {config.arch = #config.arch_kind<NPU40XX>} {
+module @OneDMAWithoutAttributes attributes {config.platform = #config.platform<NPU4000>} {
   config.Resources 6 of @NCE at 1.700000e+03 MHz {
     config.ExecutorResource 1 of @DPU
   }
@@ -21,15 +21,17 @@ module @OneDMAWithoutAttributes attributes {config.arch = #config.arch_kind<NPU4
   } outputsInfo : {
     DataInfo "output_0" : tensor<1x2x3x4xf16>
   }
-  VPUASM.IOBindings inputDeclarations : {
+  VPUASM.InputBindings inputDeclarations : {
     VPUASM.DeclareBuffer @input_0_buffDecl !VPUASM.Buffer< "NetworkInput"[0] <0> : memref<1x2x3x4xf16, @DDR> :  swizzling(0)>
     VPUASM.DeclareBuffer @indices_buffDecl !VPUASM.Buffer< "CMX_NN"[4] <0> : memref<1x5x1x1xi64, [@CMX_NN, 4]> :  swizzling(0)>
-  } outputDeclarations : {
+  }
+  VPUASM.OutputBindings outputDeclarations : {
     VPUASM.DeclareBuffer @output_0_buffDecl !VPUASM.Buffer< "NetworkOutput"[0] <0> : memref<1x2x3x4xf16, @DDR> :  swizzling(0)>
-  } profilingBuffDeclarations : {
+  }
+  VPUASM.ProfilingBindings profilingDeclarations : {
   }
   func.func @main() {
-    ELF.Main @ELFMain {
+    ELF.Main {
       ELF.CreateLogicalSection @io.NetworkInput0 aligned(1) secType(SHT_NOBITS) secFlags(VPU_SHF_USERINPUT) secLocation(<DDR>) {
         VPUASM.DeclareBuffer @DeclareBuffer0 !VPUASM.Buffer< "NetworkInput"[0] <0> : memref<1x2x3x4xf16, @DDR> :  swizzling(0)>
       }

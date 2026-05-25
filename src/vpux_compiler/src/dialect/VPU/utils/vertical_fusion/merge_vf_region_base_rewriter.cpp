@@ -146,7 +146,7 @@ size_t MergeVFRegionBaseRewriter<VFCaseType>::getLinkNumber(VPU::VerticalFusionO
 }
 
 template <typename VFCaseType>
-bool MergeVFRegionBaseRewriter<VFCaseType>::alignMCTiling(VPU::VerticalFusionOp currentOp,
+bool MergeVFRegionBaseRewriter<VFCaseType>::isLegalFusion(VPU::VerticalFusionOp currentOp,
                                                           VPU::VerticalFusionOp prevOp) const {
     for (auto operand : prevOp->getOperands()) {
         auto parent = findParent(operand);
@@ -169,21 +169,10 @@ bool MergeVFRegionBaseRewriter<VFCaseType>::alignMCTiling(VPU::VerticalFusionOp 
         return false;
     }
 
-    const auto getCurrInputArgument = [](VPU::VerticalFusionOp currentOp,
-                                         VPU::VerticalFusionOp prevOp) -> mlir::BlockArgument {
-        for (auto blockArg : currentOp.getBody()->getArguments()) {
-            auto operand = currentOp.getOperand(blockArg.getArgNumber());
-            if (operand.getDefiningOp() == prevOp.getOperation()) {
-                return blockArg;
-            }
-        }
-        return nullptr;
-    };
-
     // Get output op of previous vf region
     auto prevOutputOp = prevOp.getBody()->getTerminator()->getOperands().back().getDefiningOp();
     // Get input arg of current vf region corresponding to previous vf op
-    auto currInputArg = getCurrInputArgument(currentOp, prevOp);
+    auto currInputArg = getLinkedArgumentBetweenVFOps(currentOp, prevOp);
     VPUX_THROW_UNLESS(currInputArg != nullptr,
                       "No corresponding input argument found for current VF region {0} with previous VF region {1}",
                       currentOp, prevOp);
@@ -193,67 +182,10 @@ bool MergeVFRegionBaseRewriter<VFCaseType>::alignMCTiling(VPU::VerticalFusionOp 
         return clusterOp != nullptr && clusterOp.getMultiClusterStrategy().has_value();
     };
 
-    const auto getOutputDistributedType = [](VPU::ClusteredOpInterface clusteredOp) {
-        const auto outputType = mlir::cast<vpux::NDTypeInterface>(clusteredOp->getResult(0).getType());
-        const auto numClusters =
-                clusteredOp.getOptimalNumClusters(outputType.getShape(), clusteredOp.getMultiClusterStrategy().value());
-
-        auto ndType = mlir::cast<vpux::NDTypeInterface>(
-                VPU::getDistributedOutputTypeFromOp(clusteredOp, outputType, numClusters));
-        if (auto sparseTensorType = mlir::dyn_cast<VPU::SparseTensorType>(ndType)) {
-            ndType = mlir::cast<vpux::NDTypeInterface>(sparseTensorType.getData());
-        }
-
-        return mlir::dyn_cast_or_null<VPU::DistributedTensorType>(ndType);
-    };
-
-    const auto getInputDistributedType = [](VPU::ClusteredOpInterface clusteredOp, mlir::Value inputOperand,
-                                            bool& isSparsed) {
-        const auto inputType = mlir::cast<NDTypeInterface>(inputOperand.getType());
-        isSparsed = false;
-        const auto numClusters =
-                clusteredOp.getOptimalNumClusters(inputType.getShape(), clusteredOp.getMultiClusterStrategy().value());
-
-        auto nceOp = mlir::dyn_cast<VPU::NCEOpInterface>(clusteredOp.getOperation());
-
-        auto ndType = (nceOp != nullptr && nceOp.getWeightsOperand() == inputOperand)
-                              ? mlir::cast<NDTypeInterface>(
-                                        VPU::getDistributedFilterTypeFromOp(nceOp, inputType, numClusters))
-                              : mlir::cast<NDTypeInterface>(VPU::getDistributedActivationTypeFromOp(
-                                        clusteredOp, inputOperand, inputType, numClusters));
-        if (auto sparseTensorType = mlir::dyn_cast<VPU::SparseTensorType>(ndType)) {
-            ndType = mlir::cast<NDTypeInterface>(sparseTensorType.getData());
-            isSparsed = true;
-        }
-
-        return mlir::dyn_cast_or_null<VPU::DistributedTensorType>(ndType);
-    };
-
-    const auto inferInputDistributedType = [](VPU::DistributedTensorType srcDistType,
-                                              ArrayRef<mlir::Operation*> inputViewOps) {
-        auto inputDistType = mlir::cast<vpux::NDTypeInterface>(srcDistType);
-        auto distribution = VPU::DistributionInfo::getClassFromAttr(srcDistType.getDistribution());
-        for (auto viewOp : inputViewOps) {
-            if (auto distCastOp = mlir::dyn_cast<VPU::DistributedCastOpInterface>(viewOp)) {
-                auto castedTypeWithDistribution =
-                        distCastOp.inferCastedTypeAndDistribution(inputDistType, distribution);
-                if (mlir::succeeded(castedTypeWithDistribution)) {
-                    inputDistType = mlir::cast<vpux::NDTypeInterface>(castedTypeWithDistribution.value().first);
-                    distribution = castedTypeWithDistribution.value().second;
-                }
-            }
-        }
-        TensorDistributionMap distributionMap;
-        distributionMap.insert(std::make_pair(inputDistType, distribution));
-        return mlir::cast<VPU::DistributedTensorType>(
-                getDistributedTypeFromDistributionMap(inputDistType, distributionMap));
-    };
-
     // Check if previous output op has MC strategy
-    const auto isPrevOutOpWithMCStrategy = isClusteredOpWithMCStrategy(prevOutputOp);
-    const auto prevOutDistType = isPrevOutOpWithMCStrategy
-                                         ? getOutputDistributedType(mlir::cast<VPU::ClusteredOpInterface>(prevOutputOp))
-                                         : nullptr;
+    const auto prevOutDistType =
+            mlir::dyn_cast_if_present<VPU::DistributedTensorType>(getDistributedOutputType(prevOp));
+    const auto isPrevOutOpWithMCStrategy = prevOutDistType != nullptr;
 
     const auto hasTrueOverlappedParams = [](VPU::DistributedTensorType tensor) {
         if (tensor == nullptr) {
@@ -288,14 +220,14 @@ bool MergeVFRegionBaseRewriter<VFCaseType>::alignMCTiling(VPU::VerticalFusionOp 
         if (isPrevOutOpWithMCStrategy && isCurrInOpWithMCStrategy) {
             auto currInputOperand = currInputViewLikeOps.empty() ? mlir::cast<mlir::Value>(currInputArg)
                                                                  : currInputViewLikeOps.back()->getResult(0);
-            bool isSparsed = false;
-            auto actualCurrInDistType = getInputDistributedType(mlir::cast<VPU::ClusteredOpInterface>(currInputOp),
-                                                                currInputOperand, isSparsed);
+            auto actualCurrInDistType = mlir::cast<VPU::DistributedTensorType>(
+                    getDistributedInputType(currInputOp, currInputOperand).getDistributedTypes().front());
+            bool isSparse = mlir::isa<VPU::SparseTensorType>(currInputOperand.getType());
 
             auto inputTrueOverlapped = hasTrueOverlappedParams(actualCurrInDistType);
 
             //  E#112803 will handle sparse consumers
-            if (inputTrueOverlapped && isSparsed) {
+            if (inputTrueOverlapped && isSparse) {
                 return false;
             }
 
@@ -305,14 +237,8 @@ bool MergeVFRegionBaseRewriter<VFCaseType>::alignMCTiling(VPU::VerticalFusionOp 
                 (prevOutputOpSw != nullptr && !prevOutputOpSw.supportLoweringAsDMA() && inputTrueOverlapped)) {
                 return false;
             }
-
-            auto inferredCurrInDistType = inferInputDistributedType(prevOutDistType, currInputViewLikeOps);
-            if (areDistributionAttrsCompatible(inferredCurrInDistType, actualCurrInDistType, true).failed()) {
-                return false;
-            }
         }
     }
-
     return true;
 }
 
@@ -396,16 +322,6 @@ bool MergeVFRegionBaseRewriter<VFCaseType>::waitOtherUsers(VPU::VerticalFusionOp
     }
 
     return true;
-}
-
-template <typename VFCaseType>
-std::optional<VFCaseType> MergeVFRegionBaseRewriter<VFCaseType>::findVFCase(VPU::VerticalFusionOp prevOp,
-                                                                            VPU::VerticalFusionOp currentOp,
-                                                                            VPU::VerticalFusionOp mergedVFOp) const {
-    if (!alignMCTiling(currentOp, prevOp)) {
-        return std::nullopt;
-    }
-    return findVFTiling(mergedVFOp, prevOp, currentOp);
 }
 
 template <typename VFCaseType>

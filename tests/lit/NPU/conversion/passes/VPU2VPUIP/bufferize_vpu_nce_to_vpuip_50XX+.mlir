@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --one-shot-bufferize-VPU-to-VPUIP --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --one-shot-bufferize-VPU-to-VPUIP --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU5010
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
@@ -466,4 +466,178 @@ module @NceConvIDUAutopad {
         // CHECK-SAME:  parent_output([[OUT_BUF]] : memref<1x16x16x16xf16, #NHWC, @CMX_NN>)
         // CHECK-SAME:  outputs([[OUT_BUF]] : memref<1x16x16x16xf16, #NHWC, @CMX_NN>)
     }
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+!qElemType = !quant.uniform<u8:f16, 0.19364075006223191:128>
+
+!InterpolateSparse = !VPU.SparseTensor<
+    data=tensor<1x64x64x64x!qElemType, {order = #NHWC, mem_space = @CMX_NN}>,
+    storage_element_table=tensor<1x1x130x130xi32, {order = #NHWC, mem_space = @CMX_NN}>,
+    #VPU.SEInterpolate<
+        mode = <BILINEAR>,
+        coordinate_transformation_mode = <HALF_PIXEL>,
+        scale = [1.0, 1.0, 2.0, 2.0],
+        offsets = [0, 0, 0, 0],
+        sizes = [1, 64, 130, 130]
+    >
+>
+
+// CHECK-LABEL: @SparseInt8DepthConvWithL1Opt
+// CHECK-SAME: [[ARG0:%.+]]: !VPUIP.SparseBuffer<
+// CHECK-SAME:      data=memref<1x64x64x64x!qElemType, #NHWC, @CMX_NN>
+// CHECK-SAME:      storage_element_table=memref<1x1x130x130xi32, #NHWC, @CMX_NN>
+// CHECK-SAME: [[ARG1:%.+]]: memref<64x16x1x1x!qElemType, #NHWC, @CMX_NN>
+// CHECK-SAME: [[ARG2:%.+]]: memref<64x1x1x4xsi32, @CMX_NN>
+// CHECK-SAME: -> memref<1x64x128x128x!qElemType, #NHWC, @CMX_NN>
+func.func @SparseInt8DepthConvWithL1Opt(
+    %data: !InterpolateSparse,
+    %weights: tensor<64x16x1x1x!qElemType, {order = #NHWC, mem_space = @CMX_NN}>,
+    %weight_table: tensor<64x1x1x4xsi32, {mem_space = @CMX_NN}>
+) -> tensor<1x64x128x128x!qElemType, {order = #NHWC, mem_space = @CMX_NN}> {
+
+    %0 = VPU.NCE.DepthConvolution(%data, %weights, %weight_table) {
+        pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+        ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = -1.280000e+02 : f64, clamp_high = 1.270000e+02 : f64,
+            scale = 0.073115045214323729 : f64, prelu_alpha = [1.000000e+00],
+            bias = 0.000000e+00 : f64, adder = 1.280000e+02 : f64>,
+        rawFilterShape = [64, 1, 3, 3],
+        strides = [1, 1]
+    } -> tensor<1x64x128x128x!qElemType, {order = #NHWC, mem_space = @CMX_NN}> {
+        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 64, 128, 128] pad [0, 0, 0, 0] #VPU.mpe_mode<CUBOID_16x16>
+    }
+
+    return %0 : tensor<1x64x128x128x!qElemType, {order = #NHWC, mem_space = @CMX_NN}>
+
+    // CHECK: [[OUT_BUF:%.+]] = memref.alloc() : memref<1x64x128x128x!qElemType, #NHWC, @CMX_NN>
+
+    // CHECK: [[DATA:%.+]], [[SE_TABLE:%.+]] = VPUIP.UngroupSparseBuffer([[ARG0]]) {resultSegmentSizes = array<i32: 1, 0, 1>}
+    // CHECK-SAME: -> memref<1x64x64x64x!qElemType, #NHWC, @CMX_NN>, memref<1x1x130x130xi32, #NHWC, @CMX_NN>
+
+    // CHECK:       [[RES:%.+]] = VPUIP.NCEClusterTask
+    // CHECK-SAME:      is_small_kernel_optimized
+    // CHECK-SAME:      task_type = #VPUIP.nce_task_type<DWCONV>
+    // CHECK-SAME:  input([[DATA]] : memref<1x64x64x64x!qElemType, #NHWC, @CMX_NN>)
+    // CHECK-SAME:  input_storage_element_table([[SE_TABLE]] : memref<1x1x130x130xi32, #NHWC, @CMX_NN>)
+    // CHECK-SAME:  weights([[ARG1]] : memref<64x16x1x1x!qElemType, #NHWC, @CMX_NN>)
+    // CHECK-SAME:  weight_table([[ARG2]] : memref<64x1x1x4xsi32, @CMX_NN>)
+    // CHECK-SAME:  parent_input([[DATA]] : memref<1x64x64x64x!qElemType, #NHWC, @CMX_NN>)
+    // CHECK-SAME:  parent_input_storage_element_table([[SE_TABLE]] : memref<1x1x130x130xi32, #NHWC, @CMX_NN>)
+    // CHECK-SAME:  parent_output([[OUT_BUF]] : memref<1x64x128x128x!qElemType, #NHWC, @CMX_NN>)
+    // CHECK-SAME:  outputs([[OUT_BUF]] : memref<1x64x128x128x!qElemType, #NHWC, @CMX_NN>)
+
+    // CHECK: return [[RES]] : memref<1x64x128x128x!qElemType, #NHWC, @CMX_NN>
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+!qElemType = !quant.uniform<u8:f16, 0.19364075006223191:128>
+
+!InterpolateSparse = !VPU.SparseTensor<
+    data=tensor<1x64x64x64x!qElemType, {order = #NHWC, mem_space = @CMX_NN}>,
+    storage_element_table=tensor<1x1x130x130xi32, {order = #NHWC, mem_space = @CMX_NN}>,
+    #VPU.SEInterpolate<
+        mode = <BILINEAR>,
+        coordinate_transformation_mode = <HALF_PIXEL>,
+        scale = [1.0, 1.0, 2.0, 2.0],
+        offsets = [0, 0, 0, 0],
+        sizes = [1, 64, 130, 130]
+    >
+>
+
+// CHECK-LABEL: @SparseDepthConvWithoutL1Opt
+// CHECK-SAME: [[ARG0:%.+]]: !VPUIP.SparseBuffer<
+// CHECK-SAME:      data=memref<1x64x64x64x!qElemType, #NHWC, @CMX_NN>
+// CHECK-SAME:      storage_element_table=memref<1x1x130x130xi32, #NHWC, @CMX_NN>
+// CHECK-SAME: [[ARG1:%.+]]: memref<64x16x1x1x!qElemType, #NHWC, @CMX_NN>
+// CHECK-SAME: [[ARG2:%.+]]: memref<64x1x1x4xsi32, @CMX_NN>
+// CHECK-SAME: -> memref<1x64x128x128x!qElemType, #NHWC, @CMX_NN>
+func.func @SparseDepthConvWithoutL1Opt(
+    %data: !InterpolateSparse,
+    %weights: tensor<64x16x1x1x!qElemType, {order = #NHWC, mem_space = @CMX_NN}>,
+    %weight_table: tensor<64x1x1x4xsi32, {mem_space = @CMX_NN}>
+) -> tensor<1x64x128x128x!qElemType, {order = #NHWC, mem_space = @CMX_NN}> {
+
+    %0 = VPU.NCE.DepthConvolution(%data, %weights, %weight_table) {
+        pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+        ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = -1.280000e+02 : f64, clamp_high = 1.270000e+02 : f64,
+            scale = 0.073115045214323729 : f64, prelu_alpha = [1.000000e+00],
+            bias = 0.000000e+00 : f64, adder = 1.280000e+02 : f64>,
+        rawFilterShape = [64, 1, 3, 3],
+        strides = [1, 1]
+    } -> tensor<1x64x128x128x!qElemType, {order = #NHWC, mem_space = @CMX_NN}> {
+        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 64, 64, 128] pad [0, 0, 0, 0] #VPU.mpe_mode<CUBOID_16x16>
+        VPU.DPU.Workload outOffsets [0, 0, 64, 0] outSizes [1, 64, 64, 128] pad [0, 0, 0, 0] #VPU.mpe_mode<CUBOID_16x16>
+    }
+
+    return %0 : tensor<1x64x128x128x!qElemType, {order = #NHWC, mem_space = @CMX_NN}>
+
+    // CHECK: [[OUT_BUF:%.+]] = memref.alloc() : memref<1x64x128x128x!qElemType, #NHWC, @CMX_NN>
+
+    // CHECK: [[DATA:%.+]], [[SE_TABLE:%.+]] = VPUIP.UngroupSparseBuffer([[ARG0]]) {resultSegmentSizes = array<i32: 1, 0, 1>}
+    // CHECK-SAME: -> memref<1x64x64x64x!qElemType, #NHWC, @CMX_NN>, memref<1x1x130x130xi32, #NHWC, @CMX_NN>
+
+    // CHECK:       [[RES:%.+]] = VPUIP.NCEClusterTask
+    // CHECK-NOT:       is_small_kernel_optimized
+    // CHECK-SAME:      task_type = #VPUIP.nce_task_type<DWCONV>
+    // CHECK-SAME:  input([[DATA]] : memref<1x64x64x64x!qElemType, #NHWC, @CMX_NN>)
+    // CHECK-SAME:  input_storage_element_table([[SE_TABLE]] : memref<1x1x130x130xi32, #NHWC, @CMX_NN>)
+    // CHECK-SAME:  weights([[ARG1]] : memref<64x16x1x1x!qElemType, #NHWC, @CMX_NN>)
+    // CHECK-SAME:  weight_table([[ARG2]] : memref<64x1x1x4xsi32, @CMX_NN>)
+    // CHECK-SAME:  parent_input([[DATA]] : memref<1x64x64x64x!qElemType, #NHWC, @CMX_NN>)
+    // CHECK-SAME:  parent_input_storage_element_table([[SE_TABLE]] : memref<1x1x130x130xi32, #NHWC, @CMX_NN>)
+    // CHECK-SAME:  parent_output([[OUT_BUF]] : memref<1x64x128x128x!qElemType, #NHWC, @CMX_NN>)
+    // CHECK-SAME:  outputs([[OUT_BUF]] : memref<1x64x128x128x!qElemType, #NHWC, @CMX_NN>)
+
+    // CHECK: return [[RES]] : memref<1x64x128x128x!qElemType, #NHWC, @CMX_NN>
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+!qElemType = !quant.uniform<u8:f16, 0.19364075006223191:128>
+
+// CHECK-LABEL: @Int8ActDepthConvWithL1Opt
+// CHECK-SAME: [[INPUT:%.+]]: memref<1x64x64x64x!qElemType, #NHWC, @CMX_NN>
+// CHECK-SAME: [[WEIGHTS:%.+]]: memref<64x16x1x1x!qElemType, #NHWC, @CMX_NN>
+// CHECK-SAME: [[WEIGHT_TABLE:%.+]]: memref<64x1x1x4xsi32, @CMX_NN>
+// CHECK-SAME: -> memref<1x64x64x64x!qElemType, #NHWC, @CMX_NN>
+func.func @Int8ActDepthConvWithL1Opt(
+    %input: tensor<1x64x64x64x!qElemType, {order = #NHWC, mem_space = @CMX_NN}>,
+    %weights: tensor<64x16x1x1x!qElemType, {order = #NHWC, mem_space = @CMX_NN}>,
+    %weight_table: tensor<64x1x1x4xsi32, {mem_space = @CMX_NN}>
+) -> tensor<1x64x64x64x!qElemType, {order = #NHWC, mem_space = @CMX_NN}> {
+
+    %0 = VPU.NCE.DepthConvolution(%input, %weights, %weight_table) {
+        pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
+        ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = -1.280000e+02 : f64, clamp_high = 1.270000e+02 : f64,
+            scale = 0.073115045214323729 : f64, prelu_alpha = [1.000000e+00],
+            bias = 0.000000e+00 : f64, adder = 1.280000e+02 : f64>,
+        rawFilterShape = [64, 1, 3, 3],
+        strides = [1, 1]
+    } -> tensor<1x64x64x64x!qElemType, {order = #NHWC, mem_space = @CMX_NN}> {
+        VPU.DPU.Workload outOffsets [0, 0, 0, 0] outSizes [1, 64, 64, 64] pad [1, 1, 1, 1] #VPU.mpe_mode<CUBOID_16x16>
+    }
+
+    return %0 : tensor<1x64x64x64x!qElemType, {order = #NHWC, mem_space = @CMX_NN}>
+
+    // CHECK: [[OUT_BUF:%.+]] = memref.alloc() : memref<1x64x64x64x!qElemType, #NHWC, @CMX_NN>
+
+    // CHECK:       [[RES:%.+]] = VPUIP.NCEClusterTask
+    // CHECK-SAME:      is_small_kernel_optimized
+    // CHECK-SAME:      task_type = #VPUIP.nce_task_type<DWCONV>
+    // CHECK-SAME:  input([[INPUT]] : memref<1x64x64x64x!qElemType, #NHWC, @CMX_NN>)
+    // CHECK-SAME:  weights([[WEIGHTS]] : memref<64x16x1x1x!qElemType, #NHWC, @CMX_NN>)
+    // CHECK-SAME:  weight_table([[WEIGHT_TABLE]] : memref<64x1x1x4xsi32, @CMX_NN>)
+    // CHECK-SAME:  parent_input([[INPUT]] : memref<1x64x64x64x!qElemType, #NHWC, @CMX_NN>)
+    // CHECK-SAME:  parent_output([[OUT_BUF]] : memref<1x64x64x64x!qElemType, #NHWC, @CMX_NN>)
+    // CHECK-SAME:  outputs([[OUT_BUF]] : memref<1x64x64x64x!qElemType, #NHWC, @CMX_NN>)
+
+    // CHECK: return [[RES]] : memref<1x64x64x64x!qElemType, #NHWC, @CMX_NN>
 }

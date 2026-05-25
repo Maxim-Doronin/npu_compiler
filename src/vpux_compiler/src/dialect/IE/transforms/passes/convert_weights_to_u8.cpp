@@ -78,7 +78,7 @@ private:
     Logger _log;
 };
 
-mlir::LogicalResult QuantizeCastRewriter::matchAndRewrite(IE::QuantizeCastOp origOp, OpAdaptor,
+mlir::LogicalResult QuantizeCastRewriter::matchAndRewrite(IE::QuantizeCastOp origOp, OpAdaptor adaptor,
                                                           mlir::ConversionPatternRewriter& rewriter) const {
     _log.trace("Got '{0}' at '{1}'", origOp->getName(), origOp->getLoc());
 
@@ -86,7 +86,11 @@ mlir::LogicalResult QuantizeCastRewriter::matchAndRewrite(IE::QuantizeCastOp ori
     auto outQuantizedType = mlir::dyn_cast<mlir::quant::QuantizedType>(dstElemType);
     VPUX_THROW_WHEN(outQuantizedType == nullptr, "Type must be quantized, but provided {0}", dstElemType);
 
-    rewriter.replaceOpWithNewOp<IE::QuantizeCastOp>(origOp, origOp.getInput(), changeStorageTypeToU8(outQuantizedType));
+    // Use the adapted (type-converted) input instead of origOp.getInput() to avoid
+    // residual unrealized_conversion_cast when QuantizeCast ops form a chain and the
+    // upstream QuantizeCast has already been converted from i8 to u8
+    rewriter.replaceOpWithNewOp<IE::QuantizeCastOp>(origOp, adaptor.getInput(),
+                                                    changeStorageTypeToU8(outQuantizedType));
 
     return mlir::success();
 }
@@ -354,7 +358,7 @@ void ConvertWeightsToU8Pass::safeRunOnFunc() {
     target.addDynamicallyLegalOp<Const::DeclareOp>(isLegalConstDeclareOp);
     target.markUnknownOpDynamicallyLegal([&](mlir::Operation* op) {
         if (mlir::isa<IE::LayerOpInterface>(op)) {
-            if (keepIntTypeForSIResult(op) || IE::keepIntTypeForSIWeightsAsInput(op)) {
+            if (keepIntTypeForSIResult(op) || IE::keepIntTypeForSIWeightsAsInputOrConst(op)) {
                 return true;
             }
 

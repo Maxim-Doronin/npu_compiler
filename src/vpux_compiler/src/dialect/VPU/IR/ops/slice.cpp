@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/VPU/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/sw_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
 
@@ -275,6 +276,71 @@ public:
 };
 
 }  // namespace
+
+//
+// TilingViewLikeOpInterface
+//
+
+vpux::InputTiling vpux::VPU::SliceOp::backInferTileInfo(const vpux::TileInfo& outputTile, vpux::Logger log) {
+    const auto inputShape = getShape(getInput());
+    const auto outputShape = getShape(getOutput());
+    const auto offsets = parseIntArrayAttr<int64_t>(getStaticOffsets());
+
+    log.trace("SliceOp backInferTileInfo: inputShape={0}, outputTile={1}", inputShape, outputTile);
+    VPUX_THROW_UNLESS(inputShape.size() == outputTile.shape.size(),
+                      "Can't tile Slice operation at '{0}', which has operands with different rank", this->getLoc());
+
+    // Example: input[32] -> slice(offset=8, size=16) -> output[16]
+    //   Not tiled:               inputTile {shape=32, offset=0}  (full input dim)
+    //   Tiled {shape=8, offset=0}: inputTile {shape=8,  offset=8}  (shifted by slice offset)
+    //   Tiled {shape=8, offset=8}: inputTile {shape=8,  offset=16} (shifted by slice offset)
+    TileInfo inputTile(inputShape.size());
+    inputTile.axis = outputTile.axis;
+    for (size_t i = 0; i < inputShape.size(); ++i) {
+        const auto isDimTiled = outputTile.shape[Dim(i)] != outputShape[Dim(i)];
+        if (!isDimTiled) {
+            // Not tiled: request the full input dimension regardless of whether the dim is sliced.
+            // The Slice op will apply its original offset/size to extract the correct region.
+            inputTile.shape[Dim(i)] = inputShape[Dim(i)];
+            inputTile.offsets[Dim(i)] = 0;
+        } else {
+            // Tiled: request only the needed portion from the original input.
+            // Shift output tile offset by the slice offset so that SubView extracts the
+            // correct region directly. For non-sliced dims, offsets[i] is always 0.
+            inputTile.shape[Dim(i)] = outputTile.shape[Dim(i)];
+            inputTile.offsets[Dim(i)] = outputTile.offsets[Dim(i)] + offsets[i];
+        }
+    }
+
+    log.trace("SliceOp backInferTileInfo: inputTile={0}", inputTile);
+    return TilingInfo{{std::move(inputTile)}};
+}
+
+void vpux::VPU::SliceOp::adjustAttrs(const TilingInfo&, const TileInfo& outputTile, ShapeRef) {
+    const auto outputShape = getShape(getOutput());
+    const auto offsets = parseIntArrayAttr<int64_t>(getStaticOffsets());
+    SmallVector<int64_t> tiledOffsets(outputTile.shape.size(), 0);
+    for (size_t i = 0; i < outputTile.shape.size(); ++i) {
+        const auto isDimTiled = outputTile.shape[Dim(i)] != outputShape[Dim(i)];
+        // When tiled: SubView already positioned the input correctly, so offset becomes 0.
+        // When not tiled: preserve the original slice offset (0 for non-sliced dims).
+        tiledOffsets[i] = isDimTiled ? 0 : offsets[i];
+    }
+    setStaticOffsetsAttr(getIntArrayAttr(getContext(), tiledOffsets));
+    setStaticSizesAttr(getIntArrayAttr(getContext(), outputTile.shape));
+}
+
+bool vpux::VPU::SliceOp::isVFSupported() {
+    if (!getInput().hasOneUse() || !getOutput().hasOneUse()) {
+        return false;
+    }
+    auto parentOp = getInput().getDefiningOp();
+    if (parentOp != nullptr && !VPU::opHasAccurateCost(parentOp)) {
+        return false;
+    }
+    auto userOp = *getOutput().user_begin();
+    return VPU::opHasAccurateCost(userOp);
+}
 
 //
 // getCanonicalizationPatterns

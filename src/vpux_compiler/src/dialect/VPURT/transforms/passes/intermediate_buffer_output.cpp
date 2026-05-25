@@ -18,7 +18,7 @@
 #include "vpux/compiler/utils/strings.hpp"
 
 #if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
-#include "vpux/compiler/core/developer_build_utils.hpp"
+#include "vpux/utils/core/developer_build_utils.hpp"
 #endif  // defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
 
 #include <limits>

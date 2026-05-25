@@ -19,7 +19,8 @@ config::ExecutorKind getExecutorType(size_t opIdx, AsyncDepsInfo& depsInfo);
 // Get the DMA type operation from the async execute operation.
 VPUIP::DMATypeOpInterface getDmaTypeOp(mlir::async::ExecuteOp execOp);
 // Get DMA direction relative to CMX
-bool isDmaDataInOp(mlir::async::ExecuteOp execOp);
-bool isDmaDataOutOp(mlir::async::ExecuteOp execOp);
+bool isDmaDDR2CMX(mlir::async::ExecuteOp execOp);
+bool isDmaCMX2DDR(mlir::async::ExecuteOp execOp);
+bool isDmaDDR2DDR(mlir::async::ExecuteOp execOp);
 
 }  // namespace vpux::VPUIP

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --init-compiler="vpu-arch=%arch%" --lower-VPUIP-to-ELF %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --init-compiler="platform=%platform%" --lower-VPUIP-to-ELF %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 module @actShaveProfiling {
   net.NetworkInfo entryPoint : @main inputsInfo :  {
@@ -68,8 +68,8 @@ module @actShaveProfiling {
     // CHECK:       [[SYM_PROF:%.+]] = ELFNPU37XX.Symbol [[ARG_2]] name("profilingOutput") size(16) : memref<4xui32>
 
 
-    // CHECK:       [[VPU_NNRD_SYM_NNCXM_SLICE_BASE_ADDR:%.+]] = ELFNPU37XX.Symbol %c0_i8 name("VPU_NNRD_SYM_NNCXM_SLICE_BASE_ADDR") <{isBuiltin}> : i8
-    // CHECK:       [[VPU_NNRD_SYM_RTM_ACT:%.+]] = ELFNPU37XX.Symbol %c2_i8 name("VPU_NNRD_SYM_RTM_ACT") <{isBuiltin}> : i8
+    // CHECK:       [[VPU_NNRD_SYM_NNCXM_SLICE_BASE_ADDR:%.+]] = ELFNPU37XX.Symbol {{%.+}} name("VPU_NNRD_SYM_NNCXM_SLICE_BASE_ADDR") <{isBuiltin}> : i8
+    // CHECK:       [[VPU_NNRD_SYM_RTM_ACT:%.+]] = ELFNPU37XX.Symbol {{%.+}} name("VPU_NNRD_SYM_RTM_ACT") <{isBuiltin}> : i8
     // CHECK:       [[VPU_RT_SYMTAB:%.+]] = ELFNPU37XX.CreateSymbolTableSection secName("VPU_RT_SYMTAB") secFlags("SHF_NONE") <{isBuiltin}> -> !ELFNPU37XX.Section {
 
     // CHECK:       [[RELOC_KERNEL_INVO:%.+]] = ELFNPU37XX.CreateRelocationSection secName(".rlt.text.ActKernelInvocations") sourceSymbolTableSection([[VPU_RT_SYMTAB]])

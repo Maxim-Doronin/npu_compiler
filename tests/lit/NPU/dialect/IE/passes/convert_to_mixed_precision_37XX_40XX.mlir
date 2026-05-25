@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-to-mixed-precision %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --convert-to-mixed-precision %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000
 
 !qElemType = !quant.uniform<u8:f16, 0.0025215686274509803>
 
@@ -43,9 +43,9 @@ func.func @Conv2dLeakyReluWithQuantize(%arg0: tensor<1x16x3x3xf16>) -> tensor<1x
 
 // -----
 
-!qElemType = !quant.quantile<u4:u8:f16, {0.0,16.0,32.0,48.0,64.0,80.0,96.0,112.0,128.0,144.0,160.0,176.0,192.0,208.0,224.0,240.0}:1.1534313725490195:128>
+!qElemType = !quant.uniform<!QuantileType.quantile<ui4:ui8, {0.0,16.0,32.0,48.0,64.0,80.0,96.0,112.0,128.0,144.0,160.0,176.0,192.0,208.0,224.0,240.0}>:f16, 1.1534313725490195:128>
 !qElemType1 = !quant.uniform<u8:f16, 1.1534313725490195:128>
-// CHECK: !qElemType = !quant.quantile<u4:u8:f16, {0.000000e+00,1.600000e+01,3.200000e+01,4.800000e+01,6.400000e+01,8.000000e+01,9.600000e+01,1.120000e+02,1.280000e+02,1.440000e+02,1.600000e+02,1.760000e+02,1.920000e+02,2.080000e+02,2.240000e+02,2.400000e+02}:1.1534313725490195:128>
+// CHECK: !qElemType = !quant.uniform<!QuantileType.quantile<ui4:ui8, {0.000000e+00,1.600000e+01,3.200000e+01,4.800000e+01,6.400000e+01,8.000000e+01,9.600000e+01,1.120000e+02,1.280000e+02,1.440000e+02,1.600000e+02,1.760000e+02,1.920000e+02,2.080000e+02,2.240000e+02,2.400000e+02}>:f16, 1.1534313725490195:128>
 // CHECK: !qElemType1 = !quant.uniform<u8:f16, 1.1534313725490195:128>
 
 // CHECK-LABEL: @MixedPrecisionConvQuantile

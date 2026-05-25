@@ -6,7 +6,9 @@
 file(GLOB_RECURSE SRC_FILES *.cpp)
 add_npu_library(npu_compiler_tools
     ${SRC_FILES}
-    LINK_LIBS PRIVATE
-        npu_compiler_utils
-        npu_llvm_utils
-        npu_ov_utils)
+    LINK_LIBS
+      PUBLIC
+        npu_compiler_dialect_config
+      PRIVATE
+        npu_core_utils
+)

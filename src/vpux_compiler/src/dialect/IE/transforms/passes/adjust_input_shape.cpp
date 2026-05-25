@@ -1481,6 +1481,21 @@ mlir::LogicalResult EltwiseShapeRewriter<EltwiseOp>::matchAndRewrite(EltwiseOp l
 
     if (matchType == PatternType::SHAPE_OP_BEFORE_NCE) {
         // For Eltwise(QuantizeCast)-ShapeCast/AffineReshape-NCE
+
+        // Check if any input shape differs from output shape (requires broadcast)
+        // If broadcast is needed, the transformation is not applicable because cloning ShapeOp
+        // for each input would result in inconsistent element counts
+        const auto outputShape = mlir::cast<vpux::NDTypeInterface>(layerOp->getResult(0).getType()).getShape();
+        for (const auto inputOperand : layerOp->getOperands()) {
+            const auto inputShape = mlir::cast<vpux::NDTypeInterface>(inputOperand.getType()).getShape();
+            if (inputShape != outputShape) {
+                _log.nest().trace(
+                        "Input shape {0} differs from output shape {1}, broadcast required, skip transformation",
+                        inputShape, outputShape);
+                return mlir::failure();
+            }
+        }
+
         // create new ShapeCastOp/AffineReshapeOp for each input
         SmallVector<mlir::Value> newInputValues;
         for (const auto inputOperand : layerOp->getOperands()) {

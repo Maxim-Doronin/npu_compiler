@@ -93,10 +93,7 @@ void AssignPhysicalBarriersPass::safeRunOnFunc() {
         return;
     }
 
-    if (wlmFlag == false || (_workloadManagementMode < WorkloadManagementMode::PWLM_V2_PAGES &&
-                             _workloadManagementMode != WorkloadManagementMode::PWLM_V0_1_PAGES)) {
-        // No need to verify below for newer WLM modes as later pass - OptimizeBarriersSlotsUsage
-        // pass will take care of it
+    if (!wlmFlag) {
         if (mlir::failed(barrierSim.checkProducerCount(_log.nest()))) {
             signalPassFailure();
             return;
@@ -115,7 +112,7 @@ void AssignPhysicalBarriersPass::safeRunOnFunc() {
     // Use old round-robin method of assigning physical barriers
     if (wlmFlag) {
         if (_workloadManagementMode.has_value() &&
-            (_workloadManagementMode.value() >= WorkloadManagementMode::PWLM_V2_PAGES ||
+            (_workloadManagementMode.value() == WorkloadManagementMode::FWLM_V1_PAGES ||
              _workloadManagementMode.value() == WorkloadManagementMode::PWLM_V0_1_PAGES)) {
             _log.trace("Assign barriers using WLM page approach");
             auto partialWlmEnabled = (_workloadManagementMode.value() != WorkloadManagementMode::FWLM_V1_PAGES);
@@ -125,16 +122,6 @@ void AssignPhysicalBarriersPass::safeRunOnFunc() {
                 signalPassFailure();
                 return;
             }
-        } else {
-            auto barrierInfo = vpux::BarrierInfo{func};
-            barrierSim.configureForWlm(barrierInfo);
-            _log.trace("Assign barriers with WLM restrictions");
-            if (mlir::failed(barrierSim.simulateBarriers(_log.nest(), numBarriers))) {
-                _log.error("Barrier simulation (with WLM restrictions) failed with {0} barriers", numBarriers);
-                signalPassFailure();
-                return;
-            }
-            barrierInfo.clearAttributes();
         }
     } else {
         if (mlir::failed(barrierSim.simulateBarriers(_log.nest(), numBarriers))) {

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #map = affine_map<(d0) -> ((d0 floordiv 4) * 3 + 1)>
@@ -51,7 +51,7 @@ func.func @ParsePrintDynamicWorkload(%arg0: tensor<1x16x1x10xf16, {order = #NHWC
     //CHECK: [[LOOP:%.+]] = scf.for
     //CHECK-SAME:           [[LOOP_ITER:%arg[0-9]]] = [[LOOP_BEGIN]] to [[LOOP_END]] step [[LOOP_STEP_MAIN]]
 
-    //CHECK:                [[CMPI:%.+]] = arith.cmpi ult, [[LOOP_ITER]], %c4 : index
+    //CHECK:                [[CMPI:%.+]] = arith.cmpi ult, [[LOOP_ITER]], [[LOOP_STEP_MAIN]] : index
     //CHECK:                [[SELECT_STEP:%.+]] = arith.select [[CMPI]], [[LOOP_STEP_MAIN]], [[LOOP_STEP_REMAINDER]] : index
     //CHECK:                [[SELECT_OFFSET:%.+]] = scf.if [[CMPI]]
 
@@ -123,7 +123,7 @@ func.func @ParsePrintDynamicPaddedWorkload(%arg0: tensor<1x4x1600x2560xf16, {ord
     //CHECK-SAME:           [[LOOP_ITER:%arg[0-9]]] = [[LOOP_BEGIN]] to [[LOOP_END]] step [[LOOP_STEP]]
 
     //CHECK:                [[SIZE:%.+]] = affine.min #map([[LOOP_ITER]])
-    //CHECK                 [[VALUE:%.+]] = affine.max #map2(%arg1)
+    //CHECK                 [[VALUE:%.+]] = affine.max #map2({{%.+}})
     //CHECK                 [[PAD:%.+]] = affine.min #map3()[[[VALUE]]]
 
     // VPU.DPU.Workload outOffsets [0, 0, 0, [[LOOP_ITER]]] outSizes [1, 16, 1, [[SIZE]]] pad [[[PAD]], 0, 1, 0] <VECTOR_FP16>

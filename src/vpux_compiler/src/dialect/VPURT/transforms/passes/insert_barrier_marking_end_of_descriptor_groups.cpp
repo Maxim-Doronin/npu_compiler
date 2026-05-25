@@ -21,17 +21,13 @@ using namespace vpux;
 
 /*
 
-This pass ensures existence of barriers required for managing tasks descriptors for either WLM or non-WLM cases.
+This pass ensures existence of barriers required for managing tasks descriptors for WLM schedules.
 Memory allocated for tasks descriptors is split between two halves of the buffer dedicated for descriptors.
 In order to load descriptors for tasks from CurrentGroup, task descriptors from GrandParentGroup need to be replaced
 and the associated tasks need to finish by that time.
 
-For WLM case, if such barrier does not exit, the newly created barrier will be consumed by the last task from
-ParentGroup and by next pass this dependency will be extended to insert fetch DMA operation. For nonWLM additional
-checks are needed. The last task of ParentGroup should have indirect or direct dependency on such barrier and no user of
-this barrier can depend in any way on tasks from CurrentGroup. If this is not satisfied the newly created barrier will
-be consumed by first task from ParentGroup so that a barrier consumption event, used by runtime, happens as early as
-possible.
+If such barrier does not exist, the newly created barrier will be consumed by the last task from
+ParentGroup and by next pass this dependency will be extended to insert fetch DMA operation.
 
                |->BAR->
                |
@@ -40,10 +36,6 @@ possible.
 |                  |                  |                  |
 | GrandParentGroup |   ParentGroup    |   CurrentGroup   |
 |     BUF A        |      BUF B       |     BUF A        |
-
-
-However, for non-WLM case if any task from the ParentGroup has already a direct or indirect dependence on the barrier
-BAR, new barrier will not be created unless there are other consumers of BAR that belong to CurrentGroup.
 
 */
 namespace {
@@ -68,23 +60,12 @@ public:
                                          const size_t& groupIdx, const BlockRange& blockRange, size_t queueId);
     void insertBarrierDependency(mlir::OpBuilder& builder, ExecutionGroupListMap& executionGroupListMap,
                                  BarrierInfo& barrierInfo, const BlockRange& blockRange, size_t& numOfBarriersInserted);
-    void legalizeScheduleForNonWlm(mlir::func::FuncOp netFunc);
 
 private:
     std::optional<size_t> _workloadManagementBarrierCountThreshold;
     std::optional<WorkloadManagementMode> _workloadManagementMode;
     void safeRunOnFunc() final;
 };
-
-void InsertBarrierToMarkTheEndOfDescriptorGroupPass::legalizeScheduleForNonWlm(mlir::func::FuncOp netFunc) {
-    // In case of nonWLM compilation, the runtime manages tasks descriptors in CMX using their update barrier in order
-    // to decide which tasks have finished and that their descriptors in CMX are no longer needed and can be reused for
-    // the following tasks. Without such a barrier, in the case of long task lists, the runtime would not be able to
-    // free space and load new descriptors which would lead to a hang at inference.
-    auto& barrierInfo = getAnalysis<BarrierInfo>();
-    VPURT::legalizeScheduleForNonWlm(netFunc, barrierInfo, _log);
-    barrierInfo.clearAttributes();
-}
 
 /**
  * @brief Searches for the next or previous task with barriers (update or wait).
@@ -226,14 +207,6 @@ void InsertBarrierToMarkTheEndOfDescriptorGroupPass::insertBarriersForQueue(
 void InsertBarrierToMarkTheEndOfDescriptorGroupPass::safeRunOnFunc() {
     auto netFunc = getOperation();
     auto module = netFunc->getParentOfType<mlir::ModuleOp>();
-    auto isWlmEnabled = (config::getWorkloadManagementStatus(module) == WorkloadManagementStatus::ENABLED) &&
-                        !config::isArchVPUX3XXX(config::getArch(module));
-
-    if (!isWlmEnabled) {
-        legalizeScheduleForNonWlm(netFunc);
-        VPURT::postProcessBarrierOps(netFunc);
-        return;
-    }
 
     // createAddPlaceholderFetchDMAsPass inserts placeholder FetchDMAs
     if (_workloadManagementMode.has_value() &&
@@ -301,8 +274,7 @@ void InsertBarrierToMarkTheEndOfDescriptorGroupPass::safeRunOnFunc() {
 
     execGroupAnalysis = ExecutionGroupAnalysis(netFunc);
     VPUX_THROW_UNLESS(barrierInfo.verifyControlGraphSplit(), "Encountered split of control graph is incorrect");
-    VPUX_THROW_UNLESS(VPURT::verifyBarriersForTaskDescriptorFetch(barrierInfo, netFunc, /* wlmFlag */ true,
-                                                                  _workloadManagementMode),
+    VPUX_THROW_UNLESS(VPURT::verifyBarriersForTaskDescriptorFetch(barrierInfo, netFunc, _workloadManagementMode),
                       "Encountered execution group without required barrier for task descriptor fetch.");
 
     barrierInfo.clearAttributes();

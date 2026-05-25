@@ -63,6 +63,10 @@ BoundedDim BoundedDim::operator*(const BoundedDim& other) const {
     return apply(*this, other, std::multiplies<>());
 }
 
+BoundedDim BoundedDim::operator/(const BoundedDim& other) const {
+    return apply(*this, other, std::divides<>());
+}
+
 BoundedDim& BoundedDim::operator+=(const BoundedDim& other) {
     return *this = *this + other;
 }
@@ -73,6 +77,10 @@ BoundedDim& BoundedDim::operator-=(const BoundedDim& other) {
 
 BoundedDim& BoundedDim::operator*=(const BoundedDim& other) {
     return *this = *this * other;
+}
+
+BoundedDim& BoundedDim::operator/=(const BoundedDim& other) {
+    return *this = *this / other;
 }
 
 bool BoundedDim::operator==(const BoundedDim& other) const {
@@ -109,6 +117,10 @@ BoundedDim vpux::operator-(int64_t x, const BoundedDim& y) {
 
 BoundedDim vpux::operator*(int64_t x, const BoundedDim& y) {
     return BoundedDim::apply(BoundedDim(x), y, std::multiplies<>());
+}
+
+BoundedDim vpux::operator/(int64_t x, const BoundedDim& y) {
+    return BoundedDim::apply(BoundedDim(x), y, std::divides<>());
 }
 
 bool vpux::operator==(int64_t x, const BoundedDim& y) {
@@ -177,6 +189,10 @@ MaskedDim MaskedDim::operator*(const MaskedDim& other) const {
     return apply(*this, other, std::multiplies<>());
 }
 
+MaskedDim MaskedDim::operator/(const MaskedDim& other) const {
+    return apply(*this, other, std::divides<>());
+}
+
 MaskedDim& MaskedDim::operator+=(const MaskedDim& other) {
     return *this = *this + other;
 }
@@ -187,6 +203,10 @@ MaskedDim& MaskedDim::operator-=(const MaskedDim& other) {
 
 MaskedDim& MaskedDim::operator*=(const MaskedDim& other) {
     return *this = *this * other;
+}
+
+MaskedDim& MaskedDim::operator/=(const MaskedDim& other) {
+    return *this = *this / other;
 }
 
 bool MaskedDim::operator==(const MaskedDim& other) const {
@@ -223,6 +243,10 @@ MaskedDim vpux::operator-(int64_t x, const MaskedDim& y) {
 
 MaskedDim vpux::operator*(int64_t x, const MaskedDim& y) {
     return MaskedDim::apply(MaskedDim(x), y, std::multiplies<>());
+}
+
+MaskedDim vpux::operator/(int64_t x, const MaskedDim& y) {
+    return MaskedDim::apply(MaskedDim(x), y, std::divides<>());
 }
 
 bool vpux::operator==(int64_t x, const MaskedDim& y) {

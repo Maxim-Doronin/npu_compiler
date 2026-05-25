@@ -5,6 +5,9 @@
 
 #include "vpux/compiler/core/attributes/dims_order.hpp"
 #include "vpux/compiler/core/attributes/shape.hpp"
+
+#include <limits>
+
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/reduce.hpp"
@@ -62,18 +65,16 @@ mlir::Value createConvFilter(mlir::Value activation, mlir::PatternRewriter& rewr
 
     const Shape weightShape = {OC, IC, KX, KY};
 
-    SmallVector<float> weights(weightShape.totalSize(), .0f);
-
-    // assign values
-    for (auto i = 0; i < IC; ++i) {
-        weights[i] = 1.0f;
-    }
-
     const DimsOrder weightOrder = DimsOrder::OIYX;
     const auto weightType = mlir::RankedTensorType::get(
             weightShape.raw(), mlir::cast<NDTypeInterface>(activation.getType()).getElementType(),
             getTensorAttr(rewriter.getContext(), weightOrder, nullptr));
-    return Const::buildWeightsConst(rewriter, activation.getLoc(), weightType, ArrayRef(weights));
+    // buildWeightsConst always takes float values as logical "expressed" weights.
+    // Conversion to the actual storage type (fp16, quantized i8/u8/i16) is handled
+    // internally via castElemType on the ContentSetup pipeline.
+    // A single-element array is treated as a splat by DenseElementsAttr::get,
+    // avoiding O(IC) host allocation for the all-ones filter.
+    return Const::buildWeightsConst(rewriter, activation.getLoc(), weightType, ArrayRef<float>{1.0f});
 }
 
 //
@@ -121,14 +122,9 @@ bool ReduceSumToConvRewriter::isValidShape(vpux::ShapeRef inputShape, Logger log
 // 1. there is a NCE parent or child
 // 2. W is not aligned.
 
-bool isBeneficialToConvert(IE::ReduceSumOp origOp, Logger log) {
-    auto outShape = getShape(origOp.getOutput());
-    auto outType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
-    auto alignment = VPU::NCEInvariant::getAlignment(outType.getElementType());
-    if (outShape[Dims4D::Act::W] % alignment != 0) {
-        return true;
-    }
-
+// Check whether a ReduceSum has an NCE-supported parent or child, without
+// considering W-alignment of the output tensor.
+bool hasNCEParentOrChild(IE::ReduceSumOp origOp, Logger log) {
     auto parentOp = origOp.getInput().getDefiningOp();
     if (parentOp != nullptr && mlir::succeeded(VPU::NCEInvariant::isSupported(parentOp, log))) {
         return true;
@@ -140,6 +136,20 @@ bool isBeneficialToConvert(IE::ReduceSumOp origOp, Logger log) {
         }
     }
     return false;
+}
+
+bool isBeneficialToConvert(IE::ReduceSumOp origOp, Logger log) {
+    auto outShape = getShape(origOp.getOutput());
+    auto outType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
+    auto alignment = VPU::NCEInvariant::getAlignment(outType.getElementType());
+
+    if (outShape.size() == 4) {
+        if (outShape[Dims4D::Act::W] % alignment != 0) {
+            return true;
+        }
+    }
+
+    return hasNCEParentOrChild(origOp, log);
 }
 
 bool ReduceSumToConvRewriter::isSupportedReduceSum(IE::ReduceSumOp origOp, Logger log) const {
@@ -196,6 +206,149 @@ mlir::LogicalResult ReduceSumToConvRewriter::matchAndRewrite(IE::ReduceSumOp ori
     auto conv = createConvolution(origOp.getInput(), weights, convLoc, rewriter);
 
     rewriter.replaceOp(origOp, conv.getOutput());
+
+    _log.trace("[{0}] Successfully convert ReduceSum to Convolution '{1}'", getDebugName(), origLoc);
+    return mlir::success();
+}
+
+//
+// OuterDimReduceSumToConvRewriter
+//
+// Handles ReduceSum on the outermost (first) dimension of non-4D tensors.
+// Reshapes [A, D1, D2, ...] to [1, A, D1*D2*..., 1] preserving memory layout,
+// then applies Conv with IC=A to reduce A channels to 1 in a single operation.
+// Without this, large outermost-dimension reductions fall through to multi-stage
+// AvgPool decomposition, generating many DPU and DMA tasks.
+//
+
+class OuterDimReduceSumToConvRewriter final : public mlir::OpRewritePattern<IE::ReduceSumOp> {
+public:
+    OuterDimReduceSumToConvRewriter(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpRewritePattern<IE::ReduceSumOp>(ctx), _log(log) {
+        setDebugName("OuterDimReduceSumToConvRewriter");
+    }
+
+    mlir::LogicalResult matchAndRewrite(IE::ReduceSumOp origOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+mlir::LogicalResult OuterDimReduceSumToConvRewriter::matchAndRewrite(IE::ReduceSumOp origOp,
+                                                                     mlir::PatternRewriter& rewriter) const {
+    const auto logCb = [&](const formatv_object_base& msg) {
+        _log.trace("{0}", msg.str());
+    };
+    if (config::isReduceOpSupportedOnNCE(origOp) && VPU::isNCEReduceSupported(origOp, logCb)) {
+        return mlir::failure();
+    }
+
+    if (!isSupportedElemType(origOp)) {
+        return mlir::failure();
+    }
+
+    // Do not rewrite ReduceSum with explicit input/output padding attributes.
+    // The Convolution replacement does not preserve the semantics of ignoring
+    // padded elements in reduction.
+    if (origOp.getInputPaddingAttr() != nullptr || origOp.getOutputPaddingAttr() != nullptr) {
+        return mlir::failure();
+    }
+
+    const auto inputType = mlir::cast<NDTypeInterface>(origOp.getInput().getType());
+    const auto inputShape = inputType.getShape();
+    const auto inputRank = inputShape.size();
+
+    // Only handle non-4D tensors; 4D is handled by ReduceSumToConvRewriter
+    if (inputRank < 2 || inputRank == 4) {
+        return mlir::failure();
+    }
+
+    auto axesAttr = origOp.getAxesValue();
+    if (!axesAttr.has_value()) {
+        return mlir::failure();
+    }
+    auto axes = parseIntArrayAttr<int64_t>(axesAttr.value());
+    if (axes.size() != 1) {
+        return mlir::failure();
+    }
+
+    const auto reduceAxis = axes[0];
+    int64_t normalizedReduceAxis = reduceAxis;
+    if (normalizedReduceAxis < 0) {
+        normalizedReduceAxis += checked_cast<int64_t>(inputRank);
+    }
+    if (normalizedReduceAxis < 0 || normalizedReduceAxis >= checked_cast<int64_t>(inputRank)) {
+        return mlir::failure();
+    }
+
+    // Only handle outermost dimension reduction (axis=0).
+    // Also accept equivalent negative-axis form (axis=-rank).
+    // For axis=0, reshape [A, D1, D2, ...] -> [1, A, D1*D2*..., 1] preserves
+    // row-major memory layout since elements at index a*(D1*D2*...) + rest
+    // map identically in both shapes.
+    if (normalizedReduceAxis != 0) {
+        return mlir::failure();
+    }
+
+    // Require canonical (row-major) memory layout so that mapping axis-0 into
+    // the convolution channel dimension does not change semantics.
+    if (inputType.getDimsOrder() != DimsOrder::fromNumDims(inputRank)) {
+        return mlir::failure();
+    }
+
+    const auto reduceSize = inputShape[Dim(0)];
+    if (reduceSize == mlir::ShapedType::kDynamic || reduceSize <= 0) {
+        return mlir::failure();
+    }
+
+    // For outermost-dim reduction, Conv is beneficial when the reduction dimension
+    // is large enough to exceed the NCE alignment threshold.  Small reductions are
+    // only converted when an NCE parent/child makes the Conv worthwhile.
+    // Use hasNCEParentOrChild (not isBeneficialToConvert) to avoid triggering
+    // conversions for higher-rank inputs based solely on W-misalignment of the
+    // output tensor when keep_dims is false (e.g. rank-5 -> rank-4).
+    auto outType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
+    const auto alignment = VPU::NCEInvariant::getAlignment(outType.getElementType());
+    if (reduceSize <= alignment && !hasNCEParentOrChild(origOp, _log)) {
+        return mlir::failure();
+    }
+
+    // Calculate merged spatial dimension from all non-reduce dimensions.
+    // Use checked multiplication to guard against overflow on extreme shapes.
+    int64_t mergedRest = 1;
+    for (size_t i = 1; i < inputRank; ++i) {
+        const auto dimSize = inputShape[Dim(i)];
+        if (dimSize == mlir::ShapedType::kDynamic || dimSize <= 0) {
+            return mlir::failure();
+        }
+        if (mergedRest > std::numeric_limits<int64_t>::max() / dimSize) {
+            return mlir::failure();
+        }
+        mergedRest *= dimSize;
+    }
+
+    auto ctx = rewriter.getContext();
+    const auto origLoc = origOp->getLoc();
+    _log.trace("[{0}] Got ReduceSum layer at '{1}'", getDebugName(), origLoc);
+
+    // Reshape to 4D: [A, D1, D2, ...] -> [1, A, D1*D2*..., 1]
+    const auto newInputShape = Shape({1, reduceSize, mergedRest, 1});
+    auto inReshapeOp = rewriter.create<IE::ReshapeOp>(appendLoc(origLoc, "reshape_to_4d"), origOp.getInput(),
+                                                      getIntArrayAttr(ctx, newInputShape));
+
+    // Create Conv filter [1, A, 1, 1] with all-ones weights
+    auto weights = createConvFilter(inReshapeOp.getOutput(), rewriter);
+
+    // Create Conv: [1, A, mergedRest, 1] -> [1, 1, mergedRest, 1]
+    const auto convLoc = appendLoc(origLoc, "as_convolution");
+    auto conv = createConvolution(inReshapeOp.getOutput(), weights, convLoc, rewriter);
+
+    // Reshape Conv output to the original ReduceSum output shape
+    const auto outShape = getShape(origOp.getOutput());
+    auto outReshapeOp = rewriter.create<IE::ReshapeOp>(appendLoc(origLoc, "reshape_output"), conv.getOutput(),
+                                                       getIntArrayAttr(ctx, outShape));
+
+    rewriter.replaceOp(origOp, outReshapeOp);
 
     _log.trace("[{0}] Successfully convert ReduceSum to Convolution '{1}'", getDebugName(), origLoc);
     return mlir::success();
@@ -340,6 +493,7 @@ void ConvertReduceSumToConvPass::safeRunOnFunc() {
     // Convert ReduceSum to Convolution operation is optimum solution in case reduce axis is C
     mlir::RewritePatternSet pattern(&ctx);
     pattern.add<ReduceSumToConvRewriter>(&ctx, _log);
+    pattern.add<OuterDimReduceSumToConvRewriter>(&ctx, _log);
     pattern.add<InnerDimReduceSumToConvRewriter>(&ctx, _log);
 
     collectOpsAndApplyPatterns(func, std::move(pattern));

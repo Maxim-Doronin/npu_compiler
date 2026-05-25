@@ -119,8 +119,8 @@ These tools can be used to call specific parts of the compiler (frontend, backen
 
 `vpux-translate` allows calling the frontend and backend of the compiler. For example:
 
-- importing OpenVINO IR into IE dialect IR: `vpux-translate --vpu-arch=NPU37XX --import-IE <path to xml> -o <MLIR file name>`
-- exporting VPUIP dialect IR into ELF file: `vpux-translate --vpu-arch=NPU37XX --export-ELF <input MLIR file> > <output ELF file>`
+- importing OpenVINO IR into IE dialect IR: `vpux-translate --platform=NPU3720 --import-IE <path to xml> -o <MLIR file name>`
+- exporting VPUIP dialect IR into ELF file: `vpux-translate --platform=NPU3720 --export-ELF <input MLIR file> > <output ELF file>`
 
 The full list of supported frontends and backends can be found in [vpux-translate.cpp](../../../../tools/vpux-translate/vpux-translate.cpp).
 
@@ -132,13 +132,13 @@ The rest of the options can be found by calling `vpux-translate --help`.
 
 ```sh
 # Call the ConvertLayersToVPU pass over the input IR found in the file
-vpux-opt --vpu-arch=NPU37XX --convert-layers-to-VPU <MLIR file name>
+vpux-opt --platform=NPU3720 --convert-layers-to-VPU <MLIR file name>
 
 # Call the ExpandActivationChannels and Canonicalizer passes over the IR
-vpux-opt --vpu-arch=NPU37XX --expand-activation-channels --canonicalizer <MLIR file name>
+vpux-opt --platform=NPU3720 --expand-activation-channels --canonicalizer <MLIR file name>
 
 # Call the LowPrecision pipeline over the IR
-vpux-opt --vpu-arch=NPU37XX --low-precision <MLIR file name>
+vpux-opt --platform=NPU3720 --low-precision <MLIR file name>
 ```
 
 The tool offers some features which can help in debugging the target code:
@@ -160,13 +160,13 @@ The tools can be used to perform a full compilation of a model:
 
 ```sh
 # Import an OpenVINO IR into IE dialect
-./vpux-translate --vpu-arch=NPU37XX --import-IE <path to OV IR> -o net.mlir
+./vpux-translate --platform=NPU3720 --import-IE <path to OV IR> -o net.mlir
 
 # Call the DefaultHWMode pipeline over the imported IR
-./vpux-opt --vpu-arch=NPU37XX --default-hw-mode --lower-VPUIP-to-ELF net.mlir -o net_out.mlir
+./vpux-opt --platform=NPU3720 --default-hw-mode --lower-VPUIP-to-ELF net.mlir -o net_out.mlir
 
 # Export the final IR into an ELF file
-./vpux-translate --vpu-arch=NPU37XX --export-ELF net_out.mlir > net.blob
+./vpux-translate --platform=NPU3720 --export-ELF net_out.mlir > net.blob
 ```
 
 Since each pass or pipeline can be specified individually, the user can have full control over the calling order of the passes if that is necessary. Options such as `--mlir-print-debuginfo` can also be included for both tools to also track the changes done to the original layers.
@@ -249,17 +249,17 @@ An example of how to generate and run a reproducer using `compile_tool`, by maki
 IE_NPU_CRASH_REPRODUCER_FILE=reproducer.mlir compile_tool -d VPUX.3720 -ip FP16 -op FP16 -il NCHW -iml NCHW -ol NC -oml NC -m net.xml
 
 # Execute the reproducer
-vpux-opt --vpu-arch=NPU37XX reproducer.mlir
+vpux-opt --platform=NPU3720 reproducer.mlir
 ```
 
 It is also possible to generate reproducers with `vpux-opt` directly, by using the `--mlir-pass-pipeline-crash-reproducer` argument. For example:
 
 ```sh
 # Generate the reproducer
-vpux-opt --vpu-arch=NPU37XX --convert-layers-to-VPU --mlir-pass-pipeline-crash-reproducer=reproducer.mlir net.mlir
+vpux-opt --platform=NPU3720 --convert-layers-to-VPU --mlir-pass-pipeline-crash-reproducer=reproducer.mlir net.mlir
 
 # Execute the reproducer
-vpux-opt --vpu-arch=NPU37XX reproducer.mlir
+vpux-opt --platform=NPU3720 reproducer.mlir
 ```
 
 ### Local reproducers
@@ -275,7 +275,7 @@ When compiling a network, the reproducer scope can be controlled using the `IE_N
 When using `vpux-opt`, the local reproducer can also be used. For example:
 
 ```sh
-vpux-opt --vpu-arch=NPU37XX --low-precision --mlir-pass-pipeline-crash-reproducer=reproducer.mlir --mlir-pass-pipeline-local-reproducer --mlir-disable-threading net.mlir
+vpux-opt --platform=NPU3720 --low-precision --mlir-pass-pipeline-crash-reproducer=reproducer.mlir --mlir-pass-pipeline-local-reproducer --mlir-disable-threading net.mlir
 ```
 
 MLIR multi-threading has to be disabled when running the local reproducer. Internally, when using `IE_NPU_GEN_LOCAL_REPRODUCER` this is already handled, but using this option with `vpux-opt` requires it to be explicitly disabled.
@@ -288,7 +288,7 @@ More information can be found [here](https://mlir.llvm.org/docs/PassManagement/#
 
 Many MLIR components come with their own printing interface. For example, `mlir::Operation`, `mlir::Type`, `mlir::Value` etc. have the `dump()` method which prints the data into the stderr stream. In order to print to another stream, the `print(raw_ostream &os)` method is available. Example usage:
 
-```
+```cpp
 mlir::Operation *op = ...;
 
 op->dump();              // prints to stderr
@@ -356,7 +356,7 @@ At the end of compilation, there is a way to dump the final schedule to a JSON t
 
 The memory scheduler (`feasible-allocation` pass) can generate a scheduling JSON trace file and provide additional statistics about the schedule. This option is available for Debug and developer builds and can be controlled using the following environment variable:
 
-```
+```sh
 export IE_NPU_ENABLE_SCHEDULE_STATISTICS=1
 ```
 
@@ -365,6 +365,63 @@ The resulting `scheduleTrace.json` file will contain an entry for each task of t
 ```JSON
 {"name":"TASK_NAME", "cat":"NCE", "ph":"X", "ts":0, "dur":7175, "pid":0, "tid":0},
 ```
+
+## Performance Debug Mode
+
+To aid the generation of the collaterals necessary to debug performance issues (in particular for schedule issues related to multi cluster strategy, temporal tiling, vertical fusion, DMA optimisations, memory fragmentation, pipelining, feasible allocation, etc..) a performance debug mode can be used, leveraging the environment variables previously introduced for debugging. To enable this mode the environment variable `IE_NPU_PERF_DEBUG` has to be exported as
+
+```sh
+export IE_NPU_PERF_DEBUG=1
+```
+
+or alternatively the user can pass the variable when calling `compile_tool`
+```sh
+IE_NPU_PERF_DEBUG=1 compile_tool <args..>
+```
+
+`compile_tool` should be run **without profiling**. This mode internally overrides the state of other variables to dump a series of files (there are no side effects, i.e. the user environment is unmodified);
+it is equivalent to defining the following environment variables individually:
+
+```sh
+export IE_NPU_IR_PRINTING_FILTER="MultiClusterStrategyAssignment|MergeVfSubgraphs|OptimizeConvertDMAOp|FeasibleAllocation"
+export IE_NPU_LOG_FILTER="DeveloperConfig|MultiClusterStrategyAssignment|MergeVfSubgraphs|OptimizeConvertDMAOp|FeasibleAllocation"
+export IE_NPU_IR_PRINT_TO_FILE_TREE=1
+export IE_NPU_IR_PRINTING_LOCATION="perf_debug_dumps"
+export IE_NPU_IR_PRINTING_ORDER="AFTER"
+export IE_NPU_PRINT_DEBUG_INFO=1
+export IE_NPU_PRINT_DEBUG_INFO_PRETTY_FORM=1
+export IE_NPU_PRINT_DOT="perf_debug_dumps/dot_files/output=multi-cluster-strategy-assignment.dot pass=multi-cluster-strategy-assignment,output=perf_debug_dumps/dot_files/merge-vertical-fusion-subgraphs.dot pass=merge-vertical-fusion-subgraphs,output=perf_debug_dumps/dot_files/optimize-convert-dma-op.dot pass=optimize-convert-dma-op"
+export IE_NPU_WRITE_STRATEGY_JSON=1
+export IE_NPU_WRITE_STRATEGY_JSON_LOC="perf_debug_dumps/strategy_out.json"
+export IE_NPU_ENABLE_SCHEDULE_STATISTICS=1
+export NPU_SERIALIZE_CANONICAL_MODEL=1
+```
+
+plus also adding `enable-schedule-trace=true` to `NPU_COMPILATION_MODE_PARAMS` config to produce the compiler trace file `compileTimeScheduleTrace.json`.
+If the variables `IE_NPU_IR_PRINTING_FILTER`, `IE_NPU_LOG_FILTER` or `IE_NPU_PRINT_DOT` are already set in the environment, they will be appended with the default filters defined above for the performance debug mode,
+so the user can still add additional filters when necessary.
+The files will be dumped under directory `perf_debug_dumps` and will have the following default file tree structure:
+```
+perf_debug_dumps/
+├── builtin_module_main_graph
+│   └── func_func_main
+│       ├── 0_0_multi-cluster-strategy-assignment.mlir
+│       ├── 0_1_merge-vertical-fusion-subgraphs.mlir
+│       ├── 0_2_optimize-convert-dma-op.mlir
+│       └── 0_3_feasible-allocation.mlir
+├── compileTimeScheduleTrace.json
+├── dot_files
+│   ├── merge-vertical-fusion-subgraphs_main.dot
+│   ├── multi-cluster-strategy-assignment_main.dot
+│   └── optimize-convert-dma-op_main.dot
+├── mallocTraceRaw.json
+├── model
+│   ├── main_graph_canonical.bin
+│   └── main_graph_canonical.xml
+└── strategy_out.json
+```
+
+Since `IE_NPU_LOG_FILTER` only selects the logs from a few interested passes, it is recommended to raise the verbosity to the maximum, via `LOG_LEVEL LOG_TRACE` in the config file and to dump `compile_tool` log into a file.
 
 ## Profiling inference performance
 
@@ -392,7 +449,7 @@ LLVM offers an `llvm.natvis` file which supports a number of classes coming with
 
 In order to use the natvis file in VSCode, add the following to the cppdbg launch.json configuration:
 
-```
+```JSON
 "visualizerFile": "${workspaceFolder}/thirdparty/llvm-project/llvm/utils/LLVMVisualizers/llvm.natvis",
 ```
 

@@ -32,7 +32,7 @@ using namespace IE;
 
 mlir::LogicalResult FloatOutConvRewriter::matchAndRewrite(IE::ConvolutionOp convolutionOp,
                                                           mlir::PatternRewriter& rewriter) const {
-    if (IE::areAnyUserQuantizeOps(convolutionOp) || !_isMixPrecisionSupported(convolutionOp, false, _log)) {
+    if (!_isMixPrecisionSupported(convolutionOp, false, _log)) {
         return mlir::failure();
     }
     if (mlir::failed(checkRescaledBiasRange(convolutionOp))) {
@@ -278,7 +278,7 @@ void ConvertToMixedPrecisionPass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
 
-    auto& strategyFactory = IE::getIEStrategyFactory(&ctx);
+    const auto& strategyFactory = IE::getIEStrategyFactory(&ctx);
     auto strategy = strategyFactory->getConvertToMixedPrecisionStrategy(enableFloatInQuantWeightsMixedMode);
 
     mlir::RewritePatternSet patterns(&ctx);

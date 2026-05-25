@@ -83,6 +83,12 @@ void ReplaceAllocsWithSingleAllocAndViewsPass::safeRunOnFunc() {
 
     for (const auto& dynDim : allocDynamicSizes) {
         for (auto dim : dynDim) {
+            // Do not move the dim operation if it is already in the correct place: before parentOfFirstAllocToReplace
+            mlir::Operation* dimOp = dim.getDefiningOp();
+            if ((parentOfFirstAllocToReplace->getBlock() == dimOp->getBlock()) &&
+                dimOp->isBeforeInBlock(parentOfFirstAllocToReplace)) {
+                continue;
+            }
             rewriter.moveOpBefore(dim.getDefiningOp(), &*rewriter.getInsertionPoint());
         }
     }

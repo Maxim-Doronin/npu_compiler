@@ -161,6 +161,9 @@ mlir::LogicalResult ConvertMVN6ToMVN1::matchAndRewrite(IE::MVN6Op origOp, mlir::
     } else if (inputShapeSize == 3) {
         if (axesAttr.size() == 2 && axesAttr[0] == 1 && axesAttr[1] == 2) {
             newInShape = {1, inputShapeVal[0], inputShapeVal[1], inputShapeVal[2]};
+        } else if (axesAttr.size() == 1 && axesAttr[0] == 1 && inputShapeVal[2] == 1) {
+            // AxBx1 with axis [1] -> Ax1xBx1, MVN1 (across_channels=false) normalizes over H,W = B,1
+            newInShape = {inputShapeVal[0], 1, inputShapeVal[1], inputShapeVal[2]};
         }
     } else if (inputShapeSize == 4) {
         if (axesAttr.size() == 3 && axesAttr[0] == 1 && axesAttr[1] == 2 && axesAttr[2] == 3) {

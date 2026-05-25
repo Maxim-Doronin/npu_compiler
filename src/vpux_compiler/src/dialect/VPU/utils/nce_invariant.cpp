@@ -16,10 +16,9 @@
 #include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/dpu.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/image.hpp"
-#include "vpux/compiler/dialect/VPU/transforms/factories/small_kernel_optimization.hpp"
+#include "vpux/compiler/dialect/VPU/interfaces/strategies.hpp"
 #include "vpux/compiler/dialect/VPU/utils/conv_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
-#include "vpux/compiler/dialect/VPU/utils/se_padding_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/se_roll_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/tile_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
@@ -130,26 +129,6 @@ bool vpux::VPU::NCEInvariant::isAligned(vpux::NDTypeInterface type, int64_t alig
     return true;
 }
 
-bool is5DAligned(vpux::NDTypeInterface type, int64_t alignment, LogCb logCb) {
-    const auto shape = type.getShape();
-    const auto order = type.getDimsOrder();
-    const auto memShape = order.toMemoryOrder(shape);
-
-    // In super-dense mode only channels must be aligned.
-    const auto channels = shape[DimsGroups5D::Act::C];
-    if (channels % alignment == 0) {
-        return true;
-    }
-
-    const auto innerDim = memShape.back();
-    if (innerDim % alignment != 0) {
-        logCb(formatv("Activation inner dimension '{0}' is not aligned to '{1}'", innerDim, alignment));
-        return false;
-    }
-
-    return true;
-}
-
 int64_t vpux::VPU::NCEInvariant::getAlignment(mlir::Type elemType) {
     const Bit typeSizeInBits = getElemTypeSize(elemType);
     return std::max<int64_t>(128 / typeSizeInBits.count(), 16);
@@ -209,15 +188,17 @@ Byte vpux::VPU::NCEInvariant::getWeightsTableSize(int64_t OC) {
 
 // OC can be used to represent a number of output channels that is different from the number of output channels in op
 // (e.g. when a new output type will be used)
-SmallVector<Byte> vpux::VPU::NCEInvariant::getWeightsTableSize(mlir::Operation* op, int64_t OC,
-                                                               mlir::Value weightsTable, mlir::Value weightTableScale,
-                                                               mlir::Value weightTableBias,
-                                                               mlir::Value weightTableZeroPoints) {
+SmallVector<Byte> vpux::VPU::NCEInvariant::getWeightsTableSize(
+        mlir::Operation* op, int64_t OC, mlir::Value weightsTable, mlir::Value weightTableDataPointer,
+        mlir::Value weightTableScale, mlir::Value weightTableBias, mlir::Value weightTableZeroPoints) {
     if (weightsTable != nullptr) {
         return SmallVector<Byte>{getWeightsTableSize(OC)};
     }
 
     SmallVector<Byte> newWeightTables{};
+    if (weightTableDataPointer != nullptr) {
+        newWeightTables.push_back(getRequiredCMXSizeForDataPointerTable(op, OC));
+    }
     if (weightTableScale != nullptr) {
         newWeightTables.push_back(OC * 4_Byte);
     }
@@ -225,7 +206,11 @@ SmallVector<Byte> vpux::VPU::NCEInvariant::getWeightsTableSize(mlir::Operation* 
         newWeightTables.push_back(OC * 4_Byte);
     }
     if (weightTableZeroPoints != nullptr) {
-        newWeightTables.push_back(getRequiredCMXSizeForZeroPointTable(op, OC, weightTableZeroPoints));
+        auto nceOp = mlir::dyn_cast<VPU::NCEOpInterface>(op);
+        const auto weightsElemType =
+                mlir::cast<vpux::NDTypeInterface>(nceOp.getWeightsOperand().getType()).getElementType();
+
+        newWeightTables.push_back(getRequiredCMXSizeForZeroPointTable(op, OC, weightsElemType));
     }
 
     return newWeightTables;
@@ -239,8 +224,8 @@ mlir::LogicalResult vpux::VPU::NCEInvariant::getWeightTableBuffers(mlir::Operati
     }
 
     auto weightTables = vpux::VPU::NCEInvariant::getWeightsTableSize(
-            op, OC, nceOp.getWeightsTableOperand(), nceOp.getWeightTableScaleOperand(),
-            nceOp.getWeightTableBiasOperand(), nceOp.getWeightZeroPointsOperand());
+            op, OC, nceOp.getWeightsTableOperand(), nceOp.getWeightTableDataPtrOperand(),
+            nceOp.getWeightTableScaleOperand(), nceOp.getWeightTableBiasOperand(), nceOp.getWeightZeroPointsOperand());
 
     buffers.append(weightTables.begin(), weightTables.end());
     return mlir::success();
@@ -335,23 +320,11 @@ mlir::LogicalResult vpux::VPU::NCEInvariant::isSupported(mlir::Operation* op, Lo
                         return VPU::NCEDepthConvolutionOp::isSupported(origOp, emptyLogCb, checkLayout,
                                                                        checkChannelAlignment);
                     })
-                    .Case<IE::InterpolateOp>([&](IE::InterpolateOp origOp) {
-                        return VPU::NCEInterpolateOp::isSupported(origOp, emptyLogCb, checkLayout,
-                                                                  checkChannelAlignment, /*checkBatch=*/false);
-                    })
-                    .Case<VPU::InterpolateOp>([&](VPU::InterpolateOp origOp) {
-                        return VPU::NCEInterpolateOp::isSupported(origOp, emptyLogCb, checkLayout,
-                                                                  checkChannelAlignment, /*checkBatch=*/false);
-                    })
-                    .Case<IE::TransposedConvolutionOp>([&](IE::TransposedConvolutionOp origOp) {
-                        return isSupportedSEPTransposedConv(origOp, emptyLogCb, checkLayout, checkChannelAlignment);
-                    })
-                    .Case<IE::PadOp>([&](IE::PadOp origOp) {
-                        return isSupportedSEPPadOp(origOp, emptyLogCb, checkLayout, checkChannelAlignment);
-                    })
-                    .Case<IE::RollOp>([&](IE::RollOp origOp) {
-                        return VPU::isSupportedSEPRoll(origOp, emptyLogCb, checkLayout, checkChannelAlignment);
-                    })
+                    .Case<IE::InterpolateOp, VPU::InterpolateOp, IE::TransposedConvolutionOp, IE::PadOp, IE::RollOp>(
+                            [&](auto origOp) {
+                                auto seOp = mlir::dyn_cast<IE::SEOpInterface>(origOp.getOperation());
+                                return seOp && seOp.isSupported(emptyLogCb, checkLayout, checkChannelAlignment);
+                            })
                     .Case<IE::MatMulOp>([&](IE::MatMulOp origOp) {
                         return VPU::NCEMatMulOp::isSupported(origOp, emptyLogCb, checkLayout, checkChannelAlignment);
                     })
@@ -360,35 +333,96 @@ mlir::LogicalResult vpux::VPU::NCEInvariant::isSupported(mlir::Operation* op, Lo
                     }));
 }
 
-bool vpux::VPU::NCEInvariant::doesWorkloadSupportSmallKernelOpt([[maybe_unused]] config::ArchKind arch,
-                                                                const int64_t KX, const int64_t SX,
+bool vpux::VPU::NCEInvariant::doesWorkloadSupportSmallKernelOpt(mlir::Operation* op, const int64_t KX, const int64_t SX,
                                                                 ArrayRef<int64_t> workloadOutSz, bool isFp16Input,
-                                                                [[maybe_unused]] const int64_t KY,
-                                                                [[maybe_unused]] const int64_t padLeft) {
-    return VPU::doesWorkloadSupportSmallKernelOpt(arch, KX, SX, workloadOutSz, isFp16Input, KY, padLeft);
+                                                                const int64_t KY, const int64_t padLeft) {
+    auto ctx = op->getContext();
+    const auto& strategyFactory = VPU::getVPUStrategyFactory(ctx);
+    return strategyFactory->doesWorkloadSupportSmallKernelOpt(KX, KY, SX, padLeft, workloadOutSz, isFp16Input);
 }
 
-bool vpux::VPU::NCEInvariant::isSmallKernelOptimizationSupported(const config::ArchKind arch, mlir::Operation* op) {
-    if (!mlir::isa<VPU::NCEDepthConvolutionOp>(op)) {
+bool vpux::VPU::NCEInvariant::isSparseWorkloadEligibleForSmallKernelOpt(mlir::Operation* op,
+                                                                        ArrayRef<int64_t> supportedChannels) {
+    auto nceOp = mlir::dyn_cast<VPU::NCEOpInterface>(op);
+    if (nceOp == nullptr) {
         return false;
     }
+    const auto wlRange = nceOp.getWorkloads().getOps<VPU::DPUWorkloadOp>();
+    const SmallVector<VPU::DPUWorkloadOp> workloads(wlRange.begin(), wlRange.end());
+    if (workloads.empty()) {
+        return false;
+    }
+    // Sparse case requires single workload per cluster
+    llvm::DenseMap<int64_t, int64_t> workloadsPerCluster;
+    for (auto wl : workloads) {
+        const auto clusterIdAttr = wl.getClusterIdAttr();
+        workloadsPerCluster[clusterIdAttr ? clusterIdAttr.getInt() : 0]++;
+    }
+    if (llvm::any_of(workloadsPerCluster, [](const auto& entry) {
+            return entry.second > 1;
+        })) {
+        return false;
+    }
+    return llvm::all_of(workloads, [&](auto wl) {
+        const auto ch = wl.getConstOutputSizes()[Dims4D::Act::C.ind()];
+        return llvm::is_contained(supportedChannels, ch);
+    });
+}
+
+bool vpux::VPU::NCEInvariant::doesOpSupportSmallKernelOptimization(mlir::Operation* op) {
     auto nceOp = mlir::dyn_cast<VPU::NCEOpInterface>(op);
-    // Skip Sparse Ops
-    if (mlir::dyn_cast<vpux::VPU::SparseTensorType>(nceOp->getResult(0).getType()) != nullptr) {
+    if (nceOp == nullptr) {
+        return false;
+    }
+    const auto kernelSize = nceOp.getKernelSizeVal();
+    const auto KX = kernelSize[Dims4D::Kernel::X.ind()];
+    const auto KY = kernelSize[Dims4D::Kernel::Y.ind()];
+    const auto kernelStride = nceOp.getStridesVal();
+    const auto SX = kernelStride[Dims4D::Strides::X.ind()];
+
+    auto ctx = op->getContext();
+    const auto& strategyFactory = VPU::getVPUStrategyFactory(ctx);
+    return strategyFactory->doesOpSupportSmallKernelOpt(nceOp, KX, KY, SX);
+}
+
+bool vpux::VPU::NCEInvariant::isSmallKernelOptimizationSupported(mlir::Operation* op) {
+    auto nceOp = mlir::dyn_cast_if_present<VPU::NCEOpInterface>(op);
+    if (nceOp == nullptr) {
         return false;
     }
 
     const auto kernelSize = nceOp.getKernelSizeVal();
     const auto KX = kernelSize[Dims4D::Kernel::X.ind()];
-    [[maybe_unused]] const auto KY = kernelSize[Dims4D::Kernel::Y.ind()];
+    const auto KY = kernelSize[Dims4D::Kernel::Y.ind()];
     const auto kernelStride = nceOp.getStridesVal();
     const auto SX = kernelStride[Dims4D::Strides::X.ind()];
 
-    // Get a set containing all the channels from the workloads of the given NCE operations
     const auto workloads = nceOp.getWorkloads().getOps<VPU::DPUWorkloadOp>();
+    if (workloads.empty()) {
+        return false;
+    }
 
-    return VPU::isSmallKernelOptimizationSupported(op, arch, KX, KY, SX,
-                                                   SmallVector<VPU::DPUWorkloadOp>(workloads.begin(), workloads.end()));
+    const bool hasSparseInput = mlir::isa<VPU::SparseTensorType>(op->getOperand(0).getType());
+    const bool hasSparseOutput = mlir::isa<VPU::SparseTensorType>(op->getResult(0).getType());
+
+    llvm::DenseMap<int64_t, int64_t> workloadsPerCluster;
+    for (auto wl : workloads) {
+        const auto clusterIdAttr = wl.getClusterIdAttr();
+        workloadsPerCluster[clusterIdAttr ? clusterIdAttr.getInt() : 0]++;
+    }
+    const bool singleWorkloadPerCluster = llvm::all_of(workloadsPerCluster, [](const auto& entry) {
+        return entry.second == 1;
+    });
+
+    // Sparse case requires single workload per cluster
+    if ((hasSparseInput || hasSparseOutput) && !singleWorkloadPerCluster) {
+        return false;
+    }
+
+    auto ctx = op->getContext();
+    const auto& strategyFactory = VPU::getVPUStrategyFactory(ctx);
+    return strategyFactory->isSmallKernelOptimizationSupported(
+            op, KX, KY, SX, SmallVector<VPU::DPUWorkloadOp>(workloads.begin(), workloads.end()));
 }
 
 //
@@ -545,7 +579,7 @@ bool vpux::VPU::NCEInvariant::isAlignmentBeneficial(mlir::Operation* op) {
         }
     }
 
-    if (mlir::isa<IE::SDPAExtendedOp>(op)) {
+    if (mlir::isa<IE::AttentionOp>(op)) {
         return true;
     }
 

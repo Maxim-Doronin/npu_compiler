@@ -12,13 +12,14 @@ namespace vpumi40xx2vpuasm {
 
 mlir::FailureOr<SymbolizationResult> BarrierRewriter::symbolize(VPUMI40XX::ConfigureBarrierOp op, SymbolMapper&,
                                                                 mlir::ConversionPatternRewriter& rewriter) const {
-    auto result = op.getResult();
-    auto symName = findSym(result).getRootReference();
-    auto taskIdx = mlir::TypeAttr::get(op.getType());
-
     mlir::Operation* newOperation = nullptr;
-    if (_enablePWLM) {
-        llvm::SmallVector<VPURegMapped::EnqueueOp> enqueueUsers;
+
+    if (!_skipBarrierLowering) {
+        auto result = op.getResult();
+        auto symName = findSym(result).getRootReference();
+        auto taskIdx = mlir::TypeAttr::get(op.getType());
+
+        SmallVector<VPURegMapped::EnqueueOp> enqueueUsers;
         for (auto user : result.getUsers()) {
             auto enqu = mlir::dyn_cast<VPURegMapped::EnqueueOp>(user);
             if (enqu) {
@@ -36,12 +37,10 @@ mlir::FailureOr<SymbolizationResult> BarrierRewriter::symbolize(VPUMI40XX::Confi
         }
         auto newOp = rewriter.create<VPUASM::ManagedBarrierOp>(
                 op.getLoc(), symName, taskIdx, workItemIndex, rewriter.getUI32IntegerAttr(enqueueUsers.size()),
-                op.getIdAttr(), op.getNextSameIdAttr(), op.getProducerCountAttr(), op.getConsumerCountAttr());
-        newOperation = newOp.getOperation();
-    } else {
-        auto newOp = rewriter.create<VPUASM::ConfigureBarrierOp>(op.getLoc(), symName, taskIdx, nullptr, op.getIdAttr(),
-                                                                 op.getNextSameIdAttr(), op.getProducerCountAttr(),
-                                                                 op.getConsumerCountAttr());
+                rewriter.getIntegerAttr(rewriter.getIntegerType(8, /*isSigned*/ false),
+                                        checked_cast<uint8_t>(op.getId())),
+                op.getNextSameIdAttr(), op.getProducerCountAttr(), op.getConsumerCountAttr());
+
         newOperation = newOp.getOperation();
     }
 

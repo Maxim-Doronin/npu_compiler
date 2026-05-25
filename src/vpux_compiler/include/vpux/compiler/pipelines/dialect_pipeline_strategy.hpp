@@ -23,6 +23,10 @@ public:
         VPUX_THROW("Not implemented!");
     }
 
+    virtual void buildDebatcherPipeline(mlir::OpPassManager&, Logger) {
+        VPUX_THROW("Not implemented!");
+    }
+
     virtual void buildIEPipeline(mlir::OpPassManager&, Logger) {
         VPUX_THROW("Not implemented!");
     }

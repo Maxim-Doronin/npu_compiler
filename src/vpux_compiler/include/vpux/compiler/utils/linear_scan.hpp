@@ -133,6 +133,35 @@ public:
         return true;
     }
 
+    /// Allocates a live range at a predefined address without spilling.
+    /// The range is registered only if it does not overlap with any existing live range;
+    /// otherwise allocation fails.
+    /// @param newRange The live range to allocate (must already have an address assigned)
+    /// @return true if allocation successful, false if the range overlaps with an existing live range
+    bool allocDefinedRange(const LiveRange& newRange) {
+        AllocationGuard guard(_partitioner);
+
+        const auto newRangeAddr = _handler.getAddress(newRange);
+        const auto newRangeSize = _handler.getSize(newRange);
+
+        // verify no overlap
+        for (const auto& prevRange : _liveRanges) {
+            const auto prevRangeAddr = _handler.getAddress(prevRange);
+            const auto prevRangeSize = _handler.getSize(prevRange);
+
+            if (Partitioner::intersects(newRangeAddr, newRangeSize, prevRangeAddr, prevRangeSize)) {
+                return false;
+            }
+        }
+
+        _partitioner.allocFixed(newRangeAddr, newRangeSize);
+
+        _liveRanges.push_back(newRange);
+
+        guard.commit();
+        return true;
+    }
+
     /// Allocates live ranges with additional reserved space.
     /// First reserves the specified space, allocates ranges, then frees the reserved space.
     /// @param newLiveRanges Collection of live ranges to allocate
@@ -318,6 +347,18 @@ public:
     /// Returns the total free size across all gaps
     AddressType totalFreeSize() const {
         return _partitioner.totalFreeSize();
+    }
+
+    /// Returns the maximum allocated size.
+    /// The handler tracks the high-water mark of the highest end-address (addr + size) across
+    /// buffer allocations reported via handler.allocated(). However, reserved regions set up in
+    /// the constructor or via allocWithReservedSpace/allocWithExcludedRegion are allocated only
+    /// in the partitioner and are not reported to the handler. Taking the max of current
+    /// partitioner usage and the handler high-water mark ensures reserved space is accounted for.
+    AddressType maxAllocatedSize() const {
+        auto totalUsedSize = _partitioner.totalSize() - _partitioner.totalFreeSize();
+        auto handlerMaxAllocatedSize = static_cast<uint64_t>(_handler.maxAllocatedSize().count());
+        return std::max(totalUsedSize, handlerMaxAllocatedSize);
     }
 
     /// Returns the size of the largest free gap

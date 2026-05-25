@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt %s --split-input-file --init-compiler="vpu-arch=%arch%" --verify-diagnostics
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt %s --split-input-file --init-compiler="platform=%platform%" --verify-diagnostics
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL: @MissingBothLevelsAndLowFpType
 func.func @MissingBothLevelsAndLowFpType(%arg0: tensor<1x3x30x30xf32>) -> tensor<1x3x30x30xf32> {

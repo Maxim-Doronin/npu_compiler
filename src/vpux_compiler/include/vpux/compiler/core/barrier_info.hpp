@@ -52,6 +52,7 @@ private:
 
 public:
     void updateIR();
+    void updateIRForTask(size_t taskInd);
     void clearAttributes();
     TaskSet& getWaitBarriers(size_t taskInd);
     TaskSet& getUpdateBarriers(size_t taskInd);
@@ -68,6 +69,8 @@ public:
     std::optional<size_t> getNextTaskOnQueue(size_t taskInd, VPURT::TaskQueueType taskQueueType) const;
     // Return the closest previous task on the same queue that has a wait barrier
     std::optional<size_t> getPrevTaskOnQueueWithWaitBar(size_t taskInd, VPURT::TaskQueueType taskQueueType) const;
+    // Return the closest next task on the same queue that has an update barrier
+    std::optional<size_t> getNextTaskOnQueueWithUpdateBar(size_t taskInd, VPURT::TaskQueueType taskQueueType) const;
 
     void enableUnevenVariantSplit();
 
@@ -78,8 +81,6 @@ private:
      * @brief Creates LUT storing control graph block index for every task
      */
     void buildTaskBlockMap();
-    void setWaitBarriers(size_t taskIdn, const TaskSet& barriers);
-    void setUpdateBarriers(size_t taskIdn, const TaskSet& barriers);
     void resizeBitMap(SmallVector<llvm::BitVector>& bitMap, size_t length, uint32_t bits);
     void resetBitMap(SmallVector<llvm::BitVector>& bitMap);
     bool canBarProducersControlBarConsumers(const TaskSet& producers, const TaskSet& consumers,
@@ -219,6 +220,10 @@ public:
                              std::optional<size_t>& blockIdxOfTaskControlMap);
     size_t getProducerSlotCount(VPURT::BarrierOpInterface barrierOp);
     size_t getConsumerSlotCount(VPURT::BarrierOpInterface barrierOp);
+
+    void setWaitBarriers(size_t taskIdn, const TaskSet& barriers);
+    void setUpdateBarriers(size_t taskIdn, const TaskSet& barriers);
+
     void addProducer(size_t barrierInd, size_t taskInd);
     void addProducer(VPURT::BarrierOpInterface barrierOp, size_t taskInd);
     void addProducers(size_t barrierInd, const TaskSet& taskInds);
@@ -249,11 +254,11 @@ public:
     void removeRedundantBarrierProducersAndConsumers(bool considerTaskFifoDependency);
     void removeExplicitDependencies();
     SmallVector<TaskSet> getWaitBarriersMap();
-    void dumpBarrierDependencies(const SmallVector<BarrierInfo::TaskSet>& depsMap, std::string fileName);
-    void dumpQueues(const std::map<VPURT::TaskQueueType, llvm::BitVector>& queueMap, std::string fileName);
-    void dumpTaskIdxToQueueIdxMapping(std::string fileName, std::optional<bool> wlmEnabled = std::nullopt);
-    void dumpSlots(std::string fileName);
-    void dumpBarriers(std::string fileNamePrefix, std::optional<bool> wlmEnabled = std::nullopt);
+    void dumpBarrierDependencies(const SmallVector<BarrierInfo::TaskSet>& depsMap, const std::string& fileName);
+    void dumpQueues(const std::map<VPURT::TaskQueueType, llvm::BitVector>& queueMap, const std::string& fileName);
+    void dumpTaskIdxToQueueIdxMapping(const std::string& fileName);
+    void dumpSlots(const std::string& fileName);
+    void dumpBarriers(const std::string& fileNamePrefix);
 
     void splitControlGraphToBlocks(const size_t blockSize);
     bool verifyControlGraphSplit();
@@ -262,10 +267,9 @@ public:
     /**
      * @brief Verify barriers required for task descriptor fetch
      *
-     * @param wlmEnabled if true: verify schedule for WLM. If false, verify schedule for non-WLM.
      * @return Returns `true` when required barriers exist. Returns `false` otherwise.
      */
-    bool verifyBarriersForTaskDescriptorFetch(const ExecutionGroupListMap& executionGroups, bool wlmEnabled = true);
+    bool verifyBarriersForTaskDescriptorFetch(const ExecutionGroupListMap& executionGroups);
 
     /**
      * @brief Adjust dependencies for the provided tasks if they are connected to other tasks in a way that violates
@@ -431,16 +435,6 @@ public:
             size_t blockIdx, std::optional<mlir::DenseSet<vpux::config::ExecutorKind>> executorKind = std::nullopt);
 
     /**
-     * @brief Create barrier dependencies between task execution groups
-     *
-     * @param blockIdx - task block index for which the dependencies should be generated
-     * @param executionGroups - definition of groups of tasks executed together on single task descriptor fetch
-     *
-     * @return true - if new dependencies were created, false - otherwise
-     */
-    bool createBarrierDependenciesForDescriptorFetchInNonWlm(size_t blockIdx, ExecutionGroupListMap& executionGroups);
-
-    /**
      * @brief Remove barrier representation of dependencies implied FIFOs execution order created by
      * @see createBarrierDependenciesImpliedByFIFO(size_t blockIdx)
      *
@@ -463,23 +457,13 @@ private:
      * @param grpIdx - index of task group to check (CurrentGroup)
      * @param blockIdx - control graph split block index
      * @param fifoExecGroups - list of execution groups for given FIFO
-     * @param taskControlMap - task control map calculated for blockIdx (should account for all FIFO dependencies)
-     * @param controlMapOffset - task control map offset
-     * @param wlmEnabled - WLM flag
-     * @param legalizationBarrierIdx - output value set to legalization barrier index if found and std::nullopt
      * otherwise
-     * @return for wlmEnabled=true case return true, if GrandChildGroup does not exist or if GrandChildGroup exists and
-     * the last task from task execution group grpIdx has update barrier.
-     * @return for wlmEnabled=false case return true, if GrandChildGroup does not exist or if GrandChildGroup exists and
-     * the last task from task execution group grpIdx has update barrier and consumption of this barrier does not depend
-     * on any task from GrandChildGroup or later.
+     * @return return true, if GrandChildGroup does not exist or if GrandChildGroup exists and the last task from task
+     * execution group grpIdx has update barrier.
      * @return false, otherwise
      */
-    bool hasBarrierDependencyRequiredForDescriptorFetch(
-            int grpIdx, size_t blockIdx, const ExecutionGroupList& fifoExecGroups,
-            std::pair<SmallVector<llvm::BitVector>, size_t>& taskControlMapAndOffset,
-            std::optional<size_t>& blockIdxOfTaskControlMap, bool wlmEnabled,
-            std::optional<size_t>& legalizationBarrierIdx);
+    bool hasBarrierDependencyRequiredForDescriptorFetch(int grpIdx, size_t blockIdx,
+                                                        const ExecutionGroupList& fifoExecGroups);
 
     Logger _log;
     mlir::func::FuncOp _func;

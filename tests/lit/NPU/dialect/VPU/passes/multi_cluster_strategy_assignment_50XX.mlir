@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --multi-cluster-strategy-assignment %s | FileCheck %s
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --multi-cluster-strategy-assignment %s | FileCheck %s
+// REQUIRES: platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -272,21 +272,21 @@ func.func @FlashSDPA_TargetSeqLen1_SoK(%query: tensor<1x32x1x128xf16>, %key: ten
     %weights_table0 = const.Declare tensor<1x1x1024x4xsi32> = dense<0> : tensor<1x1x1024x4xsi32>
     %weights_table1 = const.Declare tensor<1x1x128x4xsi32> = dense<0> : tensor<1x1x128x4xsi32>
     %dpu_desc = const.Declare tensor<1x1x2x256xsi32> = dense<0> : tensor<1x1x2x256xsi32>
-    %aux_buffer = VPU.Empty : tensor<1x4x1x1024xf16>
+    %aux_buffer = VPU.Empty : tensor<1x2x1x1024xf16>
     %running_out = const.Declare tensor<1x32x1x128xf16> = dense<0.000000e+00> : tensor<32x1x128xf16>, [#const.Reshape<[1, 32, 1, 128]>]
     %running_max = const.Declare tensor<1x32x1x1xf16> = dense<0xFC00> : tensor<32x1xf16>, [#const.Reshape<[1, 1, 32, 1]>, #const.AffineReshape<[[0], [0], [1], [2, 3]], [1, 32, 1, 1]>]
     %running_sum = const.Declare tensor<1x32x1x1xf32> = dense<0.000000e+00> : tensor<32x1xf32>, [#const.Reshape<[1, 1, 32, 1]>, #const.CastElemType<f32>, #const.AffineReshape<[[0], [0], [1], [2, 3]], [1, 32, 1, 1]>]
 
-    %result_running_output, %result_running_max, %result_running_sum, %result_query =
+    %result_running_output, %result_running_max, %result_running_sum =
         VPU.FlashSDPA(%query, %key, %value, %aux_buffer, %dpu_desc, %weights_table0, %weights_table1, %running_out, %running_max, %running_sum, %attention_mask) {
             is_head = true,
             is_tail = true,
             source_seq_len_pad_size = 0 : i64
         } : tensor<1x32x1x128xf16>, tensor<1x32x1024x128xf16>, tensor<1x32x1024x128xf16, {order = #NCWH}>,
-            tensor<1x4x1x1024xf16>, tensor<1x1x2x256xsi32>, tensor<1x1x1024x4xsi32>,
+            tensor<1x2x1x1024xf16>, tensor<1x1x2x256xsi32>, tensor<1x1x1024x4xsi32>,
             tensor<1x1x128x4xsi32>, tensor<1x32x1x128xf16>, tensor<1x32x1x1xf16>,
             tensor<1x32x1x1xf32>, tensor<1x1x1x1024xf16>
-        -> tensor<1x32x1x128xf16>, tensor<1x32x1x1xf16>, tensor<1x32x1x1xf32>, tensor<1x32x1x128xf16>
+        -> tensor<1x32x1x128xf16>, tensor<1x32x1x1xf16>, tensor<1x32x1x1xf32>
 
     return %result_running_output : tensor<1x32x1x128xf16>
 
@@ -310,21 +310,21 @@ func.func @FlashSDPA_TargetSeqLen1024_SoH(%query: tensor<1x32x1024x128xf16>, %ke
     %weights_table0 = const.Declare tensor<1x1x1024x4xsi32> = dense<0> : tensor<1x1x1024x4xsi32>
     %weights_table1 = const.Declare tensor<1x1x128x4xsi32> = dense<0> : tensor<1x1x128x4xsi32>
     %dpu_desc = const.Declare tensor<1x1x2x256xsi32> = dense<0> : tensor<1x1x2x256xsi32>
-    %aux_buffer = VPU.Empty : tensor<1x4x1024x1024xf16>
+    %aux_buffer = VPU.Empty : tensor<1x2x1024x1024xf16>
     %running_out = const.Declare tensor<1x32x1024x128xf16> = dense<0.000000e+00> : tensor<1x32x1024x128xf16>
     %running_max = const.Declare tensor<1x32x1024x1xf16> = dense<0xFC00> : tensor<1x32x1024x1xf16>
     %running_sum = const.Declare tensor<1x32x1024x1xf32> = dense<0.000000e+00> : tensor<1x32x1024x1xf32>
 
-    %result_running_output, %result_running_max, %result_running_sum, %result_query =
+    %result_running_output, %result_running_max, %result_running_sum =
         VPU.FlashSDPA(%query, %key, %value, %aux_buffer, %dpu_desc, %weights_table0, %weights_table1, %running_out, %running_max, %running_sum, %attention_mask) {
             is_head = true,
             is_tail = true,
             source_seq_len_pad_size = 0 : i64
         } : tensor<1x32x1024x128xf16>, tensor<1x32x1024x128xf16>, tensor<1x32x1024x128xf16, {order = #NCWH}>,
-            tensor<1x4x1024x1024xf16>, tensor<1x1x2x256xsi32>, tensor<1x1x1024x4xsi32>,
+            tensor<1x2x1024x1024xf16>, tensor<1x1x2x256xsi32>, tensor<1x1x1024x4xsi32>,
             tensor<1x1x128x4xsi32>, tensor<1x32x1024x128xf16>, tensor<1x32x1024x1xf16>,
             tensor<1x32x1024x1xf32>, tensor<1x1x1024x1024xf16>
-        -> tensor<1x32x1024x128xf16>, tensor<1x32x1024x1xf16>, tensor<1x32x1024x1xf32>, tensor<1x32x1024x128xf16>
+        -> tensor<1x32x1024x128xf16>, tensor<1x32x1024x1xf16>, tensor<1x32x1024x1xf32>
 
     return %result_running_output : tensor<1x32x1024x128xf16>
 

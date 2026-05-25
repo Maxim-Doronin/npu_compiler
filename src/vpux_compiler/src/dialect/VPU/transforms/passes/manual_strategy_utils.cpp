@@ -4,21 +4,21 @@
 //
 
 #include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
-#include <mutex>
-#include <shared_mutex>
-#include "llvm/Support/MD5.h"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/json_utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
-
 #if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
-#include "vpux/compiler/core/developer_build_utils.hpp"
-#endif  // defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
+#include "vpux/utils/core/developer_build_utils.hpp"
+#include "vpux/utils/core/developer_path_utils.hpp"
+#endif
+
+#include <llvm/Support/MD5.h>
 
 #include <mutex>
+#include <shared_mutex>
 
 namespace vpux::VPU {
 #define GEN_PASS_DECL_MANUALSTRATEGYUTILS
@@ -194,6 +194,12 @@ void ManualStrategyUtilsPass::safeRunOnFunc() {
     parseEnv("IE_NPU_WRITE_STRATEGY_JSON_LOC", _writeStrategyFileLocation);
     parseEnv("IE_NPU_READ_STRATEGY_JSON", _readStrategyFromJSON);
     parseEnv("IE_NPU_READ_STRATEGY_JSON_LOC", _readStrategyFileLocation);
+    if (isPerfDebugMode()) {
+        _writeStrategyToJSON = true;
+        // Use the default file name, ignore env var IE_NPU_WRITE_STRATEGY_JSON_LOC
+        _writeStrategyFileLocation = getPerfDebugFilePath(writeStrategyDefaultFileLocation);
+    }
+
 #endif  // defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
 
     auto func = getOperation();
@@ -277,6 +283,7 @@ void ManualStrategyUtilsPass::safeRunOnFunc() {
                                                          {tilingStrategy, defaultNoValue},
                                                          {verticalFusion, "False"},
                                                          {verticalFusionHash, defaultNoValue},
+                                                         {verticalFusionScenario, defaultNoValue},
                                                          {layerTypeName, defaultNoValue}};
 
             // writing current strategy to json
@@ -396,7 +403,7 @@ std::unique_ptr<mlir::Pass> VPU::createManualStrategyUtilsPass(bool writeStrateg
 std::unique_ptr<mlir::Pass> VPU::createManualStrategyUtilsPass(
         bool writeStrategyToJSON, StringRef writeStrategyFileLocation, bool readStrategyFromJSON,
         StringRef readStrategyFileLocation, bool dumpStrategyToLog, bool updateStrategyForOutputPipelining,
-        std::string contextId, Logger log) {
+        const std::string& contextId, Logger log) {
     return std::make_unique<ManualStrategyUtilsPass>(
             writeStrategyToJSON, writeStrategyFileLocation, readStrategyFromJSON, readStrategyFileLocation,
             updateStrategyForOutputPipelining, dumpStrategyToLog, contextId, log);

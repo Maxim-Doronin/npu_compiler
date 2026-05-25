@@ -463,14 +463,16 @@ vcl_result_t simulateVclCompilerAllocator(std::map<std::string, std::string>& bu
     if (ret != VCL_RESULT_SUCCESS) {
         return ret;
     }
-    auto it = buildConfig.find("NPU_WEIGHTLESS_BLOB");
+    static const std::string KEY_ENABLE_WEIGHTLESS = "ENABLE_WEIGHTLESS";
+    auto it = buildConfig.find(KEY_ENABLE_WEIGHTLESS);
     if (it != buildConfig.end() && it->second == "YES") {
         storeWeightlessCacheAttribute(model);
     }
 
     std::cout << "  VCL step: Serialize IR." << std::endl;
+    static const std::string KEY_LOG_LEVEL = "LOG_LEVEL";
     std::string logLevelStr =
-            (buildConfig.find("LOG_LEVEL") != buildConfig.end()) ? buildConfig["LOG_LEVEL"] : "LOG_NONE";
+            (buildConfig.find(KEY_LOG_LEVEL) != buildConfig.end()) ? buildConfig["LOG_LEVEL"] : "LOG_NONE";
     SerializedIR irSerializer;
     ret = serializeIR(model, compilerProp.version, compilerProp.supportedOpsets, compiler.handle, irSerializer,
                       logLevelStr);

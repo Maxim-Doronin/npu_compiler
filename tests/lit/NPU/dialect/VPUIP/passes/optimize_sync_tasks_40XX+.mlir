@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --optimize-sync-tasks %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --optimize-sync-tasks %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 // Note: 'idx' added since tasks can be reordered
 
@@ -475,7 +475,7 @@ func.func @DoNotRemoveSyncTaskBarVariantLimit() -> memref<1x64x32x32xf16, #NHWC,
     %buf3 = VPURT.DeclareBuffer <DDR> <0> -> memref<0x0x0x0xi32, @DDR>
 
     VPURT.Task updates(%bar0 : !VPURT.Barrier) {
-      VPUIP.NCEClusterTask <{task_type = #VPUIP.nce_task_type<ELTWISE>}> input(%buf0: !CmxType) weights(%buf0: !CmxType) parent_input(%buf0: !CmxType) parent_output(%buf1: !CmxType) outputs(%buf1: !CmxType) -> !CmxType variants : {
+      VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{task_type = #VPUIP.nce_task_type<ELTWISE>}> input(%buf0: !CmxType) weights(%buf0: !CmxType) parent_input(%buf0: !CmxType) parent_output(%buf1: !CmxType) outputs(%buf1: !CmxType) -> !CmxType variants : {
         DPUTask {cluster_id = 0 : i64, mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, outEnd = [31, 31, 63], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0, right = 0, top = 0, bottom = 0>}
         DPUTask {cluster_id = 0 : i64, mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, outEnd = [31, 31, 63], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0, right = 0, top = 0, bottom = 0>}
         DPUTask {cluster_id = 0 : i64, mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, outEnd = [31, 31, 63], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0, right = 0, top = 0, bottom = 0>}
@@ -519,7 +519,7 @@ func.func @DoNotRemoveSyncTaskBarVariantLimit() -> memref<1x64x32x32xf16, #NHWC,
     }
 
     VPURT.Task waits(%bar1 : !VPURT.Barrier) {
-      VPUIP.NCEClusterTask <{task_type = #VPUIP.nce_task_type<ELTWISE>}> input(%buf0: !CmxType) weights(%buf0: !CmxType) parent_input(%buf0: !CmxType) parent_output(%buf1: !CmxType) outputs(%buf1: !CmxType) -> !CmxType variants : {
+      VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{task_type = #VPUIP.nce_task_type<ELTWISE>}> input(%buf0: !CmxType) weights(%buf0: !CmxType) parent_input(%buf0: !CmxType) parent_output(%buf1: !CmxType) outputs(%buf1: !CmxType) -> !CmxType variants : {
         DPUTask {cluster_id = 0 : i64, mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, outEnd = [31, 31, 63], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0, right = 0, top = 0, bottom = 0>}
         DPUTask {cluster_id = 0 : i64, mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, outEnd = [31, 31, 63], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0, right = 0, top = 0, bottom = 0>}
         DPUTask {cluster_id = 0 : i64, mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, outEnd = [31, 31, 63], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0, right = 0, top = 0, bottom = 0>}

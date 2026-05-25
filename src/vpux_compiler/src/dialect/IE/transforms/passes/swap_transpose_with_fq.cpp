@@ -9,7 +9,7 @@
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
-#include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Transforms/WalkPatternRewriteDriver.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_SWAPTRANSPOSEWITHFQ
@@ -20,6 +20,45 @@ namespace vpux::IE {
 using namespace vpux;
 
 namespace {
+
+bool shouldConvertTransposeOp(IE::TransposeOp op, Logger log) {
+    const auto transposeIn = op.getInput();
+    // Check that Quantize has per-tensor quantization.
+    if (auto maybeQuantOp = transposeIn.getDefiningOp<IE::QuantizeOp>()) {
+        const auto axis = IE::getQuantAxisIndex(maybeQuantOp, log);
+        if (axis.has_value()) {
+            return false;
+        }
+
+        // It turned out that this approach gives performance gain mostly in this case:
+        // NetworkInput (NCHW) -> Quantize -> Transpose
+        // Quantize will eventually become an NCE task, which requires NHWC layout.
+        // If Quantize and Transpose is swapped, transpose and NHWC repack can be fused together.
+        // Also, sometimes such fusion results in PermuteCast, which does nothing in runtime.
+        return mlir::isa<mlir::BlockArgument>(maybeQuantOp.getInput());
+    } else if (auto maybeFqOp = transposeIn.getDefiningOp<IE::FakeQuantizeOp>()) {
+        // Check that FQ has per-tensor quantization.
+        if (!IE::isPerTensorFQ({maybeFqOp})) {
+            return false;
+        }
+
+        // For OV 2.0 API U8 we can have:
+        // NetworkInput (NCHW) -> Convert -> FQ -> Transpose. Because of this will remain a
+        // dequantize layer, this dequant layer will introduce 2 mem permutes because of the layout.
+        // This Transpose will be done as PermuteCast lately.
+        if (mlir::isa_and_nonnull<IE::ConvertOp>(maybeFqOp.getInput().getDefiningOp()) &&
+            mlir::isa<mlir::BlockArgument>(maybeFqOp.getInput().getDefiningOp()->getOperand(0)) &&
+            mlir::isa_and_nonnull<IE::FakeQuantizeOp>(*op.getResult().getUsers().begin())) {
+            return true;
+        }
+
+        return mlir::isa<mlir::BlockArgument>(maybeFqOp.getInput());
+    } else {
+        return false;
+    }
+
+    return true;
+}
 
 //
 // SwapTransposeWithFQ
@@ -59,6 +98,10 @@ private:
 
 mlir::LogicalResult SwapTransposeWithFQ::TransposeOpConverter::matchAndRewrite(IE::TransposeOp origOp,
                                                                                mlir::PatternRewriter& rewriter) const {
+    if (!shouldConvertTransposeOp(origOp, _log)) {
+        return mlir::failure();
+    }
+
     const auto transposeIn = origOp.getInput();
     if (auto origQuantOp = transposeIn.getDefiningOp<IE::QuantizeOp>()) {
         auto transposeOp = rewriter.create<IE::TransposeOp>(takeOpLoc(origOp, "transpose_in"), origQuantOp.getInput(),
@@ -84,55 +127,10 @@ mlir::LogicalResult SwapTransposeWithFQ::TransposeOpConverter::matchAndRewrite(I
 void SwapTransposeWithFQ::safeRunOnFunc() {
     auto& ctx = getContext();
 
-    const auto isLegalOp = [&](IE::TransposeOp op) -> bool {
-        const auto transposeIn = op.getInput();
-        if (auto maybeQuantOp = transposeIn.getDefiningOp<IE::QuantizeOp>()) {
-            // Check that Quantize has per-tensor quantization.
-            const auto axis = IE::getQuantAxisIndex(maybeQuantOp, _log);
-            if (axis.has_value()) {
-                return true;
-            }
-
-            // It turned out that this approach gives performance gain mostly in this case:
-            // NetworkInput (NCHW) -> Quantize -> Transpose
-            // Quantize will eventually become an NCE task, which requires NHWC layout.
-            // If Quantize and Transpose is swapped, transpose and NHWC repack can be fused together.
-            // Also, sometimes such fusion results in PermuteCast, which does nothing in runtime.
-            return !mlir::isa<mlir::BlockArgument>(maybeQuantOp.getInput());
-        } else if (auto maybeFqOp = transposeIn.getDefiningOp<IE::FakeQuantizeOp>()) {
-            // Check that FQ has per-tensor quantization.
-            if (!IE::isPerTensorFQ({maybeFqOp})) {
-                return true;
-            }
-
-            // For OV 2.0 API U8 we can have:
-            // NetworkInput (NCHW) -> Convert -> FQ -> Transpose. Because of this will remain a
-            // dequantize layer, this dequant layer will introduce 2 mem permutes because of the layout.
-            // This Transpose will be done as PermuteCast lately.
-            if (mlir::isa_and_nonnull<IE::ConvertOp>(maybeFqOp.getInput().getDefiningOp()) &&
-                mlir::isa<mlir::BlockArgument>(maybeFqOp.getInput().getDefiningOp()->getOperand(0)) &&
-                mlir::isa_and_nonnull<IE::FakeQuantizeOp>(*op.getResult().getUsers().begin())) {
-                return false;
-            }
-
-            return !mlir::isa<mlir::BlockArgument>(maybeFqOp.getInput());
-        }
-
-        return true;
-    };
-
-    mlir::ConversionTarget target(ctx);
-    target.addDynamicallyLegalOp<IE::TransposeOp>(isLegalOp);
-    target.addLegalOp<IE::QuantizeOp>();
-    target.addLegalOp<IE::FakeQuantizeOp>();
-
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<SwapTransposeWithFQ::TransposeOpConverter>(&ctx, _log);
 
-    auto func = getOperation();
-    if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
-        signalPassFailure();
-    }
+    walkAndApplyPatterns(getOperation(), std::move(patterns));
 }
 
 }  // namespace

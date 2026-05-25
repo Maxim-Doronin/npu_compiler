@@ -10,7 +10,7 @@
 #include "vpux/compiler/dialect/VPU/IR/ops/dpu.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/image.hpp"
 #include "vpux/compiler/dialect/VPU/IR/se_attributes.hpp"
-#include "vpux/compiler/dialect/VPU/transforms/factories/sparsity_constraint.hpp"
+#include "vpux/compiler/dialect/VPU/interfaces/strategies.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_interpolate_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/se_roll_utils.hpp"
@@ -37,14 +37,15 @@ namespace {
 
 bool doesFitIntoCMX(mlir::Operation* op, NDTypeInterface inputType, NDTypeInterface outputType, int64_t seTableH,
                     int64_t seTableW) {
-    auto arch = config::getArch(op);
-    auto sparsityConstraint = VPU::getSparsityConstraint(arch);
+    auto ctx = op->getContext();
+    const auto& strategyFactory = VPU::getVPUStrategyFactory(ctx);
+    auto sparsityConstraint = strategyFactory->getSparsityConstraint();
     const auto inShape = inputType.getShape();
     const auto inputC = inShape[Dims4D::Act::C];
 
     const auto seSize = VPU::getSESize(inputC, sparsityConstraint);
     const auto seDepth = inputC / seSize;
-    const auto sepType = mlir::IntegerType::get(op->getContext(), 32);
+    const auto sepType = mlir::IntegerType::get(ctx, 32);
 
     const auto inputDataSize = inputType.getTotalAllocSize().count();
     const auto inputSMSize = (seTableH * seTableW * inputC) / CHAR_BIT;
@@ -113,9 +114,8 @@ mlir::LogicalResult SplitInterpolate::matchAndRewrite(VPU::InterpolateOp origOp,
     const auto logCb = [&](const formatv_object_base& msg) {
         _log.trace("{0}", msg.str());
     };
-
-    if (!VPU::NCEInterpolateOp::isSupported(origOp, logCb, /*checkLayout=*/true, /*checkChannelAlignment=*/true,
-                                            /*checkBatch=*/true)) {
+    auto seOp = mlir::dyn_cast<IE::SEOpInterface>(origOp.getOperation());
+    if (!seOp || !seOp.isSupported(logCb, /*checkLayout=*/true, /*checkChannelAlignment=*/true, /*checkBatch=*/true)) {
         return matchFailed(rewriter, origOp, "It is not NCEInterpolateOp");
     }
 
@@ -227,8 +227,8 @@ mlir::LogicalResult SplitRoll::matchAndRewrite(VPU::RollOp origOp, mlir::Pattern
     const auto logCb = [&](const formatv_object_base& msg) {
         _log.trace("{0}", msg.str());
     };
-
-    if (!VPU::isSupportedSEPRoll(origOp, logCb, /*checkLayout=*/true, /*checkChannelAlignment=*/true)) {
+    auto seOp = mlir::dyn_cast<IE::SEOpInterface>(origOp.getOperation());
+    if (!seOp || !seOp.isSupported(logCb, /*checkLayout=*/true, /*checkChannelAlignment=*/true)) {
         return matchFailed(rewriter, origOp, "It is not fit for NCE");
     }
 

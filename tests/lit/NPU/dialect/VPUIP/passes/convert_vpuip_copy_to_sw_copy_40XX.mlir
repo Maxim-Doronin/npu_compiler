@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-vpuip-copy-to-sw-copy --canonicalize  %s | FileCheck %s
-// REQUIRES: arch-NPU40XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --convert-vpuip-copy-to-sw-copy --canonicalize  %s | FileCheck %s
+// REQUIRES: platform-NPU4000
 
 // -----
 

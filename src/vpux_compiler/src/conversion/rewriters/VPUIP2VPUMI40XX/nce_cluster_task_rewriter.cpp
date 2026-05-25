@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <map>
 #include "vpux/compiler/conversion/passes/VPUIP2VPUMI40XX/buffer_conversion.hpp"
+#include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_sparsity.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/ops.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
@@ -112,6 +113,8 @@ mlir::LogicalResult NCEClusterTaskRewriter::matchAndRewrite(VPUIP::NCEClusterTas
     auto palletLookupTable = convertOrExtractBuffer(rewriter, adaptor.getPalletLookupTable(), tileIndex);
     auto taskTypeAttr = adaptor.getTaskTypeAttr();
     auto dynamicSequenceLength = convertOrExtractBuffer(rewriter, adaptor.getDynamicSequenceLength(), tileIndex);
+    auto maxPerXyBuff = convertOrExtractBuffer(rewriter, adaptor.getMaxPerXyBuff(), tileIndex);
+    auto minPerXyBuff = convertOrExtractBuffer(rewriter, adaptor.getMinPerXyBuff(), tileIndex);
 
     auto invariant = rewriter.create<VPUMI40XX::DPUInvariantOp>(
             origOp.getLoc(), indexWithOnlyTileSet,
@@ -124,13 +127,13 @@ mlir::LogicalResult NCEClusterTaskRewriter::matchAndRewrite(VPUIP::NCEClusterTas
             weightTableDataPtr, weightTableSpPtr, weightTableScale, weightTableBias, weightZeroPoints, sprLookupTable,
             palletLookupTable, convertOrUnrollBuffer(rewriter, adaptor.getOutputBuff()),
             convertOrUnrollBuffer(rewriter, adaptor.getOutputSparsityMapBuff()), adaptor.getProfilingData(),
-            dynamicSequenceLength, adaptor.getMaxPerXy(), adaptor.getMinPerXy(), adaptor.getMinMaxPerTensor(),
-            taskTypeAttr, adaptor.getEltwiseTypeAttr(), mpeModeAttr, adaptor.getMpeEngineAttr(),
-            adaptor.getKernelSizeAttr(), adaptor.getKernelStridesAttr(), adaptor.getKernelPaddingAttr(),
-            adaptor.getIsContinued(), adaptor.getCmSpPatternAttr(), adaptor.getInputChannelsCompression(),
-            adaptor.getIsZeroOffsetWeightsTable(), adaptor.getOutChannelOffsetAttr(), adaptor.getIsSuperdense(),
-            adaptor.getIsInplaceAttr(), adaptor.getInputSeSizeAttr(), adaptor.getOutputSeSizeAttr(),
-            adaptor.getIsPermuteQuantize(), adaptor.getIsSmallKernelOptimized(), adaptor.getProfilingMetadataAttr(),
+            dynamicSequenceLength, maxPerXyBuff, minPerXyBuff, adaptor.getMinMaxPerTensorBuff(), taskTypeAttr,
+            adaptor.getEltwiseTypeAttr(), mpeModeAttr, adaptor.getMpeEngineAttr(), adaptor.getKernelSizeAttr(),
+            adaptor.getKernelStridesAttr(), adaptor.getKernelPaddingAttr(), adaptor.getIsContinued(),
+            adaptor.getCmSpPatternAttr(), adaptor.getInputChannelsCompression(), adaptor.getIsZeroOffsetWeightsTable(),
+            adaptor.getOutChannelOffsetAttr(), adaptor.getIsSuperdense(), adaptor.getIsInplaceAttr(),
+            adaptor.getInputSeSizeAttr(), adaptor.getOutputSeSizeAttr(), adaptor.getIsPermuteQuantize(),
+            adaptor.getIsSmallKernelOptimized(), adaptor.getProfilingMetadataAttr(),
             mlir::ValueRange(),           // waitBarriers
             mlir::ValueRange(),           // updateBarriers
             startAfterAttr,               // startAfter
@@ -138,10 +141,9 @@ mlir::LogicalResult NCEClusterTaskRewriter::matchAndRewrite(VPUIP::NCEClusterTas
             nullptr,                      // enqueueBarrier
             origTaskOp.getWlmPageAttr(),  // wlmPageAttr
             adaptor.getSparsityConfigAttr(), adaptor.getDynamicScaleConfigAttr(), adaptor.getLocalRegionAttr(),
-            adaptor.getS2dConfigAttr()
+            adaptor.getS2dd2sConfigAttr()
 
     );
-
     auto createVPUMI40XXVariant = [&](auto dpuTask, std::optional<size_t> wtOffset = std::nullopt,
                                       bool sprLutRead = false, bool palletLutRead = false, bool forceInvRead = false) {
         rewriter.create<VPUMI40XX::DPUVariantOp>(
@@ -194,7 +196,12 @@ mlir::LogicalResult NCEClusterTaskRewriter::matchAndRewrite(VPUIP::NCEClusterTas
         } else if (adaptor.getWeightZeroPoints()) {
             auto weightsElementType = mlir::cast<NDTypeInterface>(adaptor.getWeights().getType()).getElementType();
             if (auto quantType = mlir::dyn_cast<mlir::quant::QuantizedType>(weightsElementType)) {
-                if (auto storageTypeAsIntegerType = mlir::dyn_cast<mlir::IntegerType>(quantType.getStorageType())) {
+                auto storageType = quantType.getStorageType();
+                // Unwrap QuantileType to reach the inner integer storage type
+                if (auto quantileType = mlir::dyn_cast<vpux::type::QuantileType>(storageType)) {
+                    storageType = quantileType.getStorageType();
+                }
+                if (auto storageTypeAsIntegerType = mlir::dyn_cast<mlir::IntegerType>(storageType)) {
                     auto numberOfBitsInZeroPoint = storageTypeAsIntegerType.getWidth();
                     if (numberOfBitsInZeroPoint == 4) {
                         wtOffsetComputationFn = getZPTableAlignmentForWorkload4bit;

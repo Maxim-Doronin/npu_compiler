@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --convert-VPUMI40XX-to-VPUASM %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --convert-VPUMI40XX-to-VPUASM %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 net.NetworkInfo entryPoint : @twoDma inputsInfo : {
@@ -18,7 +18,9 @@ func.func @twoDma() {
   %12 = VPUMI40XX.ConfigureBarrier <{consumer_count = 2 : ui8, producer_count = 2 : ui8}> <1, -1> -> !VPURegMapped.Index<0:0:1>
   %19 = VPUMI40XX.Bootstrap inputs(%11 : <0:0:0>) -> !VPURegMapped.Index<0:0:0>
   %20 = VPUMI40XX.Bootstrap inputs(%12 : <0:0:1>) -> !VPURegMapped.Index<0:0:1>
-  ELF.ABIVersion {sym_name = "LoaderABIVersion"}
+  %miV = VPUMI40XX.MappedInferenceVersion(11 _ 4 _ 10) -> !VPURegMapped.Index<0:0:0>
+  %mi = VPUMI40XX.MappedInference barriers(%11 : !VPURegMapped.Index<0:0:0>) bootstrapBarriers(%19 : !VPURegMapped.Index<0:0:0>) dmaCount([[0, 0]]) invariantCount([0]) variantCount([0]) actKernelRangesCount([[0, 0]]) actKernelInvocationsCount([[0, 0]]) mediaCount(0) barrierCount(2) bootstrapBarriersCount(2) mappedInferenceVersion(%miV : !VPURegMapped.Index<0:0:0>) -> !VPURegMapped.Index<0:0:0>
+  ELF.ABIVersion
   VPUMI40XX.OpRanges
 }
 
@@ -49,11 +51,13 @@ module @Convolution attributes {config.compilationMode = #config.compilation_mod
   } outputsInfo : {
     DataInfo "output" : tensor<1x16x14x14xf16>
   }
-  VPUASM.IOBindings inputDeclarations : {
+  VPUASM.InputBindings inputDeclarations : {
     VPUASM.DeclareBuffer @input_buffDecl !VPUASM.Buffer< "NetworkInput"[0] <0> : memref<1x16x16x16xf16, @DDR> :  swizzling(0)>
-  } outputDeclarations : {
+  }
+  VPUASM.OutputBindings outputDeclarations : {
     VPUASM.DeclareBuffer @output_buffDecl !VPUASM.Buffer< "NetworkOutput"[0] <0> : memref<1x16x14x14xf16, @DDR> :  swizzling(0)>
-  } profilingBuffDeclarations : {
+  }
+  VPUASM.ProfilingBindings profilingDeclarations : {
   }
   func.func @main() {
     %0 = VPURT.DeclareBuffer <NetworkInput> [0] <0> {swizzlingKey = 0 : i64} -> memref<1x16x16x16xf16, @DDR>
@@ -61,7 +65,9 @@ module @Convolution attributes {config.compilationMode = #config.compilation_mod
     %2 = VPUMI40XX.DeclareTaskBuffer <DPUInvariant> -> !VPURegMapped.Index<0:0:0>
     %3 = VPUMI40XX.DeclareTaskBuffer <DPUInvariant> -> !VPURegMapped.Index<0:0:1>
     %28 = VPURegMapped.ViewTaskRange(%2 -> %3 : <0:0:0> -> <0:0:1>) -> memref<2x352xui8, [@CMX_NN, 0]>
-    ELF.ABIVersion {sym_name = "LoaderABIVersion"}
+    %miV = VPUMI40XX.MappedInferenceVersion(11 _ 4 _ 10) -> !VPURegMapped.Index<0:0:0>
+    %mi = VPUMI40XX.MappedInference dmaCount([[0, 0]]) invariantCount([0]) variantCount([0]) actKernelRangesCount([[0, 0]]) actKernelInvocationsCount([[0, 0]]) mediaCount(0) barrierCount(0) bootstrapBarriersCount(0) mappedInferenceVersion(%miV : !VPURegMapped.Index<0:0:0>) -> !VPURegMapped.Index<0:0:0>
+    ELF.ABIVersion
     VPUMI40XX.OpRanges
   }
 }
@@ -92,11 +98,13 @@ module @Convolution attributes {config.compilationMode = #config.compilation_mod
   } outputsInfo : {
     DataInfo "output" : tensor<1x16x14x14xf16>
   }
-  VPUASM.IOBindings inputDeclarations : {
+  VPUASM.InputBindings inputDeclarations : {
     VPUASM.DeclareBuffer @input_buffDecl !VPUASM.Buffer< "NetworkInput"[0] <0> : memref<1x16x16x16xf16, @DDR> :  swizzling(0)>
-  } outputDeclarations : {
+  }
+  VPUASM.OutputBindings outputDeclarations : {
     VPUASM.DeclareBuffer @output_buffDecl !VPUASM.Buffer< "NetworkOutput"[0] <0> : memref<1x16x14x14xf16, @DDR> :  swizzling(0)>
-  } profilingBuffDeclarations : {
+  }
+  VPUASM.ProfilingBindings profilingDeclarations : {
   }
   func.func @main() {
     %0 = VPURT.DeclareBuffer <NetworkInput> [0] <0> {swizzlingKey = 0 : i64} -> memref<1x16x16x16xf16, @DDR>
@@ -156,7 +164,7 @@ module @Convolution attributes {config.compilationMode = #config.compilation_mod
     %miV = VPUMI40XX.MappedInferenceVersion(11 _ 4 _ 10) -> !VPURegMapped.Index<0:0:0>
 
     %44 = VPUMI40XX.MappedInference dmas((%31, %36) : (!VPURegMapped.Index<0:0:0>, !VPURegMapped.Index<0:1:0>)) invariants(%23 : !VPURegMapped.Index<0:0:0>) variants(%25 : !VPURegMapped.Index<0:0:0>) barriers(%18 : !VPURegMapped.Index<0:0:0>) workItemTasks(%37 : !VPURegMapped.Index<0:0:0>) bootstrapBarriers(%39 : !VPURegMapped.Index<0:0:0>) dmaCount([[5, 1]]) invariantCount([2]) variantCount([2]) actKernelRangesCount([[0, 0]]) actKernelInvocationsCount([[0, 0]]) mediaCount(0) barrierCount(5) workItemCount(2) bootstrapBarriersCount(5) mappedInferenceVersion(%miV : !VPURegMapped.Index<0:0:0>) -> !VPURegMapped.Index<0:0:0>
-    ELF.ABIVersion {sym_name = "LoaderABIVersion"}
+    ELF.ABIVersion
     VPUMI40XX.OpRanges
   }
 }
@@ -224,11 +232,13 @@ module @BarrierProgramming attributes {config.compilationMode = #config.compilat
   } outputsInfo : {
     DataInfo "output" : tensor<1x16x14x14xf16>
   }
-  VPUASM.IOBindings inputDeclarations : {
+  VPUASM.InputBindings inputDeclarations : {
     VPUASM.DeclareBuffer @input_buffDecl !VPUASM.Buffer< "NetworkInput"[0] <0> : memref<1x16x16x16xf16, @DDR> :  swizzling(0)>
-  } outputDeclarations : {
+  }
+  VPUASM.OutputBindings outputDeclarations : {
     VPUASM.DeclareBuffer @output_buffDecl !VPUASM.Buffer< "NetworkOutput"[0] <0> : memref<1x16x14x14xf16, @DDR> :  swizzling(0)>
-  } profilingBuffDeclarations : {
+  }
+  VPUASM.ProfilingBindings profilingDeclarations : {
   }
   func.func @main() {
     %0 = VPURT.DeclareBuffer <NetworkInput> [0] <0> {swizzlingKey = 0 : i64} -> memref<1x16x16x16xf16, @DDR>
@@ -292,7 +302,7 @@ module @BarrierProgramming attributes {config.compilationMode = #config.compilat
     %miV = VPUMI40XX.MappedInferenceVersion(11 _ 4 _ 10) -> !VPURegMapped.Index<0:0:0>
 
     %173 = VPUMI40XX.MappedInference dmas((%31, %36) : (!VPURegMapped.Index<0:0:0>, !VPURegMapped.Index<0:1:0>)) invariants(%23 : !VPURegMapped.Index<0:0:0>) variants(%25 : !VPURegMapped.Index<0:0:0>) barriers(%18 : !VPURegMapped.Index<0:0:0>) workItemTasks(%37 : !VPURegMapped.Index<0:0:0>) bootstrapBarriers(%39 : !VPURegMapped.Index<0:0:0>) barrierConfigurationTasks(%barDescs : memref<1xui8>) numOfBarrierReprogrammings(%barStrides : memref<16xui32>) dmaCount([[5, 1]]) invariantCount([2]) variantCount([2]) actKernelRangesCount([[0, 0]]) actKernelInvocationsCount([[0, 0]]) mediaCount(0) barrierCount(5) workItemCount(2) bootstrapBarriersCount(5) barrierConfigurationTasksCount(128) mappedInferenceVersion(%miV : !VPURegMapped.Index<0:0:0>) -> !VPURegMapped.Index<0:0:0>
-    ELF.ABIVersion {sym_name = "LoaderABIVersion"}
+    ELF.ABIVersion
     VPUMI40XX.OpRanges
   }
 }

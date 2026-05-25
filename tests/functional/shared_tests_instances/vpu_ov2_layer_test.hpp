@@ -12,6 +12,8 @@
 #include <intel_npu/npu_private_properties.hpp>
 #include <shared_test_classes/base/ov_subgraph.hpp>
 
+#include "common/tensor_comparison.hpp"
+
 #include <functional>
 #include <optional>
 #include <sstream>
@@ -55,6 +57,7 @@ private:
     using ErrorMessage = std::optional<std::string>;
     [[nodiscard]] ErrorMessage runTest();
     [[nodiscard]] ErrorMessage skipInferenceImpl();
+    bool ensureCICompliantName() const;
 
 public:
     void setReferenceSoftwareMode();
@@ -75,6 +78,7 @@ public:
 
     void run(const std::string_view platform);
 
+    void compare(const std::vector<ov::Tensor>& expected, const std::vector<ov::Tensor>& actual) override;
     void validate() override;
 
 private:

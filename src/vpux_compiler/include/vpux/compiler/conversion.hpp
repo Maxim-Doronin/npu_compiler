@@ -87,17 +87,14 @@ void buildShaveCodeGenPipelineVPUIP(mlir::OpPassManager& pm, Logger log = Logger
 
 // ELF back-end lowerings
 std::unique_ptr<mlir::Pass> createConvertVPUIP2VPUMI37XXPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createConvertVPUMI37XX2VPUASMPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createConvertVPUMI37XX2ELFPass(Logger log = Logger::global());
 
 // NPU40XX ELF specific passes
 std::unique_ptr<mlir::Pass> createConvertVPUIP2VPUMI40XXPass(
         Logger log = Logger::global(), bool enableMemorySideCache = false,
-        AllocateShaveStackFrames allocateShaveStackFrames = AllocateShaveStackFrames::DISABLED);
+        AllocateDDRStackFrames allocateDDRStackFrames = AllocateDDRStackFrames::DISABLED);
 
 std::unique_ptr<mlir::Pass> createConvertVPUMI40XX2VPUASMPass(Logger log = Logger::global(),
-                                                              bool disableDmaSwFifo = false);
-std::unique_ptr<mlir::Pass> createConvertVPUMI40XX2VPUASMPass(bool enablePWLM, Logger log = Logger::global(),
                                                               bool disableDmaSwFifo = false);
 
 std::unique_ptr<mlir::Pass> createConvertVPUIPDPU2NPUReg40XXPass(
@@ -115,6 +112,10 @@ std::unique_ptr<mlir::Pass> createConvertVPUASM2NPUReg50XXPass(Logger log = Logg
 
 // Host compile specific passes
 void buildLLVMTranslationPipeline(mlir::OpPassManager& pm);
+
+namespace bytecode {
+std::unique_ptr<mlir::Pass> createConvertHostcodeToBytecodePass(const Logger& log = Logger::global());
+}  // namespace bytecode
 
 //
 // Registration

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --unroll-permute-dma  %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --unroll-permute-dma  %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -289,14 +289,14 @@ func.func @UnrollDistributedPermuteDMA() -> memref<1x3x24x24xf16, #NHWC, @DDR> {
 
     // NCE task
     VPURT.Task waits(%10 : !VPURT.Barrier) updates(%11 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-      %40 = VPUIP.NCEClusterTask <{is_segmented, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<MAXPOOL>}> input(%20 : memref<1x16x12x24xf16, #NHWC, [@CMX_NN, 0]>) weight_table(%22 : memref<16x1x1x4xsi32, [@CMX_NN, 0]>) parent_input(%19 : !VPUIP.DistributedBuffer<1x16x24x24xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>) parent_output(%28 : !VPUIP.DistributedBuffer<1x16x24x24xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>) outputs(%29 : memref<1x16x12x24xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x16x12x24xf16, #NHWC, [@CMX_NN, 0]> variants : {
+      %40 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{is_segmented, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<MAXPOOL>}> input(%20 : memref<1x16x12x24xf16, #NHWC, [@CMX_NN, 0]>) weight_table(%22 : memref<16x1x1x4xsi32, [@CMX_NN, 0]>) parent_input(%19 : !VPUIP.DistributedBuffer<1x16x24x24xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>) parent_output(%28 : !VPUIP.DistributedBuffer<1x16x24x24xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>) outputs(%29 : memref<1x16x12x24xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x16x12x24xf16, #NHWC, [@CMX_NN, 0]> variants : {
         DPUTask {cluster_id = 0 : i64, outEnd = [23, 11, 15], mpe_mode = #VPU.mpe_mode<CUBOID_4x16>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, outStart = [0, 0, 0]}
       } PPE : {
         PPETask {ppe = #VPU.PPEStub<>}
       }
     }
     VPURT.Task waits(%10 : !VPURT.Barrier) updates(%11 : !VPURT.Barrier) attributes {isTrailingSWLayer = false} {
-      %40 = VPUIP.NCEClusterTask <{is_segmented, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<MAXPOOL>}> input(%21 : memref<1x16x12x24xf16, #NHWC, [@CMX_NN, 1]>) weight_table(%23 : memref<16x1x1x4xsi32, [@CMX_NN, 1]>) parent_input(%19 : !VPUIP.DistributedBuffer<1x16x24x24xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>) parent_output(%28 : !VPUIP.DistributedBuffer<1x16x24x24xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>) outputs(%30 : memref<1x16x12x24xf16, #NHWC, [@CMX_NN, 1]>) -> memref<1x16x12x24xf16, #NHWC, [@CMX_NN, 1]> variants : {
+      %40 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{is_segmented, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<MAXPOOL>}> input(%21 : memref<1x16x12x24xf16, #NHWC, [@CMX_NN, 1]>) weight_table(%23 : memref<16x1x1x4xsi32, [@CMX_NN, 1]>) parent_input(%19 : !VPUIP.DistributedBuffer<1x16x24x24xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>) parent_output(%28 : !VPUIP.DistributedBuffer<1x16x24x24xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>) outputs(%30 : memref<1x16x12x24xf16, #NHWC, [@CMX_NN, 1]>) -> memref<1x16x12x24xf16, #NHWC, [@CMX_NN, 1]> variants : {
         DPUTask {cluster_id = 1 : i64, outEnd = [23, 23, 15], mpe_mode = #VPU.mpe_mode<CUBOID_4x16>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, outStart = [0, 12, 0]}
       } PPE : {
         PPETask {ppe = #VPU.PPEStub<>}
@@ -311,6 +311,7 @@ func.func @UnrollDistributedPermuteDMA() -> memref<1x3x24x24xf16, #NHWC, @DDR> {
     }
     return %result : memref<1x3x24x24xf16, #NHWC, @DDR>
 
+    //CHECK:    [[RET_BUF:%.+]] = VPURT.DeclareBuffer <NetworkOutput> <0> -> memref<1x3x24x24xf16, #NHWC, @DDR>
     //CHECK:    [[BAR0:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
     //CHECK:    [[BAR1:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
     //CHECK:    [[BAR2:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
@@ -388,7 +389,7 @@ func.func @UnrollDistributedPermuteDMA() -> memref<1x3x24x24xf16, #NHWC, @DDR> {
     //CHECK:    }
 
     //CHECK:    VPURT.Task waits([[BAR9]] : !VPURT.Barrier) updates([[BAR10]] : !VPURT.Barrier)
-    //CHECK:      VPUIP.NNDMA inputs([[CST:%.+]] : memref<1x1x1x16xui8>) outputs(%33 : !VPUIP.DistributedBuffer<1x1x1x16xui8, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>) -> !VPUIP.DistributedBuffer<1x1x1x16xui8, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
+    //CHECK:      VPUIP.NNDMA inputs(%{{.*}} : memref<1x1x1x16xui8>) outputs(%{{.*}} : !VPUIP.DistributedBuffer<1x1x1x16xui8, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>) -> !VPUIP.DistributedBuffer<1x1x1x16xui8, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
     //CHECK:    }
 
     // nce task
@@ -406,7 +407,7 @@ func.func @UnrollDistributedPermuteDMA() -> memref<1x3x24x24xf16, #NHWC, @DDR> {
     //CHECK:    VPURT.Task waits([[BAR11]] : !VPURT.Barrier)
     //CHECK:      VPUIP.NNDMA <{port = 1 : i64}>
     //CHECK:    }
-    //CHECK:    return %0 : memref<1x3x24x24xf16, #NHWC, @DDR>
+    //CHECK:    return [[RET_BUF]] : memref<1x3x24x24xf16, #NHWC, @DDR>
 
 }
 

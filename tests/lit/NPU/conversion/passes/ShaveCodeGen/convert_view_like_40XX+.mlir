@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-eltwise-layers-to-math %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --convert-eltwise-layers-to-math %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 // CHECK: func.func @foo(
 func.func @foo(%arg0: tensor<15x2xf32>) -> tensor<10x3x1xf32> {
@@ -34,8 +34,7 @@ func.func @foo(%arg0: tensor<15x2xf32>) -> tensor<10x3x1xf32> {
 func.func @bar(%arg0: tensor<15x2x1xf32>) -> tensor<30xf32> {
   // CHECK: IE.CodeGenCapsule inputs({{.+}} as [[ARG1:%.+]]: tensor<15x2x1xf32>) {
   // CHECK-NEXT:    [[COLLAPSE:%.+]] = tensor.collapse_shape [[ARG1]] {{\[\[0, 1, 2\]\]}} : tensor<15x2x1xf32> into tensor<30xf32>
-  // CHECK-NEXT:    [[EXPAND:%.+]] = tensor.expand_shape [[COLLAPSE]] {{\[\[0\]\]}} output_shape [30] : tensor<30xf32> into tensor<30xf32>
-  // CHECK-NEXT:    IE.CGCYield [[EXPAND]] : tensor<30xf32>
+  // CHECK-NEXT:    IE.CGCYield [[COLLAPSE]] : tensor<30xf32>
   %0 = IE.CodeGenCapsule inputs(%arg0 as %arg1: tensor<15x2x1xf32>) {
     %1 = IE.AffineReshape(%arg1) {dim_mapping = [[0], [0], [0]], shape_value = [30]} : tensor<15x2x1xf32> -> tensor<30xf32>
     IE.CGCYield %1 : tensor<30xf32>

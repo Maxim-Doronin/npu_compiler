@@ -36,7 +36,8 @@ class MaxPoolWithActivationQuantizedTest :
         public VpuOv2LayerTest,
         public testing::WithParamInterface<MaxPoolWithActivationQuantTestParams> {
     void configure_model() override {
-        configuration[ov::intel_npu::compilation_mode_params.name()] = "enable-sprlut=true";
+        // #E-210493 - to remove quant-dequant-removal=false when proper solution is found
+        configuration[ov::intel_npu::compilation_mode_params.name()] = "enable-sprlut=true quant-dequant-removal=false";
     }
 
     void SetUp() override {
@@ -105,7 +106,8 @@ class MaxPoolWithSwishQuantizedTest :
         public VpuOv2LayerTest,
         public testing::WithParamInterface<MaxPoolWithSwishQuantTestParams> {
     void configure_model() override {
-        configuration[ov::intel_npu::compilation_mode_params.name()] = "enable-sprlut=true";
+        // #E-210493 - to remove quant-dequant-removal=false when proper solution is found
+        configuration[ov::intel_npu::compilation_mode_params.name()] = "enable-sprlut=true quant-dequant-removal=false";
     }
 
     void SetUp() override {

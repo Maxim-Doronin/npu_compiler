@@ -9,6 +9,13 @@
 
 using namespace vpux;
 
+Shape VPU::inferShapeThroughPermute(ShapeRef origShape, NDTypeInterface srcType, NDTypeInterface dstType,
+                                    mlir::AffineMap memPerm) {
+    const auto arrInMemOrder = srcType.getDimsOrder().toMemoryOrder(origShape);
+    const auto arrPermutedInMemOrder = applyPerm(arrInMemOrder, memPerm);
+    return Shape(dstType.getDimsOrder().toLogicalOrder(arrPermutedInMemOrder).raw());
+}
+
 mlir::FailureOr<VPU::DistributionInfo> VPU::applyPermutationOnDistributionInfo(
         vpux::NDTypeInterface inType, const VPU::DistributionInfo& inDistribution, mlir::AffineMap memPerm,
         DimsOrder srcOrder, DimsOrder dstOrder, ShapeRef srcShape, ShapeRef dstShape) {

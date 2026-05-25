@@ -11,7 +11,7 @@
 #include "vpux/compiler/utils/attributes.hpp"
 
 #include <mlir/IR/IRMapping.h>
-#include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Transforms/WalkPatternRewriteDriver.h>
 
 namespace vpux::VPU {
 #define GEN_PASS_DECL_UNROLLUNUSEDVERTICALFUSIONREGION
@@ -23,6 +23,18 @@ using namespace vpux;
 using namespace VPU;
 
 namespace {
+
+bool canUnrollUnusedVF(VPU::VerticalFusionOp op) {
+    auto vfOps = op.getOps().front().getOps<VPU::VerticalFusionOpInterface>();
+    const bool isSingleOp = (std::distance(vfOps.begin(), vfOps.end()) == 1);
+
+    const auto tilingInfo = parseIntArrayAttr<int64_t>(op.getTilingStrategy());
+    const auto hasTiling = llvm::any_of(tilingInfo, [](int64_t i) {
+        return i != 1;
+    });
+
+    return isSingleOp || !hasTiling;
+}
 
 //
 // VerticalFusionUnrollRewriter
@@ -42,6 +54,11 @@ private:
 
 mlir::LogicalResult VerticalFusionUnrollRewriter::matchAndRewrite(VPU::VerticalFusionOp vfOp,
                                                                   mlir::PatternRewriter& rewriter) const {
+    if (!canUnrollUnusedVF(vfOp)) {
+        _log.debug("Failed to unroll VerticalFusionOp '{0}' at '{1}'.", vfOp->getName(), vfOp->getLoc());
+        return mlir::failure();
+    }
+
     mlir::IRMapping mapper;
     for (auto arg : vfOp.getBody()->getArguments()) {
         mapper.map(arg, vfOp.getOperand(arg.getArgNumber()));
@@ -108,33 +125,10 @@ void UnrollUnusedVerticalFusionRegionPass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
 
-    const auto isLegalVF = [&](VPU::VerticalFusionOp op) {
-        auto vfOps = op.getOps().front().getOps<VPU::VerticalFusionOpInterface>();
-        if (std::distance(vfOps.begin(), vfOps.end()) == 1) {
-            return false;
-        }
-
-        const auto tilingInfo = parseIntArrayAttr<int64_t>(op.getTilingStrategy());
-        const auto hasTiling = llvm::any_of(tilingInfo, [](int64_t i) {
-            return i != 1;
-        });
-        if (!hasTiling) {
-            return false;
-        }
-        return true;
-    };
-
-    mlir::ConversionTarget target(ctx);
-    target.addDynamicallyLegalOp<VPU::VerticalFusionOp>(isLegalVF);
-    target.addLegalDialect<Const::ConstDialect>();
-    target.addLegalDialect<VPU::VPUDialect>();
-
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<VerticalFusionUnrollRewriter>(&ctx, _log);
 
-    if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
-        signalPassFailure();
-    }
+    walkAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

@@ -1111,6 +1111,7 @@ def reg_dma_word_23_reserved : NPUReg50XX_RegisterWrapper<"dma_word_23_reserved"
 def reg_VpuTaskSchedulingBarrierConfig : NPUReg50XX_RegisterWrapper<"dma_barriers_sched", 8, 0xC0,
     ["start_after_", "clean_after_"]>;
 
+
 def bf_dma_pad_24_0 : NPUReg50XX_RegFieldWrapper<"dma_pad_24_0", 64, 0>;
 def reg_dma_pad_24_0 : NPUReg50XX_RegisterWrapper<"dma_pad_24_0", 8, 0xC8, ["dma_pad_24_0"]>;
 

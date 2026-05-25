@@ -612,7 +612,7 @@ mlir::LogicalResult MoveThroughOpBase<ConcreteOp>::matchAndRewrite(ConcreteOp co
     if (auto iface = mlir::dyn_cast<IE::LayoutInfoOpInterface>(operation)) {
         auto orderInfo = iface.getLayoutInfo();
         orderInfo.setInput(0, outOrder);
-        iface.inferLayoutInfo(orderInfo, /*seOpsEnabled=*/false, /*seExperimentalOpsEnabled=*/false);
+        iface.inferLayoutInfo(orderInfo);
         if (orderInfo.getInput(0) != outOrder || orderInfo.getOutput(0) != outOrder) {
             return mlir::failure();
         }
@@ -814,7 +814,8 @@ bool MoveMemPermuteThroughOp<ConcreteOp>::isPropagationBeneficialForConcatAndSli
             hasDuplicateMemPermute = true;
         }
 
-        return hasDuplicateMemPermute || isSliceSizeGreaterThanInput;
+        int64_t slicesWithMemPermute = memPermuteOps.size() - inputUserMemPermuteOps.size();
+        return hasDuplicateMemPermute || (isSliceSizeGreaterThanInput && slicesWithMemPermute > 1);
     };
 
     if (auto sliceOp = mlir::dyn_cast_or_null<IE::SliceOp>(parentOp)) {

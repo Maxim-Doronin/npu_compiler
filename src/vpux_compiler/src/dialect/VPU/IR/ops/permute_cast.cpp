@@ -123,15 +123,63 @@ vpux::InputTiling vpux::VPU::PermuteCastOp::backInferTileInfo(const vpux::TileIn
     const auto srcType = mlir::cast<vpux::NDTypeInterface>(getInput().getType());
     const auto dstType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
 
-    const auto arrInMemOrder = dstType.getDimsOrder().toMemoryOrder(inputTile.shape);
-    const auto arrPermutedInMemOrder = applyPerm(arrInMemOrder, mlir::inversePermutation(getMemPerm()));
-    inputTile.shape = Shape(srcType.getDimsOrder().toLogicalOrder(arrPermutedInMemOrder).raw());
+    const auto invPerm = mlir::inversePermutation(getMemPerm());
+
+    // Since we want to back-infer the input tile based on the output one, we need to apply the inverse permutation and
+    // swap the src and dst types in the calls to inferShapeThroughPermute below
+    inputTile.shape = inferShapeThroughPermute(inputTile.shape, dstType, srcType, invPerm);
+    inputTile.offsets = inferShapeThroughPermute(inputTile.offsets, dstType, srcType, invPerm);
+    inputTile.axis = inferShapeThroughPermute(inputTile.axis, dstType, srcType, invPerm);
 
     log.trace("PermuteCastOp backInferTileInfo: inputShape={0}, outputTile={1}, inputTile={2}", inputShape, outputTile,
               inputTile);
 
     inputTiles.push_back(inputTile);
     return TilingInfo{inputTiles};
+}
+
+SmallVector<int64_t> vpux::VPU::PermuteCastOp::backInferTilingStrategy(mlir::ArrayRef<int64_t> outputTilingStrategy) {
+    const auto srcType = mlir::cast<vpux::NDTypeInterface>(getInput().getType());
+    const auto dstType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
+    const auto invPerm = mlir::inversePermutation(getMemPerm());
+
+    VPUX_THROW_WHEN(outputTilingStrategy.size() != static_cast<size_t>(dstType.getRank()),
+                    "Output tiling strategy size {0} doesn't match dst type rank {1}", outputTilingStrategy.size(),
+                    dstType.getRank());
+
+    const auto outStrategy = Shape(outputTilingStrategy);
+    const auto inputStrategy = inferShapeThroughPermute(outStrategy, dstType, srcType, invPerm);
+    return to_small_vector(inputStrategy);
+}
+
+mlir::FailureOr<SmallVector<int64_t>> vpux::VPU::PermuteCastOp::inferTilingStrategy(
+        mlir::ArrayRef<int64_t> inputTilingStrategy) {
+    const auto srcType = mlir::cast<vpux::NDTypeInterface>(getInput().getType());
+    const auto dstType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
+
+    VPUX_THROW_WHEN(inputTilingStrategy.size() != static_cast<size_t>(srcType.getRank()),
+                    "Input tiling strategy size {0} doesn't match src type rank {1}", inputTilingStrategy.size(),
+                    srcType.getRank());
+
+    const auto inStrategy = Shape(inputTilingStrategy);
+    const auto outStrategy = inferShapeThroughPermute(inStrategy, srcType, dstType, getMemPerm());
+    return to_small_vector(outStrategy);
+}
+
+vpux::Dim vpux::VPU::PermuteCastOp::backInferTilingDim(vpux::Dim outputDim) {
+    const auto srcType = mlir::cast<vpux::NDTypeInterface>(getInput().getType());
+    const auto dstType = mlir::cast<vpux::NDTypeInterface>(getOutput().getType());
+
+    VPUX_THROW_WHEN(outputDim.ind() < 0 || outputDim.ind() >= dstType.getRank(),
+                    "Output tiling dimension {0} is out of range for dst type rank {1}", outputDim.ind(),
+                    dstType.getRank());
+
+    const auto invPerm = mlir::inversePermutation(getMemPerm());
+    auto invMemPerm = DimsOrder::fromAffineMap(invPerm);
+
+    auto outMemDim = dstType.getDimsOrder().toMemDim(outputDim);
+    auto backInferMemDim = MemDim(invMemPerm.dimPos(Dim(outMemDim.ind())));
+    return srcType.getDimsOrder().toDim(backInferMemDim);
 }
 
 void vpux::VPU::PermuteCastOp::adjustAttrs(const TilingInfo&, const TileInfo&, ShapeRef) {

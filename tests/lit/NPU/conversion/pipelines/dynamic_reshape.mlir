@@ -3,7 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-translate --vpu-arch=NPU37XX --import-IE ./dynamic_reshape.xml | FileCheck %s
+// RUN: vpux-translate --platform=%platform% --import-IE ./dynamic_reshape.xml | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 // CHECK: module @dynamic_reshape {
 // CHECK:   net.NetworkInfo entryPoint : @main inputsInfo : {

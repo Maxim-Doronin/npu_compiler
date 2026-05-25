@@ -11,7 +11,8 @@
 
 #include "vpux/compiler/dialect/VPU/IR/types.hpp"
 #include "vpux/compiler/dialect/VPU/interfaces/scf/scf_tiling_interfaces.hpp"
-#include "vpux/compiler/init.hpp"
+#include "vpux/compiler/dialect/VPU/interfaces/scf/scf_tiling_viewlike_interfaces.hpp"
+#include "vpux/compiler/init/dialects_registry.hpp"
 
 #include "common/utils.hpp"
 
@@ -392,5 +393,42 @@ TEST_F(MLIR_SCFTilingTest, ComputeInputTilesDWConv) {
         SmallVector<int64_t> expectedWtShape = {16, 1, 1, 4};
         EXPECT_TRUE(llvm::equal(wtShape.value(), expectedWtShape));
         EXPECT_TRUE(llvm::equal(wtOffset.value(), expectedWtOffset));
+    });
+}
+
+TEST_F(MLIR_SCFTilingTest, SliceTilingAxis) {
+    mlir::MLIRContext ctx(registry);
+    ctx.loadDialect<VPU::VPUDialect>();
+    mlir::OpBuilder builder(&ctx);
+
+    constexpr llvm::StringLiteral inputIR = R"(
+        #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+        module @test {
+            config.Resources 4 of @NCE at 6.000000e+02 MHz
+            func.func @main(%arg0: tensor<1x32x1080x1920xf16, {order = #NHWC}>) -> tensor<1x32x540x1920xf16, {order = #NHWC}> {
+                %0 = VPU.Slice %arg0 [0, 0, 0, 0] [1, 32, 540, 1920] : tensor<1x32x1080x1920xf16, {order = #NHWC}> to tensor<1x32x540x1920xf16, {order = #NHWC}>
+                return %0 : tensor<1x32x540x1920xf16, {order = #NHWC}>
+            }
+        }
+    )";
+
+    auto module = mlir::parseSourceString<mlir::ModuleOp>(inputIR, &ctx);
+    ASSERT_TRUE(module.get() != nullptr);
+
+    auto func = module.get().lookupSymbol<mlir::func::FuncOp>("main");
+    ASSERT_TRUE(func != nullptr);
+
+    func.walk([&](VPU::SliceOp sliceOp) {
+        const auto inputShape = getShape(sliceOp.getInput());
+        const auto outputShape = getShape(sliceOp.getResult());
+
+        auto isDimSliced = [&](size_t dim) {
+            return outputShape[Dim(dim)] != inputShape[Dim(dim)];
+        };
+
+        EXPECT_FALSE(isDimSliced(0));
+        EXPECT_FALSE(isDimSliced(1));
+        EXPECT_TRUE(isDimSliced(2));
+        EXPECT_FALSE(isDimSliced(3));
     });
 }

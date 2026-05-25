@@ -5,6 +5,7 @@
 
 #include "intel_npu/npu_mlir_runtime.hpp"
 #include <variant>
+#include "intel_npu/runtime/npu_vm_runtime.hpp"
 #include "intel_npu/utils/zero/zero_utils.hpp"
 #include "level_zero_wrapper/level_zero_wrapper.h"
 #include "openvino/util/file_util.hpp"
@@ -138,6 +139,11 @@ struct MemRefHandle {
         return getMemRefBufferNumElements() * sizeof(uint64_t);
     }
 
+    void* getAllocated() {
+        MemRefNDRef ref(memRefBufferPtr, dimCount);
+        return ref.getAllocated();
+    }
+
     void parseMemRef(const void** pBasePtr, const void** pData, int64_t* pOffset, int64_t* pSizes, int64_t* pStrides,
                      int64_t* pDimsCount) {
         MemRefNDRef ref(memRefBufferPtr, dimCount);
@@ -182,6 +188,11 @@ public:
 
     void predictOutputShape(npu_mlir_runtime_predict_output_shape_params_t* pParams);
 
+    void createExecutionContext(npu_mlir_runtime_execution_context_handle_t* phExecutionContextHandle);
+    void destroyExecutionContext(npu_mlir_runtime_execution_context_handle_t hExecutionContextHandle);
+    void updateMutableCommandList(npu_mlir_runtime_execute_params_t* pParams, uint64_t* argIndexArray,
+                                  uint64_t argIndexArraySize);
+
 private:
     std::unique_ptr<mlir::MLIRContext> _context;
     mlir::DialectRegistry _registry;
@@ -191,9 +202,19 @@ private:
     // use ze_graph_argument_properties_3_t instead of ArgumentDescriptor in metadata function in the future
     std::vector<ArgumentDescriptor> _inputs;
     std::vector<ArgumentDescriptor> _outputs;
-    uint32_t _numOfSubgraphs = 0;
-    uint32_t _numOfArgs = 0;
+    uint64_t _numOfSubgraphs = 0;
+    uint64_t _numOfNetworkArgs = 0;
     vpux::Logger _logger = vpux::Logger("NPUMLIRRuntime", vpux::Logger::global().level());
+};
+
+class ExecutionContext {
+public:
+    NPUMLIRRuntime* _runtime;
+    void* _executionContextHandle = nullptr;
+
+public:
+    ExecutionContext(NPUMLIRRuntime* runtime): _runtime(runtime) {
+    }
 };
 
 void NPUMLIRRuntime::createExecutionEngine(const npu_mlir_runtime_blob_desc_t* desc) {
@@ -276,7 +297,7 @@ void NPUMLIRRuntime::parseMetadata() {
     }
     _logger.debug("num of subgraphs: {0} inputs: {1} outputs: {2}", _numOfSubgraphs, _inputs.size(), _outputs.size());
     _metadata.bindRelatedDescriptors();
-    _numOfArgs = static_cast<uint32_t>(_inputs.size() + _outputs.size());
+    _numOfNetworkArgs = static_cast<uint32_t>(_inputs.size() + _outputs.size());
     for (size_t i = 0; i < _inputs.size(); i++) {
         _metadata.inputs[i].indexUsedByDriver = _inputs[i].idx;
     }
@@ -300,8 +321,8 @@ NPUMLIRRuntime::NPUMLIRRuntime(const npu_mlir_runtime_blob_desc_t* desc, npu_mli
 
     parseMetadata();
 
-    pProperties->numOfSubGraphs = _numOfSubgraphs;
-    pProperties->numOfGraphArgs = _numOfArgs;
+    pProperties->numOfSubGraphs = static_cast<uint32_t>(_numOfSubgraphs);
+    pProperties->numOfGraphArgs = static_cast<uint32_t>(_numOfNetworkArgs);
 }
 
 NPUMLIRRuntime::~NPUMLIRRuntime() {
@@ -315,7 +336,7 @@ void NPUMLIRRuntime::getArgumentProperties(uint32_t argIndex,
                                            ze_graph_argument_metadata_t* pGraphArgumentMetadata) {
     DebugTrace dt("getArgumentProperties", _logger);
     _logger.debug("Getting argument properties for index {0}", argIndex);
-    if (argIndex >= _numOfArgs) {
+    if (argIndex >= _numOfNetworkArgs) {
         OPENVINO_THROW("Invalid argument index");
     }
 
@@ -380,6 +401,21 @@ void NPUMLIRRuntime::execute(npu_mlir_runtime_execute_params_t* pParams) {
         OPENVINO_THROW("Invalid execute parameters");
     }
 
+    // reset execution context if provided
+    if (pParams->executionContext != nullptr) {
+        _logger.debug("Resetting execution context");
+        ExecutionContext* execCtx = reinterpret_cast<ExecutionContext*>(pParams->executionContext);
+        mlir::SmallVector<void*> packedResetArgs;
+        mlir::ExecutionEngine::Argument<void*>::pack(packedResetArgs, execCtx->_executionContextHandle);
+        mlir::ExecutionEngine::Argument<ze_command_list_handle_t*>::pack(packedResetArgs, pParams->commandLists);
+        mlir::ExecutionEngine::Argument<uint64_t>::pack(packedResetArgs, pParams->numCommandLists);
+        const std::string resetFuncName = "_mlir_ciface_reset_execution_context";
+        auto error = _engine->invokePacked(resetFuncName, packedResetArgs);
+        if (error) {
+            OPENVINO_THROW("Error invoking main: " + llvm::toString(std::move(error)));
+        }
+    }
+
     mlir::SmallVector<void*> packedArgs;
     for (uint32_t i = 0; i < pParams->numOfInputs; ++i) {
         auto handle = reinterpret_cast<MemRefHandle*>(pParams->pInputs[i]);
@@ -394,7 +430,7 @@ void NPUMLIRRuntime::execute(npu_mlir_runtime_execute_params_t* pParams) {
 
     // execution context is not used now, pass a dummy nullptr
     // This is reserved for future use to support mutable command list
-    void* dummyExecutionContext = nullptr;
+    ExecutionContext* execCtx = reinterpret_cast<ExecutionContext*>(pParams->executionContext);
     mlir::ExecutionEngine::Argument<ze_context_handle_t>::pack(packedArgs, pParams->ctx);
     mlir::ExecutionEngine::Argument<ze_device_handle_t>::pack(packedArgs, pParams->device);
     mlir::ExecutionEngine::Argument<ze_graph_dditable_ext_t*>::pack(packedArgs, pParams->graphDdiTableExt);
@@ -403,7 +439,12 @@ void NPUMLIRRuntime::execute(npu_mlir_runtime_execute_params_t* pParams) {
     mlir::ExecutionEngine::Argument<ze_command_queue_handle_t>::pack(packedArgs, pParams->commandQueue);
     mlir::ExecutionEngine::Argument<ze_fence_handle_t>::pack(packedArgs, pParams->inferenceFence);
     mlir::ExecutionEngine::Argument<ze_event_handle_t>::pack(packedArgs, pParams->event);
-    mlir::ExecutionEngine::Argument<void*>::pack(packedArgs, dummyExecutionContext);
+    void* dummyExecutionContextHandle = nullptr;
+    if (pParams->executionContext != nullptr) {
+        mlir::ExecutionEngine::Argument<void*>::pack(packedArgs, execCtx->_executionContextHandle);
+    } else {
+        mlir::ExecutionEngine::Argument<void*>::pack(packedArgs, dummyExecutionContextHandle);
+    }
 
     const std::string adapterName = "_mlir_ciface_main";
     auto error = _engine->invokePacked(adapterName, packedArgs);
@@ -489,6 +530,96 @@ void NPUMLIRRuntime::predictOutputShape(npu_mlir_runtime_predict_output_shape_pa
             ref.setStrides(strides.data(), strides.size());
             _logger.debug("Output : {0}, info: {1}", i, output->toString());
         }
+    }
+}
+
+void NPUMLIRRuntime::createExecutionContext(npu_mlir_runtime_execution_context_handle_t* phExecutionContextHandle) {
+    if (!phExecutionContextHandle) {
+        OPENVINO_THROW("phExecutionContextHandle is null");
+    }
+    if (!_engine) {
+        OPENVINO_THROW("MLIR ExecutionEngine is not initialized");
+    }
+
+    ExecutionContext* pContext = new ExecutionContext(this);
+    const std::string funcName = "_mlir_ciface_create_execution_context";
+    auto expectedFPtr = _engine->lookupPacked(funcName);
+    if (!expectedFPtr) {
+        delete pContext;
+        OPENVINO_THROW("Function " + funcName + " not found in MLIR module");
+    }
+
+    mlir::SmallVector<void*> packedArgs;
+    auto pThis = this;
+    mlir::ExecutionEngine::Argument<NPUMLIRRuntime*>::pack(packedArgs, pThis);
+    void* executionContextHandlePtr = &(pContext->_executionContextHandle);
+    mlir::ExecutionEngine::Argument<uint64_t>::pack(packedArgs, this->_numOfSubgraphs);
+    mlir::ExecutionEngine::Argument<uint64_t>::pack(packedArgs, this->_numOfNetworkArgs);
+    mlir::ExecutionEngine::Argument<void*>::pack(packedArgs, executionContextHandlePtr);
+    auto error = _engine->invokePacked(funcName, packedArgs);
+    if (error) {
+        delete pContext;
+        OPENVINO_THROW("Error invoking main: " + llvm::toString(std::move(error)));
+    }
+
+    *phExecutionContextHandle = reinterpret_cast<npu_mlir_runtime_execution_context_handle_t>(pContext);
+}
+
+void NPUMLIRRuntime::destroyExecutionContext(npu_mlir_runtime_execution_context_handle_t hExecutionContextHandle) {
+    ExecutionContext* pContext = reinterpret_cast<ExecutionContext*>(hExecutionContextHandle);
+
+    const std::string funcName = "_mlir_ciface_destroy_execution_context";
+    auto expectedFPtr = _engine->lookupPacked(funcName);
+    if (!expectedFPtr) {
+        OPENVINO_THROW("Function " + funcName + " not found in MLIR module");
+    }
+
+    mlir::SmallVector<void*> packedArgs;
+    mlir::ExecutionEngine::Argument<void*>::pack(packedArgs, pContext->_executionContextHandle);
+    auto error = _engine->invokePacked(funcName, packedArgs);
+    if (error) {
+        OPENVINO_THROW("Error invoking main: " + llvm::toString(std::move(error)));
+    }
+    pContext->_executionContextHandle = nullptr;
+}
+
+void NPUMLIRRuntime::updateMutableCommandList(npu_mlir_runtime_execute_params_t* pParams, uint64_t* argIndexArray,
+                                              uint64_t argIndexArraySize) {
+    ExecutionContext* execCtx = reinterpret_cast<ExecutionContext*>(pParams->executionContext);
+    if (execCtx == nullptr || execCtx->_executionContextHandle == nullptr) {
+        OPENVINO_THROW("null execution context");
+    }
+
+    const std::string funcName = "_mlir_ciface_update_mutable_command_list";
+    auto expectedFPtr = _engine->lookupPacked(funcName);
+    if (!expectedFPtr) {
+        OPENVINO_THROW("Function " + funcName + " not found in MLIR module");
+    }
+    mlir::SmallVector<void*> packedArgs;
+    uint64_t numArgs = pParams->numOfInputs + pParams->numOfOutputs;
+    std::vector<uint64_t> networkArgArray(numArgs);
+    networkArgArray.reserve(numArgs);
+    for (uint64_t i = 0; i < pParams->numOfInputs; i++) {
+        auto memRefHandle = reinterpret_cast<MemRefHandle*>(pParams->pInputs[i]);
+        const uint64_t allocatedPtr = reinterpret_cast<uint64_t>(memRefHandle->getAllocated());
+        networkArgArray[i] = allocatedPtr;
+    }
+    for (uint64_t i = 0; i < pParams->numOfOutputs; i++) {
+        auto memRefHandle = reinterpret_cast<MemRefHandle*>(pParams->pOutputs[i]);
+        const uint64_t allocatedPtr = reinterpret_cast<uint64_t>(memRefHandle->getAllocated());
+        networkArgArray[i + pParams->numOfInputs] = allocatedPtr;
+    }
+
+    mlir::ExecutionEngine::Argument<void*>::pack(packedArgs, execCtx->_executionContextHandle);
+    auto networkArgArrayPtr = networkArgArray.data();
+    mlir::ExecutionEngine::Argument<uint64_t*>::pack(packedArgs, networkArgArrayPtr);
+    mlir::ExecutionEngine::Argument<uint64_t>::pack(packedArgs, numArgs);
+    mlir::ExecutionEngine::Argument<uint64_t*>::pack(packedArgs, argIndexArray);
+    mlir::ExecutionEngine::Argument<uint64_t>::pack(packedArgs, argIndexArraySize);
+
+    auto error = _engine->invokePacked(funcName, packedArgs);
+    if (error) {
+        OPENVINO_THROW("Error invoking main: " + llvm::toString(std::move(error)));
     }
 }
 
@@ -688,6 +819,238 @@ npuMLIRRuntimeParseMemRef(npu_mlir_runtime_mem_ref_handle_t hMemRef, const void*
     }
 
     return NPU_MLIR_RUNTIME_RESULT_SUCCESS;
+}
+
+DLLEXPORT npu_mlir_runtime_result_t NPU_MLIR_RUNTIME_APICALL npuMLIRRuntimeCreateExecutionContext(
+        npu_mlir_runtime_handle_t hRuntime,  ///< [in] handle of mlir runtime object
+        npu_mlir_runtime_execution_context_handle_t*
+                phExecutionHandle  ///< [out] pointer to handle of mlir runtime execution context created
+) {
+    DebugTrace dt("npuMLIRRuntimeCreateExecutionContext");
+    if (hRuntime == nullptr || phExecutionHandle == nullptr) {
+        return NPU_MLIR_RUNTIME_RESULT_ERROR_INVALID_NULL_POINTER;
+    }
+
+    try {
+        NPUMLIRRuntime* runtime = reinterpret_cast<NPUMLIRRuntime*>(hRuntime);
+        runtime->createExecutionContext(phExecutionHandle);
+    } catch (const std::exception& e) {
+        vpux::Logger::global().error("Error creating an execution context: {0}", e.what());
+        return NPU_MLIR_RUNTIME_RESULT_ERROR_UNKNOWN;
+    }
+
+    return NPU_MLIR_RUNTIME_RESULT_SUCCESS;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Destroy MLIR runtime instance
+DLLEXPORT npu_mlir_runtime_result_t NPU_MLIR_RUNTIME_APICALL npuMLIRRuntimeDestroyExecutionContext(
+        npu_mlir_runtime_execution_context_handle_t
+                phExecutionHandle  ///< [in][release] handle of execution context object to destroy
+) {
+    DebugTrace dt("npuMLIRRuntimeDestroyExecutionContext");
+    if (phExecutionHandle == nullptr) {
+        return NPU_MLIR_RUNTIME_RESULT_ERROR_INVALID_NULL_POINTER;
+    }
+
+    ExecutionContext* pContext = reinterpret_cast<ExecutionContext*>(phExecutionHandle);
+    try {
+        NPUMLIRRuntime* runtime = reinterpret_cast<NPUMLIRRuntime*>(pContext->_runtime);
+        if (runtime) {
+            runtime->destroyExecutionContext(phExecutionHandle);
+        }
+    } catch (const std::exception& e) {
+        delete pContext;
+        vpux::Logger::global().error("Error destroying an execution context: {0}", e.what());
+        return NPU_MLIR_RUNTIME_RESULT_ERROR_UNKNOWN;
+    }
+
+    delete pContext;
+    return NPU_MLIR_RUNTIME_RESULT_SUCCESS;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/// @brief Update mutable command list used in execution and execute
+DLLEXPORT npu_mlir_runtime_result_t NPU_MLIR_RUNTIME_APICALL npuMLIRRuntimeUpdateMutableCommandList(
+        npu_mlir_runtime_handle_t hRuntime,          ///< [in] handle of mlir runtime object
+        npu_mlir_runtime_execute_params_t* pParams,  ///< [in] pointer to execution parameters
+        uint64_t* argIndexArray,                     ///< [in] pointer to argument index list
+        uint64_t argIndexArraySize)                  ///< [in] size of argument index list
+{
+    DebugTrace dt("npuMLIRRuntimeUpdateMutableCommandList");
+    if (hRuntime == nullptr || pParams == nullptr || argIndexArray == nullptr) {
+        return NPU_MLIR_RUNTIME_RESULT_ERROR_INVALID_NULL_POINTER;
+    }
+
+    try {
+        NPUMLIRRuntime* runtime = reinterpret_cast<NPUMLIRRuntime*>(hRuntime);
+        runtime->updateMutableCommandList(pParams, argIndexArray, argIndexArraySize);
+    } catch (const std::exception& e) {
+        vpux::Logger::global().error("Error updating mutable commandlist: {0}", e.what());
+        return NPU_MLIR_RUNTIME_RESULT_ERROR_UNKNOWN;
+    }
+
+    return NPU_MLIR_RUNTIME_RESULT_SUCCESS;
+}
+
+#ifdef __cplusplus
+}
+#endif
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @brief NPU VM Runtime API — delegates to the npuMLIRRuntime* implementation above.
+///        npu_vm_runtime.hpp is the successor API; npu_mlir_runtime.hpp is being deprecated.
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+DLLEXPORT npu_vm_runtime_result_t NPU_VM_RUNTIME_APICALL npuVMRuntimeGetAPIVersion(npu_vm_runtime_version_t* pVersion) {
+    DebugTrace dt("npuVMRuntimeGetAPIVersion");
+    if (pVersion == nullptr) {
+        return NPU_VM_RUNTIME_RESULT_ERROR_INVALID_NULL_POINTER;
+    }
+    *pVersion = NPU_VM_RUNTIME_VERSION_CURRENT;
+    return NPU_VM_RUNTIME_RESULT_SUCCESS;
+}
+
+DLLEXPORT npu_vm_runtime_result_t NPU_VM_RUNTIME_APICALL npuVMRuntimeCreate(const npu_vm_runtime_blob_desc_t* desc,
+                                                                            npu_vm_runtime_handle_t* phRuntime,
+                                                                            npu_vm_runtime_properties_t* pProperties) {
+    DebugTrace dt("npuVMRuntimeCreate");
+    return static_cast<npu_vm_runtime_result_t>(
+            npuMLIRRuntimeCreate(reinterpret_cast<const npu_mlir_runtime_blob_desc_t*>(desc),
+                                 reinterpret_cast<npu_mlir_runtime_handle_t*>(phRuntime),
+                                 reinterpret_cast<npu_mlir_runtime_properties_t*>(pProperties)));
+}
+
+DLLEXPORT npu_vm_runtime_result_t NPU_VM_RUNTIME_APICALL npuVMRuntimeDestroy(npu_vm_runtime_handle_t hRuntime) {
+    DebugTrace dt("npuVMRuntimeDestroy");
+    return static_cast<npu_vm_runtime_result_t>(
+            npuMLIRRuntimeDestroy(reinterpret_cast<npu_mlir_runtime_handle_t>(hRuntime)));
+}
+
+DLLEXPORT npu_vm_runtime_result_t NPU_VM_RUNTIME_APICALL npuVMRuntimeGetMetadata(
+        npu_vm_runtime_handle_t hRuntime, uint32_t argIndex, ze_graph_argument_properties_3_t* pGraphArgumentProperties,
+        ze_graph_argument_metadata_t* pGraphArgumentMetadata, int64_t* upperBound) {
+    DebugTrace dt("npuVMRuntimeGetMetadata");
+    return static_cast<npu_vm_runtime_result_t>(
+            npuMLIRRuntimeGetMetadata(reinterpret_cast<npu_mlir_runtime_handle_t>(hRuntime), argIndex,
+                                      pGraphArgumentProperties, pGraphArgumentMetadata, upperBound));
+}
+
+DLLEXPORT npu_vm_runtime_result_t NPU_VM_RUNTIME_APICALL npuVMRuntimeExecute(npu_vm_runtime_handle_t hRuntime,
+                                                                             npu_vm_runtime_execute_params_t* pParams) {
+    DebugTrace dt("npuVMRuntimeExecute");
+    if (pParams == nullptr) {
+        return NPU_VM_RUNTIME_RESULT_ERROR_INVALID_NULL_POINTER;
+    }
+    npu_mlir_runtime_execute_params_t mlirParams{};
+    mlirParams.pInputs = reinterpret_cast<npu_mlir_runtime_mem_ref_handle_t*>(pParams->pInputs);
+    mlirParams.numOfInputs = pParams->numOfInputs;
+    mlirParams.pOutputs = reinterpret_cast<npu_mlir_runtime_mem_ref_handle_t*>(pParams->pOutputs);
+    mlirParams.numOfOutputs = pParams->numOfOutputs;
+    mlirParams.ctx = pParams->ctx;
+    mlirParams.device = pParams->device;
+    mlirParams.graphDdiTableExt = pParams->graphDdiTableExt;
+    mlirParams.commandLists = pParams->commandLists;
+    mlirParams.numCommandLists = pParams->numCommandLists;
+    mlirParams.commandQueue = pParams->commandQueue;
+    mlirParams.inferenceFence = pParams->inferenceFence;
+    mlirParams.event = pParams->event;
+    mlirParams.executionContext =
+            reinterpret_cast<npu_mlir_runtime_execution_context_handle_t>(pParams->executionContext);
+    return static_cast<npu_vm_runtime_result_t>(
+            npuMLIRRuntimeExecute(reinterpret_cast<npu_mlir_runtime_handle_t>(hRuntime), &mlirParams));
+}
+
+DLLEXPORT npu_vm_runtime_result_t NPU_VM_RUNTIME_APICALL npuVMRuntimePredictOutputShape(
+        npu_vm_runtime_handle_t hRuntime, npu_vm_runtime_predict_output_shape_params_t* pParams) {
+    DebugTrace dt("npuVMRuntimePredictOutputShape");
+    if (pParams == nullptr) {
+        return NPU_VM_RUNTIME_RESULT_ERROR_INVALID_NULL_POINTER;
+    }
+    npu_mlir_runtime_predict_output_shape_params_t mlirParams{};
+    mlirParams.pInputs = reinterpret_cast<npu_mlir_runtime_mem_ref_handle_t*>(pParams->pInputs);
+    mlirParams.numOfInputs = pParams->numOfInputs;
+    mlirParams.pOutputs = reinterpret_cast<npu_mlir_runtime_mem_ref_handle_t*>(pParams->pOutputs);
+    mlirParams.numOfOutputs = pParams->numOfOutputs;
+    return static_cast<npu_vm_runtime_result_t>(
+            npuMLIRRuntimePredictOutputShape(reinterpret_cast<npu_mlir_runtime_handle_t>(hRuntime), &mlirParams));
+}
+
+DLLEXPORT npu_vm_runtime_result_t NPU_VM_RUNTIME_APICALL
+npuVMRuntimeCreateMemRef(int64_t dimsCount, npu_vm_runtime_mem_ref_handle_t* phMemRef) {
+    DebugTrace dt("npuVMRuntimeCreateMemRef");
+    return static_cast<npu_vm_runtime_result_t>(
+            npuMLIRRuntimeCreateMemRef(dimsCount, reinterpret_cast<npu_mlir_runtime_mem_ref_handle_t*>(phMemRef)));
+}
+
+DLLEXPORT npu_vm_runtime_result_t NPU_VM_RUNTIME_APICALL
+npuVMRuntimeDestroyMemRef(npu_vm_runtime_mem_ref_handle_t hMemRef) {
+    DebugTrace dt("npuVMRuntimeDestroyMemRef");
+    return static_cast<npu_vm_runtime_result_t>(
+            npuMLIRRuntimeDestroyMemRef(reinterpret_cast<npu_mlir_runtime_mem_ref_handle_t>(hMemRef)));
+}
+
+DLLEXPORT npu_vm_runtime_result_t NPU_VM_RUNTIME_APICALL npuVMRuntimeSetMemRef(npu_vm_runtime_mem_ref_handle_t hMemRef,
+                                                                               const void* basePtr, const void* data,
+                                                                               int64_t offset, int64_t* pSizes,
+                                                                               int64_t* pStrides, int64_t dimsCount) {
+    DebugTrace dt("npuVMRuntimeSetMemRef");
+    return static_cast<npu_vm_runtime_result_t>(
+            npuMLIRRuntimeSetMemRef(reinterpret_cast<npu_mlir_runtime_mem_ref_handle_t>(hMemRef), basePtr, data, offset,
+                                    pSizes, pStrides, dimsCount));
+}
+
+DLLEXPORT npu_vm_runtime_result_t NPU_VM_RUNTIME_APICALL
+npuVMRuntimeParseMemRef(npu_vm_runtime_mem_ref_handle_t hMemRef, const void** pBasePtr, const void** pData,
+                        int64_t* pOffset, int64_t* pSizes, int64_t* pStrides, int64_t* pDimsCount) {
+    DebugTrace dt("npuVMRuntimeParseMemRef");
+    return static_cast<npu_vm_runtime_result_t>(
+            npuMLIRRuntimeParseMemRef(reinterpret_cast<npu_mlir_runtime_mem_ref_handle_t>(hMemRef), pBasePtr, pData,
+                                      pOffset, pSizes, pStrides, pDimsCount));
+}
+
+DLLEXPORT npu_vm_runtime_result_t NPU_VM_RUNTIME_APICALL npuVMRuntimeCreateExecutionContext(
+        npu_vm_runtime_handle_t hRuntime, npu_vm_runtime_execution_context_handle_t* phExecutionHandle) {
+    DebugTrace dt("npuVMRuntimeCreateExecutionContext");
+    return static_cast<npu_vm_runtime_result_t>(npuMLIRRuntimeCreateExecutionContext(
+            reinterpret_cast<npu_mlir_runtime_handle_t>(hRuntime),
+            reinterpret_cast<npu_mlir_runtime_execution_context_handle_t*>(phExecutionHandle)));
+}
+
+DLLEXPORT npu_vm_runtime_result_t NPU_VM_RUNTIME_APICALL
+npuVMRuntimeDestroyExecutionContext(npu_vm_runtime_execution_context_handle_t phExecutionHandle) {
+    DebugTrace dt("npuVMRuntimeDestroyExecutionContext");
+    return static_cast<npu_vm_runtime_result_t>(npuMLIRRuntimeDestroyExecutionContext(
+            reinterpret_cast<npu_mlir_runtime_execution_context_handle_t>(phExecutionHandle)));
+}
+
+DLLEXPORT npu_vm_runtime_result_t NPU_VM_RUNTIME_APICALL
+npuVMRuntimeUpdateMutableCommandList(npu_vm_runtime_handle_t hRuntime, npu_vm_runtime_execute_params_t* pParams,
+                                     uint64_t* argIndexArray, uint64_t argIndexArraySize) {
+    DebugTrace dt("npuVMRuntimeUpdateMutableCommandList");
+    if (pParams == nullptr) {
+        return NPU_VM_RUNTIME_RESULT_ERROR_INVALID_NULL_POINTER;
+    }
+    npu_mlir_runtime_execute_params_t mlirParams{};
+    mlirParams.pInputs = reinterpret_cast<npu_mlir_runtime_mem_ref_handle_t*>(pParams->pInputs);
+    mlirParams.numOfInputs = pParams->numOfInputs;
+    mlirParams.pOutputs = reinterpret_cast<npu_mlir_runtime_mem_ref_handle_t*>(pParams->pOutputs);
+    mlirParams.numOfOutputs = pParams->numOfOutputs;
+    mlirParams.ctx = pParams->ctx;
+    mlirParams.device = pParams->device;
+    mlirParams.graphDdiTableExt = pParams->graphDdiTableExt;
+    mlirParams.commandLists = pParams->commandLists;
+    mlirParams.numCommandLists = pParams->numCommandLists;
+    mlirParams.commandQueue = pParams->commandQueue;
+    mlirParams.inferenceFence = pParams->inferenceFence;
+    mlirParams.event = pParams->event;
+    mlirParams.executionContext =
+            reinterpret_cast<npu_mlir_runtime_execution_context_handle_t>(pParams->executionContext);
+    return static_cast<npu_vm_runtime_result_t>(npuMLIRRuntimeUpdateMutableCommandList(
+            reinterpret_cast<npu_mlir_runtime_handle_t>(hRuntime), &mlirParams, argIndexArray, argIndexArraySize));
 }
 
 #ifdef __cplusplus

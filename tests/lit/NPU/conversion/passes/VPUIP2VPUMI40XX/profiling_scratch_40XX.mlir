@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --init-compiler="vpu-arch=%arch% allow-custom-values=true" --convert-VPUIP-to-VPUMI40XX --setup-profiling-VPUMI40XX="dma-profiling=false" %s | FileCheck %s
-// REQUIRES: arch-NPU40XX
+// RUN: vpux-opt --init-compiler="platform=%platform% allow-custom-values=true" --convert-VPUIP-to-VPUMI40XX --setup-profiling-VPUMI40XX="dma-profiling=false" %s | FileCheck %s
+// REQUIRES: platform-NPU4000
 
 module @inout {
   net.NetworkInfo entryPoint : @main inputsInfo : {

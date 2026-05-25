@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: env IE_NPU_LOG_FILTER="dump-statistics-of-task-ops" vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --dump-statistics-of-task-ops -o /dev/null %s 2>&1 | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: env IE_NPU_LOG_FILTER="dump-statistics-of-task-ops" vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW" --dump-statistics-of-task-ops -o /dev/null %s 2>&1 | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
@@ -365,7 +365,7 @@ module @DumpOpsStatisticsTest {
 !Output = memref<1x32x3x3xf16, #NHWC, @CMX_NN>
 
 func.func @testSCLModeConvNumOfOps(%input: !Input, %weights: !Weights, %out: !Output) -> !Output {
-    %sclConv = VPUIP.NCEClusterTask <{
+    %sclConv = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
         kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
         kernel_size = [1, 1],
         kernel_strides = [1, 1],
@@ -414,7 +414,7 @@ func.func @testSCLModeConvNumOfOps(%input: !Input, %weights: !Weights, %out: !Ou
 
 func.func @testMpeModesAllOps(%convInput: !ConvInput, %convWeights : !ConvWeights, %convOutput : !ConvOutput, %dwInput : !DwInput, %dwWeights : !DwWeights, %dwOutput : !DwOutput, %otherInput : !OtherInput, %otherWeights : !OtherWeights,%otherOutput : !OtherOutput) -> !OtherOutput {
 
-    %conv = VPUIP.NCEClusterTask <{
+    %conv = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
         kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
         kernel_size = [3, 3],
         kernel_strides = [1, 1],
@@ -435,7 +435,7 @@ func.func @testMpeModesAllOps(%convInput: !ConvInput, %convWeights : !ConvWeight
     PPE:{}
 
 
-    %sclConv2 = VPUIP.NCEClusterTask <{
+    %sclConv2 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
         kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
         kernel_size = [3, 3],
         kernel_strides = [1, 1],
@@ -456,7 +456,7 @@ func.func @testMpeModesAllOps(%convInput: !ConvInput, %convWeights : !ConvWeight
     PPE:{}
 
 
-    %dwConv = VPUIP.NCEClusterTask <{
+    %dwConv = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
         kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
         kernel_size = [1, 1],
         kernel_strides = [1, 1],
@@ -477,7 +477,7 @@ func.func @testMpeModesAllOps(%convInput: !ConvInput, %convWeights : !ConvWeight
     PPE:{}
 
 
-    %eltwiseOp = VPUIP.NCEClusterTask <{
+    %eltwiseOp = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
         mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>,
         task_type = #VPUIP.nce_task_type<ELTWISE>
     }>
@@ -494,7 +494,7 @@ func.func @testMpeModesAllOps(%convInput: !ConvInput, %convWeights : !ConvWeight
     }
     PPE:{}
 
-    %eltwiseOp2 = VPUIP.NCEClusterTask <{
+    %eltwiseOp2 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
         mpe_engine = #VPU.MPEEngine37XX<mode = <NONE>>,
         task_type = #VPUIP.nce_task_type<ELTWISE>
     }>
@@ -512,7 +512,7 @@ func.func @testMpeModesAllOps(%convInput: !ConvInput, %convWeights : !ConvWeight
     PPE:{}
 
 
-    %poolingOp = VPUIP.NCEClusterTask <{
+    %poolingOp = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
         kernel_padding = #VPU.Padding<left = 1 : i64, right = 0 : i64, top = 1 : i64, bottom = 0 : i64>,
         kernel_size = [1, 1],
         kernel_strides = [1, 1],

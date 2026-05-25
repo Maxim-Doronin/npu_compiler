@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --add-compiler-hash %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --add-compiler-hash %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 module @AddCompilerHash {
     net.NetworkInfo entryPoint : @main inputsInfo : {
@@ -13,7 +13,7 @@ module @AddCompilerHash {
         DataInfo "output" : tensor<1x2x3x4xf16>
     }
     func.func @main() {
-        ELF.Main @ELFMain {
+        ELF.Main {
         }
         return
     }

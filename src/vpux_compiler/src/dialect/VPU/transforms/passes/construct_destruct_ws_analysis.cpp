@@ -24,6 +24,8 @@ struct ConstructWsAnalysis final : public VPU::impl::ConstructWsAnalysisBase<Con
     }
 
     void safeRunOnModule() final {
+        VPU::WeightsSeparationInfo::Options options;
+        VPU::WeightsSeparationInfo::setOptions(getOperation(), options);
         std::ignore = getAnalysis<VPU::WeightsSeparationInfo>();
     }
 };
@@ -37,6 +39,7 @@ struct DestructWsAnalysis final : public VPU::impl::DestructWsAnalysisBase<Destr
         auto object = getCachedAnalysis<VPU::WeightsSeparationInfo>();
         VPUX_THROW_WHEN(!object.has_value(), "WS analysis is not cached");
         object->get().invalidate();
+        VPU::WeightsSeparationInfo::removeOptions(getOperation());
     }
 };
 

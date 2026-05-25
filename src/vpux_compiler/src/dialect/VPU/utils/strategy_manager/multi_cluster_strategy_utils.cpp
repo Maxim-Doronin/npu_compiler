@@ -1273,7 +1273,7 @@ VPU::MultiClusterStrategy LayerCostModel::getOptimalLayerStrategy(VPU::Clustered
     // If we find a strategy in a higher priority bucket, no need to look at any further buckets
     llvm::DenseMap<PriorityBucket, SmallVector<StrategyInfoPair>> priorityBuckets;
 
-    // Map used for npu37xx workaround based on heuristics for soh vs sok selection based on cmx fit
+    // Map used for npu37xx workaround based on heuristics, for soh vs sok selection depending on cmx fitting
     llvm::DenseMap<VPU::MultiClusterStrategy, MultiClusterStrategyInfo> strategyInfoMap;
 
     const auto optimalMCTiling = [&](VPU::MultiClusterStrategy strategy) {
@@ -1325,13 +1325,15 @@ VPU::MultiClusterStrategy LayerCostModel::getOptimalLayerStrategy(VPU::Clustered
         auto sokIt = strategyInfoMap.find(VPU::MultiClusterStrategy::SplitOverKernel);
 
         if (sohIt != strategyInfoMap.end() && sokIt != strategyInfoMap.end()) {
+            const auto& sohInfo = sohIt->second;
+            const auto& sokInfo = sokIt->second;
             // the case in which one or both strategies are not compatible (hence keys not in the map) is managed by the
             // general implementation
-            if (sohIt->second.fitsIntoCMX && !sokIt->second.fitsIntoCMX) {
+            if (sohInfo.fitsIntoCMX && !sokInfo.fitsIntoCMX) {
                 _log.trace("Strategy SplitOverHeight chosen as it fits into CMX");
                 return optimalMCTiling(sohIt->first);
             }
-            if (!sohIt->second.fitsIntoCMX && sokIt->second.fitsIntoCMX && sokIt->second.usesFullTiles) {
+            if (!sohInfo.fitsIntoCMX && sokInfo.fitsIntoCMX && sokInfo.usesFullTiles) {
                 _log.trace("Strategy SplitOverKernel chosen as it fits into CMX");
                 return VPU::MultiClusterStrategy::SplitOverKernel;
             }
@@ -1579,7 +1581,8 @@ std::optional<VPU::MultiClusterStrategy> vpux::VPU::getDefaultLayerStrategy(VPU:
             if (mlir::isa<VPU::SoftMaxOp, VPU::DepthToSpaceOp, VPU::PadOp, VPU::MVN1NormalizeOp, VPU::SwishOp,
                           VPU::MultiplyOp, VPU::SelectOp, VPU::DynamicDequantizeOp, VPU::DynamicQuantizeOp,
                           VPU::GreaterEqualOp, VPU::DeformableConvolutionOp, VPU::MaximumOp,
-                          VPU::ScatterElementsUpdateOp, VPU::SubtractOp, VPU::AddOp>(clusteredOp.getOperation()) &&
+                          VPU::ScatterElementsUpdateOp, VPU::SubtractOp, VPU::AddOp, VPU::SquaredDifferenceOp>(
+                        clusteredOp.getOperation()) &&
                 clusteredOp.isOperationSplitOverWidthCompatible(/*outputShape=*/ShapeRef(), /*offset=*/ShapeRef(),
                                                                 /*axis=*/ShapeRef())) {
                 return strategy;
@@ -1877,7 +1880,11 @@ SmallVector<uint32_t> vpux::VPU::getDPUCostForNCEOp(VPU::NCEOpInterface nceOp, V
                     auto sepInTiles = tilingViewOp.backInferTileInfo(inputTile, log);
                     auto sepDataTile = sepInTiles.tiles.front();
                     auto sepTableTile = sepInTiles.tiles.back();
-                    curCostParams.sepInfo = VPUIP::SEPInfo{sepTableTile.shape, sepDataTile.shape};
+
+                    // Check if sparsity map is present
+                    bool hasSparseMap = inputSparseTensorOp.getSparsityMap() != nullptr;
+
+                    curCostParams.sepInfo = VPUIP::SEPInfo{sepTableTile.shape, sepDataTile.shape, hasSparseMap};
                 }
                 vpunnLayers.push_back(VPU::getDPULayer(curCostParams));
             }

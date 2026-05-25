@@ -8,12 +8,13 @@
 #include <vpux_elf/writer.hpp>
 
 #include <mlir/IR/Builders.h>
+#include "vpux/compiler/dialect/ELF/utils/utils.hpp"
 
 using namespace vpux;
 
 void vpux::ELF::RelocOp::serialize(elf::writer::Relocation* relocation, vpux::ELF::SymbolMapType& symbolMap,
                                    vpux::ELF::DmaSymbolMapType& dmaSymbolMap) {
-    auto symbolRef = mlir::SymbolTable::lookupNearestSymbolFrom(getOperation(), getSourceSymbolAttr());
+    auto symbolRef = ELF::lookupNearestSymbolFrom(getOperation(), getSourceSymbolAttr());
 
     auto symbolMapEntry = symbolMap.find(symbolRef);
     auto dmaSymbolMapEntry = dmaSymbolMap.find(symbolRef);

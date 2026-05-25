@@ -4,7 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/IE/utils/elem_type_info_utils.hpp"
-#include "vpux/compiler/init.hpp"
+#include "vpux/compiler/init/dialects_registry.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 
 #include <gtest/gtest.h>

@@ -11,6 +11,9 @@
 
 namespace vpux::VPU {
 
+Shape inferShapeThroughPermute(ShapeRef origShape, NDTypeInterface srcType, NDTypeInterface dstType,
+                               mlir::AffineMap memPerm);
+
 mlir::FailureOr<VPU::DistributionInfo> applyPermutationOnDistributionInfo(vpux::NDTypeInterface inType,
                                                                           const VPU::DistributionInfo& inDistribution,
                                                                           mlir::AffineMap memPerm, DimsOrder srcOrder,

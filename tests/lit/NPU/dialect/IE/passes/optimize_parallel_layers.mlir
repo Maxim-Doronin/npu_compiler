@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --optimize-parallel-layers %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --optimize-parallel-layers %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL: @MergeParallelMultiplyLayers
 // CHECK-SAME:      [[INPUT:%.+]]: tensor<1x1x512xf16>
@@ -677,3 +677,47 @@ func.func @NotMoveParallelAddOpsAfterConcatDueToInputShape(%arg0: tensor<1x96x8x
     // CHECK:       [[CONCAT:%.+]] = IE.Concat([[ADD0]], [[ADD1]]) {per_axis = #IE.Concat<axis = 1 : i64>} : tensor<1x96x8x10xf32>, tensor<1x96x8x10xf32> -> tensor<1x192x8x10xf32>
     // CHECK:       return [[CONCAT]] : tensor<1x192x8x10xf32>
 }
+
+// -----
+
+// CHECK-LABEL: func.func @NotMoveParallelAddOpsAfterConcatDueToBroadcasting
+// CHECK-SAME:    ([[INPUT_0:%.+]]: tensor<1x16x4xf32>) -> tensor<16x4xf32>
+// CHECK-DAG: [[CST:%.+]]   = const.Declare tensor<16x2xf32> = dense_resource<INTERNAL_CONSTANT_0> : tensor<16x2xf32>
+// CHECK-DAG: [[CST_0:%.+]] = const.Declare tensor<16x2xf32> = dense_resource<INTERNAL_CONSTANT_1> : tensor<16x2xf32>
+// CHECK-DAG: [[CST_1:%.+]] = const.Declare tensor<16x2xf32> = dense_resource<INTERNAL_CONSTANT> : tensor<16x2xf16>, [#const.CastElemType<f32>]
+// CHECK:     [[RESHAPE:%.+]] = IE.AffineReshape([[INPUT_0]])
+// CHECK-SAME:   {dim_mapping = {{\[\[}}0], [0], [1]], shape_value = [16, 4]} : tensor<1x16x4xf32> -> tensor<16x4xf32>
+// CHECK:     [[SLICE0:%.+]] = IE.Slice [[RESHAPE]] [0, 0] [16, 2] : tensor<16x4xf32> to tensor<16x2xf32>
+// CHECK:     [[MULTIPLY0:%.+]] = IE.Multiply([[SLICE0]], [[CST_0]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<16x2xf32>, tensor<16x2xf32> -> tensor<16x2xf32>
+// CHECK:     [[ADD0:%.+]] = IE.Add([[MULTIPLY0]], [[CST_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<16x2xf32>, tensor<16x2xf32> -> tensor<16x2xf32>
+// CHECK:     [[SLICE1:%.+]] = IE.Slice [[RESHAPE]] [0, 2] [16, 2] : tensor<16x4xf32> to tensor<16x2xf32>
+// CHECK:     [[MULTIPLY1:%.+]] = IE.Multiply([[SLICE1]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<16x2xf32>, tensor<16x2xf32> -> tensor<16x2xf32>
+// CHECK:     [[ADD1:%.+]] = IE.Add([[MULTIPLY1]], [[CST_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<16x2xf32>, tensor<16x2xf32> -> tensor<16x2xf32>
+// CHECK:     [[OUT:%.+]] = IE.Concat([[ADD0]], [[ADD1]])
+// CHECK-SAME:   {static_offsets = {{\[\[}}0, 0], [0, 2]]} : tensor<16x2xf32>, tensor<16x2xf32> -> tensor<16x4xf32>
+// CHECK:     return [[OUT]] : tensor<16x4xf32>
+
+func.func @NotMoveParallelAddOpsAfterConcatDueToBroadcasting(%arg0: tensor<1x16x4xf32>) -> tensor<16x4xf32> {
+  %cst_0 = const.Declare tensor<16x2xf32> = dense_resource<INTERNAL_CONSTANT_0> : tensor<16x2xf32>
+  %cst_1 = const.Declare tensor<16x2xf32> = dense_resource<INTERNAL_CONSTANT_1> : tensor<16x2xf32>
+  %cst = const.Declare tensor<16x2xf32> = dense_resource<INTERNAL_CONSTANT> : tensor<16x2xf16>, [#const.CastElemType<f32>]
+  %affine_reshape = IE.AffineReshape(%arg0) {dim_mapping = [[0], [0], [1]], shape_value = [16, 4]} : tensor<1x16x4xf32> -> tensor<16x4xf32>
+  %slice1 = IE.Slice %affine_reshape [0, 0] [16, 2] : tensor<16x4xf32> to tensor<16x2xf32>
+  %mult1 = IE.Multiply(%slice1, %cst_1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<16x2xf32>, tensor<16x2xf32> -> tensor<16x2xf32>
+  %add1 = IE.Add(%mult1, %cst) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<16x2xf32>, tensor<16x2xf32> -> tensor<16x2xf32>
+  %slice2 = IE.Slice %affine_reshape [0, 2] [16, 2] : tensor<16x4xf32> to tensor<16x2xf32>
+  %mult2 = IE.Multiply(%slice2, %cst_0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<16x2xf32>, tensor<16x2xf32> -> tensor<16x2xf32>
+  %add2 = IE.Add(%mult2, %cst) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<16x2xf32>, tensor<16x2xf32> -> tensor<16x2xf32>
+  %concat = IE.Concat(%add1, %add2) {static_offsets = [[0, 0], [0, 2]]} : tensor<16x2xf32>, tensor<16x2xf32> -> tensor<16x4xf32>
+  return %concat : tensor<16x4xf32>
+}
+
+{-#
+  dialect_resources: {
+    builtin: {
+      INTERNAL_CONSTANT_0: "0x040000000000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F",
+      INTERNAL_CONSTANT_1: "0x040000000000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F0000803F",
+      INTERNAL_CONSTANT: "0x0400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    }
+  }
+#-}

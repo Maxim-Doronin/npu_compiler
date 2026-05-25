@@ -4,7 +4,6 @@
 //
 
 #include "vpux/compiler/pipelines/developer_config.hpp"
-#include "vpux/compiler/core/developer_build_utils.hpp"
 #include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/dialect/core/utils/dump_intermediate_values.hpp"
 #include "vpux/compiler/locverif/locations_verifier.hpp"
@@ -13,15 +12,18 @@
 #include "vpux/compiler/utils/dot_printer.hpp"
 #include "vpux/compiler/utils/memory_usage_collector.hpp"
 #include "vpux/utils/core/error.hpp"
-
 #if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
-#include "vpux/compiler/core/developer_build_utils.hpp"
+#include "vpux/utils/core/developer_build_utils.hpp"
+#include "vpux/utils/core/developer_path_utils.hpp"
 #endif
+
+#include <mlir/Pass/Pass.h>
+#include <mlir/Support/Timing.h>
 
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Support/Format.h>
-#include <mlir/Pass/Pass.h>
-#include <mlir/Support/Timing.h>
+#include <llvm/Support/Path.h>
+#include <llvm/Support/raw_ostream.h>
 
 namespace vpux {
 
@@ -44,6 +46,53 @@ DeveloperConfig::DeveloperConfig(Logger log): _log(log) {
     parseEnv("IE_NPU_PRINT_AS_TEXTUAL_PIPELINE_FILE", _printAsTextualPipelineFilePath);
     parseEnv("IE_NPU_PRINT_DOT", _printDotOptions);
     parseEnv("IE_NPU_DUMP_INTERMEDIATE_VALUES", _dumpIntermediateValues);
+    bool performanceDebugMode = false;
+    parseEnv("IE_NPU_PERF_DEBUG", performanceDebugMode);
+
+    if (performanceDebugMode) {
+        _printToFileTree = true;
+        _printDebugInfo = true;
+        _printDebugInfoPrettyForm = true;
+        _irPrintingOrderStr = "AFTER";
+        _irPrintingFilter = _irPrintingFilter.empty() ? perfDebugDefaultIRFilter.str()
+                                                      : _irPrintingFilter + "|" + perfDebugDefaultIRFilter.str();
+
+        // Create perf_debug_dumps directory where all the perf debugging collaterals will be stored
+        createDirectory(perfDebugFilesRoot);
+        _irPrintingLocation = perfDebugFilesRoot.str();
+
+        // Create dot_files subdirectory
+        auto dotFilesDir = concatenatePath(perfDebugFilesRoot, "dot_files");
+        createDirectory(dotFilesDir);
+
+        std::string perfDebugDefaultDotOptions;
+        llvm::raw_string_ostream os(perfDebugDefaultDotOptions);
+        for (size_t i = 0; i < std::size(dotDebugDefaultPasses); ++i) {
+            llvm::SmallString<128> dotFilePath(dotFilesDir);
+            llvm::sys::path::append(dotFilePath, llvm::Twine(dotDebugDefaultPasses[i]) + ".dot");
+            os << "output=" << dotFilePath << " pass=" << dotDebugDefaultPasses[i];
+            if (i < std::size(dotDebugDefaultPasses) - 1) {
+                os << ", ";
+            }
+        }
+        _printDotOptions = _printDotOptions.empty() ? perfDebugDefaultDotOptions
+                                                    : _printDotOptions + ", " + perfDebugDefaultDotOptions;
+
+        Logger devConfigsLog(log);
+        devConfigsLog.setName("developer-config");
+        devConfigsLog.setAlternateName("DeveloperConfig");
+        devConfigsLog.info("IE_NPU_PERF_DEBUG mode is enabled:");
+        devConfigsLog.nest().info("overriding IE_NPU_IR_PRINT_TO_FILE_TREE=1, "
+                                  "IE_NPU_IR_PRINTING_LOCATION={0}, IE_NPU_IR_PRINTING_ORDER={1}, "
+                                  "IE_NPU_PRINT_DEBUG_INFO=1, IE_NPU_PRINT_DEBUG_INFO_PRETTY_FORM=1, "
+                                  "IE_NPU_WRITE_STRATEGY_JSON=1, "
+                                  "IE_NPU_WRITE_STRATEGY_JSON_LOC={2}, IE_NPU_ENABLE_SCHEDULE_STATISTICS=1 and "
+                                  "NPU_SERIALIZE_CANONICAL_MODEL=1",
+                                  _irPrintingLocation, _irPrintingOrderStr, _irPrintingLocation + "/strategy_out.json");
+        devConfigsLog.nest().info("overriding IE_NPU_IR_PRINTING_FILTER={0}", _irPrintingFilter);
+        devConfigsLog.nest().info("overriding IE_NPU_LOG_FILTER={0}", perfDebugDefaultLogFilter.str());
+        devConfigsLog.nest().info("overriding IE_NPU_PRINT_DOT={0}", _printDotOptions);
+    }
 #endif  // defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
 
     if (_printToFileTree && _irPrintingLocation.empty()) {

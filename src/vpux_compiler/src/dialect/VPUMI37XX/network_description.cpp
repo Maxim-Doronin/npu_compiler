@@ -17,10 +17,10 @@
 
 #include "vpux/compiler/core/attributes/dims_order.hpp"
 
-#include "vpux/utils/IE/itt.hpp"
 #include "vpux/utils/core/enums.hpp"
 #include "vpux/utils/core/error.hpp"
 #include "vpux/utils/core/range.hpp"
+#include "vpux/utils/ov/itt.hpp"
 
 #include <mlir/Dialect/LLVMIR/LLVMDialect.h>
 
@@ -277,7 +277,7 @@ NetworkMetadata vpux::VPUMI37XX::getNetworkMetadata(mlir::ModuleOp module) {
     NetworkMetadata network;
     std::shared_ptr<elf::NetworkMetadata> metadata;
 
-    auto name = mlir::StringRef(HOST_EXEC_NETWORK_METADATA_NAME);
+    auto name = mlir::StringRef(vpux::HostExec::HOST_EXEC_NETWORK_METADATA_NAME);
     auto serializedMetadataGlobalOp = module.lookupSymbol<mlir::LLVM::GlobalOp>(name);
     VPUX_THROW_UNLESS(serializedMetadataGlobalOp, "metadata is not found in blob");
 

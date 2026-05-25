@@ -3,14 +3,14 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --batch-matmul-to-matmul %s | FileCheck %s
-// REQUIRES: arch-NPU40XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --batch-matmul-to-matmul %s | FileCheck %s
+// REQUIRES: platform-NPU4000
 
 #GNHWC = affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d3, d4, d2)>
 
 // CHECK-LABEL: @BatchMatMulToMatMul
 module @BatchMatMulToMatMul attributes {
-    config.arch = #config.arch_kind<NPU40XX>
+    config.platform = #config.platform<NPU4000>
 } {
 
 config.Resources 4 of @NCE at 1.850000e+03 MHz {
@@ -33,7 +33,7 @@ func.func @main() -> () {
     %WAIT_BARRIER = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
     // CHECK:   [[WAIT_BARRIER:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
     VPURT.Task updates(%WAIT_BARRIER : !VPURT.Barrier) {
-        %MATMUL = VPUIP.NCEClusterTask <{
+        %MATMUL = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
             kernel_padding = #VPU.Padding<
                 left = 0 : i64,
                 right = 0 : i64,
@@ -110,7 +110,7 @@ func.func @main() -> () {
 // CHECK-LABEL-DAG: @QuantBatchMatMulToMatMul
 // CHECK-DAG:   [[Q_ELEM_TYPE:!.+]] = !quant.uniform<u8:f16:1, {
 module @QuantBatchMatMulToMatMul attributes {
-    config.arch = #config.arch_kind<NPU40XX>
+    config.platform = #config.platform<NPU4000>
 } {
 
 config.Resources 4 of @NCE at 1.850000e+03 MHz {
@@ -133,7 +133,7 @@ func.func @main() -> () {
     %WAIT_BARRIER = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
     // CHECK:   [[WAIT_BARRIER:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
     VPURT.Task updates(%WAIT_BARRIER : !VPURT.Barrier) {
-        %MATMUL = VPUIP.NCEClusterTask <{
+        %MATMUL = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
             kernel_padding = #VPU.Padding<
                 left = 0 : i64,
                 right = 0 : i64,
@@ -202,7 +202,7 @@ func.func @main() -> () {
 
 // CHECK-LABEL: @MatMulWithBatch1ToMatMul
 module @MatMulWithBatch1ToMatMul attributes {
-    config.arch = #config.arch_kind<NPU40XX>
+    config.platform = #config.platform<NPU4000>
 } {
 
 config.Resources 4 of @NCE at 1.850000e+03 MHz {
@@ -221,7 +221,7 @@ func.func @main() -> () {
     %WAIT_BARRIER = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
     // CHECK:   [[WAIT_BARRIER:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
     VPURT.Task updates(%WAIT_BARRIER : !VPURT.Barrier) {
-        %MATMUL = VPUIP.NCEClusterTask <{
+        %MATMUL = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
             kernel_padding = #VPU.Padding<
                 left = 0 : i64,
                 right = 0 : i64,

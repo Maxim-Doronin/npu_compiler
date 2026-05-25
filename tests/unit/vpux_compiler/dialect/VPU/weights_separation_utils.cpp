@@ -9,8 +9,10 @@
 #include "vpux/compiler/dialect/VPU/utils/weights_separation.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/core/IR/dialect.hpp"
+#include "vpux/compiler/utils/passes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/types.hpp"
+#include "vpux/utils/core/scope_exit.hpp"
 
 #include <mlir/IR/MLIRContext.h>
 #include <mlir/IR/Verifier.h>
@@ -41,9 +43,13 @@ public:
     std::vector<VPU::TransformationsSplit> extractSpecificSplits(mlir::ModuleOp moduleOp, Pred pred) {
         std::vector<VPU::TransformationsSplit> splits;
         moduleOp.walk([&](mlir::func::FuncOp funcOp) {
-            auto moveWorthy = VPU::collectMoveWorthyConstants(log, funcOp);
+            auto moveWorthy = VPU::collectMoveWorthyConstants(log, funcOp, [](Const::DeclareOp constOp) {
+                return VPU::isSuitableForWeightlessCompilation(constOp, /*skipViewLikeOnly=*/true);
+            });
             std::copy_if(moveWorthy.begin(), moveWorthy.end(), std::back_inserter(splits), pred);
         });
+
+        llvm::sort(splits);  // for VPU::sliceAccordingToMemoryLimit()
         return splits;
     }
 
@@ -575,4 +581,246 @@ TEST_F(MLIR_VPU_WeightsSeparationUtils_Obfuscation, ObfuscateOutputs_Full) {
     ASSERT_EQ(op.getFunctionType().getResults(), ArrayRef(expected));
 
     ASSERT_TRUE(mlir::succeeded(mlir::verify(op))) << "IR must be valid";
+}
+
+namespace {
+// An utility pass to call an analysis and forward its result outside
+class GetWsAnalysisResult : public mlir::PassWrapper<GetWsAnalysisResult, vpux::ModulePass> {
+    VPU::WeightsSeparationInfo::Options _options;
+    std::vector<VPU::TransformationsSplit>& _splits;
+
+public:
+    GetWsAnalysisResult(VPU::WeightsSeparationInfo::Options options, std::vector<VPU::TransformationsSplit>& splits)
+            : _options(options), _splits(splits) {
+    }
+
+    MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(GetWsAnalysisResult);
+
+    ::llvm::StringRef getName() const override {
+        return "GetWsAnalysisResult";
+    }
+
+    void safeRunOnModule() final {
+        auto moduleOp = getOperation();
+        VPU::WeightsSeparationInfo::setOptions(moduleOp, _options);
+        VPUX_SCOPE_EXIT {
+            VPU::WeightsSeparationInfo::removeOptions(moduleOp);
+        };
+
+        auto& analysis = getAnalysis<VPU::WeightsSeparationInfo>();
+        _splits = analysis.getCollectedSplits();
+
+        // Ensure new analysis object is created every time
+        analysis.invalidate();
+    }
+};
+}  // namespace
+
+// Tests VPU::WeightsSeparationInfo analysis behaviour
+struct MLIR_VPU_WeightsSeparationUtils_WeightsSeparationInfo : MLIR_UnitBase {
+    MLIR_VPU_WeightsSeparationUtils_WeightsSeparationInfo(): MLIR_UnitBase() {
+        ctx.appendDialectRegistry(registry);
+        ctx.loadDialect<Const::ConstDialect>();
+    }
+
+    std::vector<VPU::TransformationsSplit> collectSplitsFromModule(mlir::ModuleOp moduleOp,
+                                                                   VPU::WeightsSeparationInfo::Options options) {
+        std::vector<VPU::TransformationsSplit> splits;
+        mlir::PassManager pm(moduleOp->getName());
+        pm.addPass(std::make_unique<GetWsAnalysisResult>(options, splits));
+        VPUX_THROW_UNLESS(mlir::succeeded(pm.run(moduleOp)), "Pass must succeed");
+        return splits;
+    }
+
+    std::vector<VPU::TransformationsSplit> filterSplitsByName(const std::vector<VPU::TransformationsSplit>& splits,
+                                                              llvm::StringRef name) {
+        std::vector<VPU::TransformationsSplit> result;
+        std::copy_if(splits.begin(), splits.end(), std::back_inserter(result),
+                     [&](const VPU::TransformationsSplit& split) {
+                         return getResourceName(split.getContentAttr().getBaseContent()) == name;
+                     });
+        return result;
+    }
+
+    mlir::MLIRContext ctx;
+    Logger log = Logger::global();
+};
+
+constexpr llvm::StringLiteral VIEW_LIKE_AND_NORMAL_IR = R"(
+{-#
+    dialect_resources: {
+        builtin: {
+            vpux_ow_1: "0x10000000ABABABABCDCDCDCD",
+            vpux_ow_2: "0x10000000ABABABABCDCDCDCDEFEFEFEF",
+            vpux_ow_3: "0x10000000ABABABABCDCDCDCD2222222233333333",
+            vpux_ow_4: "0x10000000ABABABABCDCDCDCD"
+        }
+    }
+#-}
+
+module @MainModule {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
+        DataInfo "input" : tensor<2x2xf16>
+    } outputsInfo : {
+        DataInfo "output" : tensor<2x2xf16>
+    }
+
+    func.func private @extra_call(%arg0: tensor<2x2xf16>) -> tensor<2x2xf16> {
+        %wai_ow_1 = const.Declare tensor<2x2xf16> = dense_resource<vpux_ow_1> : tensor<2x2xf16>
+
+        %normal_ow_2 = const.Declare tensor<3xf32> = dense_resource<vpux_ow_2> : tensor<3xf32>,
+            [#const.Rescale<5.0>]
+
+        %some_ow_3 = const.Declare tensor<8xf16> = dense_resource<vpux_ow_3> : tensor<8xf16>,
+            [#const.Add<4.0>]
+
+        %wai_ow_4 = const.Declare tensor<4x2xui8> = dense_resource<vpux_ow_4> : tensor<4x2xui8>
+
+        return %arg0 : tensor<2x2xf16>
+    }
+
+    func.func @main(%arg0: tensor<2x2xf16>) -> tensor<2x2xf16> {
+        %normal_ow_1 = const.Declare tensor<2x2xf16> = dense_resource<vpux_ow_1> : tensor<2x2xf16>,
+            [#const.Add<1.0>]
+
+        %view_like_ow_2 = const.Declare tensor<1x3xf32> = dense_resource<vpux_ow_2> : tensor<3xf32>,
+            [#const.Reshape<[1, 3]>]
+
+        %some_ow_3 = const.Declare tensor<10xf16> = dense_resource<vpux_ow_3> : tensor<8xf16>,
+            [#const.PadWithZero<[0], [2]>]
+
+        %view_like_ow_4 = const.Declare tensor<1x4x2xui8> = dense_resource<vpux_ow_4> : tensor<4x2xui8>,
+            [#const.Reshape<[1, 4, 2]>]
+
+        %call = func.call @extra_call(%arg0) : (tensor<2x2xf16>) -> tensor<2x2xf16>
+        return %call : tensor<2x2xf16>
+    }
+})";
+
+TEST_F(MLIR_VPU_WeightsSeparationUtils_WeightsSeparationInfo, DefaultWeightless) {
+    auto moduleOp = mlir::parseSourceString<mlir::ModuleOp>(VIEW_LIKE_AND_NORMAL_IR, &ctx);
+    ASSERT_TRUE(moduleOp.get() != nullptr);
+
+    const auto splits = collectSplitsFromModule(moduleOp.get(), /*options=*/{});
+    ASSERT_FALSE(splits.empty());
+
+    // in the current implementation, view-like transformations are ignored, so:
+    // 1. there's 1 vpux_ow_1 split
+    // 2. there's 1 vpux_ow_2 split
+    // 3. there's 2 vpux_ow_3 splits
+    // 4. there's 0 vpux_ow_4 splits
+    const auto ow1Splits = filterSplitsByName(splits, "vpux_ow_1");
+    ASSERT_EQ(ow1Splits.size(), 1);
+    ASSERT_EQ(ow1Splits.front().getContentAttr().getTransformations().size(), 1);
+    ASSERT_TRUE(mlir::isa<Const::AddAttr>(ow1Splits.front().getContentAttr().getTransformations().front()));
+
+    const auto ow2Splits = filterSplitsByName(splits, "vpux_ow_2");
+    ASSERT_EQ(ow2Splits.size(), 1);
+    ASSERT_EQ(ow2Splits.front().getContentAttr().getTransformations().size(), 1);
+    ASSERT_TRUE(mlir::isa<Const::RescaleAttr>(ow2Splits.front().getContentAttr().getTransformations().front()));
+
+    const auto ow3Splits = filterSplitsByName(splits, "vpux_ow_3");
+    ASSERT_EQ(ow3Splits.size(), 2);
+    for (const auto& split : ow3Splits) {
+        ASSERT_EQ(split.getContentAttr().getTransformations().size(), 1);
+        ASSERT_TRUE((mlir::isa<Const::AddAttr, Const::PadWithZeroAttr>(
+                split.getContentAttr().getTransformations().front())));
+    }
+
+    const auto ow4Splits = filterSplitsByName(splits, "vpux_ow_4");
+    ASSERT_EQ(ow4Splits.size(), 0);
+}
+
+TEST_F(MLIR_VPU_WeightsSeparationUtils_WeightsSeparationInfo, WeightlessWithViewLikeIncluded) {
+    auto moduleOp = mlir::parseSourceString<mlir::ModuleOp>(VIEW_LIKE_AND_NORMAL_IR, &ctx);
+    ASSERT_TRUE(moduleOp.get() != nullptr);
+
+    VPU::WeightsSeparationInfo::Options options;
+    options.weightlessSkipViewLikeOnly = false;
+    const auto splits = collectSplitsFromModule(moduleOp.get(), options);
+    ASSERT_FALSE(splits.empty());
+
+    // when view-like transformations are not skipped, they are also collected
+    // as splits, except when all of the transformations of a weight are
+    // view-like. Thus:
+    // 1. there's 2 vpux_ow_1 splits
+    // 2. there's 2 vpux_ow_2 splits
+    // 3. there's 2 vpux_ow_3 splits
+    // 4. there's 0 vpux_ow_4 splits (all are view-like)
+    const auto ow1Splits = filterSplitsByName(splits, "vpux_ow_1");
+    ASSERT_EQ(ow1Splits.size(), 2);
+    for (const auto& split : ow1Splits) {
+        ASSERT_TRUE(split.getContentAttr().getTransformations().size() == 0 ||
+                    split.getContentAttr().getTransformations().size() == 1);
+        if (!split.getContentAttr().getTransformations().empty()) {
+            ASSERT_TRUE(mlir::isa<Const::AddAttr>(split.getContentAttr().getTransformations().front()));
+        }
+    }
+
+    const auto ow2Splits = filterSplitsByName(splits, "vpux_ow_2");
+    ASSERT_EQ(ow2Splits.size(), 2);
+    for (const auto& split : ow2Splits) {
+        ASSERT_EQ(split.getContentAttr().getTransformations().size(), 1);
+        ASSERT_TRUE((mlir::isa<Const::RescaleAttr, Const::ReshapeAttr>(
+                split.getContentAttr().getTransformations().front())));
+    }
+
+    const auto ow3Splits = filterSplitsByName(splits, "vpux_ow_3");
+    ASSERT_EQ(ow3Splits.size(), 2);
+    for (const auto& split : ow3Splits) {
+        ASSERT_EQ(split.getContentAttr().getTransformations().size(), 1);
+        ASSERT_TRUE((mlir::isa<Const::AddAttr, Const::PadWithZeroAttr>(
+                split.getContentAttr().getTransformations().front())));
+    }
+
+    const auto ow4Splits = filterSplitsByName(splits, "vpux_ow_4");
+    ASSERT_EQ(ow4Splits.size(), 0) << "WeightsSeparationInfo models the logic of init schedule. Thus, if all of "
+                                      "weight's transformations are view-like, there's nothing to do in init.";
+}
+
+constexpr llvm::StringLiteral VIEW_LIKE_WITH_DUPLICATES_IR = R"(
+{-#
+    dialect_resources: {
+        builtin: {
+            vpux_ow_1: "0x10000000ABABABABCDCDCDCD",
+            vpux_ow_2: "0x10000000ABABABABCDCDCDCD00112233"
+        }
+    }
+#-}
+
+module @MainModule {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
+        DataInfo "input" : tensor<2x2xf16>
+    } outputsInfo : {
+        DataInfo "output" : tensor<2x2xf16>
+    }
+
+    func.func @main(%arg0: tensor<2x2xf16>) -> tensor<2x2xf16> {
+        %view_like_ow_1 = const.Declare tensor<1x2x2xf16> = dense_resource<vpux_ow_1> : tensor<2x2xf16>,
+            [#const.Reshape<[1, 2, 2]>]
+        %wai_ow_1_another_type = const.Declare tensor<2x2xi16> = dense_resource<vpux_ow_1> : tensor<2x2xi16>
+
+        %wai_ow_2 = const.Declare tensor<2x3xf16> = dense_resource<vpux_ow_2> : tensor<2x3xf16>
+        %norma_ow_2_another_shape = const.Declare tensor<3x2xf16> = dense_resource<vpux_ow_2> : tensor<3x2xf16>,
+            [#const.Add<1.0>]
+
+        return %arg0 : tensor<2x2xf16>
+    }
+})";
+
+TEST_F(MLIR_VPU_WeightsSeparationUtils_WeightsSeparationInfo, WeightlessWithViewLikeIncluded_Duplicates) {
+    auto moduleOp = mlir::parseSourceString<mlir::ModuleOp>(VIEW_LIKE_WITH_DUPLICATES_IR, &ctx);
+    ASSERT_TRUE(moduleOp.get() != nullptr);
+
+    VPU::WeightsSeparationInfo::Options options;
+    options.weightlessSkipViewLikeOnly = false;
+    const auto splits = collectSplitsFromModule(moduleOp.get(), options);
+    ASSERT_FALSE(splits.empty());
+
+    const auto ow1Splits = filterSplitsByName(splits, "vpux_ow_1");
+    ASSERT_EQ(ow1Splits.size(), 0) << "All constants are view-like and are thus skipped";
+
+    const auto ow2Splits = filterSplitsByName(splits, "vpux_ow_2");
+    ASSERT_EQ(ow2Splits.size(), 2)
+            << "At least one constant has non-trivial transformations, so this weight is used by init";
 }

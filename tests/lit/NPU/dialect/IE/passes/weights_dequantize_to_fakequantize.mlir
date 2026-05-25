@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --run-initial-low-precision-transformations-rewriters="rewriter=weights-dequantize-to-fq" --mlir-print-elementsattrs-with-hex-if-larger -1 %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --run-initial-low-precision-transformations-rewriters="rewriter=weights-dequantize-to-fq" --mlir-print-elementsattrs-with-hex-if-larger -1 %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL: @WeightsMultToFakeQuantize
 // CHECK-SAME:      [[INPUT:%.+]]: tensor<1x4x28x28xf32>
@@ -757,7 +757,7 @@ func.func @TooLongWdStructure() -> tensor<15xf32> {
 
 // -----
 
-!quantFloatType = !QuantileFloat.quantileFloat<ui4:f16, {-1.0, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 1.0}>
+!quantFloatType = !QuantileType.quantile<ui4:f16, {-1.0, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 1.0}>
 
 {-#
   dialect_resources: {
@@ -786,8 +786,8 @@ func.func @WeightsMultToFakeQuantizeNF4(%input: tensor<1x1x28x28xf16>) -> tensor
   // CHECK: [[CST_1:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<1.000000e+00> : tensor<1x1x1x1xf16>
   // CHECK: [[CST_2:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<-2.948760e-03> : tensor<1x1x1x1xf16>
   // CHECK: [[CST_3:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<2.948760e-03> : tensor<1x1x1x1xf16>
-  // CHECK: [[CST_4:%.+]] = const.Declare tensor<1x1x2x2xf16> = dense_resource<blob> : tensor<1x1x2x2xui4> isSplat, [#const.ConvertElemType<si8>, #const.CastElemType<!QuantileFloat.quantileFloat<ui4:f16, {-1.000000e+00,-8.000000e-01,-0.69999999999999996,-6.000000e-01,-5.000000e-01,-4.000000e-01,-3.000000e-01,0.000000e+00,1.000000e-01,2.000000e-01,3.000000e-01,4.000000e-01,5.000000e-01,6.000000e-01,0.69999999999999996,1.000000e+00}>>, #const.CastElemType<f16>]
-  // CHECK: [[FQ:%.+]] = IE.FakeQuantize([[CST_4]], [[CST_0]], [[CST_1]], [[CST_2]], [[CST_3]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, low_fp_type = !QuantileFloat.quantileFloat<ui4:f16, {-1.000000e+00,-8.000000e-01,-0.69999999999999996,-6.000000e-01,-5.000000e-01,-4.000000e-01,-3.000000e-01,0.000000e+00,1.000000e-01,2.000000e-01,3.000000e-01,4.000000e-01,5.000000e-01,6.000000e-01,0.69999999999999996,1.000000e+00}>} : tensor<1x1x2x2xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x1x2x2xf16>
+  // CHECK: [[CST_4:%.+]] = const.Declare tensor<1x1x2x2xf16> = dense_resource<blob> : tensor<1x1x2x2xui4> isSplat, [#const.ConvertElemType<si8>, #const.CastElemType<!QuantileType.quantile<ui4:f16, {-1.000000e+00,-8.000000e-01,-0.69999999999999996,-6.000000e-01,-5.000000e-01,-4.000000e-01,-3.000000e-01,0.000000e+00,1.000000e-01,2.000000e-01,3.000000e-01,4.000000e-01,5.000000e-01,6.000000e-01,0.69999999999999996,1.000000e+00}>>, #const.CastElemType<f16>]
+  // CHECK: [[FQ:%.+]] = IE.FakeQuantize([[CST_4]], [[CST_0]], [[CST_1]], [[CST_2]], [[CST_3]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, low_fp_type = !QuantileType.quantile<ui4:f16, {-1.000000e+00,-8.000000e-01,-0.69999999999999996,-6.000000e-01,-5.000000e-01,-4.000000e-01,-3.000000e-01,0.000000e+00,1.000000e-01,2.000000e-01,3.000000e-01,4.000000e-01,5.000000e-01,6.000000e-01,0.69999999999999996,1.000000e+00}>} : tensor<1x1x2x2xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x1x2x2xf16>
   // CHECK: [[CONV:%.+]] = IE.Convolution([[INPUT]], [[FQ]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], strides = [1, 1]} : tensor<1x1x28x28xf16>, tensor<1x1x2x2xf16> -> tensor<1x1x29x29xf16>
 
   // CHECK: return [[CONV]]
@@ -1272,4 +1272,64 @@ func.func @DontU16ConstWeightsToFakeQuantize(%input: tensor<1x4x28x28xf32>) -> t
   // CHECK:  [[MUL:%.+]] = IE.Multiply([[SUB]], [[SCALE]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<4x4x3x3xf32>, tensor<1x1x1x1xf32> -> tensor<4x4x3x3xf32>
   // CHECK:  [[CONV:%.+]] = IE.Convolution([[INPUT]], [[MUL]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], strides = [1, 1]} : tensor<1x4x28x28xf32>, tensor<4x4x3x3xf32> -> tensor<1x4x28x28xf32>
   // CHECK:  return [[CONV]] : tensor<1x4x28x28xf32>
+}
+
+// -----
+
+// WD chain whose last op feeds a single GatherOp: the FQ rewriter must bail out and leave the
+// chain intact so that ConsolidateWeightsDequantization can produce a DynamicDequantizeOp.
+// Deferring avoids dequantizing the full embedding table offline; DQ runs after Gather instead.
+
+// CHECK-LABEL: @EmbeddingInt4DeferredToDynamicDequantize
+// CHECK-SAME:      [[INDICES:%.+]]: tensor<256xsi32>
+// CHECK-SAME: -> tensor<256x768xf32>
+func.func @EmbeddingInt4DeferredToDynamicDequantize(%indices: tensor<256xsi32>) -> tensor<256x768xf32> {
+  // int4 embedding table: vocab_size=262144, hidden_dim=768
+  %cst_wt = const.Declare tensor<262144x768xf32> = dense<1> : tensor<262144x768xsi4>,
+      [#const.ConvertElemType<si8>, #const.CastElemType<f32>]
+  // Per-row (multi-axis) scale: shape [262144, 1]
+  %cst_scale = const.Declare tensor<262144x1xf32> = dense<3.9215686e-3> : tensor<262144x1xf32>
+  %cst_splat = const.Declare tensor<1x1xf32> = dense<2.0> : tensor<1x1xf32>
+
+  %mul_wd = IE.Multiply(%cst_wt, %cst_scale) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+      : tensor<262144x768xf32>, tensor<262144x1xf32> -> tensor<262144x768xf32>
+  %gather = IE.Gather(%mul_wd, %indices) {axis_value = 0 : i64, batch_dims = 0 : i64, indices_rank = 1 : i64}
+      : tensor<262144x768xf32>, tensor<256xsi32> -> tensor<256x768xf32>
+  %mul_out = IE.Multiply(%gather, %cst_splat) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+      : tensor<256x768xf32>, tensor<1x1xf32> -> tensor<256x768xf32>
+  return %mul_out : tensor<256x768xf32>
+
+  // CHECK-DAG: [[WT:%.+]]    = const.Declare tensor<262144x768xf32>
+  // CHECK-DAG: [[SCALE:%.+]] = const.Declare tensor<262144x1xf32>
+  // CHECK-DAG: [[SPLAT:%.+]] = const.Declare tensor<1x1xf32>
+  // CHECK-NOT: IE.FakeQuantize
+  // CHECK: [[MUL_WD:%.+]]  = IE.Multiply([[WT]], [[SCALE]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+  // CHECK-SAME: tensor<262144x768xf32>, tensor<262144x1xf32> -> tensor<262144x768xf32>
+  // CHECK: [[GATHER:%.+]]  = IE.Gather([[MUL_WD]], [[INDICES]]) {axis_value = 0 : i64, batch_dims = 0 : i64, indices_rank = 1 : i64}
+  // CHECK-SAME: tensor<262144x768xf32>, tensor<256xsi32> -> tensor<256x768xf32>
+  // CHECK: [[MUL_OUT:%.+]] = IE.Multiply([[GATHER]], [[SPLAT]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+  // CHECK-SAME: tensor<256x768xf32>, tensor<1x1xf32> -> tensor<256x768xf32>
+  // CHECK: return [[MUL_OUT]]
+}
+
+// -----
+
+// WD chain with no Gather consumer: the FQ rewriter converts it to FakeQuantize as normal.
+
+// CHECK-LABEL: @NonGatherFedInt4GoesThroughFakeQuantize
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<1x768x28x28xf32>
+// CHECK-SAME: -> tensor<1x768x28x28xf32>
+func.func @NonGatherFedInt4GoesThroughFakeQuantize(%input: tensor<1x768x28x28xf32>) -> tensor<1x768x28x28xf32> {
+  %cst_wt = const.Declare tensor<768x768x1x1xf32> = dense<1> : tensor<768x768x1x1xsi4>,
+      [#const.ConvertElemType<si8>, #const.CastElemType<f32>]
+  %cst_scale = const.Declare tensor<768x1x1x1xf32> = dense<3.9215686e-3> : tensor<768x1x1x1xf32>
+  %mul_wd = IE.Multiply(%cst_wt, %cst_scale) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+      : tensor<768x768x1x1xf32>, tensor<768x1x1x1xf32> -> tensor<768x768x1x1xf32>
+  %conv = IE.Convolution(%input, %mul_wd) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]}
+      : tensor<1x768x28x28xf32>, tensor<768x768x1x1xf32> -> tensor<1x768x28x28xf32>
+  return %conv : tensor<1x768x28x28xf32>
+
+  // CHECK:     IE.FakeQuantize
+  // CHECK-NOT: IE.Multiply{{.*}}768x768x1x1
+  // CHECK:     IE.Convolution
 }

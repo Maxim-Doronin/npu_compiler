@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --reorder-mapped-inference-ops %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --reorder-mapped-inference-ops %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 module @test attributes {config.compilationMode = #config.compilation_mode<DefaultHW>} {
   config.Resources {activity_factor = 0.092296911622323521 : f64} 4 of @NCE at 1.700000e+03 MHz {
@@ -68,22 +68,22 @@ module @test attributes {config.compilationMode = #config.compilation_mode<Defau
 //CHECK-NEXT: VPUMI40XX.DeclareTaskBuffer <DPUVariant> -> !VPURegMapped.Index<1:0:1>
 //CHECK-NEXT: VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<1:0:0>
 //CHECK-NEXT: VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<1:0:1>
-//CHECK-NEXT: VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<1xf16>
-//CHECK-NEXT: VPURT.DeclareBuffer <NetworkOutput> [0] <0> -> memref<1xf16>
+//CHECK-NEXT: [[NET_IN:%.+]] = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<1xf16>
+//CHECK-NEXT: [[NET_OUT:%.+]] = VPURT.DeclareBuffer <NetworkOutput> [0] <0> -> memref<1xf16>
 //CHECK-NEXT: VPURT.DeclareBuffer <ProfilingOutput> [0] <0> -> memref<1xui32>
 //CHECK-NEXT: VPURT.DeclareBuffer <DDR> <0> -> memref<12xf16, @DDR>
 //CHECK-NEXT: VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<12xf16, [@CMX_NN, 0]>
-//CHECK-NEXT: VPUMI40XX.DeclareKernelText kernel_path("softmax") -> !VPURegMapped.Index<0:0:0>
-//CHECK-NEXT: VPUMI40XX.DeclareKernelEntry kernel_path("softmax") -> !VPURegMapped.Index<0:0:0>
-//CHECK-NEXT: VPUMI40XX.DeclareKernelArgs kernel_path("softmax") -> !VPURegMapped.Index<0:0:0>
-//CHECK-NEXT: VPUMI40XX.KernelParams
+//CHECK-NEXT: [[KT:%.+]] = VPUMI40XX.DeclareKernelText kernel_path("softmax") -> !VPURegMapped.Index<0:0:0>
+//CHECK-NEXT: [[KE:%.+]] = VPUMI40XX.DeclareKernelEntry kernel_path("softmax") -> !VPURegMapped.Index<0:0:0>
+//CHECK-NEXT: [[KA:%.+]] = VPUMI40XX.DeclareKernelArgs kernel_path("softmax") -> !VPURegMapped.Index<0:0:0>
+//CHECK-NEXT: [[KP:%.+]] = VPUMI40XX.KernelParams
 //CHECK-NEXT: VPUMI40XX.ConfigureBarrier <{consumer_count = 1 : ui8, producer_count = 1 : ui8}> <0, -1> -> !VPURegMapped.Index<0:0:0>
 //CHECK-NEXT: VPUMI40XX.ConfigureBarrier <{consumer_count = 1 : ui8, producer_count = 1 : ui8}> <1, -1> -> !VPURegMapped.Index<0:0:1>
 //CHECK-NEXT: VPUMI40XX.ConfigureBarrier <{consumer_count = 1 : ui8, producer_count = 1 : ui8}> <2, -1> -> !VPURegMapped.Index<0:0:2>
 //CHECK-NEXT: VPUMI40XX.ConfigureBarrier <{consumer_count = 1 : ui8, producer_count = 1 : ui8}> <3, -1> -> !VPURegMapped.Index<0:0:3>
-//CHECK-NEXT: VPUMI40XX.ActKernelRange kernel_text_index(%17 : !VPURegMapped.Index<0:0:0>) kernel_args_index(%19 : !VPURegMapped.Index<0:0:0>) kernel_entry_index(%18 : !VPURegMapped.Index<0:0:0>) kernelTaskType(@COMPUTE) -> !VPURegMapped.Index<0:0:0>
-//CHECK-NEXT: VPUMI40XX.ActKernelInvocation range_index(%25 : <0:0:0>) kernel_params(%20 : <0:0:0>) tile(7) start_after(0) clean_after(0) -> !VPURegMapped.Index<0:0:0>
-//CHECK-NEXT: VPUMI40XX.NNDMA <{port = 0 : i64}> inputs(%12 : memref<1xf16>) outputs(%13 : memref<1xf16>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:0>
-//CHECK-NEXT: VPUMI40XX.NNDMA <{port = 0 : i64}> inputs(%12 : memref<1xf16>) outputs(%13 : memref<1xf16>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:1>
-//CHECK-NEXT: VPUMI40XX.NNDMA <{port = 1 : i64}> inputs(%12 : memref<1xf16>) outputs(%13 : memref<1xf16>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:1:0>
-//CHECK-NEXT: VPUMI40XX.NNDMA <{port = 1 : i64}> inputs(%12 : memref<1xf16>) outputs(%13 : memref<1xf16>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<1:0:0>
+//CHECK-NEXT: [[ACT_RANGE:%.+]] = VPUMI40XX.ActKernelRange kernel_text_index([[KT]] : !VPURegMapped.Index<0:0:0>) kernel_args_index([[KA]] : !VPURegMapped.Index<0:0:0>) kernel_entry_index([[KE]] : !VPURegMapped.Index<0:0:0>) kernelTaskType(@COMPUTE) -> !VPURegMapped.Index<0:0:0>
+//CHECK-NEXT: VPUMI40XX.ActKernelInvocation range_index([[ACT_RANGE]] : <0:0:0>) kernel_params([[KP]] : <0:0:0>) tile(7) start_after(0) clean_after(0) -> !VPURegMapped.Index<0:0:0>
+//CHECK-NEXT: VPUMI40XX.NNDMA <{port = 0 : i64}> inputs([[NET_IN]] : memref<1xf16>) outputs([[NET_OUT]] : memref<1xf16>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:0>
+//CHECK-NEXT: VPUMI40XX.NNDMA <{port = 0 : i64}> inputs([[NET_IN]] : memref<1xf16>) outputs([[NET_OUT]] : memref<1xf16>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:1>
+//CHECK-NEXT: VPUMI40XX.NNDMA <{port = 1 : i64}> inputs([[NET_IN]] : memref<1xf16>) outputs([[NET_OUT]] : memref<1xf16>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:1:0>
+//CHECK-NEXT: VPUMI40XX.NNDMA <{port = 1 : i64}> inputs([[NET_IN]] : memref<1xf16>) outputs([[NET_OUT]] : memref<1xf16>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<1:0:0>

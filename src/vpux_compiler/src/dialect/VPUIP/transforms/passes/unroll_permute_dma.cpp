@@ -47,7 +47,7 @@ void UnrollPermuteDMAPass::safeRunOnFunc() {
 
     llvm::SmallVector<mlir::RewritePatternSet> patternSets;
 
-    auto& strategyFactory = VPUIP::getVPUIPStrategyFactory(&ctx);
+    const auto& strategyFactory = VPUIP::getVPUIPStrategyFactory(&ctx);
     auto dmaPortCount = config::getNumOfDMAPorts(func);
     auto unrollStrategy = strategyFactory->getUnrollPermuteDMAStrategy(&ctx, dmaPortCount);
     unrollStrategy->addPatterns(patternSets, _log);

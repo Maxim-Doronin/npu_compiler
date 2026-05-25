@@ -20,8 +20,9 @@
 namespace vpux {
 
 std::tuple<LinearScanHandler, std::list<ScheduledOpOneResource>> runLinearScan(
-        mlir::func::FuncOp funcOp, MemLiveRangeInfo& liveRangeInfo, const AsyncDepsInfo& depsInfo,
-        VPU::MemoryKind memKind, Logger log, ArrayRef<std::pair<vpux::AddressType, vpux::AddressType>> vec = {});
+        mlir::func::FuncOp funcOp, MemLiveRangeInfo& liveRangeInfo, AliasesInfo& aliasesInfo,
+        const AsyncDepsInfo& depsInfo, VPU::MemoryKind memKind, Logger log,
+        ArrayRef<std::pair<vpux::AddressType, vpux::AddressType>> vec = {});
 
 //
 // AllocationInfo
@@ -37,7 +38,8 @@ struct ScanResult {
 class AllocationInfo {
 public:
     AllocationInfo(mlir::func::FuncOp netFunc, mlir::AnalysisManager& am);
-    AllocationInfo(mlir::func::FuncOp netFunc, const AsyncDepsInfo& depsInfo, MemLiveRangeInfo& liveRangeInfo);
+    AllocationInfo(mlir::func::FuncOp netFunc, const AsyncDepsInfo& depsInfo, MemLiveRangeInfo& liveRangeInfo,
+                   AliasesInfo& aliasesInfo);
 
     bool hasResult(VPU::MemoryKind memKind);
     ScanResult getScanResult(VPU::MemoryKind memKind);

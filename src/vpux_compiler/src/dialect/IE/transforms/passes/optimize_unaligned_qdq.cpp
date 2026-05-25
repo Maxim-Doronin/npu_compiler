@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -14,7 +14,7 @@
 #include "vpux/compiler/utils/error.hpp"
 
 #include <mlir/Dialect/Quant/IR/Quant.h>
-#include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Transforms/WalkPatternRewriteDriver.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_OPTIMIZEUNALIGNEDQDQSEQ
@@ -25,6 +25,74 @@ namespace vpux::IE {
 using namespace vpux;
 
 namespace {
+
+bool isDPUOp(mlir::Operation* op, Logger log) {
+    auto convOp = mlir::dyn_cast<IE::ConvolutionOp>(op);
+    if (convOp != nullptr) {
+        if (!VPU::NCEConvolutionOp::verifyKernel(convOp, log).failed()) {
+            return true;
+        }
+    }
+    auto grConvOp = mlir::dyn_cast<IE::GroupConvolutionOp>(op);
+    if (grConvOp != nullptr) {
+        if (!VPU::NCEDepthConvolutionOp::verifyKernel(grConvOp, log).failed()) {
+            return true;
+        }
+    }
+    auto maxPoolOp = mlir::dyn_cast<IE::MaxPoolOp>(op);
+    if (maxPoolOp != nullptr) {
+        if (!VPU::NCEMaxPoolOp::verifyKernel(maxPoolOp, log).failed()) {
+            return true;
+        }
+    }
+    auto subtractOp = mlir::dyn_cast<IE::SubtractOp>(op);
+    if (subtractOp != nullptr) {
+        if (!VPU::NCEEltwiseOp::verifyKernel(subtractOp, log).failed()) {
+            return true;
+        }
+    }
+    auto multiplyOp = mlir::dyn_cast<IE::MultiplyOp>(op);
+    if (multiplyOp != nullptr) {
+        if (!VPU::NCEEltwiseOp::verifyKernel(multiplyOp, log).failed()) {
+            return true;
+        }
+    }
+    auto addOp = mlir::dyn_cast<IE::AddOp>(op);
+    if (addOp != nullptr) {
+        if (!VPU::NCEEltwiseOp::verifyKernel(addOp, log).failed()) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool shouldConvertFakeQuantizeOp(IE::FakeQuantizeOp fakeQuantize, Logger log) {
+    if (!fakeQuantize->hasOneUse()) {
+        return false;
+    }
+    if (!IE::isPerTensorFQ({fakeQuantize})) {
+        return false;
+    }
+    auto affineReshape = fakeQuantize.getInput().getDefiningOp<IE::AffineReshapeOp>();
+    if (affineReshape == nullptr) {
+        return false;
+    }
+    if (!affineReshape->hasOneUse()) {
+        return false;
+    }
+    const auto outType = mlir::dyn_cast<vpux::NDTypeInterface>(affineReshape.getType());
+    if (outType.getRank() != 4) {
+        return false;
+    }
+    if ((outType.getShape()[Dims4D::Act::C] % 16) == 0) {
+        return false;
+    }
+    auto prevOp = affineReshape.getInput().getDefiningOp();
+    if (prevOp == nullptr) {
+        return false;
+    }
+    return isDPUOp(prevOp, log);
+}
 
 //
 // UnalignedFakeQuantizeRewriter
@@ -46,6 +114,10 @@ private:
 
 mlir::LogicalResult UnalignedFakeQuantizeRewriter::matchAndRewrite(IE::FakeQuantizeOp oldFakeQuantize,
                                                                    mlir::PatternRewriter& rewriter) const {
+    if (!shouldConvertFakeQuantizeOp(oldFakeQuantize, _log)) {
+        return mlir::failure();
+    }
+
     auto oldAffineReshape = oldFakeQuantize.getInput().getDefiningOp<IE::AffineReshapeOp>();
     if (oldAffineReshape == nullptr) {
         return matchFailed(_log.nest(), rewriter, oldAffineReshape, "No following FakeQuantize");
@@ -70,89 +142,14 @@ public:
 
 private:
     void safeRunOnFunc() final;
-
-    bool isDPU(mlir::Operation* op) {
-        auto convOp = mlir::dyn_cast<IE::ConvolutionOp>(op);
-        if (convOp != nullptr) {
-            if (!VPU::NCEConvolutionOp::verifyKernel(convOp, _log).failed()) {
-                return true;
-            }
-        }
-        auto grConvOp = mlir::dyn_cast<IE::GroupConvolutionOp>(op);
-        if (grConvOp != nullptr) {
-            if (!VPU::NCEDepthConvolutionOp::verifyKernel(grConvOp, _log).failed()) {
-                return true;
-            }
-        }
-        auto maxPoolOp = mlir::dyn_cast<IE::MaxPoolOp>(op);
-        if (maxPoolOp != nullptr) {
-            if (!VPU::NCEMaxPoolOp::verifyKernel(maxPoolOp, _log).failed()) {
-                return true;
-            }
-        }
-        auto subtractOp = mlir::dyn_cast<IE::SubtractOp>(op);
-        if (subtractOp != nullptr) {
-            if (!VPU::NCEEltwiseOp::verifyKernel(subtractOp, _log).failed()) {
-                return true;
-            }
-        }
-        auto multiplyOp = mlir::dyn_cast<IE::MultiplyOp>(op);
-        if (multiplyOp != nullptr) {
-            if (!VPU::NCEEltwiseOp::verifyKernel(multiplyOp, _log).failed()) {
-                return true;
-            }
-        }
-        auto addOp = mlir::dyn_cast<IE::AddOp>(op);
-        if (addOp != nullptr) {
-            if (!VPU::NCEEltwiseOp::verifyKernel(addOp, _log).failed()) {
-                return true;
-            }
-        }
-        return false;
-    }
 };
 
 void OptimizeUnalignedQDQSeqPass::safeRunOnFunc() {
     auto& ctx = getContext();
-    auto func = getOperation();
-    mlir::ConversionTarget target(ctx);
 
-    target.addDynamicallyLegalOp<IE::FakeQuantizeOp>([&](IE::FakeQuantizeOp fakeQuantize) {
-        if (!fakeQuantize->hasOneUse()) {
-            return true;
-        }
-        if (!IE::isPerTensorFQ({fakeQuantize})) {
-            return true;
-        }
-        auto affineReshape = fakeQuantize.getInput().getDefiningOp<IE::AffineReshapeOp>();
-        if (affineReshape == nullptr) {
-            return true;
-        }
-        if (!affineReshape->hasOneUse()) {
-            return true;
-        }
-        const auto outType = mlir::dyn_cast<vpux::NDTypeInterface>(affineReshape.getType());
-        if (outType.getRank() != 4) {
-            return true;
-        }
-        if ((outType.getShape()[Dims4D::Act::C] % 16) == 0) {
-            return true;
-        }
-        auto prevOp = affineReshape.getInput().getDefiningOp();
-        if (prevOp == nullptr) {
-            return true;
-        }
-        if (!isDPU(prevOp)) {
-            return true;
-        }
-        return false;
-    });
-    target.addLegalOp<IE::AffineReshapeOp>();
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<UnalignedFakeQuantizeRewriter>(&ctx, _log);
-    if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
-        signalPassFailure();
-    }
+    walkAndApplyPatterns(getOperation(), std::move(patterns));
 }
 
 }  // namespace

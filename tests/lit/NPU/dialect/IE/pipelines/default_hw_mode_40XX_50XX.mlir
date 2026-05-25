@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --mlir-elide-elementsattrs-if-larger 8 --default-hw-mode-ie %s | FileCheck %s --strict-whitespace
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW" --mlir-elide-elementsattrs-if-larger 8 --default-hw-mode-ie %s | FileCheck %s --strict-whitespace
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL: @ReduceMax
 module @ReduceMax {
@@ -74,13 +74,11 @@ module @ConvertReduceMinWithLargeTensorToPooling {
         // CHECK-SAME{LITERAL}: {dim_mapping = [[0, 1], [2], [2], [3]], shape_value = [1, 1, 128, 16]} : tensor<1x128x1x16xf16> -> tensor<1x1x128x16xf16>
 
         // CHECK:       [[PERMUTE_CAST_2:%.+]] = IE.PermuteCast([[AFFINE_RESHAPE_1]]) {dst_order = #NHWC, mem_perm = #NHWC} : tensor<1x1x128x16xf16> -> tensor<1x1x128x16xf16, {order = #NHWC}>
-        // CHECK:       [[AFFINE_RESHAPE_2:%.+]] = IE.AffineReshape([[PERMUTE_CAST_2]])
-        // CHECK-SAME{LITERAL}: {dim_mapping = [[0], [1], [2], [3]], shape_value = [1, 16, 128, 1]} : tensor<1x1x128x16xf16, {order = #NHWC}> -> tensor<1x16x128x1xf16, {order = #NHWC}>
+        // CHECK:       [[AFFINE_RESHAPE_2:%.+]] = IE.ShapeCast {shape = [1, 16, 128, 1]} inputs([[PERMUTE_CAST_2]] : tensor<1x1x128x16xf16, {order = #NHWC}>) -> tensor<1x16x128x1xf16, {order = #NHWC}>
         // CHECK:       [[CONV_0:%.+]] = IE.Convolution([[AFFINE_RESHAPE_2]]
         // CHECK-SAME:      dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x16x128x1xf16, {order = #NHWC}>, tensor<256x16x1x1xf16, {order = #NHWC}> -> tensor<1x256x128x1xf16, {order = #NHWC}>
 
-        // CHECK:       [[AFFINE_RESHAPE_3:%.+]] = IE.AffineReshape([[CONV_0]])
-        // CHECK-SAME{LITERAL}: {dim_mapping = [[0], [1], [2], [3]], shape_value = [1, 16, 128, 16]} : tensor<1x256x128x1xf16, {order = #NHWC}> -> tensor<1x16x128x16xf16, {order = #NHWC}>
+        // CHECK:       [[AFFINE_RESHAPE_3:%.+]] = IE.ShapeCast {shape = [1, 16, 128, 16]} inputs([[CONV_0]] : tensor<1x256x128x1xf16, {order = #NHWC}>) -> tensor<1x16x128x16xf16, {order = #NHWC}>
 
         // CHECK:       [[MAXPOOL_5:%.+]] = IE.MaxPool([[AFFINE_RESHAPE_3]]) {kernel_size = [8, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [8, 1]} : tensor<1x16x128x16xf16, {order = #NHWC}> -> tensor<1x16x16x16xf16, {order = #NHWC}>
         // CHECK:       [[MAXPOOL_6:%.+]] = IE.MaxPool([[MAXPOOL_5]]) {kernel_size = [8, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [8, 1]} : tensor<1x16x16x16xf16, {order = #NHWC}> -> tensor<1x16x2x16xf16, {order = #NHWC}>

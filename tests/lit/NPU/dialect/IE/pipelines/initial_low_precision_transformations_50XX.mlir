@@ -4,8 +4,8 @@
 //
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --run-initial-low-precision-transformations-rewriters="enable-dynamic-quantization-for-static-case" --initial-low-precision-transformations %s | FileCheck %s --strict-whitespace
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --run-initial-low-precision-transformations-rewriters="enable-dynamic-quantization-for-static-case" --initial-low-precision-transformations %s | FileCheck %s --strict-whitespace
+// REQUIRES: platform-NPU5010
 
 // CHECK-LABEL: @UI2WeightsDequantizeToDynamicDequantize
 func.func @UI2WeightsDequantizeToDynamicDequantize(%arg0: tensor<1x1x8192xf16>) -> tensor<1x1x3072xf32> {

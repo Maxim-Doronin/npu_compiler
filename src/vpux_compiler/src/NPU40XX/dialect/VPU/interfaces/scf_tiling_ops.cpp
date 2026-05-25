@@ -5,6 +5,7 @@
 
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/data_type.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops/image.hpp"
 #include "vpux/compiler/dialect/VPU/interfaces/scf/scf_tiling_interfaces.hpp"
 #include "vpux/compiler/dialect/VPU/interfaces/scf/scf_tiling_viewlike_interfaces.hpp"
 
@@ -20,10 +21,13 @@ void vpux::VPU::arch40xx::registerSCFTilingOpsInterfaces(mlir::DialectRegistry& 
         VPU::NCEReduceOp::attachInterface<vpux::VPU::SCFNCEReduceModelOp>(*ctx);
 
         VPU::DepthToSpaceOp::attachInterface<vpux::VPU::SCFDepthToSpaceModelOp>(*ctx);
+        VPU::InterpolateOp::attachInterface<vpux::VPU::SCFInterpolateModelOp>(*ctx);
         VPU::ConvertOp::attachInterface<vpux::VPU::SCFTilingEltwiseLikeModelOp<VPU::ConvertOp>>(*ctx);
+        VPU::YuvToRgbOp::attachInterface<vpux::VPU::SCFYuvToRgbModelOp>(*ctx);
 
         VPU::LayoutCastOp::attachInterface<vpux::VPU::SCFGenericViewLikeTilingModelOp<VPU::LayoutCastOp>>(*ctx);
         VPU::PermuteCastOp::attachInterface<vpux::VPU::SCFPermuteCastTilingModelOp>(*ctx);
+        VPU::SliceOp::attachInterface<vpux::VPU::SCFSliceTilingModelOp>(*ctx);
         VPU::QuantizeCastOp::attachInterface<vpux::VPU::SCFGenericViewLikeTilingModelOp<VPU::QuantizeCastOp>>(*ctx);
 
         VPU::ReduceLogicalOrOp::attachInterface<vpux::VPU::SCFReduceLogicalOrModelOp>(*ctx);
@@ -36,5 +40,7 @@ void vpux::VPU::arch40xx::registerSCFTilingOpsInterfaces(mlir::DialectRegistry& 
         VPU::ReduceMinOp::attachInterface<vpux::VPU::SCFReduceMinModelOp>(*ctx);
         VPU::ReduceMaxOp::attachInterface<vpux::VPU::SCFReduceMaxModelOp>(*ctx);
         VPU::ReduceProdOp::attachInterface<vpux::VPU::SCFReduceProdModelOp>(*ctx);
+        VPU::LSTMGatesOp::attachInterface<vpux::VPU::SCFLSTMGatesModelOp>(*ctx);
+        VPU::TopKOp::attachInterface<vpux::VPU::SCFTopKModelOp>(*ctx);
     });
 }

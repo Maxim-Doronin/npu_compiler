@@ -3,11 +3,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --vpu-arch=%arch% %s | FileCheck %s
-// RUN: vpux-opt --emit-bytecode --vpu-arch=%arch% %s | vpux-opt --vpu-arch=%arch% | FileCheck %s
-// REQUIRES: dev-build && arch-NPU40XX
+// RUN: vpux-opt --split-input-file --platform=%platform% %s | FileCheck %s
+// RUN: vpux-opt --emit-bytecode --platform=%platform% %s | vpux-opt --platform=%platform% | FileCheck %s
+// REQUIRES: dev-build && platform-NPU4000
 
-module @SingleHswishFP16 attributes {config.arch = #config.arch_kind<NPU40XX>} {
+module @SingleHswishFP16 attributes {config.platform = #config.platform<NPU4000>} {
   config.ExecutorResource 1 of @DMA_NN
   config.Resources 1 of @NCE at 6.000000e+02 MHz
   net.NetworkInfo entryPoint : @single_hswish inputsInfo : {
@@ -20,14 +20,16 @@ module @SingleHswishFP16 attributes {config.arch = #config.arch_kind<NPU40XX>} {
       func.func private @builtin_hswish(memref<*xf16>, memref<*xf16>) attributes {VPU.kernel_code = "activation_hswish.cpp", VPU.kernel_entry = "activation_hswish"}
       func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
     }
-  VPUASM.IOBindings inputDeclarations : {
+  VPUASM.InputBindings inputDeclarations : {
     VPUASM.DeclareBuffer @input_0_buffDecl !VPUASM.Buffer< "NetworkInput"[0] <0> : memref<1x1x1x1000xf16, @DDR> :  swizzling(0)>
-  } outputDeclarations : {
+  }
+  VPUASM.OutputBindings outputDeclarations : {
     VPUASM.DeclareBuffer @output_0_buffDecl !VPUASM.Buffer< "NetworkOutput"[0] <0> : memref<1x1x1x1000xf16, @DDR> :  swizzling(0)>
-  } profilingBuffDeclarations : {
+  }
+  VPUASM.ProfilingBindings profilingDeclarations : {
   }
   func.func @single_hswish() {
-    ELF.Main @ELFMain {
+    ELF.Main {
       ELF.CreateLogicalSection @io.NetworkInput0 aligned(1) secType(SHT_NOBITS) secFlags(VPU_SHF_USERINPUT) secLocation(<NetworkInput>) {
         VPUASM.DeclareBuffer @DeclareBuffer0 !VPUASM.Buffer< "NetworkInput"[0] <0> : memref<1x1x1x1000xf16> :  swizzling(0)>
       }

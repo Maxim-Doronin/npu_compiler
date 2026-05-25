@@ -369,8 +369,8 @@ void sliceInputsForIterations(SmallVector<IE::SliceInputPortMapAttr>& sliceInput
         SmallVector<mlir::Value> splitResults;
         for (auto idx : irange(numIterations)) {
             staticOffsets[axis] = stride > 0 ? start + idx * partSize : start - idx * partSize;
-            auto slicedOp = rewriter.create<IE::SliceOp>(appendLoc(loc, "slice_before_{0}", idx), toSplitInput,
-                                                         getIntArrayAttr(ctx, staticOffsets),
+            auto slicedOp = rewriter.create<IE::SliceOp>(appendLoc(loc, "slice_before_{0}_{1}", exId, idx),
+                                                         toSplitInput, getIntArrayAttr(ctx, staticOffsets),
                                                          getIntArrayAttr(ctx, staticSizes));
             splitResults.push_back(slicedOp.getResult());
         }

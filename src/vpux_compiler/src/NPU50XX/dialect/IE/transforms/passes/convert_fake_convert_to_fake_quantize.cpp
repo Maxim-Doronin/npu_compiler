@@ -4,7 +4,7 @@
 //
 
 #include <mlir/Pass/PassManager.h>
-#include <mlir/Transforms/GreedyPatternRewriteDriver.h>
+#include <mlir/Transforms/WalkPatternRewriteDriver.h>
 
 #include "vpux/compiler/NPU50XX/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
@@ -51,6 +51,23 @@ Const::ContentAttr getShift(IE::FakeConvertOp origOp) {
 
     auto shiftCst = shift.getDefiningOp<Const::DeclareOp>();
     return shiftCst == nullptr ? Const::ContentAttr{} : shiftCst.getContentAttr();
+}
+
+bool isFakeConvertToFakeQuantizeBeneficial(IE::FakeConvertOp origOp) {
+    const auto scale = origOp.getScale();
+    const auto scaleCst = scale.getDefiningOp<Const::DeclareOp>();
+    if (scaleCst == nullptr) {
+        return false;
+    }
+
+    if (const auto shift = origOp.getShift()) {
+        const auto shiftCst = shift.getDefiningOp<Const::DeclareOp>();
+        if (shiftCst == nullptr) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 //
@@ -101,6 +118,10 @@ mlir::LogicalResult ConvertFakeConvertToFakeQuantize::FakeConvertRewriter::match
         IE::FakeConvertOp origOp, mlir::PatternRewriter& rewriter) const {
     _log.trace("Got {0} at `{1}`.", origOp->getName(), origOp->getLoc());
 
+    if (!isFakeConvertToFakeQuantizeBeneficial(origOp)) {
+        return mlir::failure();
+    }
+
     // Get fp8 min and max
     const auto minMaxTensors = getMinMax(origOp, _log.nest());
     if (mlir::failed(minMaxTensors)) {
@@ -145,35 +166,11 @@ mlir::LogicalResult ConvertFakeConvertToFakeQuantize::FakeConvertRewriter::match
 
 void ConvertFakeConvertToFakeQuantize::safeRunOnFunc() {
     auto& ctx = getContext();
-    mlir::ConversionTarget target(ctx);
-
-    // FakeConvert is legal when scale/shift are non-constants
-    const auto isLegalFakeConvertOp = [&](IE::FakeConvertOp fc) {
-        const auto scale = fc.getScale();
-        const auto scaleCst = scale.getDefiningOp<Const::DeclareOp>();
-        if (scaleCst == nullptr) {
-            return true;
-        }
-        if (const auto shift = fc.getShift()) {
-            const auto shiftCst = shift.getDefiningOp<Const::DeclareOp>();
-            if (shiftCst == nullptr) {
-                return true;
-            }
-        }
-        return false;
-    };
-
-    target.addDynamicallyLegalOp<IE::FakeConvertOp>(isLegalFakeConvertOp);
-    target.addLegalOp<Const::DeclareOp>();
-    target.addLegalOp<IE::FakeQuantizeOp>();
 
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<FakeConvertRewriter>(&ctx, _log);
 
-    auto func = getOperation();
-    if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
-        signalPassFailure();
-    }
+    walkAndApplyPatterns(getOperation(), std::move(patterns));
 }
 
 }  // namespace

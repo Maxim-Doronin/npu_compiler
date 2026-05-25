@@ -31,9 +31,16 @@ bool canBecomeNCEDepthConvAfterHandleLargePads(IE::GroupConvolutionOp groupconv,
     const auto KX = filterShape[Dims4D::Filter::KX];
     const auto pads = PadInfo(groupconv.getPadsBegin(), groupconv.getPadsEnd());
 
+    const auto weights = groupconv.getFilter();
+    auto weightsCst = weights.getDefiningOp<Const::DeclareOp>();
+    auto weightsFQ = weights.getDefiningOp<IE::FakeQuantizeOp>();
+    if (weightsFQ) {
+        weightsCst = weightsFQ.getInput().getDefiningOp<Const::DeclareOp>();
+    }
+
     // For 1x1 kernel, kernel/2 = 0, so HandleLargePadsPass would reduce all padding to 0.
     // In this case, GroupConvToSingleConvConverter can handle it more efficiently.
-    if (KY == 1 && KX == 1) {
+    if (KY == 1 && KX == 1 && weightsCst) {
         return false;
     }
 
@@ -303,8 +310,8 @@ mlir::LogicalResult FuseConvAndBias::matchAndRewrite(IE::ScaleShiftOp biasOp, ml
         }
     }
     if (auto transposedConv = mlir::dyn_cast<IE::TransposedConvolutionOp>(op)) {
-        if (!VPU::isSupportedSEPTransposedConv(transposedConv, emptyLogCb, /*checkLayout=*/false,
-                                               /*checkChannelAlignment=*/false)) {
+        auto seOp = mlir::dyn_cast<IE::SEOpInterface>(transposedConv.getOperation());
+        if (!seOp || !seOp.isSupported(emptyLogCb)) {
             return matchFailed(rewriter, transposedConv, "TransposedConv cannot convert to NCE, not fuse ScaleShift");
         }
     }

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --fuse-permute-quantize-expand  %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --fuse-permute-quantize-expand  %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
@@ -133,6 +133,56 @@ func.func @DoNotFusePermuteQuantizeQuantizeCastExpandIDUAutopad(%arg0: tensor<1x
   // CHECK:  [[EXPAND:%.+]] = IE.Expand([[QUANTIZE_CAST]])
   // CHECK:  [[CONV:%.+]] = IE.Convolution([[EXPAND]], [[CST]])
   // CHECK:  return [[CONV]]
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+!qElemType = !quant.uniform<u8:f16, 1.000000e+00>
+
+// CHECK-LABEL:  @FuseExpandIntoPermuteQuantizeSkipConnectionIDUAutopad
+// CHECK-SAME:   ([[INPUT:%.+]]: tensor<1x3x8x16xf16>)
+func.func @FuseExpandIntoPermuteQuantizeSkipConnectionIDUAutopad(%arg0: tensor<1x3x8x16xf16>) -> (tensor<1x16x8x16x!qElemType, {order = #NHWC}>, tensor<1x16x8x16x!qElemType, {order = #NHWC}>) {
+  %cst_autopad = const.Declare tensor<16x16x1x1x!qElemType, {order = #NHWC}> = dense<1> : tensor<16x16x1x1xui8>, [#const.CastElemType<!qElemType>, #const.Reorder<#NHWC>]
+  %cst_skip = const.Declare tensor<16x16x1x1x!qElemType, {order = #NHWC}> = dense<2> : tensor<16x16x1x1xui8>, [#const.CastElemType<!qElemType>, #const.Reorder<#NHWC>]
+  %permute_quantize = IE.PermuteQuantize(%arg0) {dstElemType = !qElemType, dst_order = #NHWC, mem_perm = #NHWC, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0]} : tensor<1x3x8x16xf16> -> tensor<1x3x8x16x!qElemType, {order = #NHWC}>
+  %expand = IE.Expand(%permute_quantize) {pads_begin = [0, 0, 0, 0], pads_end = [0, 13, 0, 0]} : tensor<1x3x8x16x!qElemType, {order = #NHWC}> -> tensor<1x16x8x16x!qElemType, {order = #NHWC}>
+  %conv_autopad = IE.Convolution(%expand, %cst_autopad) {input_padding = [0, 13, 0, 0], dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x16x8x16x!qElemType, {order = #NHWC}>, tensor<16x16x1x1x!qElemType, {order = #NHWC}> -> tensor<1x16x8x16x!qElemType, {order = #NHWC}>
+  %conv_skip = IE.Convolution(%expand, %cst_skip) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x16x8x16x!qElemType, {order = #NHWC}>, tensor<16x16x1x1x!qElemType, {order = #NHWC}> -> tensor<1x16x8x16x!qElemType, {order = #NHWC}>
+  return %conv_autopad, %conv_skip : tensor<1x16x8x16x!qElemType, {order = #NHWC}>, tensor<1x16x8x16x!qElemType, {order = #NHWC}>
+
+  // Expand is absorbed into PermuteQuantize; both consumers use the fused result.
+  // CHECK-DAG:  [[CST_AUTOPAD:%.+]] = const.Declare
+  // CHECK-DAG:  [[CST_SKIP:%.+]] = const.Declare
+  // CHECK:      [[PQ:%.+]] = IE.PermuteQuantize([[INPUT]]) {dstElemType = !qElemType, dst_order = #NHWC, mem_perm = #NHWC, pads_begin = [0, 0, 0, 0], pads_end = [0, 13, 0, 0]} : tensor<1x3x8x16xf16> -> tensor<1x16x8x16x!qElemType, {order = #NHWC}>
+  // CHECK:      [[CONV_AUTOPAD:%.+]] = IE.Convolution([[PQ]], [[CST_AUTOPAD]]) {{.*}}input_padding = [0, 13, 0, 0]
+  // CHECK:      [[CONV_SKIP:%.+]] = IE.Convolution([[PQ]], [[CST_SKIP]]) {dilations
+  // CHECK:      return [[CONV_AUTOPAD]], [[CONV_SKIP]]
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+!qElemType = !quant.uniform<u8:f16, 0.0010780484068627452>
+!qElemType1 = !quant.uniform<u8:f16, 0.0021560968137254903>
+
+// CHECK-LABEL:  @FuseQuantizeCastExpandIntoPermuteQuantizeSkipConnectionIDUAutopad
+// CHECK-SAME:   ([[INPUT:%.+]]: tensor<1x1x1x64xf16>)
+func.func @FuseQuantizeCastExpandIntoPermuteQuantizeSkipConnectionIDUAutopad(%arg0: tensor<1x1x1x64xf16>) -> (tensor<1x16x1x64x!qElemType, {order = #NHWC}>, tensor<1x16x1x64xf16, {order = #NHWC}>) {
+  %cst_autopad = const.Declare tensor<16x16x1x1x!qElemType, {order = #NHWC}> = dense<1> : tensor<16x16x1x1xui8>, [#const.CastElemType<!qElemType>, #const.Reorder<#NHWC>]
+  %0 = IE.PermuteQuantize(%arg0) {dstElemType = !qElemType1, dst_order = #NHWC, mem_perm = #NHWC, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0]} : tensor<1x1x1x64xf16> -> tensor<1x1x1x64x!qElemType1, {order = #NHWC}>
+  %1 = IE.QuantizeCast(%0) {dstElemType = !qElemType} : tensor<1x1x1x64x!qElemType1, {order = #NHWC}> -> tensor<1x1x1x64x!qElemType, {order = #NHWC}>
+  %2 = IE.Expand(%1) {pads_begin = [0, 0, 0, 0], pads_end = [0, 15, 0, 0]} : tensor<1x1x1x64x!qElemType, {order = #NHWC}> -> tensor<1x16x1x64x!qElemType, {order = #NHWC}>
+  %conv_autopad = IE.Convolution(%2, %cst_autopad) {input_padding = [0, 15, 0, 0], dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x16x1x64x!qElemType, {order = #NHWC}>, tensor<16x16x1x1x!qElemType, {order = #NHWC}> -> tensor<1x16x1x64x!qElemType, {order = #NHWC}>
+  %add_skip = IE.Add(%2, %2) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x16x1x64x!qElemType, {order = #NHWC}>, tensor<1x16x1x64x!qElemType, {order = #NHWC}> -> tensor<1x16x1x64xf16, {order = #NHWC}>
+  return %conv_autopad, %add_skip : tensor<1x16x1x64x!qElemType, {order = #NHWC}>, tensor<1x16x1x64xf16, {order = #NHWC}>
+
+
+  // CHECK:      [[PQ:%.+]] = IE.PermuteQuantize([[INPUT]]) {dstElemType = !qElemType1, dst_order = #NHWC, mem_perm = #NHWC, pads_begin = [0, 0, 0, 0], pads_end = [0, 15, 0, 0]} : tensor<1x1x1x64xf16> -> tensor<1x16x1x64x!qElemType1, {order = #NHWC}>
+  // CHECK:      [[QC:%.+]] = IE.QuantizeCast([[PQ]]) {dstElemType = !qElemType} : tensor<1x16x1x64x!qElemType1, {order = #NHWC}> -> tensor<1x16x1x64x!qElemType, {order = #NHWC}>
+  // CHECK:      [[CONV_AUTOPAD:%.+]] = IE.Convolution([[QC]], [[CST_AUTOPAD:%.+]]) {{.*}}input_padding = [0, 15, 0, 0]
+  // CHECK:      [[ADD_SKIP:%.+]] = IE.Add([[QC]], [[QC]])
+  // CHECK:      return [[CONV_AUTOPAD]], [[ADD_SKIP]]
 }
 
 // -----

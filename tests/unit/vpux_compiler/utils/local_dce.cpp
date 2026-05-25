@@ -5,7 +5,7 @@
 
 #include "common/utils.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
-#include "vpux/compiler/init.hpp"
+#include "vpux/compiler/init/dialects_registry.hpp"
 #include "vpux/compiler/utils/walk_utils.hpp"
 
 #include <mlir/IR/BuiltinOps.h>

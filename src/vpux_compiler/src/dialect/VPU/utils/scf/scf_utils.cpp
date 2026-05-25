@@ -773,41 +773,56 @@ SmallVector<mlir::Value> vpux::VPU::applyIndexBacktracking(mlir::tensor::InsertS
     return newOffsets;
 }
 
-mlir::Operation* vpux::VPU::castOutputForInsertion(mlir::OpBuilder& builder, const SCFTileInfo& outputTile,
-                                                   DimArrRef dims, mlir::Operation* operation,
-                                                   mlir::Operation* tiledOperation) {
-    const auto outputShape = getShape(operation->getResult(0));
-    const auto nonTilingDynDims = [&]() -> SmallVector<Dim> {
-        SmallVector<Dim> dynDims;
-        for (auto idx : irange(outputShape.size())) {
-            const auto dim = Dim(idx);
-            if (outputShape[dim] != mlir::ShapedType::kDynamic) {
-                continue;
-            }
+SmallVector<mlir::Value> vpux::VPU::castOutputForInsertion(mlir::OpBuilder& builder, ArrayRef<SCFTileInfo> outputTiles,
+                                                           DimArrRef dims, mlir::Operation* origOperation,
+                                                           mlir::Operation* tiledOperation) {
+    const auto numResults = origOperation->getNumResults();
+    VPUX_THROW_UNLESS(outputTiles.size() == numResults, "castOutputForInsertion: expected {0} output tiles but got {1}",
+                      numResults, outputTiles.size());
 
-            if (!llvm::is_contained(dims, dim)) {
-                dynDims.push_back(dim);
+    SmallVector<mlir::Value> castedValues;
+    castedValues.reserve(numResults);
+
+    for (auto resultNumber : irange(numResults)) {
+        const auto outputShape = getShape(origOperation->getResult(resultNumber));
+        const auto& outputTile = outputTiles[resultNumber];
+
+        // Find dynamic dims that are not tiling dims — only those need a cast
+        const auto nonTilingDynDims = [&]() -> SmallVector<Dim> {
+            SmallVector<Dim> dynDims;
+            for (auto idx : irange(outputShape.size())) {
+                const auto dim = Dim(idx);
+                if (outputShape[dim] != mlir::ShapedType::kDynamic) {
+                    continue;
+                }
+                if (!llvm::is_contained(dims, dim)) {
+                    dynDims.push_back(dim);
+                }
             }
+            return dynDims;
+        }();
+
+        mlir::Value resultValue = tiledOperation->getResult(resultNumber);
+        if (nonTilingDynDims.empty()) {
+            castedValues.push_back(resultValue);
+            continue;
         }
 
-        return dynDims;
-    }();
+        auto tiledOpType = mlir::cast<vpux::NDTypeInterface>(resultValue.getType());
+        auto castedOutputShape = Shape(tiledOpType.getShape());
+        auto tiledOpBoundedShape = getBoundedShape(tiledOpType);
+        for (const auto dynDim : nonTilingDynDims) {
+            const auto evaluatedDim = mlir::getConstantIntValue(outputTile.shape[dynDim.ind()]);
+            castedOutputShape[dynDim] = evaluatedDim.value_or(tiledOpBoundedShape[dynDim]);
+        }
 
-    if (nonTilingDynDims.empty()) {
-        return tiledOperation;
+        mlir::Type castedTiledOutputType = tiledOpType.changeShape(castedOutputShape);
+        auto castOp = builder.create<mlir::tensor::CastOp>(appendLoc(tiledOperation->getLoc(), "insert_cast"),
+                                                           castedTiledOutputType, resultValue);
+        castedValues.push_back(castOp.getResult());
     }
 
-    auto tiledOpType = mlir::cast<vpux::NDTypeInterface>(tiledOperation->getResult(0).getType());
-    auto castedOutputShape = Shape(tiledOpType.getShape());
-    auto tiledOpBoundedShape = getBoundedShape(tiledOpType);
-    for (const auto dynDim : nonTilingDynDims) {
-        const auto evaluatedDim = mlir::getConstantIntValue(outputTile.shape[dynDim.ind()]);
-        castedOutputShape[dynDim] = evaluatedDim.value_or(tiledOpBoundedShape[dynDim]);
-    }
-
-    mlir::Type castedTiledOutputType = tiledOpType.changeShape(castedOutputShape);
-    return builder.create<mlir::tensor::CastOp>(appendLoc(tiledOperation->getLoc(), "insert_cast"),
-                                                castedTiledOutputType, tiledOperation->getResults());
+    return castedValues;
 }
 
 /**
@@ -840,7 +855,7 @@ mlir::Value getInputOperand(mlir::tensor::PadOp padOp, mlir::OpBuilder builder) 
                   }
 
                   // If either padding is not static, make the dimension dynamic
-                  if (!lowIsStatic || !highIsStatic) {
+                  if (!lowIsStatic || !highIsStatic || srcType.getShape()[idx] == mlir::ShapedType::kDynamic) {
                       isDynamic = true;
                       return mlir::ShapedType::kDynamic;
                   }
@@ -941,16 +956,6 @@ void vpux::VPU::restorePaddingAttribute(mlir::Operation* region, Logger log) {
         // Replace all uses of the original convolution operation with the new one
         rewriter.replaceOp(nceOp, newNceOp->getResults());
 
-        // TODO: Remove once E195927 is solved
-        for (auto user : llvm::make_early_inc_range(padOp->getUsers())) {
-            if (!mlir::isa<mlir::tensor::ExtractSliceOp>(user)) {
-                continue;
-            }
-
-            if (user->getUsers().empty()) {
-                user->erase();
-            }
-        }
         if (padOp->getUsers().empty()) {
             padOp.erase();
         }

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --run-batch-op-processing-rewriters="rewriter=matmul-inputs-to-2d-set" %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --run-batch-op-processing-rewriters="rewriter=matmul-inputs-to-2d-set" %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL: @MatMulInputsTo2d
 // CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<2x1x512xf32>
@@ -536,16 +536,16 @@ func.func @UnrollMatmulSoftmaxMatmul(%arg0: tensor<1x2x730x64xf32>, %arg1: tenso
 
 // -----
 
-!quantileFloatType = !QuantileFloat.quantileFloat<ui4:f16, {-1.000000e+00,-0.69619280099868774,-0.52507305145263672,-0.39491748809814453,-0.28444138169288635,-0.18477343022823334,-0.091050036251544952,0.000000e+00,0.07958029955625534,0.16093020141124725,0.24611230194568634,0.33791524171829224,0.44070982933044434,0.56261700391769409,0.72295683622360229,1.000000e+00}>
-!qElemType = !quant.quantile<u4:f16:f16, {-1.000000e+00,-0.69619280099868774,-0.52507305145263672,-0.39491748809814453,-0.28444138169288635,-0.18477343022823334,-0.091050036251544952,0.000000e+00,0.07958029955625534,0.16093020141124725,0.24611230194568634,0.33791524171829224,0.44070982933044434,0.56261700391769409,0.72295683622360229,1.000000e+00}:0.07874348958333334>
+!quantileType = !QuantileType.quantile<ui4:f16, {-1.000000e+00,-0.69619280099868774,-0.52507305145263672,-0.39491748809814453,-0.28444138169288635,-0.18477343022823334,-0.091050036251544952,0.000000e+00,0.07958029955625534,0.16093020141124725,0.24611230194568634,0.33791524171829224,0.44070982933044434,0.56261700391769409,0.72295683622360229,1.000000e+00}>
+!qElemType = !quant.uniform<!QuantileType.quantile<ui4:f16, {-1.000000e+00,-6.961928e-01,-5.250731e-01,-3.949175e-01,-2.844414e-01,-1.847734e-01,-9.105004e-02,0.000000e+00,7.958030e-02,1.609302e-01,2.461123e-01,3.379152e-01,4.407098e-01,5.626170e-01,7.229568e-01,1.000000e+00}>:f16, 0.07874348958333334>
 
 // CHECK-LABEL: @MatMulWithQuantizedWeightChain
 // CHECK-SAME:      [[ARG0:%.+]]: tensor<1x4x1x2880xf16>
-// CHECK-SAME:      [[ARG1:%.+]]: tensor<4x5760x2880x!QuantileFloat.quantileFloat
-func.func @MatMulWithQuantizedWeightChain(%arg0: tensor<1x4x1x2880xf16>, %arg1: tensor<4x5760x2880x!quantileFloatType>) -> tensor<1x4x1x5760xf16> {
+// CHECK-SAME:      [[ARG1:%.+]]: tensor<4x5760x2880x!QuantileType.quantile
+func.func @MatMulWithQuantizedWeightChain(%arg0: tensor<1x4x1x2880xf16>, %arg1: tensor<4x5760x2880x!quantileType>) -> tensor<1x4x1x5760xf16> {
     %cst_scale = const.Declare tensor<4x5760x1xf16> = dense<1.0> : tensor<4x5760x1xf16>
 
-    %0 = IE.QuantizeCast(%arg1) {dstElemType = !qElemType} : tensor<4x5760x2880x!quantileFloatType> -> tensor<4x5760x2880x!qElemType>
+    %0 = IE.QuantizeCast(%arg1) {dstElemType = !qElemType} : tensor<4x5760x2880x!quantileType> -> tensor<4x5760x2880x!qElemType>
     %1 = IE.DynamicDequantize(%0, %cst_scale) {dstElemType = f16} : tensor<4x5760x2880x!qElemType>, tensor<4x5760x1xf16> -> tensor<4x5760x2880xf16>
     %2 = IE.AffineReshape(%1) {dim_mapping = [[0, 1], [2], [3]], shape_value = [1, 4, 5760, 2880]} : tensor<4x5760x2880xf16> -> tensor<1x4x5760x2880xf16>
 

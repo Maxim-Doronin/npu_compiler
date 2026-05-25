@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --shavecodegen-vpu %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --shavecodegen-vpu %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 #NC = affine_map<(d0, d1) -> (d0, d1)>
 #map = affine_map<(d0, d1) -> ()>

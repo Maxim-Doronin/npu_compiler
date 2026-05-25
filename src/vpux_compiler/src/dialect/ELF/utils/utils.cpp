@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/ELF/utils/utils.hpp"
+#include <mlir/IR/SymbolTable.h>
 #include "vpux/compiler/act_kernels/shave_binary_resources.h"
 #include "vpux/compiler/dialect/ELF/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
@@ -110,7 +111,7 @@ mlir::Operation* ELF::SymbolReferenceMap::lookupSymbol(mlir::SymbolRefAttr symRe
         auto symbolRootOp = _elfMainSymbolTable.lookup(symbolRoot);
         VPUX_THROW_UNLESS(symbolRootOp, "Symbol {0} not found under elfMain", symbolRoot.str());
 
-        if (!symbolRootOp->hasTrait<mlir::OpTrait::SymbolContainer>() || symbolRoot == symbolLeaf) {
+        if (!symbolRootOp->hasTrait<mlir::OpTrait::SymbolTable>() || symbolRoot == symbolLeaf) {
             return symbolRootOp;
         }
 
@@ -120,7 +121,7 @@ mlir::Operation* ELF::SymbolReferenceMap::lookupSymbol(mlir::SymbolRefAttr symRe
 
     auto symbolOp = sectionSymbolContainerIt->second.lookup(symbolLeaf);
     if (!symbolOp) {
-        auto symbolRootOp = mlir::SymbolTable::lookupNearestSymbolFrom(_elfMain, symbolRoot);
+        auto symbolRootOp = ELF::lookupNearestSymbolFrom(_elfMain, symbolRoot);
         symbolOp = mlir::SymbolTable(symbolRootOp).lookup(symbolLeaf);
     }
     VPUX_THROW_UNLESS(symbolOp, "No op found for symbol {0}::{1}", symbolRoot, symbolLeaf);
@@ -134,7 +135,7 @@ void ELF::SymbolReferenceMap::walkAllSymbols() {
     for (mlir::Region& region : elfOp->getRegions()) {
         for (mlir::Block& block : region) {
             for (mlir::Operation& nestedOp : block) {
-                if (nestedOp.hasTrait<mlir::OpTrait::SymbolContainer>()) {
+                if (nestedOp.hasTrait<mlir::OpTrait::SymbolTable>()) {
                     auto symbol = mlir::cast<mlir::SymbolOpInterface>(&nestedOp);
                     auto insertRes =
                             _sectionSymbolContainers.insert({symbol.getNameAttr(), mlir::SymbolTable(&nestedOp)});
@@ -280,13 +281,24 @@ mlir::SymbolRefAttr vpux::ELF::moveOpToSection(mlir::Operation* op, SectionMappe
         sectionMap[signature] = secInterface;
     }
 
-    auto symbolOp = mlir::cast<mlir::SymbolOpInterface>(op);
-    auto symbolRef = mlir::FlatSymbolRefAttr::get(symbolOp.getNameAttr());
-    auto symContainer = mlir::cast<mlir::SymbolOpInterface>(sectionMap[signature].getOperation());
-    return mlir::SymbolRefAttr::get(symContainer.getNameAttr(), {symbolRef});
+    if (auto symbolOp = mlir::dyn_cast<mlir::SymbolOpInterface>(op)) {
+        auto symbolRef = mlir::FlatSymbolRefAttr::get(symbolOp.getNameAttr());
+        auto symContainer = mlir::cast<mlir::SymbolOpInterface>(sectionMap[signature].getOperation());
+        return mlir::SymbolRefAttr::get(symContainer.getNameAttr(), {symbolRef});
+    }
+
+    return nullptr;
+}
+
+mlir::SymbolRefAttr vpux::ELF::moveOpToSection(mlir::Operation* op, mlir::OpBuilder& builder) {
+    SectionMapper sectionMap;
+    return moveOpToSection(op, sectionMap, builder);
 }
 
 mlir::SymbolRefAttr vpux::ELF::cloneSectionSymbol(mlir::SymbolRefAttr from, mlir::SymbolRefAttr to) {
+    assert(from != nullptr);
+    assert(to != nullptr);
+
     auto symbolSection = from.getRootReference();
     auto symbolOpRef = mlir::FlatSymbolRefAttr::get(to.getRootReference());
     return mlir::SymbolRefAttr::get(symbolSection, {symbolOpRef});
@@ -295,7 +307,7 @@ mlir::SymbolRefAttr vpux::ELF::cloneSectionSymbol(mlir::SymbolRefAttr from, mlir
 void vpux::ELF::insertELFMain(mlir::func::FuncOp netFunc) {
     // create the main ELF op alongside the netFunc
     auto mainBuilder = mlir::OpBuilder(netFunc.getOperation());
-    auto elf = mainBuilder.create<ELF::MainOp>(netFunc->getLoc(), "ELFMain");
+    auto elf = mainBuilder.create<ELF::MainOp>(netFunc->getLoc());
 
     // take the body of the netFunc and put everything inside ELF Op, so we avoid clone of all OPS
     elf.getContent().takeBody(netFunc.getBody());
@@ -409,4 +421,108 @@ size_t vpux::ELF::getOpBinarySize(vpux::NDTypeInterface type) {
     }
 
     return type.getTotalAllocSize().count();
+}
+
+namespace {
+
+template <typename OpType>
+auto getNearestParentOfType(mlir::Operation* from) {
+    return mlir::isa<OpType>(from) ? mlir::cast<OpType>(from) : from->template getParentOfType<OpType>();
+}
+
+}  // namespace
+
+mlir::Operation* vpux::ELF::lookupNearestSymbolFrom(mlir::Operation* from, mlir::StringAttr symbol) {
+    auto start = getNearestParentOfType<vpux::ELF::MainOp>(from);
+    return mlir::SymbolTable::lookupNearestSymbolFrom(start, symbol);
+}
+
+mlir::Operation* vpux::ELF::lookupNearestSymbolFrom(mlir::Operation* from, mlir::SymbolRefAttr symbol) {
+    auto start = getNearestParentOfType<vpux::ELF::MainOp>(from);
+    return mlir::SymbolTable::lookupNearestSymbolFrom(start, symbol);
+}
+
+mlir::SmallVector<mlir::SymbolTable::SymbolUse> vpux::ELF::getSymbolUses(mlir::Operation* symbol, ELF::MainOp from) {
+    mlir::SmallVector<mlir::SymbolTable::SymbolUse> uses;
+
+    const auto appendSymbolUses = [&uses](auto symbol, auto scope) {
+        if (auto maybeNestedUses = mlir::SymbolTable::getSymbolUses(symbol, scope)) {
+            auto& nestedUses = maybeNestedUses.value();
+            uses.append(std::begin(nestedUses), std::end(nestedUses));
+        }
+    };
+
+    [[maybe_unused]] const auto isFlat = [](mlir::SymbolTable table) {
+        auto nestedOps = table.getOp()->getRegion(0).getOps();
+        return llvm::all_of(nestedOps, [](auto& op) {
+            return op.getRegions().empty();
+        });
+    };
+
+    // see https://discourse.llvm.org/t/nested-symbol-symboltable-usages/89879/3
+    // ELF::MainOp itself is not expected to have any symbol references
+    for (auto& operation : from.getOps()) {
+        if (symbol == &operation) {
+            // don't look for uses of the symbol inside itself
+            // mlir::SymbolTable::getSymbolUses asserts on that
+            continue;
+        }
+
+        appendSymbolUses(symbol, &operation);
+
+        if (operation.hasTrait<mlir::OpTrait::SymbolTable>()) {
+            // SymbolTable::getSymbolUses will not traverse into a region of SymbolTable
+            // if it does not define the scope that symbol is defined in
+            // pass the region of the SymbolTable directly to enforce the traversal into it
+            assert(isFlat(&operation) && "ELF MainOp is not expected to have SymbolTable with nested regions");
+            appendSymbolUses(symbol, &operation.getRegion(0));
+        }
+    }
+
+    return uses;
+}
+
+void ELF::getCanonicalDmaForm(MemShape& dmaBufferShape, MemStrides& dmaBufferStrides, ShapeRef argumentShape,
+                              llvm::SmallVector<int64_t>& tileOffsets, llvm::SmallVector<int64_t>& canonicalDmaShapes,
+                              llvm::SmallVector<int64_t>& canonicalDmaStrides,
+                              llvm::SmallVector<int64_t>& canonicalOffsets) {
+    if (dmaBufferStrides.empty()) {
+        return;
+    }
+
+    size_t argumentShapeIdx = 0;
+    size_t strideIdx = 1;
+    auto previousStride = dmaBufferStrides.back().count();
+    // getStrides doesn't return final stride which makes shape recovery impossible for final dimension.
+    // For the purposes of the below algorithm we insert additional stride which is a multiple of final dma
+    // shape and penultimate stride.
+    dmaBufferStrides.insert(dmaBufferStrides.begin(), dmaBufferStrides.front() * dmaBufferShape.front());
+    while (strideIdx < dmaBufferStrides.size() && argumentShapeIdx < argumentShape.size()) {
+        auto currentStride = dmaBufferStrides[MemDim(dmaBufferStrides.size() - 1 - strideIdx)].count();
+        auto derivedShape = currentStride / previousStride;
+        auto currentArgShape = argumentShape[Dim(argumentShape.size() - 1 - argumentShapeIdx)];
+        if (derivedShape == 1 && currentArgShape != 1 && tileOffsets[strideIdx - 1] == 0) {
+            // This case arises when compiler expands the shape of the argument with 1
+            // just skip it
+            previousStride = currentStride;
+            strideIdx++;
+        } else if (derivedShape != 1 && currentArgShape == 1) {
+            // This case arises when compiler squeezes one of the argument shapes
+            // This shape needs to be in DMA descriptor
+            auto strideValue = argumentShapeIdx == 0 ? 1 : canonicalDmaStrides[argumentShapeIdx - 1];
+            canonicalDmaStrides[argumentShapeIdx] = strideValue;
+            argumentShapeIdx++;
+        } else {
+            // This is a normal case when DMA shape corresponds to non-1 argument shape
+            // In this case just take DMA shape. Note that we need to take DMA shape instead
+            // of argument shape since tensor can be tiled
+            canonicalDmaStrides[argumentShapeIdx] = previousStride;
+            canonicalDmaShapes[argumentShapeIdx] = dmaBufferShape[MemDim(dmaBufferShape.size() - 1 - strideIdx + 1)];
+            canonicalOffsets[argumentShapeIdx] = tileOffsets[strideIdx - 1];
+
+            previousStride = currentStride;
+            strideIdx++;
+            argumentShapeIdx++;
+        }
+    }
 }

@@ -6,6 +6,7 @@
 #include <vpux_elf/types/vpu_extensions.hpp>
 #include <vpux_elf/writer.hpp>
 #include "vpux/compiler/dialect/ELF/IR/ops.hpp"
+#include "vpux/compiler/dialect/ELF/utils/utils.hpp"
 
 #include <mlir/IR/SymbolTable.h>
 
@@ -19,10 +20,10 @@ void ELF::CreateRelocationSectionOp::serialize(elf::Writer& writer, ELF::Section
     auto section = writer.addRelocationSection(name);
 
     // Look up dependent sections
-    auto targetRef = mlir::SymbolTable::lookupNearestSymbolFrom(getOperation(), getTargetSectionAttr());
+    auto targetRef = ELF::lookupNearestSymbolFrom(getOperation(), getTargetSectionAttr());
     auto target = mlir::dyn_cast_or_null<ELF::ElfSectionInterface>(targetRef);
 
-    auto symTabRef = mlir::SymbolTable::lookupNearestSymbolFrom(getOperation(), getSourceSymbolTableSectionAttr());
+    auto symTabRef = ELF::lookupNearestSymbolFrom(getOperation(), getSourceSymbolTableSectionAttr());
 
     VPUX_THROW_UNLESS(target, "Reloc section expected to refer at a valid target section");
 

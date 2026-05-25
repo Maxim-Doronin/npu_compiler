@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --create-elf-symbol-table %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --create-elf-symbol-table %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 net.NetworkInfo entryPoint : @oneDma inputsInfo : {
   DataInfo "input" : tensor<1x2x3x4xf16>
@@ -13,7 +13,7 @@ net.NetworkInfo entryPoint : @oneDma inputsInfo : {
 }
 
 func.func @oneDma() {
-  ELF.Main @ELFMain {
+  ELF.Main {
     ELF.CreateSection @dsec1 aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) secLocation(<DDR>) {
     }
     ELF.CreateSection @dsec2 aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) secLocation(<DDR>) {

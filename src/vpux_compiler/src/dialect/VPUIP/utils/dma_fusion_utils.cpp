@@ -7,6 +7,7 @@
 #include "vpux/compiler/core/attributes/stride_reqs.hpp"
 #include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 #include "vpux/compiler/utils/memref_attr_utils.hpp"
+#include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 using namespace vpux;
@@ -67,13 +68,8 @@ vpux::NDTypeInterface createNewType(NDTypeInterface srcType, size_t newLeadingDi
     newShape.insert(newShape.begin(), newLeadingDim);
     NDTypeInterface newType;
     if (auto perAxisQType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(srcType.getElementType())) {
-        // We inserted new dim, so current qDim is shifted by 1
-        auto newQuantDim = perAxisQType.getQuantizedDimension() + 1;
-        auto newQType = mlir::quant::UniformQuantizedPerAxisType::get(
-                perAxisQType.getFlags(), perAxisQType.getStorageType(), perAxisQType.getExpressedType(),
-                perAxisQType.getScales(), perAxisQType.getZeroPoints(), newQuantDim, perAxisQType.getStorageTypeMin(),
-                perAxisQType.getStorageTypeMax());
-
+        // Inserted new leading dim shifts the quantization axis by 1
+        auto newQType = changeAxis(perAxisQType, perAxisQType.getQuantizedDimension() + 1);
         newType = srcType.changeShapeElemType(ShapeRef(newShape), newQType);
     } else {
         newType = srcType.changeShape(ShapeRef(newShape));
@@ -234,7 +230,7 @@ void vpux::VPUIP::handleDmaFusion(mlir::func::FuncOp funcOp, vpux::Logger log,
                 appendLoc(dmaOp->getLoc(), "fused_dma_{0}", dmaLocSuffix), newSrc, newDst,
                 getIntAttr(dmaOp->getContext(), newPort), dmaOp.getIsOutOfOrder(), dmaOp.getIsCritical(),
                 dmaOp.getSpillIdAttr(), dmaOp.getCompressCandidate(), /*dmaHwpId=*/nullptr,
-                /*profilingMetadata=*/nullptr, /*splitCandidate=*/false,
+                /*profilingMetadata=*/nullptr, /*splitCandidate=*/dmaOp.getSplitCandidateAttr(),
                 /*profiling_buffer_mgmt=*/false, /*fusionId=*/nullptr);
         if (dmaOp.getProfilingBufferMgmt()) {
             newDmaOp.setProfilingBufferMgmt(true);

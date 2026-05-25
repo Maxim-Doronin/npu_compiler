@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --vpu-arch=%arch% --mlir-elide-elementsattrs-if-larger 8 --convert-to-llvm-umd-calls  %s | FileCheck %s
-// REQUIRES: arch-NPU40XX
+// RUN: vpux-opt --split-input-file --platform=%platform% --mlir-elide-elementsattrs-if-larger 8 --convert-to-llvm-umd-calls  %s | FileCheck %s
+// REQUIRES: platform-NPU4000
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #map = affine_map<(d0)[s0] -> (-d0 + s0, 47)>
@@ -269,7 +269,7 @@ module @ConvCallChain attributes {config.compilationMode = #config.compilation_m
 
 // -----
 
-module @StaticEltwiseNHWC attributes {config.arch = #config.arch_kind<NPU40XX>, config.revisionID = #config.revision_id<REVISION_NONE>, config.compilationMode = #config.compilation_mode<HostCompile>} {
+module @StaticEltwiseNHWC attributes {config.revisionID = #config.revision_id<REVISION_NONE>, config.compilationMode = #config.compilation_mode<HostCompile>} {
   //CHECK: llvm.mlir.global internal constant @main1_kernel
   config.PipelineOptions @Options {
     config.Option @config.EnableExtraStaticShapeOps : true

@@ -20,8 +20,8 @@ namespace arch40xx {
 struct DefaultHWOptions : public IE::DefaultHWOptionsDialectBase, virtual vpux::arch40xx::DefaultHWOptionsDeviceBase {
     BoolOption enableConvertFFTToConv{*this, "convert-fft-to-conv", llvm::cl::desc("Enable convert-fft-to-conv pass"),
                                       llvm::cl::init(true)};
-    BoolOption enableConvertToSdpaExtended{*this, "convert-to-sdpa-extended",
-                                           llvm::cl::desc("Enable conversion to SDPA extended"), llvm::cl::init(false)};
+    BoolOption enableConvertToAttention{*this, "convert-to-attention", llvm::cl::desc("Enable conversion to Attention"),
+                                        llvm::cl::init(false)};
     BoolOption enableFuseSoftwareSDPA{*this, "fuse-software-sdpa", llvm::cl::desc("Enable fuse-sdpa pass"),
                                       llvm::cl::init(true)};
     BoolOption enableConvertToReduceSquare{*this, "convert-to-reduce-square",
@@ -29,9 +29,6 @@ struct DefaultHWOptions : public IE::DefaultHWOptionsDialectBase, virtual vpux::
     BoolOption enableDecomposeGRUSequence{*this, "decompose-gru-sequence",
                                           llvm::cl::desc("Enable decompose-gru-sequence pass"), llvm::cl::init(true)};
 
-    BoolOption enableFusePermuteQuantizeExpand{*this, "fuse-permute-quantize-expand",
-                                               llvm::cl::desc("Enable fuse-permute-quantize-expand pass"),
-                                               llvm::cl::init(true)};
     BoolOption enableSwapConvertWithSWOp{*this, "swap-convert-with-sw-op",
                                          llvm::cl::desc("Enable swap-convert-with-sw-op pass"), llvm::cl::init(true)};
     BoolOption mergeUnrolledMatmul{*this, "merge-unrolled-matmul", llvm::cl::desc("Enable merging urolled Matmul ops"),
@@ -51,13 +48,15 @@ struct DefaultHWOptions : public IE::DefaultHWOptionsDialectBase, virtual vpux::
             llvm::cl::desc("Determines when to enable Matmul Mixed Precision Decomposition"
                            "Ratio = (MatMul input size)/(Sum of Inputs of newly added ops by decomposition)"),
             llvm::cl::init(250.0)};
+
+    BoolOption enableNCEEltwiseMultiply{*this, "enable-nce-eltwise-multiply",
+                                        llvm::cl::desc("Enable NCE Eltwise for Multiply with [1,C,1,1] shape"),
+                                        llvm::cl::init(false)};
 };
 
 //
 // Pipelines
 //
-void buildOutliningPipeline(mlir::OpPassManager& pm, const DefaultHWOptionsBase& options,
-                            Logger log = Logger::global());
 void buildLowPrecisionPipeline(mlir::OpPassManager& pm, const LowPrecisionOptions& options,
                                Logger log = Logger::global());
 void buildFinalTransformationPipeline(mlir::OpPassManager& pm, const IE::arch40xx::DefaultHWOptions& options,

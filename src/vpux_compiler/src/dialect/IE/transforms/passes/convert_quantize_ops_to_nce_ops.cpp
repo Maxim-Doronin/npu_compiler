@@ -9,7 +9,7 @@
 #include "vpux/compiler/dialect/IE/interfaces/strategies.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 
-#include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Transforms/WalkPatternRewriteDriver.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_CONVERTQUANTIZEOPSTONCEOPS
@@ -26,7 +26,7 @@ bool isQuantizedPerAxis(mlir::Value val) {
     return mlir::isa<mlir::quant::UniformQuantizedPerAxisType>(elemType);
 }
 
-bool isLegalQuantizeOp(IE::QuantizeOp quantizeOp, bool canUseCMajor) {
+bool shouldConvertQuantizeOp(IE::QuantizeOp quantizeOp, bool canUseCMajor) {
     auto outputLayerUsers = quantizeOp.getOutput().getUsers();
     auto anyUserIsConv = !outputLayerUsers.empty() && ::llvm::any_of(outputLayerUsers, [](auto user) {
         return mlir::isa<IE::ConvolutionOp>(user);
@@ -84,31 +84,22 @@ void ConvertQuantizeOpsToNceOpsPass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
 
-    auto& strategyFactory = IE::getIEStrategyFactory(&ctx);
+    const auto& strategyFactory = IE::getIEStrategyFactory(&ctx);
     auto strategy = strategyFactory->getConvertQuantizeOpsToNceOpsStrategy();
 
-    mlir::ConversionTarget toAvgPoolTarget(ctx);
     mlir::RewritePatternSet toAvgPoolPatterns(&ctx);
-    strategy->prepareAvgPool(toAvgPoolTarget, toAvgPoolPatterns, ctx, _log);
-    if (mlir::failed(mlir::applyPartialConversion(func, toAvgPoolTarget, std::move(toAvgPoolPatterns)))) {
-        signalPassFailure();
-    }
+    strategy->prepareAvgPool(toAvgPoolPatterns, ctx, _log);
+    walkAndApplyPatterns(func, std::move(toAvgPoolPatterns));
 
     // perTensor quantize/dequantize convert to add or and
-    mlir::ConversionTarget toEltwiseTarget(ctx);
     mlir::RewritePatternSet toEltwisePatterns(&ctx);
-    strategy->prepareEltwise(toEltwiseTarget, toEltwisePatterns, ctx, _log);
-    if (mlir::failed(mlir::applyPartialConversion(func, toEltwiseTarget, std::move(toEltwisePatterns)))) {
-        signalPassFailure();
-    }
+    strategy->prepareEltwise(toEltwisePatterns, ctx, _log);
+    walkAndApplyPatterns(func, std::move(toEltwisePatterns));
 
     // per-axis scales and per-tensor zero points quantize/dequantize convert to DW conv
-    mlir::ConversionTarget quantToConvTarget(ctx);
     mlir::RewritePatternSet quantToConvPatterns(&ctx);
-    strategy->prepareQuantToConv(quantToConvTarget, quantToConvPatterns, ctx, _log);
-    if (mlir::failed(mlir::applyPartialConversion(func, quantToConvTarget, std::move(quantToConvPatterns)))) {
-        signalPassFailure();
-    }
+    strategy->prepareQuantToConv(quantToConvPatterns, ctx, _log);
+    walkAndApplyPatterns(func, std::move(quantToConvPatterns));
 }
 
 }  // namespace

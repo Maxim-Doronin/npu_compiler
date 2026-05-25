@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --optimize-convert-dma-op %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --optimize-convert-dma-op %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -182,7 +182,7 @@ func.func @NotFuseConvertDMAAndCopyDueToDistOutputAndViewLikeOp(%arg0: memref<1x
     // CHECK: [[ALLOC_DIST:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer
     // CHECK: [[CONVERT_DMA:%.+]] = VPUIP.ConvertDMA
     // CHECK:  inputs([[INPUT]] : memref<1x1x1x32xf32, @DDR>)
-    // CHECK:  outputs(%0 : !VPUIP.DistributedBuffer<1x1x1x32xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64, uniform_distributed_segments
+    // CHECK:  outputs([[ALLOC_DIST]] : !VPUIP.DistributedBuffer<1x1x1x32xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64, uniform_distributed_segments
 
     // CHECK: [[RESHAPE:%.+]] = VPUIP.GenericReshape
     // CHECK:  inputs([[CONVERT_DMA]] : !VPUIP.DistributedBuffer<1x1x1x32xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64, uniform_distributed_segments
@@ -397,7 +397,7 @@ func.func @ClusterConvertDMACopySequence() -> !InputStub_CMX {
 
   // CHECK:   [[BUF_0:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x30x120x120xf32, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments}>
   // CHECK:   [[BUF_1:%.+]] = memref.alloc() : memref<1x30x120x120xf16, #NHWC, [@CMX_NN, 0]>
-  // CHECK:   [[COPY_0:%.+]] = VPUIP.ConvertDMA inputs(%0 : !VPUIP.DistributedBuffer<1x30x120x120xf32, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments}>) outputs(%alloc : memref<1x30x120x120xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x30x120x120xf16, #NHWC, [@CMX_NN, 0]>
+  // CHECK:   [[COPY_0:%.+]] = VPUIP.ConvertDMA inputs([[BUF_0]] : !VPUIP.DistributedBuffer<1x30x120x120xf32, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 2, 1, 1], num_clusters = 2 : i64, uniform_distributed_segments}>) outputs([[BUF_1]] : memref<1x30x120x120xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x30x120x120xf16, #NHWC, [@CMX_NN, 0]>
   // CHECK:   return [[COPY_0]] : memref<1x30x120x120xf16, #NHWC, [@CMX_NN, 0]>
 }
 

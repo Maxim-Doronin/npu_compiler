@@ -3,9 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/dialect/HostExec/IR/dialect.hpp"
 #include "vpux/compiler/dialect/HostExec/transforms/passes.hpp"
-#include "vpux/compiler/utils/passes.hpp"
 
 #include <llvm/ADT/STLExtras.h>
 #include <mlir/Dialect/MemRef/IR/MemRef.h>
@@ -22,6 +20,24 @@ namespace vpux::HostExec {
 using namespace vpux;
 
 namespace {
+
+mlir::memref::AllocOp replaceAllocWithSubview(mlir::Value value, mlir::memref::SubViewOp subviewOp,
+                                              mlir::OpBuilder& builder) {
+    auto* definingOp = value.getDefiningOp();
+    if (auto castOp = mlir::dyn_cast_or_null<mlir::memref::CastOp>(definingOp)) {
+        definingOp = castOp.getSource().getDefiningOp();
+    }
+    auto allocOp = mlir::dyn_cast_or_null<mlir::memref::AllocOp>(definingOp);
+    if (allocOp == nullptr) {
+        return nullptr;
+    }
+    builder.setInsertionPointAfter(allocOp);
+    auto newSubviewOp = builder.create<mlir::memref::SubViewOp>(subviewOp.getLoc(), subviewOp.getSource(),
+                                                                subviewOp.getMixedOffsets(), subviewOp.getMixedSizes(),
+                                                                subviewOp.getMixedStrides());
+    allocOp.getResult().replaceAllUsesWith(newSubviewOp.getResult());
+    return allocOp;
+}
 
 //
 // OptimizeMemRefCopiesPass
@@ -49,12 +65,12 @@ void OptimizeMemRefCopiesPass::safeRunOnFunc() {
         mlir::Value dst = copyOp.getTarget();
 
         auto callOp = src.getDefiningOp<mlir::CallOpInterface>();
-        if (!callOp || callOp->getNumResults() != 1) {
+        if (callOp == nullptr || callOp->getNumResults() != 1) {
             return;
         }
 
         auto subviewOp = dst.getDefiningOp<mlir::memref::SubViewOp>();
-        if (!subviewOp) {
+        if (subviewOp == nullptr) {
             return;
         }
 
@@ -64,32 +80,15 @@ void OptimizeMemRefCopiesPass::safeRunOnFunc() {
 
         mlir::Value oldDest = callOp->getOperand(callOp->getNumOperands() - 1);
 
-        // Check if the old destination was from an alloc (we want to remove it)
-        auto allocOp = oldDest.getDefiningOp<mlir::memref::AllocOp>();
-        if (!allocOp) {
+        // Check if the old destination was from an alloc (we want to remove it),
+        // looking through a memref.cast if present.
+        auto allocOp = replaceAllocWithSubview(oldDest, subviewOp, builder);
+        if (allocOp == nullptr) {
             return;
         }
 
-        // Replace call operands to use the subview instead of the alloc
-        SmallVector<mlir::Value> newOperands(callOp->getOperands().begin(), callOp->getOperands().end());
-        builder.setInsertionPointAfter(subviewOp);
-        if (src.getType() != dst.getType()) {
-            // E169895: If the types are different, we need to cast the result of the subview to match the call operand
-            // type
-            auto castOp = builder.create<mlir::UnrealizedConversionCastOp>(callOp->getLoc(), src.getType(), dst);
-            newOperands.back() = castOp.getResult(0);
-        } else {
-            newOperands.back() = subviewOp.getResult();
-        }
-
-        auto* newCallOp = callOp->clone();
-        newCallOp->setOperands(newOperands);
-        builder.insert(newCallOp);
-
-        callOp->getResult(0).replaceAllUsesWith(newCallOp->getResult(0));
-
         copyOp.erase();
-        callOp.erase();
+        subviewOp.erase();
         if (allocOp->use_empty()) {
             allocOp.erase();
         }
@@ -97,19 +96,19 @@ void OptimizeMemRefCopiesPass::safeRunOnFunc() {
     //
     // pattern to optimize memref.copy operations that copy a result from scf.index_switch to a subview. It avoid the
     // buffer copies by replacing all allocations instance with the subview operations matching original destination
-    // subview. It also adds UnrealizedConversionCastOp to handle types mismatch
+    // subview
     //
     func.walk([&](mlir::memref::CopyOp copyOp) {
         mlir::Value src = copyOp.getSource();
         mlir::Value dst = copyOp.getTarget();
 
         auto indexSwitchOp = src.getDefiningOp<mlir::scf::IndexSwitchOp>();
-        if (!indexSwitchOp || indexSwitchOp.getNumResults() != 1) {
+        if (indexSwitchOp == nullptr || indexSwitchOp.getNumResults() != 1) {
             return;
         }
 
         auto subviewOp = dst.getDefiningOp<mlir::memref::SubViewOp>();
-        if (!subviewOp) {
+        if (subviewOp == nullptr) {
             return;
         }
 
@@ -119,24 +118,12 @@ void OptimizeMemRefCopiesPass::safeRunOnFunc() {
             for (auto& op : llvm::make_early_inc_range(block)) {
                 if (auto callOp = mlir::dyn_cast<mlir::CallOpInterface>(op)) {
                     for (auto operand : callOp.getArgOperands()) {
-                        auto allocOp = operand.getDefiningOp<mlir::memref::AllocOp>();
-                        if (allocOp) {
-                            builder.setInsertionPointAfter(allocOp);
-                            auto newSubviewOp = builder.create<mlir::memref::SubViewOp>(
-                                    subviewOp.getLoc(), subviewOp.getSource(), subviewOp.getMixedOffsets(),
-                                    subviewOp.getMixedSizes(), subviewOp.getMixedStrides());
-                            mlir::Value newDst = newSubviewOp.getResult();
-                            if (newDst.getType() != operand.getType()) {
-                                // E169895: If the types are different, we need to cast the result of the subview to
-                                // match the call operand type
-                                auto castOp = builder.create<mlir::UnrealizedConversionCastOp>(
-                                        callOp.getLoc(), operand.getType(), newDst);
-                                newDst = castOp.getResult(0);
-                            }
-                            allocOp.getResult().replaceAllUsesWith(newDst);
-                            allocOpsToErase.push_back(allocOp);
-                            break;
+                        auto allocOp = replaceAllocWithSubview(operand, subviewOp, builder);
+                        if (allocOp == nullptr) {
+                            continue;
                         }
+                        allocOpsToErase.push_back(allocOp);
+                        break;
                     }
                 }
             }
@@ -158,7 +145,7 @@ void OptimizeMemRefCopiesPass::safeRunOnFunc() {
         mlir::Value dst = copyOp.getTarget();
 
         auto allocOp = src.getDefiningOp<mlir::memref::AllocOp>();
-        if (!allocOp) {
+        if (allocOp == nullptr) {
             return;
         }
 

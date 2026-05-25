@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --init-compiler="vpu-arch=%arch%" --assign-full-kernel-path-VPUMI37XX %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --init-compiler="platform=%platform%" --assign-full-kernel-path-VPUMI37XX %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 module @Test {
 

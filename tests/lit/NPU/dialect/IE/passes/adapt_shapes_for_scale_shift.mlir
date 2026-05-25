@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --adapt-shapes-for-scale-shift --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --adapt-shapes-for-scale-shift --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 #NHCW = affine_map<(d0, d1, d2, d3) -> (d0, d2, d1, d3)>
 
@@ -694,4 +694,47 @@ func.func @Convert3dMulWithAdd(%arg0: tensor<325x1x768xf16>) -> tensor<325x1x768
     // CHECK-SAME:  } : tensor<1x325x768x1xf16> -> tensor<325x1x768xf16>
 
     // CHECK:   return [[RESHAPE_OUT]] : tensor<325x1x768xf16>
+}
+
+
+// -----
+
+// CHECK-LABEL: @DoNotConvertAddF32
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x1x3072xf32>)
+func.func @DoNotConvertAddF32(%arg0: tensor<1x1x3072xf32>) -> tensor<1x1x3072xf32> {
+    %ADD_WEIGHTS = const.Declare tensor<1x1x3072xf32> = dense<2.000000e+00> : tensor<1x1x3072xf32>
+
+    %ADD = IE.Add(%arg0, %ADD_WEIGHTS) {
+        auto_broadcast = #IE.auto_broadcast_type<NUMPY>
+    } : tensor<1x1x3072xf32>, tensor<1x1x3072xf32> -> tensor<1x1x3072xf32>
+
+    return %ADD : tensor<1x1x3072xf32>
+
+    // Non-F16 IE.Add must not be reshaped or transposed by BroadcastEltwiseRewriter.
+    // CHECK-DAG:   [[ADD_WEIGHTS:%.+]] = const.Declare tensor<1x1x3072xf32> = dense<2.000000e+00> : tensor<1x1x3072xf32>
+    // CHECK:   [[ADD:%.+]] = IE.Add([[ARG_0]], [[ADD_WEIGHTS]]) {
+    // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>
+    // CHECK-SAME:  } : tensor<1x1x3072xf32>, tensor<1x1x3072xf32> -> tensor<1x1x3072xf32>
+    // CHECK:   return [[ADD]] : tensor<1x1x3072xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @DoNotConvertTrivialShapeF16
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x1x3072xf16>)
+func.func @DoNotConvertTrivialShapeF16(%arg0: tensor<1x1x3072xf16>) -> tensor<1x1x3072xf16> {
+    %ADD_WEIGHTS = const.Declare tensor<1x1x3072xf16> = dense<2.000000e+00> : tensor<1x1x3072xf16>
+
+    %ADD = IE.Add(%arg0, %ADD_WEIGHTS) {
+        auto_broadcast = #IE.auto_broadcast_type<NUMPY>
+    } : tensor<1x1x3072xf16>, tensor<1x1x3072xf16> -> tensor<1x1x3072xf16>
+
+    return %ADD : tensor<1x1x3072xf16>
+
+    // Only one non-trivial dimension in the input — BroadcastEltwiseRewriter does not apply.
+    // CHECK-DAG:   [[ADD_WEIGHTS:%.+]] = const.Declare tensor<1x1x3072xf16> = dense<2.000000e+00> : tensor<1x1x3072xf16>
+    // CHECK:   [[ADD:%.+]] = IE.Add([[ARG_0]], [[ADD_WEIGHTS]]) {
+    // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NUMPY>
+    // CHECK-SAME:  } : tensor<1x1x3072xf16>, tensor<1x1x3072xf16> -> tensor<1x1x3072xf16>
+    // CHECK:   return [[ADD]] : tensor<1x1x3072xf16>
 }

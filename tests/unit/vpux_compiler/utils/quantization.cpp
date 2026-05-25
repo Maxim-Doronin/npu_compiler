@@ -8,10 +8,19 @@
 #include "vpux/compiler/utils/quantization.hpp"
 #include "common/utils.hpp"
 #include "vpux/compiler/core/attributes/shape.hpp"
+#include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/utils/types.hpp"
+#include "vpux/utils/core/type/float16.hpp"
 
 #include <gtest/gtest.h>
 #include <mlir/Dialect/Quant/IR/Quant.h>
+#include <mlir/Dialect/Quant/IR/QuantTypes.h>
+#include <mlir/IR/Attributes.h>
+#include <mlir/IR/BuiltinAttributes.h>
+#include <mlir/IR/BuiltinTypeInterfaces.h>
+#include <mlir/IR/BuiltinTypes.h>
+#include <mlir/IR/MLIRContext.h>
+#include <cstdint>
 
 using namespace vpux;
 
@@ -26,6 +35,88 @@ void checkScalesAndZps(mlir::Type tiledType, ArrayRef<double> expectedScales, Ar
 
     const auto zps = perAxisQuant.getZeroPoints();
     EXPECT_EQ(zps, expectedZps);
+}
+
+void createSubchannelTypeWithDataType(mlir::MLIRContext& ctx, const mlir::Type& floatType,
+                                      const mlir::IntegerType& intType) {
+    ctx.loadDialect<mlir::quant::QuantDialect>();
+    ctx.loadDialect<Const::ConstDialect>();
+
+    vpux::SmallVector<int32_t> dims = {2, 3};
+    vpux::SmallVector<int64_t> blockSizes = {8, 1};
+    vpux::SmallVector<int64_t> scalesShape = {2, 4};
+    SmallVector<mlir::Attribute, 8> scales;
+    SmallVector<mlir::Attribute, 8> zeroPoints;
+
+    for (auto idx : irange(scalesShape[0] * scalesShape[1])) {
+        scales.push_back(mlir::FloatAttr::get(floatType, idx));
+        zeroPoints.push_back(mlir::IntegerAttr::get(intType, idx));
+    }
+
+    auto denseAllScales = mlir::DenseElementsAttr::get(mlir::RankedTensorType::get(scalesShape, floatType), scales);
+    auto denseAllZeroPoints =
+            mlir::DenseElementsAttr::get(mlir::RankedTensorType::get(scalesShape, intType), zeroPoints);
+
+    unsigned bitWidth = intType.getWidth();
+    int64_t minValue = 0;
+    int64_t maxValue = (1LL << bitWidth) - 1;
+
+    const auto quantType = mlir::quant::UniformQuantizedSubChannelType::get(
+            0, intType, floatType, denseAllScales, denseAllZeroPoints, dims, blockSizes, minValue, maxValue);
+
+    auto test = getPerAxisTypeForBlock(quantType, 0);
+    auto testBlock2 = getPerAxisTypeForBlock(quantType, 1);
+
+    auto zeroPointsExpected1 = bitWidth == 2 ? SmallVector<int64_t>{0, 1, -2, -1} : SmallVector<int64_t>{0, 1, 2, 3};
+    auto zeroPointsExpected2 = bitWidth == 2 ? SmallVector<int64_t>{0, 1, -2, -1} : SmallVector<int64_t>{4, 5, 6, 7};
+
+    auto expectedPerAxisType = mlir::quant::UniformQuantizedPerAxisType::get(
+            quantType.getFlags(), quantType.getStorageType(), quantType.getExpressedType(),
+            ArrayRef<double>{0.0f, 1.0f, 2.0f, 3.0f}, zeroPointsExpected1, 3, quantType.getStorageTypeMin(),
+            quantType.getStorageTypeMax());
+    auto expectedPerAxisTypeBlock2 = mlir::quant::UniformQuantizedPerAxisType::get(
+            quantType.getFlags(), quantType.getStorageType(), quantType.getExpressedType(),
+            ArrayRef<double>{4.0f, 5.0f, 6.0f, 7.0f}, zeroPointsExpected2, 3, quantType.getStorageTypeMin(),
+            quantType.getStorageTypeMax());
+
+    EXPECT_EQ(test, expectedPerAxisType);
+    EXPECT_EQ(testBlock2, expectedPerAxisTypeBlock2);
+}
+// TESTS FOR SUBCHANNEL --> PerAxisType
+//  FP16 - UINT16
+//  FP16 - INT8
+//  FP16 - UINT4
+//  FP16 - INT4
+//  FP32 - INT2
+
+TEST_F(MLIR_QuantizationUtilsTest, SubchannelTypeScalesFP16ZpUINT16) {
+    mlir::MLIRContext ctx(registry);
+    createSubchannelTypeWithDataType(ctx, mlir::Float16Type::get(&ctx),
+                                     mlir::IntegerType::get(&ctx, 16, mlir::IntegerType::Unsigned));
+}
+
+TEST_F(MLIR_QuantizationUtilsTest, SubchannelTypeScalesFP16ZpINT8) {
+    mlir::MLIRContext ctx(registry);
+    createSubchannelTypeWithDataType(ctx, mlir::Float16Type::get(&ctx),
+                                     mlir::IntegerType::get(&ctx, 8, mlir::IntegerType::Signed));
+}
+
+TEST_F(MLIR_QuantizationUtilsTest, SubchannelTypeScalesFP16ZpUINT4) {
+    mlir::MLIRContext ctx(registry);
+    createSubchannelTypeWithDataType(ctx, mlir::Float16Type::get(&ctx),
+                                     mlir::IntegerType::get(&ctx, 4, mlir::IntegerType::Unsigned));
+}
+
+TEST_F(MLIR_QuantizationUtilsTest, SubchannelTypeScalesFP16ZpINT4) {
+    mlir::MLIRContext ctx(registry);
+    createSubchannelTypeWithDataType(ctx, mlir::Float16Type::get(&ctx),
+                                     mlir::IntegerType::get(&ctx, 4, mlir::IntegerType::Signed));
+}
+
+TEST_F(MLIR_QuantizationUtilsTest, SubchannelTypeScalesFP32ZpINT2) {
+    mlir::MLIRContext ctx(registry);
+    createSubchannelTypeWithDataType(ctx, mlir::Float32Type::get(&ctx),
+                                     mlir::IntegerType::get(&ctx, 2, mlir::IntegerType::Signed));
 }
 
 TEST_F(MLIR_QuantizationUtilsTest, TileScalesAndZp) {

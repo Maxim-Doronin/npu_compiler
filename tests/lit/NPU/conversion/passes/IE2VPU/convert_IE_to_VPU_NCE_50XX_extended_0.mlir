@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW allow-custom-values=true enable-auto-padding-odu=true enable-is-reduce-supported=true" --mlir-elide-elementsattrs-if-larger 64 --convert-IE-to-VPU-NCE %s | FileCheck %s
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW allow-custom-values=true enable-auto-padding-odu=true enable-is-reduce-supported=true" --mlir-elide-elementsattrs-if-larger 64 --convert-IE-to-VPU-NCE %s | FileCheck %s
+// REQUIRES: platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -17,7 +17,8 @@ module @TestReduceMeanWithAttr {
         return %0 : tensor<1x16x30x30xf16, {order = #NHWC}>
 
         // CHECK:       [[MEAN:%.+]] =  VPU.NCE.Reduce([[INPUT]]) {
-        // CHECK-SAME:    axes = [1], op_type = #VPU.reduce_type<MEAN>, output_padding = [0, 15, 0, 0],
+        // CHECK-SAME:    axes = [1],
+        // CHECK-SAME:    op_type = #VPU.reduce_type<MEAN>, output_padding = [0, 15, 0, 0],
         // CHECK-SAME:    ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = -3.4028234663852886E+38 : f64, clamp_high = 3.4028234663852886E+38 : f64, scale = 6.250000e-02 : f64, prelu_alpha = [1.000000e+00], bias = 0.000000e+00 : f64, adder = 0.000000e+00 : f64>
         // CHECK-SAME:  } -> tensor<1x16x30x30xf16, {order = #NHWC}>
 
@@ -31,7 +32,8 @@ module @TestReduceMeanWithAttr {
         return %0 : tensor<1x16x30x30xf16, {order = #NHWC}>
 
         // CHECK:       [[MEAN:%.+]] =  VPU.NCE.Reduce([[INPUT]]) {
-        // CHECK-SAME:    axes = [1], op_type = #VPU.reduce_type<SUM>, output_padding = [0, 15, 0, 0],
+        // CHECK-SAME:    axes = [1],
+        // CHECK-SAME:    op_type = #VPU.reduce_type<SUM>, output_padding = [0, 15, 0, 0],
         // CHECK-SAME:    ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = -3.4028234663852886E+38 : f64, clamp_high = 3.4028234663852886E+38 : f64, scale = 1.000000e+00 : f64, prelu_alpha = [1.000000e+00], bias = 0.000000e+00 : f64, adder = 0.000000e+00 : f64>
         // CHECK-SAME:  } -> tensor<1x16x30x30xf16, {order = #NHWC}>
 
@@ -54,7 +56,8 @@ module @TestReduceMeanWithConst{
         return %0 : tensor<1x16x30x30xf16, {order = #NHWC}>
 
         // CHECK:       [[MEAN:%.+]] =  VPU.NCE.Reduce([[INPUT]]) {
-        // CHECK-SAME:    axes = [1], op_type = #VPU.reduce_type<MEAN>, output_padding = [0, 15, 0, 0],
+        // CHECK-SAME:    axes = [1], 
+        // CHECK-SAME:    op_type = #VPU.reduce_type<MEAN>, output_padding = [0, 15, 0, 0],
         // CHECK-SAME:    ppe = #VPU.PPEFp<mode = <NOOP>,
         // CHECK-SAME:          clamp_low = -3.4028234663852886E+38 : f64,
         // CHECK-SAME:          clamp_high = 3.4028234663852886E+38 : f64,
@@ -80,7 +83,8 @@ module @TestReduceMeanWithConstInputPadding{
         return %0 : tensor<1x16x40x40xf16, {order = #NHWC}>
 
         // CHECK:       [[MEAN:%.+]] =  VPU.NCE.Reduce([[INPUT]]) {
-        // CHECK-SAME:    axes = [1], input_padding = [0, 4, 0, 0], op_type = #VPU.reduce_type<MEAN>, output_padding = [0, 15, 0, 0],
+        // CHECK-SAME:    axes = [1], input_padding = [0, 4, 0, 0], 
+        // CHECK-SAME:    op_type = #VPU.reduce_type<MEAN>, output_padding = [0, 15, 0, 0],
         // CHECK-SAME:    ppe = #VPU.PPEFp<mode = <NOOP>,
         // CHECK-SAME:          clamp_low = -3.4028234663852886E+38 : f64,
         // CHECK-SAME:          clamp_high = 3.4028234663852886E+38 : f64,
@@ -313,7 +317,7 @@ func.func @MaxPoolToNCE(%arg0: tensor<1x16x1x4xf16, {order = #NHWC}>) -> tensor<
             pads_end = [0, 0],
             strides = [1, 1],
             rounding_type = #IE.rounding_type<FLOOR>,
-            post_op = #IE.Clamp<min = 0.000000e+00 : f64, max = 6.000000e+00 : f64>
+            clamp = {min = 0.000000e+00 : f64, max = 6.000000e+00 : f64}
         } : tensor<1x16x1x4xf16, {order = #NHWC}> -> tensor<1x16x1x4xf16, {order = #NHWC}>
 
     return %0 : tensor<1x16x1x4xf16, {order = #NHWC}>

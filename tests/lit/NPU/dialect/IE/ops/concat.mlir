@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 !qElemType = !quant.uniform<u8:f16:1, {1.0000000000000000E-1, 2.0000000000000000E-1}>
 
@@ -569,3 +569,306 @@ func.func @ConcatDifferentBounds(%arg0: tensor<?x4xf32, {bounds = #const.OpaqueI
     // CHECK-SAME:          tensor<?x4xf32, {bounds = #const.OpaqueI64Elements<[200, 4]> : tensor<2xsi64>, order = #NC}>, tensor<?x1xf32, {bounds = #const.OpaqueI64Elements<[200, 1]> : tensor<2xsi64>, order = #NC}> -> tensor<?x5xf32, {bounds = #const.OpaqueI64Elements<[200, 5]> : tensor<2xsi64>, order = #NC}>
     // CHECK:               return [[CONCAT]] : tensor<?x5xf32, {bounds = #const.OpaqueI64Elements<[200, 5]> : tensor<2xsi64>, order = #NC}>
 }
+
+// -----
+
+// CHECK-LABEL: @QuantizedUI4ConstConcat
+!qElemType = !quant.uniform<ui4:f16, 1.0000000000000000E-1>
+func.func @QuantizedUI4ConstConcat() -> tensor<1x6x!qElemType> {
+    %cst_0 = const.Declare tensor<1x3x!qElemType> = dense_resource<q_ui4_a> : tensor<1x3xui4>, [#const.ConvertElemType<ui8>, #const.CastElemType<!qElemType>]
+    %cst_1 = const.Declare tensor<1x3x!qElemType> = dense_resource<q_ui4_b> : tensor<1x3xui4>, [#const.ConvertElemType<ui8>, #const.CastElemType<!qElemType>]
+    %0 = IE.Concat(%cst_0, %cst_1) { static_offsets = [[0, 0], [0, 3]]} : tensor<1x3x!qElemType>, tensor<1x3x!qElemType> -> tensor<1x6x!qElemType>
+    return %0 : tensor<1x6x!qElemType>
+
+    // CHECK: [[cst:%.+]] = const.Declare tensor<1x6x!qElemType>
+    // CHECK-SAME{LITERAL}: = dense<[[1, 2, 3, 4, 5, 6]]>
+    // CHECK-SAME: : tensor<1x6xui8>, [#const.CastElemType<!qElemType>]
+
+    // CHECK-NOT: IE.Concat
+    // CHECK: return [[cst]]
+}
+
+{-#
+    dialect_resources: {
+        builtin: {
+            q_ui4_a: "0x040000002103",
+            q_ui4_b: "0x040000005406"
+        }
+    }
+#-}
+
+// -----
+
+// CHECK-LABEL: @QuantizedSI4ConstConcat
+!qElemType = !quant.uniform<si4:f16, 1.0000000000000000E-1>
+func.func @QuantizedSI4ConstConcat() -> tensor<1x6x!qElemType> {
+        %cst_0 = const.Declare tensor<1x3x!qElemType> = dense_resource<q_si4_a> : tensor<1x3xsi4>, [#const.ConvertElemType<si8>, #const.CastElemType<!qElemType>]
+        %cst_1 = const.Declare tensor<1x3x!qElemType> = dense_resource<q_si4_b> : tensor<1x3xsi4>, [#const.ConvertElemType<si8>, #const.CastElemType<!qElemType>]
+    %0 = IE.Concat(%cst_0, %cst_1) { static_offsets = [[0, 0], [0, 3]]} : tensor<1x3x!qElemType>, tensor<1x3x!qElemType> -> tensor<1x6x!qElemType>
+    return %0 : tensor<1x6x!qElemType>
+
+    // CHECK: [[cst:%.+]] = const.Declare tensor<1x6x!qElemType>
+    // CHECK-SAME{LITERAL}: = dense<[[-1, 2, -3, 4, -5, 6]]>
+    // CHECK-SAME: : tensor<1x6xsi8>, [#const.CastElemType<!qElemType>]
+    // CHECK-NOT: IE.Concat
+    // CHECK: return [[cst]]
+}
+
+{-#
+    dialect_resources: {
+        builtin: {
+            q_si4_a: "0x040000002F0D",
+            q_si4_b: "0x04000000B406"
+        }
+    }
+#-}
+
+// -----
+
+// CHECK-LABEL: @NonQuantizedUI4ConstConcat
+func.func @NonQuantizedUI4ConstConcat() -> tensor<1x6xui4> {
+        %cst_0 = const.Declare tensor<1x3xui4> = dense_resource<nq_ui4_a> : tensor<1x3xui4>, [#const.ConvertElemType<ui8>]
+        %cst_1 = const.Declare tensor<1x3xui4> = dense_resource<nq_ui4_b> : tensor<1x3xui4>, [#const.ConvertElemType<ui8>]
+    %0 = IE.Concat(%cst_0, %cst_1) { static_offsets = [[0, 0], [0, 3]]} : tensor<1x3xui4>, tensor<1x3xui4> -> tensor<1x6xui4>
+    return %0 : tensor<1x6xui4>
+
+    // CHECK: [[cst:%.+]] = const.Declare tensor<1x6xui4>
+    // CHECK-SAME{LITERAL}: = dense<[[1, 2, 3, 4, 5, 6]]>
+    // CHECK-SAME: : tensor<1x6xui8>, [#const.CastElemType<ui4>]
+    // CHECK-NOT: IE.Concat
+    // CHECK: return [[cst]]
+}
+
+{-#
+    dialect_resources: {
+        builtin: {
+            nq_ui4_a: "0x040000002103",
+            nq_ui4_b: "0x040000005406"
+        }
+    }
+#-}
+
+// -----
+
+// CHECK-LABEL: @NonQuantizedSI4ConstConcat
+func.func @NonQuantizedSI4ConstConcat() -> tensor<1x6xsi4> {
+        %cst_0 = const.Declare tensor<1x3xsi4> = dense_resource<nq_si4_a> : tensor<1x3xsi4>, [#const.ConvertElemType<si8>]
+        %cst_1 = const.Declare tensor<1x3xsi4> = dense_resource<nq_si4_b> : tensor<1x3xsi4>, [#const.ConvertElemType<si8>]
+    %0 = IE.Concat(%cst_0, %cst_1) { static_offsets = [[0, 0], [0, 3]]} : tensor<1x3xsi4>, tensor<1x3xsi4> -> tensor<1x6xsi4>
+    return %0 : tensor<1x6xsi4>
+
+    // CHECK: [[cst:%.+]] = const.Declare tensor<1x6xsi4>
+    // CHECK-SAME{LITERAL}: = dense<[[-1, 2, -3, 4, -5, 6]]>
+    // CHECK-SAME: : tensor<1x6xsi8>, [#const.CastElemType<si4>]
+    // CHECK-NOT: IE.Concat
+    // CHECK: return [[cst]]
+}
+
+{-#
+    dialect_resources: {
+        builtin: {
+            nq_si4_a: "0x040000002F0D",
+            nq_si4_b: "0x04000000B406"
+        }
+    }
+#-}
+
+// -----
+
+// CHECK-LABEL: @UI4ConstConcatWithProdConvertCastBack
+func.func @UI4ConstConcatWithProdConvertCastBack() -> tensor<1x6xui4> {
+        %cst_0 = const.Declare tensor<1x3xui4> = dense_resource<prod_ui4_a> : tensor<1x3xui4>, [#const.ConvertElemType<ui8>, #const.CastElemType<ui4>]
+        %cst_1 = const.Declare tensor<1x3xui4> = dense_resource<prod_ui4_b> : tensor<1x3xui4>, [#const.ConvertElemType<ui8>, #const.CastElemType<ui4>]
+    %0 = IE.Concat(%cst_0, %cst_1) { static_offsets = [[0, 0], [0, 3]]} : tensor<1x3xui4>, tensor<1x3xui4> -> tensor<1x6xui4>
+    return %0 : tensor<1x6xui4>
+
+    // CHECK: [[cst:%.+]] = const.Declare tensor<1x6xui4>
+    // CHECK-SAME{LITERAL}: = dense<[[1, 2, 3, 4, 5, 6]]>
+    // CHECK-SAME: : tensor<1x6xui8>, [#const.CastElemType<ui4>]
+    // CHECK-NOT: IE.Concat
+    // CHECK: return [[cst]]
+}
+
+{-#
+    dialect_resources: {
+        builtin: {
+            prod_ui4_a: "0x040000002103",
+            prod_ui4_b: "0x040000005406"
+        }
+    }
+#-}
+
+// -----
+
+// CHECK-LABEL: @SI4ConstConcatWithCastBack
+func.func @SI4ConstConcatWithCastBack() -> tensor<1x6xsi4> {
+        %cst_0 = const.Declare tensor<1x3xsi4> = dense_resource<prod_si4_a> : tensor<1x3xsi4>, [#const.ConvertElemType<si8>, #const.CastElemType<si4>]
+        %cst_1 = const.Declare tensor<1x3xsi4> = dense_resource<prod_si4_b> : tensor<1x3xsi4>, [#const.ConvertElemType<si8>, #const.CastElemType<si4>]
+    %0 = IE.Concat(%cst_0, %cst_1) { static_offsets = [[0, 0], [0, 3]]} : tensor<1x3xsi4>, tensor<1x3xsi4> -> tensor<1x6xsi4>
+    return %0 : tensor<1x6xsi4>
+
+    // CHECK: [[cst:%.+]] = const.Declare tensor<1x6xsi4>
+    // CHECK-SAME{LITERAL}: = dense<[[-1, 2, -3, 4, -5, 6]]>
+    // CHECK-SAME: : tensor<1x6xsi8>, [#const.CastElemType<si4>]
+    // CHECK-NOT: IE.Concat
+    // CHECK: return [[cst]]
+}
+
+{-#
+    dialect_resources: {
+        builtin: {
+            prod_si4_a: "0x040000002F0D",
+            prod_si4_b: "0x04000000B406"
+        }
+    }
+#-}
+
+// -----
+
+// CHECK-LABEL: @SI4ConstConcatSplat
+func.func @SI4ConstConcatSplat() -> tensor<1x6xsi4> {
+        %cst_0 = const.Declare tensor<1x3xsi4> = dense_resource<splat_si4_a> : tensor<1x3xsi4>, [#const.ConvertElemType<si8>]
+        %cst_1 = const.Declare tensor<1x3xsi4> = dense_resource<splat_si4_b> : tensor<1x3xsi4>, [#const.ConvertElemType<si8>]
+    %0 = IE.Concat(%cst_0, %cst_1) { static_offsets = [[0, 0], [0, 3]]} : tensor<1x3xsi4>, tensor<1x3xsi4> -> tensor<1x6xsi4>
+    return %0 : tensor<1x6xsi4>
+
+    // CHECK: [[cst:%.+]] = const.Declare tensor<1x6xsi4>
+    // CHECK-SAME{LITERAL}: = dense<[[-1, -1, -1, 4, 4, 4]]>
+    // CHECK-SAME: : tensor<1x6xsi8>, [#const.CastElemType<si4>]
+    // CHECK-NOT: IE.Concat
+    // CHECK: return [[cst]]
+}
+
+{-#
+    dialect_resources: {
+        builtin: {
+            splat_si4_a: "0x04000000FF0F",
+            splat_si4_b: "0x040000004404"
+        }
+    }
+#-}
+
+// -----
+
+// CHECK-LABEL: @SI4ConstConcatEvenLength
+func.func @SI4ConstConcatEvenLength() -> tensor<1x8xsi4> {
+        %cst_0 = const.Declare tensor<1x4xsi4> = dense_resource<even_si4_a> : tensor<1x4xsi4>, [#const.ConvertElemType<si8>]
+        %cst_1 = const.Declare tensor<1x4xsi4> = dense_resource<even_si4_b> : tensor<1x4xsi4>, [#const.ConvertElemType<si8>]
+    %0 = IE.Concat(%cst_0, %cst_1) { static_offsets = [[0, 0], [0, 4]]} : tensor<1x4xsi4>, tensor<1x4xsi4> -> tensor<1x8xsi4>
+    return %0 : tensor<1x8xsi4>
+
+    // CHECK: [[cst:%.+]] = const.Declare tensor<1x8xsi4>
+    // CHECK-SAME{LITERAL}: = dense<[[-1, 2, -3, 4, -5, 6, -7, 7]]>
+    // CHECK-SAME: : tensor<1x8xsi8>, [#const.CastElemType<si4>]
+    // CHECK-NOT: IE.Concat
+    // CHECK: return [[cst]]
+}
+
+{-#
+    dialect_resources: {
+        builtin: {
+            even_si4_a: "0x040000002F4D",
+            even_si4_b: "0x040000006B79"
+        }
+    }
+#-}
+
+// -----
+
+// CHECK-LABEL: @PackedUI4ConstConcat
+func.func @PackedUI4ConstConcat() -> tensor<1x6xui4> {
+        %cst_0 = const.Declare tensor<1x3xui4> = dense_resource<packed_ui4_a> : tensor<1x3xui4>, [#const.ConvertElemType<ui8>]
+        %cst_1 = const.Declare tensor<1x3xui4> = dense_resource<packed_ui4_b> : tensor<1x3xui4>, [#const.ConvertElemType<ui8>]
+        %0 = IE.Concat(%cst_0, %cst_1) { static_offsets = [[0, 0], [0, 3]]} : tensor<1x3xui4>, tensor<1x3xui4> -> tensor<1x6xui4>
+        return %0 : tensor<1x6xui4>
+
+        // CHECK: [[cst:%.+]] = const.Declare tensor<1x6xui4>
+        // CHECK-SAME{LITERAL}: = dense<[[1, 2, 3, 4, 5, 6]]>
+        // CHECK-SAME: : tensor<1x6xui8>, [#const.CastElemType<ui4>]
+        // CHECK-NOT: IE.Concat
+        // CHECK: return [[cst]]
+}
+
+{-#
+    dialect_resources: {
+        builtin: {
+            packed_ui4_a: "0x040000002103",
+            packed_ui4_b: "0x040000005406"
+        }
+    }
+#-}
+
+// -----
+
+// CHECK-LABEL: @PackedSI4ConstConcat
+func.func @PackedSI4ConstConcat() -> tensor<1x6xsi4> {
+        %cst_0 = const.Declare tensor<1x3xsi4> = dense_resource<packed_si4_a> : tensor<1x3xsi4>, [#const.ConvertElemType<si8>]
+        %cst_1 = const.Declare tensor<1x3xsi4> = dense_resource<packed_si4_b> : tensor<1x3xsi4>, [#const.ConvertElemType<si8>]
+        %0 = IE.Concat(%cst_0, %cst_1) { static_offsets = [[0, 0], [0, 3]]} : tensor<1x3xsi4>, tensor<1x3xsi4> -> tensor<1x6xsi4>
+        return %0 : tensor<1x6xsi4>
+
+        // CHECK: [[cst:%.+]] = const.Declare tensor<1x6xsi4>
+        // CHECK-SAME{LITERAL}: = dense<[[-1, 2, -3, 4, -5, 6]]>
+        // CHECK-SAME: : tensor<1x6xsi8>, [#const.CastElemType<si4>]
+        // CHECK-NOT: IE.Concat
+        // CHECK: return [[cst]]
+}
+
+{-#
+    dialect_resources: {
+        builtin: {
+            packed_si4_a: "0x040000002F0D",
+            packed_si4_b: "0x04000000B406"
+        }
+    }
+#-}
+
+// -----
+
+// CHECK-LABEL: @PackedUI2ConstConcat
+func.func @PackedUI2ConstConcat() -> tensor<1x8xui2> {
+        %cst_0 = const.Declare tensor<1x4xui2> = dense_resource<packed_ui2_a> : tensor<1x4xui2>, [#const.ConvertElemType<ui8>]
+        %cst_1 = const.Declare tensor<1x4xui2> = dense_resource<packed_ui2_b> : tensor<1x4xui2>, [#const.ConvertElemType<ui8>]
+        %0 = IE.Concat(%cst_0, %cst_1) { static_offsets = [[0, 0], [0, 4]]} : tensor<1x4xui2>, tensor<1x4xui2> -> tensor<1x8xui2>
+        return %0 : tensor<1x8xui2>
+
+        // CHECK: [[cst:%.+]] = const.Declare tensor<1x8xui2>
+        // CHECK-SAME{LITERAL}: = dense<[[1, 2, 3, 0, 2, 1, 0, 3]]>
+        // CHECK-SAME: : tensor<1x8xui8>, [#const.CastElemType<ui2>]
+        // CHECK-NOT: IE.Concat
+        // CHECK: return [[cst]]
+}
+
+{-#
+    dialect_resources: {
+        builtin: {
+            packed_ui2_a: "0x0400000039",
+            packed_ui2_b: "0x04000000C6"
+        }
+    }
+#-}
+
+// -----
+
+// CHECK-LABEL: @PackedSI2ConstConcat
+func.func @PackedSI2ConstConcat() -> tensor<1x8xsi2> {
+        %cst_0 = const.Declare tensor<1x4xsi2> = dense_resource<packed_si2_a> : tensor<1x4xsi2>, [#const.ConvertElemType<si8>]
+        %cst_1 = const.Declare tensor<1x4xsi2> = dense_resource<packed_si2_b> : tensor<1x4xsi2>, [#const.ConvertElemType<si8>]
+        %0 = IE.Concat(%cst_0, %cst_1) { static_offsets = [[0, 0], [0, 4]]} : tensor<1x4xsi2>, tensor<1x4xsi2> -> tensor<1x8xsi2>
+        return %0 : tensor<1x8xsi2>
+
+        // CHECK: [[cst:%.+]] = const.Declare tensor<1x8xsi2>
+        // CHECK-SAME{LITERAL}: = dense<[[-1, 0, 1, -2, 1, -1, -2, 0]]>
+        // CHECK-SAME: : tensor<1x8xsi8>, [#const.CastElemType<si2>]
+        // CHECK-NOT: IE.Concat
+        // CHECK: return [[cst]]
+}
+
+{-#
+    dialect_resources: {
+        builtin: {
+            packed_si2_a: "0x0400000093",
+            packed_si2_b: "0x040000002D"
+        }
+    }
+#-}

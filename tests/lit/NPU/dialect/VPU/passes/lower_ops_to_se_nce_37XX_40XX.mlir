@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --mlir-print-elementsattrs-with-hex-if-larger=-1 --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW enable-se-ptrs-operations=true" --lower-ops-to-se-nce %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX
+// RUN: vpux-opt --split-input-file --mlir-print-elementsattrs-with-hex-if-larger=-1 --init-compiler="platform=%platform% compilation-mode=DefaultHW enable-se-ptrs-operations=true" --lower-ops-to-se-nce %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000
 
 !qElemType = !quant.uniform<u8:f16, 0.0151786074918859:128>
 !qElemType1 = !quant.uniform<u8:f16, 0.0257227579752604:128>

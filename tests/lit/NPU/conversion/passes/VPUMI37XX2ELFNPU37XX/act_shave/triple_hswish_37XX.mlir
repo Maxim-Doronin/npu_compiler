@@ -3,10 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --init-compiler="vpu-arch=%arch% allow-custom-values=true" --convert-VPUMI37XX-to-ELF %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --init-compiler="platform=%platform% allow-custom-values=true" --convert-VPUMI37XX-to-ELF %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
-module @Test attributes {config.arch = #config.arch_kind<NPU37XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+module @Test attributes {config.compilationMode = #config.compilation_mode<DefaultHW>} {
   config.MemoryResource 31457280 bytes of @DDR {config.bandwidth = 8 : i64, config.derateFactor = 6.000000e-01 : f64}
   config.ExecutorResource 1 of @DMA_NN
   config.Resources 1 of @NCE {

@@ -267,18 +267,18 @@ config::MemoryResourceOp vpux::config::getDummySwKernelsForInstructionPrefetchRe
 }
 
 //
-// Shave stacks reserved memory
+// CMX stack frames reserved memory
 //
 
-config::MemoryResourceOp vpux::config::setShaveStacksReservedMemory(mlir::ModuleOp mainModule,
-                                                                    mlir::SymbolRefAttr memSpace, int64_t size,
-                                                                    size_t alignment) {
-    return addReservedMemoryResource(mainModule, shaveStacksResMemModuleName, memSpace, size, alignment);
+config::MemoryResourceOp vpux::config::setCMXStackFramesReservedMemory(mlir::ModuleOp mainModule,
+                                                                       mlir::SymbolRefAttr memSpace, int64_t size,
+                                                                       size_t alignment) {
+    return addReservedMemoryResource(mainModule, cmxStackFramesResMemModuleName, memSpace, size, alignment);
 }
 
-config::MemoryResourceOp vpux::config::getShaveStacksReservedMemory(mlir::ModuleOp mainModule,
-                                                                    mlir::SymbolRefAttr memSpace) {
-    return getReservedMemoryResource(mainModule, shaveStacksResMemModuleName, memSpace);
+config::MemoryResourceOp vpux::config::getCMXStackFramesReservedMemory(mlir::ModuleOp mainModule,
+                                                                       mlir::SymbolRefAttr memSpace) {
+    return getReservedMemoryResource(mainModule, cmxStackFramesResMemModuleName, memSpace);
 }
 
 //

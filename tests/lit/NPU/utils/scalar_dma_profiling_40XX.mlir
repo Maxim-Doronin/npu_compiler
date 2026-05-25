@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: env IE_NPU_LOG_FILTER=dump-statistics-of-task-ops vpux-opt --init-compiler="vpu-arch=%arch% allow-custom-values=true" --dump-statistics-of-task-ops -o /dev/null %s 2>&1 | FileCheck %s
-// REQUIRES: arch-NPU40XX
+// RUN: env IE_NPU_LOG_FILTER=dump-statistics-of-task-ops vpux-opt --init-compiler="platform=%platform% allow-custom-values=true" --dump-statistics-of-task-ops -o /dev/null %s 2>&1 | FileCheck %s
+// REQUIRES: platform-NPU4000
 
 // This test verifies that scalar tensor DMAs (rank=0, e.g., memref<f16>) are handled correctly
 // without crashing in the profiling code path. The reduceDimsForDma function should handle
@@ -12,7 +12,7 @@
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
-module @scalar_dma_test attributes {config.arch = #config.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+module @scalar_dma_test attributes {config.platform = #config.platform<NPU4000>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
   config.MemoryResource 31457280 bytes of @DDR {config.bandwidth = 8, config.derateFactor = 6.000000e-01}
   config.Resources 1 of @NCE  {
     config.MemoryResource 2097152 bytes of @CMX_NN {config.bandwidth = 32, config.derateFactor = 1.000000e+00}

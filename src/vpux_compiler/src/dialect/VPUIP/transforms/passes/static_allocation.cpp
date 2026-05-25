@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/core/aliases_info.hpp"
 #include "vpux/compiler/core/allocation_info.hpp"
 #include "vpux/compiler/core/async_deps_info.hpp"
 #include "vpux/compiler/core/control_edge_generator.hpp"
@@ -183,21 +184,24 @@ LinearScanHandler StaticAllocationPass::runLinearScan(mlir::func::FuncOp funcOp)
         scanHandler = std::move(scanResult.linearScanHandler);
         scheduledOpsResources = std::move(scanResult.scheduledOpOneResource);
     } else {
-        auto getMemLiveRangeInfoMemType = [&](VPU::MemoryKind memKind) -> MemLiveRangeInfo& {
+        auto getMemLiveRangeAndAliasesInfoMemType =
+                [&](VPU::MemoryKind memKind) -> std::pair<MemLiveRangeInfo&, AliasesInfo&> {
             switch (memKind) {
             case VPU::MemoryKind::CMX_NN:
-                return getAnalysis<MemLiveRangeInfoMemType<VPU::MemoryKind::CMX_NN>>();
+                return {getAnalysis<MemLiveRangeInfoMemType<VPU::MemoryKind::CMX_NN>>(),
+                        getAnalysis<AliasesInfoMemType<VPU::MemoryKind::CMX_NN>>()};
             case VPU::MemoryKind::DDR:
-                return getAnalysis<MemLiveRangeInfoMemType<VPU::MemoryKind::DDR>>();
+                return {getAnalysis<MemLiveRangeInfoMemType<VPU::MemoryKind::DDR>>(),
+                        getAnalysis<AliasesInfoMemType<VPU::MemoryKind::DDR>>()};
             default:
                 VPUX_THROW("Unsupported memory space: {0}", memKind);
             }
         };
         // A cached deps analysis will be received, if any
-        auto& liveRangeInfo = getMemLiveRangeInfoMemType(_memKind);
+        auto [liveRangeInfo, aliasesInfo] = getMemLiveRangeAndAliasesInfoMemType(_memKind);
         // Run a linear scan, giving that a certain amount of memory is reserved
         std::tie(scanHandler, scheduledOpsResources) =
-                vpux::runLinearScan(funcOp, liveRangeInfo, depsInfo, _memKind, _log, reservedMem);
+                vpux::runLinearScan(funcOp, liveRangeInfo, aliasesInfo, depsInfo, _memKind, _log, reservedMem);
     }
 
     ControlEdgeSet controlEdges;

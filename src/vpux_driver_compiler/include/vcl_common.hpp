@@ -21,9 +21,12 @@
 #include "vcl_logger.hpp"
 
 #include "vpux/compiler/icompiler.hpp"
-#include "vpux/utils/IE/config.hpp"
+#include "vpux/utils/ov/config.hpp"
 
 namespace VPUXDriverCompiler {
+
+vcl_result_t setPlatformAndDeviceIdByDeviceId(uint32_t deviceID, std::map<std::string, std::string>& config,
+                                              VCLLogger* vclLogger);
 
 /**
  * @brief Calc the time cost
@@ -63,7 +66,7 @@ struct BuildInfo {
      * @param value The string represents precison. For example: FP32
      * @param matched If the value is not supported in the inside table, assign false
      */
-    static ov::element::Type_t stringToOVPrecision(std::string value, bool& matched);
+    static ov::element::Type_t stringToOVPrecision(const std::string& value, bool& matched);
 
     /**
      * @brief Checks if the given string corresponds to a supported layout value.
@@ -71,7 +74,7 @@ struct BuildInfo {
      * @param value The string represents layout. For example: NCHW
      * @param matched If the value is not supported in the inside table, assign false
      */
-    static std::string checkSupportedLayout(std::string value, bool& matched);
+    static std::string checkSupportedLayout(const std::string& value, bool& matched);
 
     /**
      * @brief Parse the ioInfo string to real values and store them

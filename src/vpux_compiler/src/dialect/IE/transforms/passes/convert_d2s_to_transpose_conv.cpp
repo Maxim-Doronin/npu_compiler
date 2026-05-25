@@ -280,7 +280,7 @@ void ConvertDepth2SpaceToTransposedConvPass::safeRunOnFunc() {
     auto func = getOperation();
     auto moduleOp = getModuleOp(func);
 
-    auto& strategyFactory = IE::getIEStrategyFactory(&ctx);
+    const auto& strategyFactory = IE::getIEStrategyFactory(&ctx);
     auto benefitVerifier = strategyFactory->getD2SToTransposedConvVerifier();
 
     mlir::RewritePatternSet patterns(&ctx);

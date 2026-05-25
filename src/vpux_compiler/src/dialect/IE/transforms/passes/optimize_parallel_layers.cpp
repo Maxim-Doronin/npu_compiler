@@ -1176,6 +1176,20 @@ SmallVector<IE::AddOp> MoveAddAfterConcat::getValidInputs(IE::ConcatOp concatOp)
         return {};
     }
 
+    // In case of NUMPY broadcast, verify the shared input is broadcastable with the concat output shape
+    if (addOps.front().getAutoBroadcast() == IE::AutoBroadcastType::NUMPY) {
+        const auto concatOutShape = mlir::cast<vpux::NDTypeInterface>(concatOp.getOutput().getType()).getShape();
+        auto end1 = static_cast<int64_t>(concatOutShape.size()) - 1;
+        auto end2 = static_cast<int64_t>(sharedInputShape.size()) - 1;
+        for (; end1 >= 0 && end2 >= 0; end1--, end2--) {
+            const auto dim1 = concatOutShape[Dim(end1)];
+            const auto dim2 = sharedInputShape[Dim(end2)];
+            if (dim1 != dim2 && dim2 != 1 && dim1 != 1) {
+                return {};
+            }
+        }
+    }
+
     return addOps;
 }
 

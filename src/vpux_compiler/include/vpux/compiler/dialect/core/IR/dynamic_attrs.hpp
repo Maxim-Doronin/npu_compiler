@@ -84,10 +84,12 @@ public:
     BoundedDim operator+(const BoundedDim& other) const;
     BoundedDim operator-(const BoundedDim& other) const;
     BoundedDim operator*(const BoundedDim& other) const;
+    BoundedDim operator/(const BoundedDim& other) const;
 
     BoundedDim& operator+=(const BoundedDim& other);
     BoundedDim& operator-=(const BoundedDim& other);
     BoundedDim& operator*=(const BoundedDim& other);
+    BoundedDim& operator/=(const BoundedDim& other);
 
     bool operator==(const BoundedDim& other) const;
     bool operator!=(const BoundedDim& other) const;
@@ -99,6 +101,7 @@ public:
     friend BoundedDim operator+(int64_t x, const BoundedDim& y);
     friend BoundedDim operator-(int64_t x, const BoundedDim& y);
     friend BoundedDim operator*(int64_t x, const BoundedDim& y);
+    friend BoundedDim operator/(int64_t x, const BoundedDim& y);
 
     friend bool operator==(int64_t x, const BoundedDim& y);
     friend bool operator!=(int64_t x, const BoundedDim& y);
@@ -111,6 +114,7 @@ public:
 BoundedDim operator+(int64_t x, const BoundedDim& y);
 BoundedDim operator-(int64_t x, const BoundedDim& y);
 BoundedDim operator*(int64_t x, const BoundedDim& y);
+BoundedDim operator/(int64_t x, const BoundedDim& y);
 
 bool operator==(int64_t x, const BoundedDim& y);
 bool operator!=(int64_t x, const BoundedDim& y);
@@ -152,10 +156,12 @@ public:
     MaskedDim operator+(const MaskedDim& other) const;
     MaskedDim operator-(const MaskedDim& other) const;
     MaskedDim operator*(const MaskedDim& other) const;
+    MaskedDim operator/(const MaskedDim& other) const;
 
     MaskedDim& operator+=(const MaskedDim& other);
     MaskedDim& operator-=(const MaskedDim& other);
     MaskedDim& operator*=(const MaskedDim& other);
+    MaskedDim& operator/=(const MaskedDim& other);
 
     bool operator==(const MaskedDim& other) const;
     bool operator!=(const MaskedDim& other) const;
@@ -167,6 +173,7 @@ public:
     friend MaskedDim operator+(int64_t x, const MaskedDim& y);
     friend MaskedDim operator-(int64_t x, const MaskedDim& y);
     friend MaskedDim operator*(int64_t x, const MaskedDim& y);
+    friend MaskedDim operator/(int64_t x, const MaskedDim& y);
 
     friend bool operator==(int64_t x, const MaskedDim& y);
     friend bool operator!=(int64_t x, const MaskedDim& y);
@@ -179,6 +186,7 @@ public:
 MaskedDim operator+(int64_t x, const MaskedDim& y);
 MaskedDim operator-(int64_t x, const MaskedDim& y);
 MaskedDim operator*(int64_t x, const MaskedDim& y);
+MaskedDim operator/(int64_t x, const MaskedDim& y);
 
 bool operator==(int64_t x, const MaskedDim& y);
 bool operator!=(int64_t x, const MaskedDim& y);

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --one-shot-bufferize-VPU-to-VPUIP %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --one-shot-bufferize-VPU-to-VPUIP %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK: func.func @SingleInput({{[^:]+}}: memref<1x1x1x1000xf16>)
 func.func @SingleInput(%input: tensor<1x1x1x1000xf16>) -> tensor<1x1x1x1000xf16> {
@@ -180,89 +180,6 @@ func.func @ReinterpretCast(%arg0: tensor<1x1000xf16>) -> tensor<2x1000xi8> {
 
     // CHECK:  [[VAR0:%.+]] = Core.ReinterpretCast([[ARG0]]) : memref<1x1000xf16> -> memref<2x1000xi8>
     // CHECK:  return [[VAR0]] : memref<2x1000xi8>
-}
-
-// -----
-
-module @BufferizeHost {
-    func.func private @main_func0(%arg0: tensor<1x90x1000x16xf16>) -> tensor<1x90x1000x16xf16> {
-        return %arg0 : tensor<1x90x1000x16xf16>
-    }
-    func.func @main(%arg0: tensor<1x720x1000x16xf16>) -> tensor<1x720x1000x16xf16> {
-        %c90 = arith.constant 90 : index
-        %c720 = arith.constant 720 : index
-        %c0 = arith.constant 0 : index
-        %0 = tensor.empty() : tensor<1x720x1000x16xf16>
-        %1 = scf.for %arg2 = %c0 to %c720 step %c90 iter_args(%arg3 = %0) -> (tensor<1x720x1000x16xf16>) {
-            %extracted_slice = tensor.extract_slice %arg0[0, %arg2, 0, 0] [1, 90, 1000, 16] [1, 1, 1, 1]
-                             : tensor<1x720x1000x16xf16> to tensor<1x90x1000x16xf16>
-            %2 = func.call @main_func0(%extracted_slice) : (tensor<1x90x1000x16xf16>) -> tensor<1x90x1000x16xf16>
-            %inserted_slice = tensor.insert_slice %2 into %arg3[0, %arg2, 0, 0] [1, 90, 1000, 16] [1, 1, 1, 1]
-                            : tensor<1x90x1000x16xf16> into tensor<1x720x1000x16xf16>
-            scf.yield %inserted_slice : tensor<1x720x1000x16xf16>
-        }
-        return %1 : tensor<1x720x1000x16xf16>
-    }
-// CHECK: func.func private @main_func0([[_:%.+]]: memref<1x90x1000x16xf16>) -> memref<1x90x1000x16xf16>
-
-// CHECK: func.func @main([[ARG0:%.+]]: memref<1x720x1000x16xf16>) -> memref<1x720x1000x16xf16>
-// CHECK:   [[C90:%.+]] = arith.constant 90 : index
-// CHECK:   [[C720:%.+]] = arith.constant 720 : index
-// CHECK:   [[C0:%.+]] = arith.constant 0 : index
-// CHECK:   [[ALLOC:%.+]] = memref.alloc()
-// CHECK:   [[FOR:%.+]] = scf.for [[ARG2:%.+]] = [[C0]] to [[C720]] step [[C90]] iter_args([[ARG3:%.+]] = [[ALLOC]])
-// CHECK:       [[SUBVIEW:%.+]] = memref.subview [[ARG0]][0, [[ARG2]], 0, 0] [1, 90, 1000, 16] [1, 1, 1, 1]
-// CHECK:       [[ALLOC_NO_STRIDES:%.+]] = memref.alloc() {alignment = 64 : i64} : memref<1x90x1000x16xf16>
-// CHECK:       memref.copy [[SUBVIEW]], [[ALLOC_NO_STRIDES]]
-// CHECK:       [[CALL:%.+]] = func.call @main_func0([[ALLOC_NO_STRIDES]])
-// CHECK:       [[INSERTED:%.+]] = memref.subview [[ARG3]][0, [[ARG2]], 0, 0] [1, 90, 1000, 16] [1, 1, 1, 1]
-// CHECK:       memref.copy [[CALL]], [[INSERTED]]
-// CHECK:       scf.yield [[ARG3]] : memref<1x720x1000x16xf16>
-
-// CHECK:   return [[FOR]] : memref<1x720x1000x16xf16>
-}
-
-
-// -----
-
-module @BufferizeHost {
-    module @Module {
-        func.func private @main_func0(%arg0: tensor<1x90x1000x16xf16>) -> tensor<1x90x1000x16xf16> {
-            return %arg0 : tensor<1x90x1000x16xf16>
-        }
-    }
-
-    func.func @main(%arg0: tensor<1x720x1000x16xf16>) -> tensor<1x720x1000x16xf16> {
-        %c90 = arith.constant 90 : index
-        %c720 = arith.constant 720 : index
-        %c0 = arith.constant 0 : index
-        %0 = tensor.empty() : tensor<1x720x1000x16xf16>
-        %1 = scf.for %arg2 = %c0 to %c720 step %c90 iter_args(%arg3 = %0) -> (tensor<1x720x1000x16xf16>) {
-            %extracted_slice = tensor.extract_slice %arg0[0, %arg2, 0, 0] [1, 90, 1000, 16] [1, 1, 1, 1]
-                             : tensor<1x720x1000x16xf16> to tensor<1x90x1000x16xf16>
-            %2 = Core.NestedCall @Module::@main_func0(%extracted_slice) : (tensor<1x90x1000x16xf16>) -> tensor<1x90x1000x16xf16>
-            %inserted_slice = tensor.insert_slice %2 into %arg3[0, %arg2, 0, 0] [1, 90, 1000, 16] [1, 1, 1, 1]
-                            : tensor<1x90x1000x16xf16> into tensor<1x720x1000x16xf16>
-            scf.yield %inserted_slice : tensor<1x720x1000x16xf16>
-        }
-        return %1 : tensor<1x720x1000x16xf16>
-    }
-// CHECK: func.func private @main_func0([[ARG_0:%[^:]+]]: memref<1x90x1000x16xf16>) -> memref<1x90x1000x16xf16>
-
-// CHECK: func.func @main([[ARG0:%.+]]: memref<1x720x1000x16xf16>) -> memref<1x720x1000x16xf16>
-// CHECK:   [[C90:%.+]] = arith.constant 90 : index
-// CHECK:   [[C720:%.+]] = arith.constant 720 : index
-// CHECK:   [[C0:%.+]] = arith.constant 0 : index
-// CHECK:   [[ALLOC:%.+]] = memref.alloc()
-// CHECK:   [[FOR:%.+]] = scf.for [[ARG2:%.+]] = [[C0]] to [[C720]] step [[C90]] iter_args([[ARG3:%.+]] = [[ALLOC]])
-// CHECK:       [[SUBVIEW:%.+]] = memref.subview [[ARG0]][0, [[ARG2]], 0, 0] [1, 90, 1000, 16] [1, 1, 1, 1]
-// CHECK:       [[CAST:%.+]] = builtin.unrealized_conversion_cast [[SUBVIEW]]
-// CHECK:       [[CALL:%.+]] = Core.NestedCall @Module::@main_func0([[CAST]])
-// CHECK:       [[INSERTED:%.+]] = memref.subview [[ARG3]][0, [[ARG2]], 0, 0] [1, 90, 1000, 16] [1, 1, 1, 1]
-// CHECK:       memref.copy [[CALL]], [[INSERTED]]
-// CHECK:       scf.yield [[ARG3]] : memref<1x720x1000x16xf16>
-
-// CHECK:   return [[FOR]] : memref<1x720x1000x16xf16>
 }
 
 // -----

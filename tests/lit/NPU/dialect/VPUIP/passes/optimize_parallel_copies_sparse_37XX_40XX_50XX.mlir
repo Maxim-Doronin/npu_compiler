@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --optimize-parallel-copies %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --optimize-parallel-copies %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
@@ -58,7 +58,7 @@ func.func @OptimizeParallelMulticlusterCopiesSparse()
 
     %14 = memref.alloc() : !Weights_CMX
 
-    %16:2 = VPUIP.NCEClusterTask <{
+    %16:2 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 1, 0, 0, 0, 0>} <{
         kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
         kernel_size = [1, 1],
         kernel_strides = [1, 1],
@@ -89,7 +89,7 @@ func.func @OptimizeParallelMulticlusterCopiesSparse()
     %out_data_1 = VPURT.AllocDistributed -> !IODataDistrType
     %out_sm_1 =  VPURT.AllocDistributed -> !IOSMDistrType
 
-      %24:2 = VPUIP.NCEClusterTask <{
+      %24:2 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 1, 0, 0, 0, 0>} <{
         kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
         kernel_size = [1, 1],
         kernel_strides = [1, 1],
@@ -203,7 +203,7 @@ func.func @OptimizeParallelSubViewWithDistributedCopiesSparse(
     %out_data_0 = VPURT.AllocDistributed -> !ODistrDataType
     %out_sm_0 = VPURT.AllocDistributed -> !ODistrSMType
 
-    %12:2 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 9240 : i64} <{
+    %12:2 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 9240 : i64, resultSegmentSizes = array<i32: 1, 1, 0, 0, 0, 0>} <{
                 kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
@@ -238,7 +238,7 @@ func.func @OptimizeParallelSubViewWithDistributedCopiesSparse(
     %out_data_1 = VPURT.AllocDistributed -> !ODistrDataType
     %out_sm_1 = VPURT.AllocDistributed -> !ODistrSMType
 
-    %21:2 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 9240 : i64} <{
+    %21:2 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 9240 : i64, resultSegmentSizes = array<i32: 1, 1, 0, 0, 0, 0>} <{
                 kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
@@ -285,7 +285,8 @@ func.func @OptimizeParallelSubViewWithDistributedCopiesSparse(
     // CHECK:       [[DATA_1:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x144x64x128xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>
     // CHECK:       [[SM_1:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x144x64x128xi1, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>
 
-    // CHECK:       [[NCE0_U:%.+]]:2 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 9240 : i64} <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
+    // CHECK:       [[NCE0_U:%.+]]:2 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 9240 : i64} <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1],
+    // CHECK-SAME:  task_type = #VPUIP.nce_task_type<CONV>}>
     // CHECK-SAME:      input([[DATA_0]] : !VPUIP.DistributedBuffer<1x144x64x128xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>)
     // CHECK-SAME:      input_sparsity_map([[SM_0]] : !VPUIP.DistributedBuffer<1x144x64x128xi1, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>)
     // CHECK-SAME:      parent_output([[DATA_1]] : !VPUIP.DistributedBuffer<1x144x64x128xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>
@@ -358,7 +359,7 @@ func.func @NotOptimizeParallelDistributedCopiesWithSubviewHasDiffOffsetSparse(
     %out_data_0 = VPURT.AllocDistributed -> !ODistrDataType
     %out_sm_0 = VPURT.AllocDistributed -> !ODistrSMType
 
-    %12:2 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 9240 : i64} <{
+    %12:2 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 9240 : i64, resultSegmentSizes = array<i32: 1, 1, 0, 0, 0, 0>} <{
                 kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
@@ -393,7 +394,7 @@ func.func @NotOptimizeParallelDistributedCopiesWithSubviewHasDiffOffsetSparse(
     %out_data_1 = VPURT.AllocDistributed -> !ODistrDataType
     %out_sm_1 = VPURT.AllocDistributed -> !ODistrSMType
 
-    %21:2 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 9240 : i64} <{
+    %21:2 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 9240 : i64, resultSegmentSizes = array<i32: 1, 1, 0, 0, 0, 0>} <{
                 kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
@@ -439,7 +440,8 @@ func.func @NotOptimizeParallelDistributedCopiesWithSubviewHasDiffOffsetSparse(
     // CHECK:       [[DATA_1:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x144x64x128xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>
     // CHECK:       [[SM_1:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x144x64x128xi1, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>
 
-    // CHECK:       [[NCE0_U:%.+]]:2 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 9240 : i64} <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
+    // CHECK:       [[NCE0_U:%.+]]:2 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 9240 : i64} <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1],
+    // CHECK-SAME:  task_type = #VPUIP.nce_task_type<CONV>}>
     // CHECK-SAME:      input([[DATA_0]] : !VPUIP.DistributedBuffer<1x144x64x128xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>)
     // CHECK-SAME:      input_sparsity_map([[SM_0]] : !VPUIP.DistributedBuffer<1x144x64x128xi1, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>)
     // CHECK-SAME:      parent_input_sparsity_map([[SM_0]] : !VPUIP.DistributedBuffer<1x144x64x128xi1, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>)
@@ -469,9 +471,9 @@ func.func @NotOptimizeParallelDistributedCopiesWithSubviewHasDiffOffsetSparse(
     // CHECK-SAME:      parent_input([[DATA_2]] : !VPUIP.DistributedBuffer<1x144x64x128xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>)
     // CHECK-SAME:      parent_input_sparsity_map([[SM_2]] : !VPUIP.DistributedBuffer<1x144x64x128xi1, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>)
     // CHECK-SAME:      parent_output([[DATA_3]] : !VPUIP.DistributedBuffer<1x144x64x128xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>)
-    // CHECK-SAME:      parent_output_sparsity_map(%18 : !VPUIP.DistributedBuffer<1x144x64x128xi1, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>)
+    // CHECK-SAME:      parent_output_sparsity_map([[SM_3]] : !VPUIP.DistributedBuffer<1x144x64x128xi1, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>)
     // CHECK-SAME:      outputs([[DATA_3]] : !VPUIP.DistributedBuffer<1x144x64x128xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>)
-    // CHECK-SAME:      output_sparsity_map(%18 : !VPUIP.DistributedBuffer<1x144x64x128xi1, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>)
+    // CHECK-SAME:      output_sparsity_map([[SM_3]] : !VPUIP.DistributedBuffer<1x144x64x128xi1, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 4 : i64}>)
 
     // CHECK:       return [[NCE0_U]]#0, [[NCE0_U]]#1, [[NCE1_U]]#0, [[NCE1_U]]#1
 }

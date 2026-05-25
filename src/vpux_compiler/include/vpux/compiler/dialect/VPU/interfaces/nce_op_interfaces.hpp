@@ -168,6 +168,9 @@ public:
     mlir::Value getWeightsTableOperand(mlir::Operation* op) const {
         return mlir::cast<ConcreteOp>(op).getWeightsTable();
     }
+    bool getS2DD2SSupported(::mlir::Operation*) const {
+        return true;
+    }
 };
 
 //

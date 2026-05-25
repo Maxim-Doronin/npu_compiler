@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --unroll-fetch-ops %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --unroll-fetch-ops %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
@@ -300,7 +300,8 @@ module @FetchWithEnqueueTarget {
     VPUMI40XX.OpRanges types([#VPURegMapped.task_type<DMA>, #VPURegMapped.task_type<DPUInvariant>, #VPURegMapped.task_type<DPUVariant>, #VPURegMapped.task_type<DMA>]) begins(%77, %47, %48, %88 : !VPURegMapped.Index<0:0:0>, !VPURegMapped.Index<0:0:0>, !VPURegMapped.Index<0:0:0>, !VPURegMapped.Index<0:1:0>) ends(%87, %72, %76, %88 : !VPURegMapped.Index<0:0:10>, !VPURegMapped.Index<0:0:5>, !VPURegMapped.Index<0:0:23>, !VPURegMapped.Index<0:1:0>)
   }
 
-  //CHECK: [[EB:%.+]] = VPUMI40XX.ConfigureBarrier <{consumer_count = 2 : ui8, producer_count = 2 : ui8, wlmPage = 0 : i64}>(%21 : !VPURegMapped.Index<0:0:0>) <1, 5> -> !VPURegMapped.Index<0:0:1>
+  //CHECK: [[BAR_INIT:%.+]] = VPUMI40XX.ConfigureBarrier
+  //CHECK: [[EB:%.+]] = VPUMI40XX.ConfigureBarrier <{consumer_count = 2 : ui8, producer_count = 2 : ui8, wlmPage = 0 : i64}>([[BAR_INIT]] : !VPURegMapped.Index<0:0:0>) <1, 5> -> !VPURegMapped.Index<0:0:1>
   // CHECK-NOT: VPURegMapped.FetchTask
   //CHECK: [[TB25:%.+]] = VPUMI40XX.DeclareTaskBuffer {offset = 1056 : ui64} <DPUInvariant> -> !VPURegMapped.Index<0:0:3>
 

@@ -11,7 +11,6 @@
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
 #include "vpux/compiler/utils/types.hpp"
 
-#include "vpux/utils/IE/format.hpp"
 #include "vpux/utils/core/range.hpp"
 
 #include <llvm/ADT/TypeSwitch.h>
@@ -48,6 +47,7 @@ const DimsOrder vpux::DimsOrder::HCNW = DimsOrder(0x3214);
 const DimsOrder vpux::DimsOrder::HNWC = DimsOrder(0x3142);
 const DimsOrder vpux::DimsOrder::CWNH = DimsOrder(0x2413);
 const DimsOrder vpux::DimsOrder::CNHW = DimsOrder(0x2134);
+const DimsOrder vpux::DimsOrder::CNWH = DimsOrder(0x2143);
 const DimsOrder vpux::DimsOrder::CHWN = DimsOrder(0x2341);
 const DimsOrder vpux::DimsOrder::HCWN = DimsOrder(0x3241);
 

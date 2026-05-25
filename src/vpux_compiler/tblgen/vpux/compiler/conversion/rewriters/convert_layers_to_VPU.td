@@ -804,21 +804,6 @@ def RewriteAbs :
         >;
 
 //
-// IE.Atan -> VPU.Atan
-//
-
-def createAtanOp :
-        NativeCodeCall<[{
-            $_builder.create<vpux::VPU::AtanOp>($_loc, $0)
-        }]>;
-
-def RewriteAtan :
-        Pat<
-            (IE_AtanOp $input),
-            (createAtanOp $input)
-        >;
-
-//
 // IE.Atanh -> VPU.Atanh
 //
 
@@ -1002,8 +987,8 @@ def RewritePerAxisTile :
         >;
 
 //
-// IE.[Subtract|Multiply|Divide|SquaredDiff|Power|FloorMod|Mod|Min|Max|And|BitwiseAnd|BitwiseOr|BitwiseXor|Equal|Less|LessEqual|NotEqual|Greater|GreaterEqual|LogicalOr|LogicalXor]Pool
-//     -> VPU.[Subtract|Multiply|Divide|SquaredDiff|Power|FloorMod|Mod|Min|Max|And|BitwiseAnd|BitwiseOr|BitwiseXor|Equal|Less|LessEqual|NotEqual|Greater|GreaterEqual|LogicalOr|LogicalXor]Pool
+// IE.[Subtract|Multiply|Divide|SquaredDiff|Power|FloorMod|Mod|Min|Max|And|BitwiseAnd|BitwiseOr|BitwiseXor|BitwiseRightShift|BitwiseLeftShift|Equal|Less|LessEqual|NotEqual|Greater|GreaterEqual|LogicalOr|LogicalXor]Pool
+//     -> VPU.[Subtract|Multiply|Divide|SquaredDiff|Power|FloorMod|Mod|Min|Max|And|BitwiseAnd|BitwiseOr|BitwiseXor|BitwiseRightShift|BitwiseLeftShift|Equal|Less|LessEqual|NotEqual|Greater|GreaterEqual|LogicalOr|LogicalXor]Pool
 //
 
 class createEltwiseOp<string type> :
@@ -1120,6 +1105,18 @@ def RewriteBitwiseXor :
             (createEltwiseOp<"BitwiseXor"> $input1, $input2, $auto_broadcast)
         >;
 
+def RewriteBitwiseRightShift :
+        Pat<
+            (IE_BitwiseRightShiftOp $input1, $input2, $auto_broadcast),
+            (createEltwiseOp<"BitwiseRightShift"> $input1, $input2, $auto_broadcast)
+        >;
+
+def RewriteBitwiseLeftShift :
+        Pat<
+            (IE_BitwiseLeftShiftOp $input1, $input2, $auto_broadcast),
+            (createEltwiseOp<"BitwiseLeftShift"> $input1, $input2, $auto_broadcast)
+        >;
+
 def RewriteMinimum :
         Pat<
             (IE_MinimumOp $input1, $input2, $auto_broadcast),
@@ -1157,6 +1154,21 @@ def RewriteIsInf :
         Pat<
             (IE_IsInfOp $input1),
             (createIsInfOp $input1)
+        >;
+
+//
+// IE.IsFinite -> VPU.IsFinite
+//
+
+def createIsFiniteOp :
+        NativeCodeCall<[{
+            $_builder.create<vpux::VPU::IsFiniteOp>($_loc, $0)
+        }]>;
+
+def RewriteIsFinite :
+        Pat<
+            (IE_IsFiniteOp $input1),
+            (createIsFiniteOp $input1)
         >;
 
 //
@@ -1676,13 +1688,13 @@ def RewriteGatherTree :
 def createYuvToRgbOp :
         NativeCodeCall<[{
             $_builder.create<vpux::VPU::YuvToRgbOp>(
-                $_loc, $0, $1, $2, $3, $4, nullptr)
+                $_loc, $0, $1, $2, $3, $4, $5, nullptr)
         }]>;
 
 def RewriteYuvToRgb :
         Pat<
-            (IE_YuvToRgbOp $input1, $input2, $input3, $inFmt, $outFmt),
-            (createYuvToRgbOp $input1, $input2, $input3, $inFmt, $outFmt)
+            (IE_YuvToRgbOp $input1, $input2, $input3, $inFmt, $outFmt, $scale),
+            (createYuvToRgbOp $input1, $input2, $input3, $inFmt, $outFmt, $scale)
         >;
 
 //
@@ -2286,8 +2298,8 @@ def createRoPEOp :
 
 def RewriteRoPE :
         Pat<
-            (IE_RoPEOp $input, $input_cos, $input_sin, $is_interleaved),
-            (createRoPEOp $input, $input_cos, $input_sin, $is_interleaved)
+            (IE_RoPEOp $input, $input_cos, $input_sin, $mode),
+            (createRoPEOp $input, $input_cos, $input_sin, $mode)
         >;
 
 //
@@ -2301,23 +2313,24 @@ def createSDPAOp :
 
 def RewriteSDPA :
         Pat<
-            (IE_SDPAOp $inputQ, $inputK, $inputV, $inputMask, $inputScale, $causal),
+            (IE_SDPAOp $inputQ, $inputK, $inputV, $inputMask, $inputScale, $inputSink, $causal),
             (createSDPAOp $inputQ, $inputK, $inputV, $inputMask, $inputScale)
         >;
 
 //
-// IE.SDPAExtendedOp -> VPU.SDPAExtendedOp
+// IE.AttentionOp -> VPU.AttentionOp
 //
 
-def createSDPAExtendedOp :
+def createAttentionOp :
         NativeCodeCall<[{
-            $_builder.create<vpux::VPU::SDPAExtendedOp>($_loc, $0, $1, $2, $3, $4, $5, $6)
+            $_builder.create<vpux::VPU::AttentionOp>($_loc, $0, $1, $2, $3, $4, $5, $6, $7)
         }]>;
 
-def RewriteSDPAExtended :
+def RewriteAttention :
         Pat<
-            (IE_SDPAExtendedOp $inputQ, $inputK, $inputV, $inputMask, $inputScale, $inputBias, $padSizeS),
-            (createSDPAExtendedOp $inputQ, $inputK, $inputV, $inputMask, $inputScale, $inputBias, $padSizeS)
+            (IE_AttentionOp $inputQ, $inputK, $inputV, $inputMask, $inputScale, $inputBias, $inputSink,
+                                                                $padSizeS),
+            (createAttentionOp $inputQ, $inputK, $inputV, $inputMask, $inputScale, $inputBias, $inputSink, $padSizeS)
         >;
 
 //

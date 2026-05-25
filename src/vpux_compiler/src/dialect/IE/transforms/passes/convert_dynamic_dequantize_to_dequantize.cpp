@@ -80,11 +80,7 @@ bool isOptimizableDynamicDequantizeOp(IE::DynamicDequantizeOp origOp) {
     }
 
     auto quantStorageType = uniformType.getStorageType();
-    auto isNF4Quantized = [](mlir::Type type) -> bool {
-        const auto qType = mlir::cast<mlir::quant::QuantizedType>(type);
-        const auto bitWidth = qType.getStorageTypeIntegralWidth();
-        return (bitWidth == 4) && mlir::isa<mlir::quant::QuantileQuantizedType>(qType);
-    }(inputType.getElementType());
+    bool isNF4Quantized = mlir::isa<vpux::type::NF4Type>(quantStorageType);
 
     if (isNF4Quantized || quantStorageType.isInteger(8) || isLowFpType(quantStorageType)) {
         auto quantCastOp = origOp.getInput().getDefiningOp<IE::QuantizeCastOp>();
@@ -342,11 +338,10 @@ mlir::LogicalResult ConvertDynamicDequantizeToDequantize::matchAndRewrite(IE::Dy
     const auto outShapeAttr = getIntArrayAttr(origOp->getContext(), outShape);
     auto scale =
             rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_scale"), origOp.getScale(), outShapeAttr);
-    auto isNF4Quantized = [](mlir::Type type) -> bool {
-        const auto qType = mlir::cast<mlir::quant::QuantizedType>(type);
-        const auto bitWidth = qType.getStorageTypeIntegralWidth();
-        return (bitWidth == 4) && mlir::isa<mlir::quant::QuantileQuantizedType>(qType);
-    }(inputType.getElementType());
+    bool isNF4Quantized = false;
+    if (const auto quantileStorageType = mlir::dyn_cast<vpux::type::QuantileType>(quantStorageType)) {
+        isNF4Quantized = (quantileStorageType.getStorageWidth() == 4);
+    }
 
     if (isNF4Quantized || quantStorageType.isInteger(8) || isLowFpType(quantStorageType)) {
         // Rescale scales by descaler and weights by rescaler to scale down weights:
@@ -360,9 +355,13 @@ mlir::LogicalResult ConvertDynamicDequantizeToDequantize::matchAndRewrite(IE::Dy
         float minComputationValue = uniformType.getStorageTypeMin();
         float maxComputationValue = uniformType.getStorageTypeMax();
         if (isNF4Quantized) {
-            const auto quantLUT = mlir::cast<mlir::quant::QuantileQuantizedType>(uniformType).getQuantiles();
-            minComputationValue = *std::min_element(quantLUT.begin(), quantLUT.end());
-            maxComputationValue = *std::max_element(quantLUT.begin(), quantLUT.end());
+            if (const auto quantileTypeStorage =
+                        mlir::dyn_cast<vpux::type::QuantileType>(uniformType.getStorageType())) {
+                const auto quantLUT = quantileTypeStorage.getQuantiles();
+                const auto result = std::minmax_element(quantLUT.begin(), quantLUT.end());
+                minComputationValue = *result.first;
+                maxComputationValue = *result.second;
+            }
         }
         auto rescaleForMin = minI4 / minComputationValue;
         auto rescaleForMax = maxI4 / maxComputationValue;
@@ -391,12 +390,13 @@ mlir::LogicalResult ConvertDynamicDequantizeToDequantize::matchAndRewrite(IE::Dy
             auto quantCastOp = origOp.getInput().getDefiningOp<IE::QuantizeCastOp>();
             mlir::quant::QuantizedType quantTypeRescaled = nullptr;
             if (isNF4Quantized) {
-                const auto quantizedType = mlir::cast<mlir::quant::QuantileQuantizedType>(uniformType);
-                const auto quantLUT = quantizedType.getQuantiles();
-                quantTypeRescaled = mlir::quant::QuantileQuantizedType::get(
-                        quantizedType.getFlags(), quantizedType.getStorageType(), quantizedType.getQuantileType(),
-                        quantizedType.getExpressedType(), quantLUT, rescaler, /*zp=*/0,
-                        /*min=*/quantizedType.getStorageTypeMin(), /*max=*/quantizedType.getStorageTypeMax());
+                if (const auto quantileTypeStorage =
+                            mlir::dyn_cast<vpux::type::QuantileType>(uniformType.getStorageType())) {
+                    quantTypeRescaled = mlir::quant::UniformQuantizedType::get(
+                            uniformType.getFlags(), quantileTypeStorage, uniformType.getExpressedType(), rescaler,
+                            /*zp=*/0,
+                            /*min=*/uniformType.getStorageTypeMin(), /*max=*/uniformType.getStorageTypeMax());
+                }
             } else {
                 quantTypeRescaled = mlir::quant::UniformQuantizedType::get(
                         uniformType.getFlags(), quantStorageType, uniformType.getExpressedType(), rescaler,

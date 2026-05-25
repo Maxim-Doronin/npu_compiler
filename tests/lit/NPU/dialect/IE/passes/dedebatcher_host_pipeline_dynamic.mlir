@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --de-debatcher="debatching-inlining-method=host_pipeline" --canonicalize --cse %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --de-debatcher="debatching-inlining-method=host_pipeline" --canonicalize --cse %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 func.func @output_shape(%arg0: tensor<?x3x62x62xf32, {bounds = #const.OpaqueI64Elements<[3, 3, 62, 62]> : tensor<4xsi64>}>) -> tensor<4xi64> {
     %c0 = arith.constant 0 : index
@@ -36,7 +36,7 @@ func.func @SingleInputSingleOutputDeBatchedTo1(%arg0: tensor<?x3x62x62xf32, {bou
     // CHECK: [[BEGIN:%.+]] = arith.constant 0 : index
     // CHECK: [[END:%.+]] = tensor.dim [[ARG0]], [[ANY:%.+]] : tensor<?x3x62x62xf32, [[ANY_MATCH:{.+}]]>
     // CHECK: [[OUTPUT:%.+]] = tensor.empty([[ANY:%.+]]) : tensor<?x48x60x60xf32, [[ANY_MATCH:{.+}]]>
-    // CHECK: [[RET:%.+]] = scf.for [[IND_VAR:%.+]] = [[BEGIN]] to %dim step [[STEP]] iter_args([[LOOP_CARRIED:%.+]] = [[OUTPUT]]) -> (tensor<?x48x60x60xf32, [[ANY_MATCH:{.+}]]>) {
+    // CHECK: [[RET:%.+]] = scf.for [[IND_VAR:%.+]] = [[BEGIN]] to [[END]] step [[STEP]] iter_args([[LOOP_CARRIED:%.+]] = [[OUTPUT]]) -> (tensor<?x48x60x60xf32, [[ANY_MATCH:{.+}]]>) {
     // CHECK:   [[I_SLICE:%.+]] = tensor.extract_slice [[ARG0]][[[IND_VAR]], 0, 0, 0] [1, 3, 62, 62] [1, 1, 1, 1] : tensor<?x3x62x62xf32, [[ANY_MATCH:{.+}]]> to tensor<1x3x62x62xf32>
     // CHECK:   [[FUNC:%.+]] = func.call @SingleInputSingleOutputDeBatchedTo1_Batch1([[I_SLICE]]) : (tensor<1x3x62x62xf32>) -> tensor<1x48x60x60xf32>
     // CHECK:   [[O_SLICE:%.+]] = tensor.insert_slice [[FUNC]] into [[LOOP_CARRIED]][[[IND_VAR]], 0, 0, 0] [1, 48, 60, 60] [1, 1, 1, 1] : tensor<1x48x60x60xf32> into tensor<?x48x60x60xf32, [[ANY_MATCH:{.+}]]>
@@ -127,7 +127,7 @@ func.func @SingleInputMultipleOutputDeBatched(%arg0: tensor<?x3x62x62xf32, {boun
     // CHECK:   [[END:%.+]] = tensor.dim [[ARG0]], [[ANY_MATCH:%.+]] : tensor<?x3x62x62xf32, [[ANY_MATCH:{.+}]]>
     // CHECK:   [[OUTPUT_0:%.+]] = tensor.empty([[ANY:.+]]) : tensor<?x48x60x60xf32, [[ANY_MATCH:{.+}]]>
     // CHECK:   [[OUTPUT_1:%.+]] = tensor.empty([[ANY:.+]]) : tensor<?x48x60x60xf16, [[ANY_MATCH:{.+}]]>
-    // CHECK:   [[RET:%.+]]:2 = scf.for [[IND_VAR:%.+]] = [[BEGIN]] to %dim step [[STEP]] iter_args([[LOOP_CARRIED_0:%.+]] = [[OUTPUT_0]], [[LOOP_CARRIED_1:%.+]] = [[OUTPUT_1]]) -> (tensor<?x48x60x60xf32, [[ANY_MATCH:{.+}]]>, tensor<?x48x60x60xf16, [[ANY_MATCH:{.+}]]>) {
+    // CHECK:   [[RET:%.+]]:2 = scf.for [[IND_VAR:%.+]] = [[BEGIN]] to [[END]] step [[STEP]] iter_args([[LOOP_CARRIED_0:%.+]] = [[OUTPUT_0]], [[LOOP_CARRIED_1:%.+]] = [[OUTPUT_1]]) -> (tensor<?x48x60x60xf32, [[ANY_MATCH:{.+}]]>, tensor<?x48x60x60xf16, [[ANY_MATCH:{.+}]]>) {
     // CHECK:       [[I_SLICE:%.+]] = tensor.extract_slice [[ARG0]][[[IND_VAR]], 0, 0, 0] [1, 3, 62, 62] [1, 1, 1, 1] : tensor<?x3x62x62xf32, [[ANY_MATCH:{.+}]]> to tensor<1x3x62x62xf32>
     // CHECK:       [[FUNC:%.+]]:2 = func.call @SingleInputMultipleOutputDeBatched_Batch1([[I_SLICE]]) : (tensor<1x3x62x62xf32>) -> (tensor<1x48x60x60xf32>, tensor<1x48x60x60xf16>)
     // CHECK:       [[O_SLICE_0:%.+]] = tensor.insert_slice [[FUNC]]#0 into [[LOOP_CARRIED_0]][[[IND_VAR]], 0, 0, 0] [1, 48, 60, 60] [1, 1, 1, 1] : tensor<1x48x60x60xf32> into tensor<?x48x60x60xf32, [[ANY_MATCH:{.+}]]>
@@ -168,7 +168,7 @@ func.func @SingleInputSingleOutputDeBatchedTo2(%arg0: tensor<?x3x62x62xf32, {bou
     // CHECK:   [[BEGIN:%.+]] = arith.constant 0 : index
     // CHECK:   [[END:%.+]] = tensor.dim [[ARG0]], [[ANY_MATCH:%.+]] : tensor<?x3x62x62xf32, [[ANY_MATCH:{.+}]]>
     // CHECK:   [[OUTPUT:%.+]] = tensor.empty([[ANY:.+]]) : tensor<?x48x60x60xf32, [[ANY_MATCH:{.+}]]>
-    // CHECK:   [[RET:%.+]] = scf.for [[IND_VAR:%.+]] = [[BEGIN]] to %dim step [[STEP]] iter_args([[LOOP_CARRIED:%.+]] = [[OUTPUT]]) -> (tensor<?x48x60x60xf32, [[ANY_MATCH:{.+}]]>) {
+    // CHECK:   [[RET:%.+]] = scf.for [[IND_VAR:%.+]] = [[BEGIN]] to [[END]] step [[STEP]] iter_args([[LOOP_CARRIED:%.+]] = [[OUTPUT]]) -> (tensor<?x48x60x60xf32, [[ANY_MATCH:{.+}]]>) {
     // CHECK:       [[I_SLICE:%.+]] = tensor.extract_slice [[ARG0]][[[IND_VAR]], 0, 0, 0] [2, 3, 62, 62] [1, 1, 1, 1] : tensor<?x3x62x62xf32, [[ANY_MATCH:{.+}]]> to tensor<2x3x62x62xf32>
     // CHECK:       [[FUNC:%.+]] = func.call @SingleInputSingleOutputDeBatchedTo2_Batch2([[I_SLICE]]) : (tensor<2x3x62x62xf32>) -> tensor<2x48x60x60xf32>
     // CHECK:       [[O_SLICE:%.+]] = tensor.insert_slice [[FUNC]] into [[LOOP_CARRIED]][[[IND_VAR]], 0, 0, 0] [2, 48, 60, 60] [1, 1, 1, 1] : tensor<2x48x60x60xf32> into tensor<?x48x60x60xf32, [[ANY_MATCH:{.+}]]>

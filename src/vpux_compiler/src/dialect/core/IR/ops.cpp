@@ -11,8 +11,11 @@
 #include <vpux/utils/core/format.hpp>
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/Dialect/Func/IR/FuncOps.h>
+#include <mlir/Dialect/MemRef/IR/MemRef.h>
+#include <mlir/IR/Operation.h>
 
 using namespace vpux;
 
@@ -108,7 +111,7 @@ mlir::LogicalResult vpux::Core::ReinterpretCastOp::verify() {
     const auto inNdType = mlir::cast<NDTypeInterface>(inputType);
     const auto outNdType = mlir::cast<NDTypeInterface>(outputType);
     // In case of dynamic shapes, it's not possible to verify the allocation size.
-    if (inNdType.getShape().isDynamic() && outNdType.getShape().isDynamic()) {
+    if (inNdType.getShape().isDynamic() || outNdType.getShape().isDynamic()) {
         return mlir::success();
     }
     if (inNdType.getTotalAllocSize() != outNdType.getTotalAllocSize()) {
@@ -117,10 +120,34 @@ mlir::LogicalResult vpux::Core::ReinterpretCastOp::verify() {
     return mlir::success();
 }
 
-mlir::OpFoldResult vpux::Core::ReinterpretCastOp::fold(FoldAdaptor) {
-    if (getInput().getType() == getOutput().getType()) {
-        return getInput();
+class FoldConsecutiveCasts final : public mlir::OpRewritePattern<Core::ReinterpretCastOp> {
+public:
+    FoldConsecutiveCasts(mlir::MLIRContext* context): mlir::OpRewritePattern<Core::ReinterpretCastOp>(context) {
     }
 
-    return nullptr;
+private:
+    mlir::LogicalResult matchAndRewrite(Core::ReinterpretCastOp op, mlir::PatternRewriter& rewriter) const final {
+        if (!op.getResult().hasOneUse()) {
+            return mlir::failure();
+        }
+        mlir::Operation* nextOp = *op.getResult().user_begin();
+        const bool isAllowedCast =
+                mlir::isa<Core::ReinterpretCastOp>(nextOp) || mlir::isa<mlir::memref::CastOp>(nextOp);
+        if (!isAllowedCast) {
+            return mlir::failure();
+        }
+        auto resultType = nextOp->getResult(0).getType();
+        auto inputValue = op.getInput();
+
+        auto newReinterpretCast = rewriter.create<Core::ReinterpretCastOp>(nextOp->getLoc(), resultType, inputValue);
+
+        rewriter.replaceOp(nextOp, newReinterpretCast.getResult());
+
+        return mlir::success();
+    }
+};
+
+void vpux::Core::ReinterpretCastOp::getCanonicalizationPatterns(mlir::RewritePatternSet& patterns,
+                                                                mlir::MLIRContext* context) {
+    patterns.add<FoldConsecutiveCasts>(context);
 }

@@ -7,6 +7,15 @@ file(GLOB SRC_FILES *.cpp)
 add_npu_library(npu_compiler_dialect_elf_utils
     ${SRC_FILES}
     DIALECT_LIB
-    LINK_LIBS PRIVATE
+    LINK_LIBS
+      PUBLIC
+        npu_compiler_dialect_elf
+        npu_compiler_dialect_vpuasm
+        npu_compiler_dialect_vpureg
+    PRIVATE
         npu_core_utils
-        npu_compiler_act_kernels)
+        npu_compiler_dialect_config
+        npu_compiler_dialect_net
+        npu_compiler_dialect_vpu
+        npu_compiler_act_kernels
+)

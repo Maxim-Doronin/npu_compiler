@@ -748,3 +748,80 @@ TEST_F(MLIR_LinearScanTests, AllocWithExcludedRegion) {
         ASSERT_EQ(r1.addr, 70);  // 80 - 10 = 70
     }
 }
+
+// allocDefinedRange: allocate at a pre-determined address without the allocator choosing
+TEST_F(MLIR_LinearScanTests, AllocDefinedRange_NonOverlapping) {
+    LinearScan<LiveRange*, Handler> s(100);
+
+    // Pre-set addresses before calling allocDefinedRange
+    LiveRange r1;
+    r1.size = 10;
+    r1.addr = 0;
+
+    LiveRange r2;
+    r2.size = 20;
+    r2.addr = 50;
+
+    ASSERT_TRUE(s.allocDefinedRange(&r1));
+    ASSERT_TRUE(s.allocDefinedRange(&r2));
+
+    ASSERT_EQ(s.liveRanges().size(), 2);
+    ASSERT_EQ(r1.addr, 0);
+    ASSERT_EQ(r2.addr, 50);
+}
+
+TEST_F(MLIR_LinearScanTests, AllocDefinedRange_Overlapping) {
+    LinearScan<LiveRange*, Handler> s(100);
+
+    LiveRange r1;
+    r1.size = 20;
+    r1.addr = 10;  // occupies [10, 30)
+
+    LiveRange r2;
+    r2.size = 15;
+    r2.addr = 25;  // occupies [25, 40) — overlaps with r1
+
+    ASSERT_TRUE(s.allocDefinedRange(&r1));
+    ASSERT_FALSE(s.allocDefinedRange(&r2));
+
+    // Only r1 should be in live ranges
+    ASSERT_EQ(s.liveRanges().size(), 1);
+}
+
+TEST_F(MLIR_LinearScanTests, AllocDefinedRange_ExactFit) {
+    LinearScan<LiveRange*, Handler> s(64);
+
+    // Fill entire memory with one defined range
+    LiveRange r1;
+    r1.size = 64;
+    r1.addr = 0;
+
+    ASSERT_TRUE(s.allocDefinedRange(&r1));
+    ASSERT_EQ(s.liveRanges().size(), 1);
+    ASSERT_EQ(r1.addr, 0);
+}
+
+TEST_F(MLIR_LinearScanTests, AllocDefinedRange_MixedWithNormalAlloc) {
+    LinearScan<LiveRange*, Handler> s(100);
+
+    // Normal alloc at [0, 20)
+    LiveRange r1;
+    r1.size = 20;
+    ASSERT_TRUE(s.alloc({&r1}));
+    ASSERT_EQ(r1.addr, 0);
+
+    // Defined alloc at non-overlapping [50, 80)
+    LiveRange r2;
+    r2.size = 30;
+    r2.addr = 50;
+    ASSERT_TRUE(s.allocDefinedRange(&r2));
+    ASSERT_EQ(s.liveRanges().size(), 2);
+    ASSERT_EQ(r2.addr, 50);
+
+    // Defined alloc at overlapping address [10, 30) — conflicts with r1 [0, 20)
+    LiveRange r3;
+    r3.size = 20;
+    r3.addr = 10;
+    ASSERT_FALSE(s.allocDefinedRange(&r3));
+    ASSERT_EQ(s.liveRanges().size(), 2);
+}

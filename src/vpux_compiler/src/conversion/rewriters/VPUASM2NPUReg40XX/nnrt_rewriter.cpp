@@ -29,7 +29,7 @@ mlir::LogicalResult NNRTConfigRewriter::matchAndRewrite(VPUASM::NNrtConfigOp ori
     if (origOp.getActShaveStacks().has_value()) {
         auto stackRef =
                 _symRefMap.lookupSymbol(mlir::dyn_cast<mlir::SymbolRefAttr>(*origOp.getActShaveStacks()->begin()));
-        auto stackOp = mlir::cast<VPUASM::ShaveStackFrameOp>(stackRef);
+        auto stackOp = mlir::cast<VPUASM::ShaveStackFrameBuffOp>(stackRef);
         stackSize = stackOp.getStackSize();
     }
     // NPU4 does not have stack frames provided by compiler

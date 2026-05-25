@@ -64,13 +64,10 @@ uint32_t combineDescValues(uint8_t producerCount, uint8_t producerInterrupt, uin
 class AddBarrierConfigurationOps : public VPUMI40XX::impl::AddBarrierConfigurationOpsBase<AddBarrierConfigurationOps> {
 public:
     explicit AddBarrierConfigurationOps(
-            const WorkloadManagementMode workloadManagementMode,
             const WorkloadManagementBarrierProgrammingMode workloadManagementBarrierProgrammingMode, Logger log)
             : _nBarrs(0),
               _barrierWithMaximumUsage(0),
-              _numberOfDescriptorsPerBarrier(0),
               _workloadManagementBarrierProgrammingMode(workloadManagementBarrierProgrammingMode),
-              _workloadManagementMode(workloadManagementMode),
               _disableAllInterrupts(workloadManagementBarrierProgrammingMode >=
                                     WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED) {
         Base::initLogger(log, Base::getArgumentName());
@@ -78,10 +75,6 @@ public:
 
     void fillPhysicalBarrierUsage();
     BarrierConfig getBarrierConfig(std::ostringstream& logStream, VPUMI40XX::NNDMAOp barrierProgrammingDMAOp = nullptr);
-    void createBarrierConfigurationStrideConstant(VPUMI40XX::MappedInferenceOp mpi, mlir::OpBuilder& builder,
-                                                  mlir::Operation* cstInsertionPoint);
-    void createRawBarrierConfigurationConstant(VPUMI40XX::MappedInferenceOp mpi, mlir::OpBuilder& builder,
-                                               mlir::Operation* cstInsertionPoint);
     VPUMI40XX::NNDMAOp createDMAsToProgramAllBarriers(mlir::OpBuilder& builder, mlir::Operation* bufferInsertionPoint,
                                                       mlir::Operation* cstInsertionPoint,
                                                       mlir::Operation* dmaInsertionPoint);
@@ -97,7 +90,6 @@ private:
     void safeRunOnFunc() final;
     int64_t _nBarrs;
     int64_t _barrierWithMaximumUsage;
-    int64_t _numberOfDescriptorsPerBarrier;
     uint32_t _barrierFIFOAddr = 0;
     uint32_t _barrierFIFODepth = 0;
 
@@ -106,7 +98,6 @@ private:
     // Index here represents the pid and value at index represents the usage index
     SmallVector<size_t> _barrierUsageIndex;
     WorkloadManagementBarrierProgrammingMode _workloadManagementBarrierProgrammingMode;
-    WorkloadManagementMode _workloadManagementMode;
     SmallVector<uint32_t> _barrierProgrammingStrides;
     BarrierConfig _barrierConfigurationsRaw;
     SmallVector<SmallVector<BarrierDesc>> _physicalBarriersUsage;
@@ -234,44 +225,6 @@ void AddBarrierConfigurationOps::fillPhysicalBarrierUsage() {
             _barrierWithMaximumUsage = barrierCount[pid];
         }
     }
-}
-
-void AddBarrierConfigurationOps::createBarrierConfigurationStrideConstant(VPUMI40XX::MappedInferenceOp mpi,
-                                                                          mlir::OpBuilder& builder,
-                                                                          mlir::Operation* cstInsertionPoint) {
-    _barrierProgrammingStrides.resize(_nBarrs, 0);
-    for (int64_t pid = 0; pid < _nBarrs; ++pid) {
-        _barrierProgrammingStrides[pid] = _physicalBarriersUsage[pid].size();
-    }
-    auto strideConstant = createConstant(builder, cstInsertionPoint, _barrierProgrammingStrides, _nBarrs);
-    mpi.getNumOfBarrierReprogrammingsMutable().assign(strideConstant.getResult());
-}
-
-// For simplify preemption flow on FW side,
-// compiler must to add extra zero descriptors for allow FW to restore FIFO using one DMA
-// In worst case if preemption happens on the latest barrier, we need to have at least INITIAL_BARRIER_FIFO_DEPTH -
-// 1 zero descriptors
-void AddBarrierConfigurationOps::createRawBarrierConfigurationConstant(VPUMI40XX::MappedInferenceOp mpi,
-                                                                       mlir::OpBuilder& builder,
-                                                                       mlir::Operation* cstInsertionPoint) {
-    auto maxBarrierReusage = std::max(_barrierWithMaximumUsage, static_cast<int64_t>(_barrierFIFODepth));
-    _numberOfDescriptorsPerBarrier = maxBarrierReusage + _barrierFIFODepth - 1;
-    auto totalAmountOfBarrierProgrammingDescs = _nBarrs * _numberOfDescriptorsPerBarrier;
-    _barrierConfigurationsRaw.resize(totalAmountOfBarrierProgrammingDescs, 0);
-    for (auto pid : irange(_nBarrs)) {
-        auto barProgrammingDescVec = _physicalBarriersUsage[pid];
-        for (auto i : irange(barProgrammingDescVec.size())) {
-            auto desc = barProgrammingDescVec[i];
-            _barrierConfigurationsRaw[pid * _numberOfDescriptorsPerBarrier + i] = combineDescValues(
-                    desc.producerCount, desc.producerInterrupt, desc.consumerCount, desc.consumerInterrupt);
-        }
-    }
-
-    // Create all barrier configuration constant
-    auto barConfigurationConst =
-            createConstant(builder, cstInsertionPoint, _barrierConfigurationsRaw, totalAmountOfBarrierProgrammingDescs);
-    mpi.getBarrierConfigurationTasksMutable().assign(barConfigurationConst.getResult());
-    mpi.setBarrierConfigurationTasksCountAttr(builder.getI64IntegerAttr(totalAmountOfBarrierProgrammingDescs));
 }
 
 // Creates the barrier configuration array for the requested page.
@@ -407,7 +360,7 @@ VPUMI40XX::NNDMAOp AddBarrierConfigurationOps::createDMAsToProgramAllBarriers(ml
         }
     }
 
-    // No need to go over all barriers in case of PWLM_V2_PAGES & INITIAL_BARRIER_DMAS_SCHEDULED
+    // No need to go over all barriers in case of LEGACY programming modes
     if (_workloadManagementBarrierProgrammingMode <
         WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED) {
         return bootstrapDMA;
@@ -442,18 +395,6 @@ void AddBarrierConfigurationOps::safeRunOnFunc() {
         _workloadManagementBarrierProgrammingMode = workloadManagementBarrierProgrammingModeOpt.getValue();
     }
 
-    VPUX_THROW_WHEN(
-            _workloadManagementMode == WorkloadManagementMode::PWLM_V1_BARRIER_FIFO &&
-                    _workloadManagementBarrierProgrammingMode == WorkloadManagementBarrierProgrammingMode::LEGACY,
-            "Unsupported Configuration WorkloadManagementMode:PWLM_V1_BARRIER_FIFO with "
-            "WorkloadManagementBarrierProgrammingMode:LEGACY");
-
-    VPUX_THROW_WHEN(_workloadManagementMode == WorkloadManagementMode::PWLM_V1_BARRIER_FIFO &&
-                            _workloadManagementBarrierProgrammingMode ==
-                                    WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED,
-                    "Unsupported Configuration WorkloadManagementMode:PWLM_V1_BARRIER_FIFO with "
-                    "WorkloadManagementBarrierProgrammingMode:ALL_BARRIER_DMAS_SCHEDULED");
-
     auto netFunc = getOperation();
     auto mpi = VPUMI40XX::getMPI(netFunc);
     auto builder = mlir::OpBuilder(mpi.getOperation());
@@ -473,20 +414,6 @@ void AddBarrierConfigurationOps::safeRunOnFunc() {
     fillPhysicalBarrierUsage();
 
     switch (_workloadManagementBarrierProgrammingMode) {
-    case WorkloadManagementBarrierProgrammingMode::NO_BARRIER_DMAS_SCHEDULED: {
-        createBarrierConfigurationStrideConstant(mpi, builder, cstInsertionPoint);
-        createRawBarrierConfigurationConstant(mpi, builder, cstInsertionPoint);
-    } break;
-
-    case WorkloadManagementBarrierProgrammingMode::INITIAL_BARRIER_DMAS_SCHEDULED: {
-        createBarrierConfigurationStrideConstant(mpi, builder, cstInsertionPoint);
-        createRawBarrierConfigurationConstant(mpi, builder, cstInsertionPoint);
-
-        auto bootStrapDMAOp =
-                createDMAsToProgramAllBarriers(builder, bufferInsertionPoint, cstInsertionPoint, dmaInsertionPoint);
-        VPUMI40XX::reindexList<VPUMI40XX::NNDMAOp>(mpi, bootStrapDMAOp, 0, 0);
-    } break;
-
     case WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED:
     case WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED_4K: {
         auto firstDMAOp =
@@ -509,8 +436,6 @@ void AddBarrierConfigurationOps::safeRunOnFunc() {
 //
 
 std::unique_ptr<mlir::Pass> vpux::VPUMI40XX::createAddBarrierConfigurationOps(
-        WorkloadManagementMode workloadManagementMode,
         WorkloadManagementBarrierProgrammingMode workloadManagementBarrierProgrammingMode, Logger log) {
-    return std::make_unique<AddBarrierConfigurationOps>(workloadManagementMode,
-                                                        workloadManagementBarrierProgrammingMode, log);
+    return std::make_unique<AddBarrierConfigurationOps>(workloadManagementBarrierProgrammingMode, log);
 }

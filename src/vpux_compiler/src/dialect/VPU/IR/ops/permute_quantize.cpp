@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/VPU/IR/ops/specialized.hpp"
+#include "vpux/compiler/dialect/VPU/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
 
@@ -26,16 +27,14 @@ mlir::LogicalResult vpux::VPU::PermuteQuantizeOp::inferReturnTypes(
     const auto padBegin = parseIntArrayAttr<int64_t>(permute_quantize.getPadsBegin());
     const auto padEnd = parseIntArrayAttr<int64_t>(permute_quantize.getPadsEnd());
 
-    const auto inOrder = DimsOrder::fromValue(input);
     const auto outOrder = DimsOrder::fromAffineMap(dstOrder);
     const auto inType = mlir::cast<vpux::NDTypeInterface>(input.getType());
 
     const auto newExpandedInType = inType.pad(ShapeRef(padBegin), ShapeRef(padEnd));
     const auto inShapeExpanded = newExpandedInType.getShape();
 
-    const auto inMemShape = inOrder.toMemoryOrder(inShapeExpanded);
-    const auto outMemShape = applyPerm(inMemShape, memPerm);
-    const auto outShape = outOrder.toLogicalOrder(outMemShape);
+    const auto outShape =
+            VPU::inferShapeThroughPermute(inShapeExpanded, inType, inType.changeDimsOrder(outOrder), memPerm);
     const auto outType = inType.changeDimsOrder(outOrder).changeShape(outShape);
 
     const auto dstElemType = permute_quantize.getDstElemType();

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --convert-d2s-to-transposed-conv %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true enable-se-ptrs-operations=true" --convert-d2s-to-transposed-conv %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
@@ -12,15 +12,8 @@
 // -----
 
 // CHECK-LABEL: @DepthToSpaceWithConversionBS2
-module @DepthToSpaceWithConversionBS2 {
-
-config.PipelineOptions @Options {
-    config.Option @config.EnableSEPtrsOperations : true 
-}
-
-// CHECK: func.func @main
 // CHECK-SAME:     ([[INPUT:%.+]]: tensor<1x64x3x3xf16>)
-func.func @main(%input: tensor<1x64x3x3xf16>) -> tensor<1x16x6x6xf16> {
+func.func @DepthToSpaceWithConversionBS2(%input: tensor<1x64x3x3xf16>) -> tensor<1x16x6x6xf16> {
     %d2s = IE.DepthToSpace(%input) {
         block_size = 2 : i64,
         mode = #IE.depth_to_space_mode<DEPTH_FIRST>
@@ -49,7 +42,6 @@ func.func @main(%input: tensor<1x64x3x3xf16>) -> tensor<1x16x6x6xf16> {
 
     // CHECK:                return [[TRANSCONV]]
 }
-}
 
 // -----
 
@@ -57,15 +49,8 @@ func.func @main(%input: tensor<1x64x3x3xf16>) -> tensor<1x16x6x6xf16> {
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @DepthToSpaceWithConversionBS3
-module @DepthToSpaceWithConversionBS3 {
-
-config.PipelineOptions @Options {
-    config.Option @config.EnableSEPtrsOperations : true 
-}
-
-// CHECK: func.func @main
 // CHECK-SAME:     ([[INPUT:%.+]]: tensor<1x144x3x3xf16>)
-func.func @main(%input: tensor<1x144x3x3xf16>) -> tensor<1x16x9x9xf16> {
+func.func @DepthToSpaceWithConversionBS3(%input: tensor<1x144x3x3xf16>) -> tensor<1x16x9x9xf16> {
     %d2s = IE.DepthToSpace(%input) {
         block_size = 3 : i64,
         mode = #IE.depth_to_space_mode<DEPTH_FIRST>
@@ -94,7 +79,6 @@ func.func @main(%input: tensor<1x144x3x3xf16>) -> tensor<1x16x9x9xf16> {
 
     // CHECK:                return [[TRANSCONV]]
 }
-}
 
 // -----
 
@@ -102,15 +86,8 @@ func.func @main(%input: tensor<1x144x3x3xf16>) -> tensor<1x16x9x9xf16> {
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @DepthToSpaceWithoutConversionBS4
-module @DepthToSpaceWithoutConversionBS4 {
-
-config.PipelineOptions @Options {
-    config.Option @config.EnableSEPtrsOperations : true 
-}
-
-// CHECK: func.func @main
 // CHECK-SAME:     ([[INPUT:%.+]]: tensor<1x16x180x270xf16>)
-func.func @main(%input : tensor<1x16x180x270xf16>) -> tensor<1x1x720x1080xf16> {
+func.func @DepthToSpaceWithoutConversionBS4(%input : tensor<1x16x180x270xf16>) -> tensor<1x1x720x1080xf16> {
     %d2s = IE.DepthToSpace(%input) {
         block_size = 4 : i64,
         mode = #IE.depth_to_space_mode<DEPTH_FIRST>
@@ -125,19 +102,11 @@ func.func @main(%input : tensor<1x16x180x270xf16>) -> tensor<1x1x720x1080xf16> {
 
     // CHECK:                return [[D2S]] : tensor<1x1x720x1080xf16>
 }
-}
 // -----
 
 // CHECK-LABEL: @DepthToSpaceWithConversionBS2_SmallChan
-module @DepthToSpaceWithConversionBS2_SmallChan {
-
-config.PipelineOptions @Options {
-    config.Option @config.EnableSEPtrsOperations : true 
-}
-
-// CHECK: func.func @main
 // CHECK-SAME:     ([[INPUT:%.+]]: tensor<1x12x1280x720xf16>)
-func.func @main(%input: tensor<1x12x1280x720xf16>) -> tensor<1x3x2560x1440xf16> {
+func.func @DepthToSpaceWithConversionBS2_SmallChan(%input: tensor<1x12x1280x720xf16>) -> tensor<1x3x2560x1440xf16> {
     %d2s = IE.DepthToSpace(%input) {
         block_size = 2 : i64,
         mode = #IE.depth_to_space_mode<DEPTH_FIRST>
@@ -165,5 +134,4 @@ func.func @main(%input: tensor<1x12x1280x720xf16>) -> tensor<1x3x2560x1440xf16> 
     // CHECK-SAME:           } : tensor<1x12x1280x720xf16>, tensor<3x12x2x2xf16> -> tensor<1x3x2560x1440xf16>
 
     // CHECK:                return [[TRANSCONV]] : tensor<1x3x2560x1440xf16>
-}
 }

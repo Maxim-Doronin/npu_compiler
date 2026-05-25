@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -11,7 +11,7 @@
 #include "vpux/compiler/dialect/VPU/utils/multi_cluster_strategy_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/op_tiling_cache.hpp"
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
-#include "vpux/compiler/interfaces_registry.hpp"
+#include "vpux/compiler/init/interfaces_registry.hpp"
 
 #include <mlir/IR/MLIRContext.h>
 #include <mlir/Parser/Parser.h>

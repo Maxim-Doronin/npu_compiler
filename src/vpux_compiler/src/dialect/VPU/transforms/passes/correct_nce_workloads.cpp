@@ -6,9 +6,8 @@
 #include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
+#include "vpux/compiler/dialect/VPU/interfaces/strategies.hpp"
 #include "vpux/compiler/dialect/VPU/interfaces/workload_splitter.hpp"
-#include "vpux/compiler/dialect/VPU/transforms/factories/nce_workload_channels.hpp"
-#include "vpux/compiler/dialect/VPU/transforms/factories/sparsity_constraint.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 
@@ -39,10 +38,12 @@ private:
 
 void CorrectNCEWorkloadsPass::safeRunOnFunc() {
     auto func = getOperation();
-    const auto arch = config::getArch(func);
-    auto sparsityConstraint = VPU::getSparsityConstraint(arch);
+    auto& ctx = getContext();
+    const auto& strategyFactory = VPU::getVPUStrategyFactory(&ctx);
+    auto sparsityConstraint = strategyFactory->getSparsityConstraint();
+    auto supportedChannels = strategyFactory->getSupportedChannelsDW();
 
-    WorkloadSplitter splitter(func, vpux::VPU::getSupportedChannelsDW(arch), _log);
+    WorkloadSplitter splitter(func, supportedChannels, _log);
     splitter.correctInvalidWorkload(sparsityConstraint);
 }
 

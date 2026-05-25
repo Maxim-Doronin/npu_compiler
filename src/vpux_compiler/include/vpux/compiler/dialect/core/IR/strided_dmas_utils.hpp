@@ -23,5 +23,9 @@ constexpr llvm::StringLiteral stridedOutputAttrName = "stridedOutput";
 // Added to net.DataInfo op to indicate that user has marked this argument as
 // having dynamic strides
 constexpr llvm::StringLiteral dynamicStridesAttrName = "dynamicStrides";
+// perClusterBufferOffset is added to DeclareBufferOp to indicate per-cluster buffer
+// offsets (dim-level shape offsets) when the subview axis overlaps with the distributed
+// tiling axis. Used during UnrollDistributedOps to compute correct per-cluster byte offsets.
+constexpr llvm::StringLiteral perClusterBufferOffsetAttrName = "perClusterBufferOffset";
 
 }  // namespace vpux

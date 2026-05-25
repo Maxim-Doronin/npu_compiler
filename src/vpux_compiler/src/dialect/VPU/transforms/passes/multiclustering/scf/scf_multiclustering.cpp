@@ -90,6 +90,23 @@ void movePadAfterExtractSlice(mlir::tensor::PadOp padOp, ArrayRef<mlir::tensor::
         VPUX_THROW_WHEN(forallOp == nullptr, "Expected scf.forall op parent for ExtractSliceOp at {0}",
                         extractSlice.getLoc());
 
+        // If the extract_slice is loop-invariant and not an identity slice, it would mean that
+        // parts of the original(unsliced) op are not actually needed for this computation.
+        // We don't expect this to happen for well-formed ops, so a loop-invariant slice must be a NOOP.
+        const bool sliceDependsOnForallIv = llvm::any_of(origOffsets, [&](mlir::OpFoldResult ofr) {
+            return VPU::isDependentOnForallIv(ofr, forallOp);
+        });
+
+        if (!sliceDependsOnForallIv) {
+            builder.setInsertionPointAfter(extractSlice);
+            auto innerPad = builder.create<mlir::tensor::PadOp>(padOp.getLoc(), extractSlice->getResult(0).getType(),
+                                                                padOp.getSource(), padLow, padHigh,
+                                                                padOp.getConstantPaddingValue());
+            extractSlice.replaceAllUsesWith(innerPad.getResult());
+            extractSlice.erase();
+            continue;
+        }
+
         builder.setInsertionPointAfter(extractSlice);
         for (size_t dim : irange(extractSliceSizes.size())) {
             if (dim < static_cast<size_t>(Dims4D::Act::getSpatialDim(0).ind())) {

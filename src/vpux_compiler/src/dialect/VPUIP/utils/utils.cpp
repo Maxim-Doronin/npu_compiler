@@ -14,6 +14,7 @@
 #include "vpux/compiler/dialect/VPU/utils/tile_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/dma_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/reshape_utils.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/sw_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/swizzling_utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
@@ -112,7 +113,8 @@ int64_t vpux::VPUIP::getNumTilesUsed(mlir::ModuleOp module) {
     return tileOp.getCount();
 }
 
-int64_t getMaxBarriersPerTile(config::ArchKind arch) {
+int64_t getMaxBarriersPerTile(config::ArchKind arch, mlir::Operation* op = nullptr) {
+    std::ignore = op;
     // Returns the HW limit on number of barriers per tile/cluster
     switch (arch) {
     case config::ArchKind::NPU37XX:
@@ -126,10 +128,11 @@ int64_t getMaxBarriersPerTile(config::ArchKind arch) {
 }
 
 int64_t vpux::VPUIP::getNumAvailableBarriers(mlir::Operation* parentOp) {
-    const auto arch = config::getArch(parentOp);
     auto module = getModuleOp(parentOp);
+
+    const auto arch = config::getArch(parentOp);
     const auto tileCount = VPUIP::getNumTilesUsed(module);
-    const auto barriersPerTile = getMaxBarriersPerTile(arch);
+    const auto barriersPerTile = getMaxBarriersPerTile(arch, parentOp);
 
     return barriersPerTile * tileCount;
 }
@@ -597,7 +600,10 @@ SmallVector<mlir::Value> getPerClusterSWBuffers(mlir::MLIRContext* ctx, mlir::Lo
             if (allowDiscontinuousBuffers && !isContinuousBufferType) {
                 auto newStrides = compactType.getStrides();
                 // This stride override doesn't work correctly for SW operations with multiple outputs
-                if (swTaskOp.getOutputStridesAttr() != nullptr && (swTaskOp->getNumResults() == 1)) {
+                // TODO: update how unrolled buffer strides are determined - E#207539
+                if (swTaskOp.getOutputStridesAttr() != nullptr &&
+                    ((swTaskOp->getNumResults() == 1) ||
+                     (swTaskOp->getNumResults() == 2 && swTaskOp.getProfilingData() != nullptr))) {
                     auto relatedStrides = swTaskOp.getOutputStridesAttr();
                     if (operandType == VPUIP::OperandType::input && swTaskOp.getInputStridesAttr() != nullptr) {
                         relatedStrides = swTaskOp.getInputStridesAttr();
@@ -730,6 +736,16 @@ SmallVector<mlir::Value> getPerClusterSWBuffers(mlir::MLIRContext* ctx, mlir::Lo
     }
 
     VPUX_THROW("Unsupported distribution mode: {0}", VPU::stringifyDistributionMode(distributionMode));
+}
+
+SmallVector<mlir::Value> duplicateOperand(mlir::Value operand, int64_t tileCount) {
+    auto declBuff = operand.getDefiningOp<VPURT::DeclareBufferOp>();
+    VPUX_THROW_UNLESS(declBuff != nullptr, "Can't get buffer offset for operand: {0}", operand);
+    SmallVector<mlir::Value> perClusterBuffers(tileCount);
+    for (int64_t clusterId = 0; clusterId < tileCount; clusterId++) {
+        perClusterBuffers[clusterId] = declBuff;
+    }
+    return perClusterBuffers;
 }
 
 }  // namespace
@@ -1312,6 +1328,10 @@ SmallVector<mlir::Value> vpux::VPUIP::getPerClusterSWMemoryBuffers(mlir::MLIRCon
     auto operandSpecificType = operand.getType();
     auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(operandSpecificType);
 
+    if (isIoDmaSwKernel(swTaskOp) && (distributedType == nullptr)) {
+        return duplicateOperand(operand, tileCount);
+    }
+
     if (distributedType == nullptr) {  // input type is memref, need to use infos from output type
         auto resultType = swTaskOp->getResults().front().getType();
         distributedType = mlir::dyn_cast<VPUIP::DistributedBufferType>(resultType);
@@ -1420,6 +1440,10 @@ SmallVector<mlir::Value> vpux::VPUIP::getPerClusterSWComputeBuffers(mlir::MLIRCo
 
     auto operandSpecificType = operand.getType();
     auto distributedType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(operandSpecificType);
+
+    if (isIoDmaSwKernel(swTaskOp) && (distributedType == nullptr)) {
+        return duplicateOperand(operand, tileCount);
+    }
 
     if (distributedType == nullptr) {
         auto inputType = swTaskOp->getOperand(0).getType();
@@ -1991,7 +2015,10 @@ bool vpux::VPUIP::isChannelOffsetsAndTileDimCompatibleWithDistributedCopy(
     auto realOffsetIndexVal = distributedTypeDimOrder.dimPos(Dim(offsetIndexVal));
     auto realTileIndexVal = distributedTypeDimOrder.dimPos(Dim(tileIndexVal));
 
-    if (realOffsetIndexVal <= realTileIndexVal) {
+    // The offset dim must be at or above the tiling dim in the memory layout.
+    // Equal indices (offset == tile axis) are valid: the subview shifts within the tiling
+    // axis itself and does not cross cluster boundaries in an incompatible way.
+    if (realOffsetIndexVal < realTileIndexVal) {
         return false;
     }
 
@@ -2525,7 +2552,7 @@ mlir::Value VPUIP::createDummyBuffer(mlir::OpBuilder& builder, mlir::Operation* 
 
 VPURT::TaskOp VPUIP::createSyncDMA(mlir::OpBuilder& builder, mlir::Value input, mlir::Value output, int port,
                                    mlir::ValueRange waitBarriers, mlir::ValueRange updateBarriers,
-                                   llvm::StringLiteral opName) {
+                                   llvm::StringRef opName) {
     auto ctx = builder.getContext();
     auto syncDmaLoc = mlir::NameLoc::get(mlir::StringAttr::get(ctx, opName));
     auto portAttr = vpux::getIntAttr(ctx, port);
@@ -2994,11 +3021,16 @@ void VPUIP::splitSpaceToDepth(mlir::PatternRewriter& rewriter,
     }
 }
 
-// SubView is not compatible with distributed buffer when:
-// 1. Distributed buffer is segmented
-// 2. SubView shrinks segmented axis
+// Checks whether a SubViewOp is compatible with a distributed buffer. Incompatible cases:
+// 1. SEGMENTED|OVERLAPPED mode — not yet supported (TODO: E191949).
+// 2. DUPLICATED or MULTICASTED mode — always compatible; no per-cluster tiling axis exists.
+// 3. For segmented/overlapped modes with a tiling axis:
+//    a. Subview offset dimension is above the tiling axis in memory order (channel-offset/tile-dim mismatch).
+//    b. SubView shrinks the tiling axis, unless supportSameAxisForClusteredTilingAndSubview is true,
+//       in which case a subview on the same axis as the tiling dim is also accepted.
 bool vpux::VPUIP::isSubViewCompatibleWithDistributedBuffer(VPUIP::SubViewOp subViewOp,
-                                                           VPUIP::DistributedBufferType distributedType) {
+                                                           VPUIP::DistributedBufferType distributedType,
+                                                           bool supportSameAxisForClusteredTilingAndSubview) {
     const auto distributionAttr = distributedType.getDistribution();
     const auto mode = distributionAttr.getMode().getValue();
     // TODO: E191949 - support new mode
@@ -3021,7 +3053,7 @@ bool vpux::VPUIP::isSubViewCompatibleWithDistributedBuffer(VPUIP::SubViewOp subV
     }
 
     // Be compatible if SubView does not shrink segmented axis
-    return origShape[Dim(tileIndexVal)] == subShape[Dim(tileIndexVal)];
+    return supportSameAxisForClusteredTilingAndSubview || (origShape[Dim(tileIndexVal)] == subShape[Dim(tileIndexVal)]);
 }
 
 mlir::Value vpux::VPUIP::getRootBuffer(mlir::Value buffer) {

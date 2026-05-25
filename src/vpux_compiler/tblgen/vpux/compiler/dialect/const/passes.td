@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -16,7 +16,13 @@ def ConstantFolding : PassBase<"constant-folding", "vpux::FunctionPass"> {
     let summary = "Constant folding";
 
     let description = [{
-        This pass performs constant folding.
+        AI-generated summary
+
+        Materializes Const.DeclareOp transformation pipelines (quantize, dequantize,
+        reshape, transpose, pad, etc.) into final folded constant data.
+        Constants smaller than 1 KB are folded inline; larger constants are folded
+        in parallel threads. Constants exceeding a configurable size threshold
+        (default 300 MB) are folded on a single thread to limit peak memory usage.
     }];
 
     let constructor = "vpux::Const::createConstantFoldingPass()";

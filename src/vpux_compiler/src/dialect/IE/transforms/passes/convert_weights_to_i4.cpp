@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops_interfaces.hpp"
@@ -205,20 +206,14 @@ void ConvertWeightsToI4Pass::safeRunOnFunc() {
     typeConverter.addConversion([](vpux::NDTypeInterface tensor) {
         // Handle U4 only storage type with zero point of 8
         const auto elementType = tensor.getElementType();
-        if (mlir::isa_and_nonnull<mlir::quant::QuantileQuantizedType, mlir::quant::QuantileQuantizedPerAxisType>(
-                    elementType)) {
-            // in QuantileQuantizedType the u4 storage type remains unchanged while it's the type in the lut
-            // (quantileType) that should be updated, but u4 is not actually supported as a palletization table type, so
-            // nothing to be done
-            return tensor;
-        } else if (const auto uniformType = mlir::dyn_cast_or_null<mlir::quant::UniformQuantizedType>(elementType)) {
+        if (const auto uniformType = mlir::dyn_cast_if_present<mlir::quant::UniformQuantizedType>(elementType)) {
             const uint64_t zeroPoint = uniformType.getZeroPoint();
             if (!uniformType.isSigned() && uniformType.getStorageTypeIntegralWidth() == 4 && zeroPoint == 8) {
                 const auto newElemType = changeStorageTypeToI4(uniformType);
                 return tensor.changeElemType(newElemType);
             }
         } else if (const auto perAxisType =
-                           mlir::dyn_cast_or_null<mlir::quant::UniformQuantizedPerAxisType>(elementType)) {
+                           mlir::dyn_cast_if_present<mlir::quant::UniformQuantizedPerAxisType>(elementType)) {
             const auto zeroPoints = perAxisType.getZeroPoints();
             bool isAllEight = std::all_of(zeroPoints.begin(), zeroPoints.end(), [](int n) {
                 return n == 8;
@@ -238,19 +233,13 @@ void ConvertWeightsToI4Pass::safeRunOnFunc() {
         // only handle U4 type with zero point of 8
         const auto constTensor = constOp.getResult();
         const auto elementType = mlir::cast<vpux::NDTypeInterface>(constTensor.getType()).getElementType();
-        if (mlir::isa_and_nonnull<mlir::quant::QuantileQuantizedType, mlir::quant::QuantileQuantizedPerAxisType>(
-                    elementType)) {
-            // in QuantileQuantizedType the u4 storage type remains unchanged while it's the type in the lut
-            // (quantileType) that should be updated, but u4 is not actually supported as a palletization table type, so
-            // nothing to be done (declare as legal)
-            return true;
-        } else if (const auto uniformType = mlir::dyn_cast_or_null<mlir::quant::UniformQuantizedType>(elementType)) {
+        if (const auto uniformType = mlir::dyn_cast_if_present<mlir::quant::UniformQuantizedType>(elementType)) {
             const uint64_t zeroPoint = uniformType.getZeroPoint();
             if (!uniformType.isSigned() && uniformType.getStorageTypeIntegralWidth() == 4 && zeroPoint == 8) {
                 return false;
             }
         } else if (const auto perAxisType =
-                           mlir::dyn_cast_or_null<mlir::quant::UniformQuantizedPerAxisType>(elementType)) {
+                           mlir::dyn_cast_if_present<mlir::quant::UniformQuantizedPerAxisType>(elementType)) {
             const auto zeroPoints = perAxisType.getZeroPoints();
             bool isAllEight = std::all_of(zeroPoints.begin(), zeroPoints.end(), [](int n) {
                 return n == 8;

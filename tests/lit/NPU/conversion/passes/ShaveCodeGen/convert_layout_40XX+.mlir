@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-eltwise-layers-to-math %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --convert-eltwise-layers-to-math %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -245,11 +245,11 @@ module @PReluLayoutConversionInputsOutputs {
 
     // CHECK: func.func @main([[FUNC_INPUT:%.+]]: tensor<1x3x4x5xf16, {order = [[NHWC]]}>) -> tensor<1x3x4x5xf16, {order = [[NHWC]]}>
     // CHECK-NEXT: [[CGRES:%.+]] = IE.CodeGenCapsule inputs([[FUNC_INPUT]] as [[INPUT:.+]]: tensor<1x4x5x3xf16>)
+    // CHECK-NEXT:   [[ZERO:%.+]] = arith.constant 0.000000e+00 : f16
     // CHECK-NEXT:   [[SLOPE:%.+]] = arith.constant dense<2.500000e-01> : tensor<3xf16>
     // CHECK-NEXT:   [[EMPTY:%.+]] = tensor.empty() : tensor<1x4x5x3xf16>
     // CHECK-NEXT:   [[GENERIC:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[MAP]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[INPUT]], [[SLOPE]] : tensor<1x4x5x3xf16>, tensor<3xf16>) outs([[EMPTY]] : tensor<1x4x5x3xf16>) {
     // CHECK-NEXT:   ^bb0([[IN:%.+]]: f16, [[SLOPE_VAL:%.+]]: f16, {{.+}}: f16):
-    // CHECK-NEXT:     [[ZERO:%.+]] = arith.constant 0.000000e+00 : f16
     // CHECK-NEXT:     [[MIN:%.+]] = arith.minimumf [[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
     // CHECK-NEXT:     [[MAX:%.+]] = arith.maximumf [[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
     // CHECK-NEXT:     [[MUL:%.+]] = arith.mulf [[MIN]], [[SLOPE_VAL]] : f16
@@ -288,11 +288,11 @@ module @PReluLayoutConversionInputs {
 
     // CHECK: func.func @main([[FUNC_INPUT:%.+]]: tensor<1x3x4x5xf16, {order = [[NHWC]]}>) -> tensor<1x3x4x5xf16>
     // CHECK-NEXT: [[CGRES:%.+]] = IE.CodeGenCapsule inputs([[FUNC_INPUT]] as [[INPUT:.+]]: tensor<1x4x5x3xf16>)
+    // CHECK-NEXT:   [[ZERO:%.+]] = arith.constant 0.000000e+00 : f16
     // CHECK-NEXT:   [[SLOPE:%.+]] = arith.constant dense<2.500000e-01> : tensor<3xf16>
     // CHECK-NEXT:   [[EMPTY:%.+]] = tensor.empty() : tensor<1x3x4x5xf16>
     // CHECK-NEXT:   [[GENERIC:%.+]] = linalg.generic {indexing_maps = [[[NHWC]], [[MAP]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[INPUT]], [[SLOPE]] : tensor<1x4x5x3xf16>, tensor<3xf16>) outs([[EMPTY]] : tensor<1x3x4x5xf16>) {
     // CHECK-NEXT:   ^bb0([[IN:%.+]]: f16, [[SLOPE_VAL:%.+]]: f16, {{.+}}: f16):
-    // CHECK-NEXT:     [[ZERO:%.+]] = arith.constant 0.000000e+00 : f16
     // CHECK-NEXT:     [[MIN:%.+]] = arith.minimumf [[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
     // CHECK-NEXT:     [[MAX:%.+]] = arith.maximumf [[IN]], [[ZERO]] fastmath<nnan,nsz> : f16
     // CHECK-NEXT:     [[MUL:%.+]] = arith.mulf [[MIN]], [[SLOPE_VAL]] : f16

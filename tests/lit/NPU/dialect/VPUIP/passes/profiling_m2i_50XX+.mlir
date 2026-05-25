@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --m2i-profiling %s | FileCheck %s
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --m2i-profiling %s | FileCheck %s
+// REQUIRES: platform-NPU5010
 
 // CHECK-LABEL: @M2IProfiling
 module @M2IProfiling {

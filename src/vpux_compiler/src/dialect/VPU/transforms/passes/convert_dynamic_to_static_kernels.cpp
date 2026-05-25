@@ -77,7 +77,7 @@ mlir::func::FuncOp createStaticFuncOp(mlir::func::FuncOp dynFuncOp, SmallVector<
 // to specify which network data info have dynamic strides.
 static void setDynamicShapeAttributes(mlir::OpBuilder& builder, mlir::func::FuncOp oldFuncOp,
                                       mlir::func::FuncOp newFuncOp) {
-    llvm::StringRef dynmicStridesAttrName = HOST_EXEC_FUNC_ARG_DYNAMIC_STRIDES_ATTR_NAME;
+    llvm::StringRef dynmicStridesAttrName = vpux::HostExec::HOST_EXEC_FUNC_ARG_DYNAMIC_STRIDES_ATTR_NAME;
 
     for (auto [idx, argType] : llvm::enumerate(oldFuncOp.getArgumentTypes())) {
         auto tensorType = mlir::dyn_cast<mlir::RankedTensorType>(argType);

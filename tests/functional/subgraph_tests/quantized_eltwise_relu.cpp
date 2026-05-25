@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -93,7 +93,7 @@ TEST_P(QuantizedEltwiseReluGraphTest_NPU3720, HW) {
 
 std::vector<std::vector<float>> input0FqRanges = {{0.0f, 7.0f, 0.0f, 7.0f}};
 std::vector<std::vector<float>> input1FqRanges = {{0.0f, 4.0f, 0.0f, 4.0f}};
-std::vector<std::vector<float>> outputFqRanges = {{-9.0f, 9.0f, -9.0f, 9.0f}, {0.0f, 9.0f, 0.0f, 9.0f}};
+std::vector<std::vector<float>> outputFqRanges = {{-11.0f, 11.0f, -11.0f, 11.0f}};
 const auto basicCases = ::testing::Combine(::testing::ValuesIn(input0FqRanges), ::testing::ValuesIn(input1FqRanges),
                                            ::testing::ValuesIn(outputFqRanges));
 

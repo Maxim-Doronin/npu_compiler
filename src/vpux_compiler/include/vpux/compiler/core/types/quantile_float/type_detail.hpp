@@ -11,8 +11,8 @@
 namespace vpux {
 namespace detail {
 
-/// Quantile float Type Storage and Uniquing.
-struct QuantileFloatTypeStorage : public mlir::TypeStorage {
+/// Quantile Type Storage and Uniquing.
+struct QuantileTypeStorage : public mlir::TypeStorage {
     mlir::Type storageType;
     mlir::Type quantileType;
     const double* quantilesElements;
@@ -58,16 +58,16 @@ struct QuantileFloatTypeStorage : public mlir::TypeStorage {
         return KeyTy::genericIsEqual(*this, key);
     }
 
-    QuantileFloatTypeStorage(const KeyTy& key, ArrayRef<double> quantiles)
+    QuantileTypeStorage(const KeyTy& key, ArrayRef<double> quantiles)
             : storageType(key.storageType),
               quantileType(key.quantileType),
               quantilesElements(quantiles.data()),
               quantilesParamsSize(quantiles.size()) {
     }
 
-    static QuantileFloatTypeStorage* construct(mlir::TypeStorageAllocator& allocator, KeyTy key) {
+    static QuantileTypeStorage* construct(mlir::TypeStorageAllocator& allocator, KeyTy key) {
         ArrayRef<double> quantiles = allocator.copyInto(key.quantiles);
-        return new (allocator.allocate<QuantileFloatTypeStorage>()) QuantileFloatTypeStorage(key, quantiles);
+        return new (allocator.allocate<QuantileTypeStorage>()) QuantileTypeStorage(key, quantiles);
     }
 
     static unsigned hashKey(const KeyTy& key) {

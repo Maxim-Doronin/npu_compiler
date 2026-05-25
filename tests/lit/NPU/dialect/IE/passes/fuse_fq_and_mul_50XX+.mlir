@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --fuse-fq-and-mul %s | FileCheck %s
-// REQUIRES: arch-NPU50XX
-// COM: F8 is only supported on NPU50+, no need to run these tests on all arches.
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --fuse-fq-and-mul %s | FileCheck %s
+// REQUIRES: platform-NPU5010
+// COM: F8 is only supported on NPU50+, no need to run these tests on all platforms.
 
 // CHECK-LABEL: @FuseFakeQuantizeAndMultiplyF8E4M3FN
 // CHECK-SAME:    [[INPUT:%.+]]: tensor<1x288x20x20xf32>

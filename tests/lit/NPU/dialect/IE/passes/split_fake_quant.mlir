@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --split-fake-quant %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --split-fake-quant %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK: !qElemType = !quant.uniform<u8:f32, 1.000000e+00>
 // CHECK-LABEL: @SingleQuantParams
@@ -595,9 +595,9 @@ func.func @GarbageFq() -> tensor<1x3x1x1xf16> {
   }
 #-}
 
-!quantFloatType = !QuantileFloat.quantileFloat<ui4:f16, {-1.0, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 1.0}>
+!quantFloatType = !QuantileType.quantile<ui4:f16, {-1.0, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 1.0}>
 
-// CHECK: !qElemType = !quant.quantile<u4:f16:f16, {-1.000000e+00,-8.000000e-01,-0.69999999999999996,-6.000000e-01,-5.000000e-01,-4.000000e-01,-3.000000e-01,0.000000e+00,1.000000e-01,2.000000e-01,3.000000e-01,4.000000e-01,5.000000e-01,6.000000e-01,0.69999999999999996,1.000000e+00}:0.02211761474609375>
+// CHECK: !qElemType = !quant.uniform<!QuantileType.quantile<ui4:f16, {-1.000000e+00,-8.000000e-01,-7.000000e-01,-6.000000e-01,-5.000000e-01,-4.000000e-01,-3.000000e-01,0.000000e+00,1.000000e-01,2.000000e-01,3.000000e-01,4.000000e-01,5.000000e-01,6.000000e-01,7.000000e-01,1.000000e+00}>:f16, 0.02211761474609375>
 
 // CHECK-LABEL: @NF4ConstantsSplitFakeQuant
 // CHECK-SAME:  [[INPUT:%.+]]: tensor<1x1x28x28xf16>
@@ -612,7 +612,7 @@ func.func @NF4ConstantsSplitFakeQuant(%arg0: tensor<1x1x28x28xf16>) -> tensor<1x
     return %1 : tensor<1x1x29x29xf16>
 
     // CHECK-NOT:       IE.FakeQuantize
-    // CHECK: [[CST:%.+]] = const.Declare tensor<1x1x2x2x!qElemType> = dense_resource<blob> : tensor<1x1x2x2xui4> isSplat, [#const.ConvertElemType<ui8>, #const.CastElemType<!QuantileFloat.quantileFloat<ui4:f16, {-1.000000e+00,-8.000000e-01,-0.69999999999999996,-6.000000e-01,-5.000000e-01,-4.000000e-01,-3.000000e-01,0.000000e+00,1.000000e-01,2.000000e-01,3.000000e-01,4.000000e-01,5.000000e-01,6.000000e-01,0.69999999999999996,1.000000e+00}>>, #const.CastElemType<f16>, #const.CastElemType<!qElemType>]
+    // CHECK: [[CST:%.+]] = const.Declare tensor<1x1x2x2x!qElemType> = dense_resource<blob> : tensor<1x1x2x2xui4> isSplat, [#const.ConvertElemType<ui8>, #const.CastElemType<!QuantileType.quantile<ui4:f16, {-1.000000e+00,-8.000000e-01,-0.69999999999999996,-6.000000e-01,-5.000000e-01,-4.000000e-01,-3.000000e-01,0.000000e+00,1.000000e-01,2.000000e-01,3.000000e-01,4.000000e-01,5.000000e-01,6.000000e-01,0.69999999999999996,1.000000e+00}>>, #const.CastElemType<f16>, #const.CastElemType<!qElemType>]
     // CHECK: [[DQ_CST:%.+]] = IE.Dequantize([[CST]]) {dstElemType = f16}
     // CHECK: [[CONV:%.+]] = IE.Convolution([[INPUT]], [[DQ_CST]]) {dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], strides = [1, 1]} : tensor<1x1x28x28xf16>, tensor<1x1x2x2xf16> -> tensor<1x1x29x29xf16>
     // CHECK: return [[CONV]]
@@ -810,4 +810,31 @@ func.func @NotSplitFQWithNonStaticLowHighValues(%arg0: tensor<1x256x2048x1xf16>,
     // CHECK:           [[FQ:%.+]] = IE.FakeQuantize
 
     // CHECK:           return [[FQ]]
+}
+
+// -----
+
+// CHECK: !qElemType = !quant.uniform<i8:f16, 1.000000e+00>
+
+// CHECK-LABEL: @SplitFakeQuantForSignedInputFromGather
+// CHECK-SAME:    [[DATA:%.+]]: tensor<10x3x30x30xsi8>, [[INDICES:%.+]]: tensor<1xsi64>
+func.func @SplitFakeQuantForSignedInputFromGather(%arg0: tensor<10x3x30x30xsi8>, %arg1: tensor<1xsi64>) -> tensor<1x3x30x30xf16> {
+    %input_low = const.Declare tensor<1x1x1x1xf16> = dense<-1.280000e+02> : tensor<1x1x1x1xf16>
+    %input_high = const.Declare tensor<1x1x1x1xf16> = dense<1.270000e+02> : tensor<1x1x1x1xf16>
+
+    %gather = IE.Gather(%arg0, %arg1) {axis_value = 0 : i64, batch_dims = 0 : i64} : tensor<10x3x30x30xsi8>, tensor<1xsi64> -> tensor<1x3x30x30xsi8>
+    %convert = IE.Convert(%gather) {dstElemType = f16} : tensor<1x3x30x30xsi8> -> tensor<1x3x30x30xf16>
+
+    %fq = IE.FakeQuantize(%convert, %input_low, %input_high, %input_low, %input_high) {
+        auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64
+    } : tensor<1x3x30x30xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x3x30x30xf16>
+
+    return %fq : tensor<1x3x30x30xf16>
+
+    // CHECK-NOT:    IE.FakeQuantize
+
+    // CHECK:    [[QUANTIZE:%.+]] = IE.Quantize({{%.+}}) {dstElemType = !qElemType} : tensor<1x3x30x30xf16> -> tensor<1x3x30x30x!qElemType>
+    // CHECK:    [[DEQUANTIZE:%.+]] = IE.Dequantize([[QUANTIZE]]) {dstElemType = f16} : tensor<1x3x30x30x!qElemType> -> tensor<1x3x30x30xf16>
+
+    // CHECK:    return [[DEQUANTIZE]] : tensor<1x3x30x30xf16>
 }

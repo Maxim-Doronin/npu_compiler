@@ -441,7 +441,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Add_U8_U8_U8_LEAKY_RELU) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Add_F16_F16_F16_CLAMP) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createAdd(mlir::OpBuilder::atBlockEnd(module->getBody()), getF16Type(), getF16Type(), getF16Type(),
-                        create<IE::ClampAttr>(-25.0, 300.0));
+                        nullptr, createClamp(-25.0, 300.0));
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -463,7 +463,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Add_F16_F16_F16_CLAMP) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Add_F16_F16_U8_CLAMP) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createAdd(mlir::OpBuilder::atBlockEnd(module->getBody()), getF16Type(), getF16Type(), getU8Type(),
-                        create<IE::ClampAttr>(-25.0, 300.0));
+                        nullptr, createClamp(-25.0, 300.0));
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -484,8 +484,8 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Add_F16_F16_U8_CLAMP) {
 
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Add_U8_U8_F16_CLAMP) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
-    auto op = createAdd(mlir::OpBuilder::atBlockEnd(module->getBody()), getU8Type(), getU8Type(), getF16Type(),
-                        create<IE::ClampAttr>(-25.0, 300.0));
+    auto op = createAdd(mlir::OpBuilder::atBlockEnd(module->getBody()), getU8Type(), getU8Type(), getF16Type(), nullptr,
+                        createClamp(-25.0, 300.0));
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -507,7 +507,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Add_U8_U8_F16_CLAMP) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Add_U8_U8_U8_CLAMP) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createAdd(mlir::OpBuilder::atBlockEnd(module->getBody()), getF16Type(), getF16Type(), getF16Type(),
-                        create<IE::ClampAttr>(-25.0, 300.0));
+                        nullptr, createClamp(-25.0, 300.0));
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -647,7 +647,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Add_U8_U8_U8_EXP) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_F16_F16_NOOP_BiasPT) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto moduleBuilder = mlir::OpBuilder::atBlockEnd(module->getBody());
-    auto op = createConvolution(moduleBuilder, getF16Type(), getF16Type(), getF16Type(), 0.5, nullptr,
+    auto op = createConvolution(moduleBuilder, getF16Type(), getF16Type(), getF16Type(), 0.5, nullptr, nullptr,
                                 createBias(moduleBuilder, SmallVector<type::float16>(1, 0.25)));
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
@@ -670,7 +670,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_F16_F16_NOOP_BiasPT) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_F16_U8_NOOP_BiasPT) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto moduleBuilder = mlir::OpBuilder::atBlockEnd(module->getBody());
-    auto op = createConvolution(moduleBuilder, getF16Type(), getF16Type(), getU8Type(), 0.5, nullptr,
+    auto op = createConvolution(moduleBuilder, getF16Type(), getF16Type(), getU8Type(), 0.5, nullptr, nullptr,
                                 createBias(moduleBuilder, SmallVector<type::float16>(1, 0.25)));
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
@@ -693,7 +693,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_F16_U8_NOOP_BiasPT) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8_F16_NOOP_BiasPT) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto moduleBuilder = mlir::OpBuilder::atBlockEnd(module->getBody());
-    auto op = createConvolution(moduleBuilder, getU8Type(), getU8Type(), getF16Type(), 0.5, nullptr,
+    auto op = createConvolution(moduleBuilder, getU8Type(), getU8Type(), getF16Type(), 0.5, nullptr, nullptr,
                                 createBias(moduleBuilder, SmallVector<type::float16>(1, 0.25)));
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
@@ -716,7 +716,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8_F16_NOOP_BiasPT) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8_U8_NOOP_BiasPT) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto moduleBuilder = mlir::OpBuilder::atBlockEnd(module->getBody());
-    auto op = createConvolution(moduleBuilder, getF16Type(), getF16Type(), getF16Type(), 0.5, nullptr,
+    auto op = createConvolution(moduleBuilder, getF16Type(), getF16Type(), getF16Type(), 0.5, nullptr, nullptr,
                                 createBias(moduleBuilder, SmallVector<type::float16>(1, 0.25)));
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
@@ -739,7 +739,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8_U8_NOOP_BiasPT) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_F16_F8_NOOP_BiasPT) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto moduleBuilder = mlir::OpBuilder::atBlockEnd(module->getBody());
-    auto op = createConvolution(moduleBuilder, getF16Type(), getF16Type(), getF8Type(), 0.5, nullptr,
+    auto op = createConvolution(moduleBuilder, getF16Type(), getF16Type(), getF8Type(), 0.5, nullptr, nullptr,
                                 createBias(moduleBuilder, SmallVector<type::float16>(1, 0.25)));
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
@@ -762,7 +762,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_F16_F8_NOOP_BiasPT) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F8_F8_F16_NOOP_BiasPT) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto moduleBuilder = mlir::OpBuilder::atBlockEnd(module->getBody());
-    auto op = createConvolution(moduleBuilder, getF8Type(), getF8Type(), getF16Type(), 0.5, nullptr,
+    auto op = createConvolution(moduleBuilder, getF8Type(), getF8Type(), getF16Type(), 0.5, nullptr, nullptr,
                                 createBias(moduleBuilder, SmallVector<type::float16>(1, 0.25)));
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
@@ -785,7 +785,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F8_F8_F16_NOOP_BiasPT) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F8_F8_F8_BiasPT) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto moduleBuilder = mlir::OpBuilder::atBlockEnd(module->getBody());
-    auto op = createConvolution(moduleBuilder, getU8Type(), getU8Type(), getF8Type(), 0.5, nullptr,
+    auto op = createConvolution(moduleBuilder, getU8Type(), getU8Type(), getF8Type(), 0.5, nullptr, nullptr,
                                 createBias(moduleBuilder, SmallVector<type::float16>(1, 0.25)));
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
@@ -807,7 +807,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F8_F8_F8_BiasPT) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_F16_U8PC_NOOP) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createConvolution(mlir::OpBuilder::atBlockEnd(module->getBody()), getF16Type(), getF16Type(),
-                                getU8PerAxisType(), 0.5, nullptr, nullptr);
+                                getU8PerAxisType(), 0.5, nullptr, nullptr, nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -828,7 +828,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_F16_U8PC_NOOP) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_U8PC_FP16_NOOP) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createConvolution(mlir::OpBuilder::atBlockEnd(module->getBody()), getF16Type(), getU8PerAxisType(),
-                                getF16Type(), 0.5, nullptr, nullptr);
+                                getF16Type(), 0.5, nullptr, nullptr, nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -849,7 +849,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_U8PC_FP16_NOOP) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8PC_F16_F16_NOOP) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createConvolution(mlir::OpBuilder::atBlockEnd(module->getBody()), getU8PerAxisType(), getF16Type(),
-                                getF16Type(), 0.5, nullptr, nullptr);
+                                getF16Type(), 0.5, nullptr, nullptr, nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -870,7 +870,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8PC_F16_F16_NOOP) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_U8PC_F16_NOOP_BiasPT) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto moduleBuilder = mlir::OpBuilder::atBlockEnd(module->getBody());
-    auto op = createConvolution(moduleBuilder, getF16Type(), getU8PerAxisType(), getF16Type(), 0.5, nullptr,
+    auto op = createConvolution(moduleBuilder, getF16Type(), getU8PerAxisType(), getF16Type(), 0.5, nullptr, nullptr,
                                 createBias(moduleBuilder, SmallVector<type::float16>(1, 0.25)));
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
@@ -892,7 +892,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_U8PC_F16_NOOP_BiasPT) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8PC_F16_F16_NOOP_BiasPT) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto moduleBuilder = mlir::OpBuilder::atBlockEnd(module->getBody());
-    auto op = createConvolution(moduleBuilder, getU8PerAxisType(), getF16Type(), getF16Type(), 0.5, nullptr,
+    auto op = createConvolution(moduleBuilder, getU8PerAxisType(), getF16Type(), getF16Type(), 0.5, nullptr, nullptr,
                                 createBias(moduleBuilder, SmallVector<type::float16>(1, 0.25)));
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
@@ -914,7 +914,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8PC_F16_F16_NOOP_BiasPT) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_F16_F16_NOOP_BiasSplatPC) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto moduleBuilder = mlir::OpBuilder::atBlockEnd(module->getBody());
-    auto op = createConvolution(moduleBuilder, getF16Type(), getF16Type(), getF16Type(), 0.5, nullptr,
+    auto op = createConvolution(moduleBuilder, getF16Type(), getF16Type(), getF16Type(), 0.5, nullptr, nullptr,
                                 createBias(moduleBuilder, SmallVector<type::float16>(16, 0.25)));
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
@@ -937,7 +937,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_F16_F16_NOOP_BiasPC) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto moduleBuilder = mlir::OpBuilder::atBlockEnd(module->getBody());
     auto op = createConvolution(
-            moduleBuilder, getF16Type(), getF16Type(), getF16Type(), 0.5, nullptr,
+            moduleBuilder, getF16Type(), getF16Type(), getF16Type(), 0.5, nullptr, nullptr,
             createBias(moduleBuilder, SmallVector<type::float16>{0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.25,
                                                                  0.1, 0.1, 0.1, 0.1, 0.1}));
     ASSERT_NE(op, nullptr);
@@ -960,7 +960,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_F16_F16_NOOP_BiasPC) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_F16_U8PC_NOOP_BiasPT) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto moduleBuilder = mlir::OpBuilder::atBlockEnd(module->getBody());
-    auto op = createConvolution(moduleBuilder, getF16Type(), getF16Type(), getU8PerAxisType(), 0.5, nullptr,
+    auto op = createConvolution(moduleBuilder, getF16Type(), getF16Type(), getU8PerAxisType(), 0.5, nullptr, nullptr,
                                 createBias(moduleBuilder, SmallVector<type::float16>(1, 0.25)));
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
@@ -982,7 +982,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_F16_U8PC_NOOP_BiasPT) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_F16_U8PC_NOOP_BiasPC) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto moduleBuilder = mlir::OpBuilder::atBlockEnd(module->getBody());
-    auto op = createConvolution(moduleBuilder, getF16Type(), getF16Type(), getU8PerAxisType(), 0.5, nullptr,
+    auto op = createConvolution(moduleBuilder, getF16Type(), getF16Type(), getU8PerAxisType(), 0.5, nullptr, nullptr,
                                 createBias(moduleBuilder, SmallVector<type::float16>(16, 0.25)));
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
@@ -1005,7 +1005,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_F16_U8PC_NOOP_BiasPC) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_F16_F16_RELU) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createConvolution(mlir::OpBuilder::atBlockEnd(module->getBody()), getF16Type(), getF16Type(),
-                                getF16Type(), 0.5, create<IE::ReluAttr>(), nullptr);
+                                getF16Type(), 0.5, create<IE::ReluAttr>(), nullptr, nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1027,7 +1027,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_F16_F16_RELU) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_F16_U8_RELU) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createConvolution(mlir::OpBuilder::atBlockEnd(module->getBody()), getF16Type(), getF16Type(), getU8Type(),
-                                0.5, create<IE::ReluAttr>(), nullptr);
+                                0.5, create<IE::ReluAttr>(), nullptr, nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1049,7 +1049,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_F16_U8_RELU) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8_F16_RELU) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createConvolution(mlir::OpBuilder::atBlockEnd(module->getBody()), getU8Type(), getU8Type(), getF16Type(),
-                                0.5, create<IE::ReluAttr>(), nullptr);
+                                0.5, create<IE::ReluAttr>(), nullptr, nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1071,7 +1071,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8_F16_RELU) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8_U8_RELU) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createConvolution(mlir::OpBuilder::atBlockEnd(module->getBody()), getF16Type(), getF16Type(),
-                                getF16Type(), 0.5, create<IE::ReluAttr>(), nullptr);
+                                getF16Type(), 0.5, create<IE::ReluAttr>(), nullptr, nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1093,7 +1093,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8_U8_RELU) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_F16_F16_LEAKY_RELU) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createConvolution(mlir::OpBuilder::atBlockEnd(module->getBody()), getF16Type(), getF16Type(),
-                                getF16Type(), 0.5, create<IE::LeakyReluAttr>(0.1), nullptr);
+                                getF16Type(), 0.5, create<IE::LeakyReluAttr>(0.1), nullptr, nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1115,7 +1115,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_F16_F16_LEAKY_RELU) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_F16_U8_LEAKY_RELU) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createConvolution(mlir::OpBuilder::atBlockEnd(module->getBody()), getF16Type(), getF16Type(), getU8Type(),
-                                0.5, create<IE::LeakyReluAttr>(0.1), nullptr);
+                                0.5, create<IE::LeakyReluAttr>(0.1), nullptr, nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1137,7 +1137,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_F16_U8_LEAKY_RELU) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8_F16_LEAKY_RELU) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createConvolution(mlir::OpBuilder::atBlockEnd(module->getBody()), getU8Type(), getU8Type(), getF16Type(),
-                                0.5, create<IE::LeakyReluAttr>(0.1), nullptr);
+                                0.5, create<IE::LeakyReluAttr>(0.1), nullptr, nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1159,7 +1159,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8_F16_LEAKY_RELU) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8_U8_LEAKY_RELU) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createConvolution(mlir::OpBuilder::atBlockEnd(module->getBody()), getF16Type(), getF16Type(),
-                                getF16Type(), 0.5, create<IE::LeakyReluAttr>(0.1), nullptr);
+                                getF16Type(), 0.5, create<IE::LeakyReluAttr>(0.1), nullptr, nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1181,7 +1181,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8_U8_LEAKY_RELU) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_F16_F16_CLAMP) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createConvolution(mlir::OpBuilder::atBlockEnd(module->getBody()), getF16Type(), getF16Type(),
-                                getF16Type(), 0.5, create<IE::ClampAttr>(-25.0, 300.0), nullptr);
+                                getF16Type(), 0.5, nullptr, createClamp(-25.0, 300.0), nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1203,7 +1203,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_F16_F16_CLAMP) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_F16_U8_CLAMP) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createConvolution(mlir::OpBuilder::atBlockEnd(module->getBody()), getF16Type(), getF16Type(), getU8Type(),
-                                0.5, create<IE::ClampAttr>(-25.0, 300.0), nullptr);
+                                0.5, nullptr, createClamp(-25.0, 300.0), nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1225,7 +1225,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_F16_U8_CLAMP) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8_F16_CLAMP) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createConvolution(mlir::OpBuilder::atBlockEnd(module->getBody()), getU8Type(), getU8Type(), getF16Type(),
-                                0.5, create<IE::ClampAttr>(-25.0, 300.0), nullptr);
+                                0.5, nullptr, createClamp(-25.0, 300.0), nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1247,7 +1247,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8_F16_CLAMP) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8_U8_CLAMP) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createConvolution(mlir::OpBuilder::atBlockEnd(module->getBody()), getF16Type(), getF16Type(),
-                                getF16Type(), 0.5, create<IE::ClampAttr>(-25.0, 300.0), nullptr);
+                                getF16Type(), 0.5, nullptr, createClamp(-25.0, 300.0), nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1269,7 +1269,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8_U8_CLAMP) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_F16_U8_TANH) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createConvolution(mlir::OpBuilder::atBlockEnd(module->getBody()), getF16Type(), getF16Type(), getU8Type(),
-                                0.5, create<IE::TanhAttr>(), nullptr);
+                                0.5, create<IE::TanhAttr>(), nullptr, nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1291,7 +1291,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_F16_U8_TANH) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_F16_U8_SIGMOID) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createConvolution(mlir::OpBuilder::atBlockEnd(module->getBody()), getF16Type(), getF16Type(), getU8Type(),
-                                0.5, create<IE::SigmoidAttr>(), nullptr);
+                                0.5, create<IE::SigmoidAttr>(), nullptr, nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1313,7 +1313,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_F16_U8_SIGMOID) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_F16_U8_SWISH) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createConvolution(mlir::OpBuilder::atBlockEnd(module->getBody()), getF16Type(), getF16Type(), getU8Type(),
-                                0.5, create<IE::SwishAttr>(1.0), nullptr);
+                                0.5, create<IE::SwishAttr>(1.0), nullptr, nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1335,7 +1335,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_F16_U8_SWISH) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_F16_U8_GELU) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createConvolution(mlir::OpBuilder::atBlockEnd(module->getBody()), getF16Type(), getF16Type(), getU8Type(),
-                                0.5, create<IE::GeluAttr>(), nullptr);
+                                0.5, create<IE::GeluAttr>(), nullptr, nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1357,7 +1357,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_F16_F16_U8_GELU) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8_F16_TANH) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createConvolution(mlir::OpBuilder::atBlockEnd(module->getBody()), getU8Type(), getU8Type(), getF16Type(),
-                                0.5, create<IE::TanhAttr>(), nullptr);
+                                0.5, create<IE::TanhAttr>(), nullptr, nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1379,7 +1379,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8_F16_TANH) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8_F16_SIGMOID) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createConvolution(mlir::OpBuilder::atBlockEnd(module->getBody()), getU8Type(), getU8Type(), getF16Type(),
-                                0.5, create<IE::SigmoidAttr>(), nullptr);
+                                0.5, create<IE::SigmoidAttr>(), nullptr, nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1401,7 +1401,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8_F16_SIGMOID) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8_F16_SWISH) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createConvolution(mlir::OpBuilder::atBlockEnd(module->getBody()), getU8Type(), getU8Type(), getF16Type(),
-                                0.5, create<IE::SwishAttr>(1.0), nullptr);
+                                0.5, create<IE::SwishAttr>(1.0), nullptr, nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1423,7 +1423,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8_F16_SWISH) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8_F16_GELU) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createConvolution(mlir::OpBuilder::atBlockEnd(module->getBody()), getU8Type(), getU8Type(), getF16Type(),
-                                0.5, create<IE::GeluAttr>(), nullptr);
+                                0.5, create<IE::GeluAttr>(), nullptr, nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1445,7 +1445,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8_F16_GELU) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8_U8_TANH) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createConvolution(mlir::OpBuilder::atBlockEnd(module->getBody()), getU8Type(), getU8Type(), getU8Type(),
-                                0.5, create<IE::TanhAttr>(), nullptr);
+                                0.5, create<IE::TanhAttr>(), nullptr, nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1467,7 +1467,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8_U8_TANH) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8_U8_SIGMOID) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createConvolution(mlir::OpBuilder::atBlockEnd(module->getBody()), getU8Type(), getU8Type(), getU8Type(),
-                                0.5, create<IE::SigmoidAttr>(), nullptr);
+                                0.5, create<IE::SigmoidAttr>(), nullptr, nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1489,7 +1489,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8_U8_SIGMOID) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8_U8_SWISH) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createConvolution(mlir::OpBuilder::atBlockEnd(module->getBody()), getU8Type(), getU8Type(), getU8Type(),
-                                0.5, create<IE::SwishAttr>(1.0), nullptr);
+                                0.5, create<IE::SwishAttr>(1.0), nullptr, nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1511,7 +1511,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8_U8_SWISH) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8_U8_GELU) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createConvolution(mlir::OpBuilder::atBlockEnd(module->getBody()), getU8Type(), getU8Type(), getU8Type(),
-                                0.5, create<IE::GeluAttr>(), nullptr);
+                                0.5, create<IE::GeluAttr>(), nullptr, nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1533,7 +1533,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8_U8_GELU) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8PC_U8_TANH) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createConvolution(mlir::OpBuilder::atBlockEnd(module->getBody()), getU8Type(), getU8PerAxisType(),
-                                getU8Type(), 0.5, create<IE::TanhAttr>(), nullptr);
+                                getU8Type(), 0.5, create<IE::TanhAttr>(), nullptr, nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1555,7 +1555,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8PC_U8_TANH) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8PC_U8_SIGMOID) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createConvolution(mlir::OpBuilder::atBlockEnd(module->getBody()), getU8Type(), getU8PerAxisType(),
-                                getU8Type(), 0.5, create<IE::SigmoidAttr>(), nullptr);
+                                getU8Type(), 0.5, create<IE::SigmoidAttr>(), nullptr, nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1577,7 +1577,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8PC_U8_SIGMOID) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8PC_U8_SWISH) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createConvolution(mlir::OpBuilder::atBlockEnd(module->getBody()), getU8Type(), getU8PerAxisType(),
-                                getU8Type(), 0.5, create<IE::SwishAttr>(1.0), nullptr);
+                                getU8Type(), 0.5, create<IE::SwishAttr>(1.0), nullptr, nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1599,7 +1599,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8PC_U8_SWISH) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8PC_U8_GELU) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createConvolution(mlir::OpBuilder::atBlockEnd(module->getBody()), getU8Type(), getU8PerAxisType(),
-                                getU8Type(), 0.5, create<IE::GeluAttr>(), nullptr);
+                                getU8Type(), 0.5, create<IE::GeluAttr>(), nullptr, nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1621,7 +1621,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Conv_U8_U8PC_U8_GELU) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_AvgPool_F16_U8_NOOP) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createAvgPool(mlir::OpBuilder::atBlockEnd(module->getBody()), getF16Type(), getU8Type(), {2, 2}, 0.5,
-                            nullptr);
+                            nullptr, nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1643,7 +1643,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_AvgPool_F16_U8_NOOP) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_AvgPool_F16_U8_RELU) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createAvgPool(mlir::OpBuilder::atBlockEnd(module->getBody()), getF16Type(), getU8Type(), {2, 2}, 0.5,
-                            create<IE::ReluAttr>());
+                            create<IE::ReluAttr>(), nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1665,7 +1665,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_AvgPool_F16_U8_RELU) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_AvgPool_F16_U8_LEAKY_RELU) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createAvgPool(mlir::OpBuilder::atBlockEnd(module->getBody()), getF16Type(), getU8Type(), {2, 2}, 0.5,
-                            create<IE::LeakyReluAttr>(0.1));
+                            create<IE::LeakyReluAttr>(0.1), nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1687,7 +1687,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_AvgPool_F16_U8_LEAKY_RELU) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_AvgPool_F16_U8_CLAMP) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createAvgPool(mlir::OpBuilder::atBlockEnd(module->getBody()), getF16Type(), getU8Type(), {2, 2}, 0.5,
-                            create<IE::ClampAttr>(-25.0, 300.0));
+                            nullptr, createClamp(-25.0, 300.0));
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1709,7 +1709,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_AvgPool_F16_U8_CLAMP) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_AvgPool_F16_F16_TANH) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createAvgPool(mlir::OpBuilder::atBlockEnd(module->getBody()), getF16Type(), getF16Type(), {1, 1}, 1.0,
-                            create<IE::TanhAttr>());
+                            create<IE::TanhAttr>(), nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1731,7 +1731,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_AvgPool_F16_F16_TANH) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_AvgPool_F16_F16_SIGMOID) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createAvgPool(mlir::OpBuilder::atBlockEnd(module->getBody()), getF16Type(), getF16Type(), {1, 1}, 1.0,
-                            create<IE::SigmoidAttr>());
+                            create<IE::SigmoidAttr>(), nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1753,7 +1753,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_AvgPool_F16_F16_SIGMOID) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_AvgPool_F16_F16_SWISH) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createAvgPool(mlir::OpBuilder::atBlockEnd(module->getBody()), getF16Type(), getF16Type(), {1, 1}, 1.0,
-                            create<IE::SwishAttr>(1.0));
+                            create<IE::SwishAttr>(1.0), nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1775,7 +1775,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_AvgPool_F16_F16_SWISH) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_AvgPool_F16_F16_GELU) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createAvgPool(mlir::OpBuilder::atBlockEnd(module->getBody()), getF16Type(), getF16Type(), {1, 1}, 1.0,
-                            create<IE::GeluAttr>());
+                            create<IE::GeluAttr>(), nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1797,7 +1797,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_AvgPool_F16_F16_GELU) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_AvgPool_F16_U8_TANH) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createAvgPool(mlir::OpBuilder::atBlockEnd(module->getBody()), getF16Type(), getU8Type(), {1, 1}, 1.0,
-                            create<IE::TanhAttr>());
+                            create<IE::TanhAttr>(), nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1819,7 +1819,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_AvgPool_F16_U8_TANH) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_AvgPool_F16_U8_SIGMOID) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createAvgPool(mlir::OpBuilder::atBlockEnd(module->getBody()), getF16Type(), getU8Type(), {1, 1}, 1.0,
-                            create<IE::SigmoidAttr>());
+                            create<IE::SigmoidAttr>(), nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1841,7 +1841,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_AvgPool_F16_U8_SIGMOID) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_AvgPool_F16_U8_SWISH) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createAvgPool(mlir::OpBuilder::atBlockEnd(module->getBody()), getF16Type(), getU8Type(), {1, 1}, 1.0,
-                            create<IE::SwishAttr>(1.0));
+                            create<IE::SwishAttr>(1.0), nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1863,7 +1863,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_AvgPool_F16_U8_SWISH) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_AvgPool_F16_U8_GELU) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createAvgPool(mlir::OpBuilder::atBlockEnd(module->getBody()), getF16Type(), getU8Type(), {1, 1}, 1.0,
-                            create<IE::GeluAttr>());
+                            create<IE::GeluAttr>(), nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1885,7 +1885,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_AvgPool_F16_U8_GELU) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_AvgPool_U8_U8_TANH) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createAvgPool(mlir::OpBuilder::atBlockEnd(module->getBody()), getU8Type(), getU8Type(), {1, 1}, 1.0,
-                            create<IE::TanhAttr>());
+                            create<IE::TanhAttr>(), nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1907,7 +1907,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_AvgPool_U8_U8_TANH) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_AvgPool_U8_U8_SIGMOID) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createAvgPool(mlir::OpBuilder::atBlockEnd(module->getBody()), getU8Type(), getU8Type(), {1, 1}, 1.0,
-                            create<IE::SigmoidAttr>());
+                            create<IE::SigmoidAttr>(), nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1929,7 +1929,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_AvgPool_U8_U8_SIGMOID) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_AvgPool_U8_U8_SWISH) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createAvgPool(mlir::OpBuilder::atBlockEnd(module->getBody()), getU8Type(), getU8Type(), {1, 1}, 1.0,
-                            create<IE::SwishAttr>(1.0));
+                            create<IE::SwishAttr>(1.0), nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1951,7 +1951,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_AvgPool_U8_U8_SWISH) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_AvgPool_U8_U8_GELU) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createAvgPool(mlir::OpBuilder::atBlockEnd(module->getBody()), getU8Type(), getU8Type(), {1, 1}, 1.0,
-                            create<IE::GeluAttr>());
+                            create<IE::GeluAttr>(), nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1972,7 +1972,8 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_AvgPool_U8_U8_GELU) {
 
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_MaxPool_F16_F16_NOOP) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
-    auto op = createMaxPool(mlir::OpBuilder::atBlockEnd(module->getBody()), getF16Type(), getF16Type(), nullptr);
+    auto op =
+            createMaxPool(mlir::OpBuilder::atBlockEnd(module->getBody()), getF16Type(), getF16Type(), nullptr, nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -1993,7 +1994,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_MaxPool_F16_F16_NOOP) {
 
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_MaxPool_U8_U8_NOOP) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
-    auto op = createMaxPool(mlir::OpBuilder::atBlockEnd(module->getBody()), getU8Type(), getU8Type(), nullptr);
+    auto op = createMaxPool(mlir::OpBuilder::atBlockEnd(module->getBody()), getU8Type(), getU8Type(), nullptr, nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -2014,7 +2015,8 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_MaxPool_U8_U8_NOOP) {
 
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_MaxPool_F16_F32_NOOP) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
-    auto op = createMaxPool(mlir::OpBuilder::atBlockEnd(module->getBody()), getF16Type(), getF32Type(), nullptr);
+    auto op =
+            createMaxPool(mlir::OpBuilder::atBlockEnd(module->getBody()), getF16Type(), getF32Type(), nullptr, nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -2036,7 +2038,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_MaxPool_F16_F32_NOOP) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_MaxPool_U8_U8_TANH) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createMaxPool(mlir::OpBuilder::atBlockEnd(module->getBody()), getU8Type(), getU8Type(),
-                            create<IE::TanhAttr>());
+                            create<IE::TanhAttr>(), nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -2058,7 +2060,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_MaxPool_U8_U8_TANH) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_MaxPool_U8_U8_SIGMOID) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createMaxPool(mlir::OpBuilder::atBlockEnd(module->getBody()), getU8Type(), getU8Type(),
-                            create<IE::SigmoidAttr>());
+                            create<IE::SigmoidAttr>(), nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -2080,7 +2082,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_MaxPool_U8_U8_SIGMOID) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_MaxPool_U8_U8_SWISH) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createMaxPool(mlir::OpBuilder::atBlockEnd(module->getBody()), getU8Type(), getU8Type(),
-                            create<IE::SwishAttr>(1.0));
+                            create<IE::SwishAttr>(1.0), nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -2102,7 +2104,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_MaxPool_U8_U8_SWISH) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_MaxPool_U8_U8_GELU) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createMaxPool(mlir::OpBuilder::atBlockEnd(module->getBody()), getU8Type(), getU8Type(),
-                            create<IE::GeluAttr>());
+                            create<IE::GeluAttr>(), nullptr);
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -2123,8 +2125,8 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_MaxPool_U8_U8_GELU) {
 
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_MaxPool_F16_F16_CLAMP) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
-    auto op = createMaxPool(mlir::OpBuilder::atBlockEnd(module->getBody()), getF16Type(), getF16Type(),
-                            create<IE::ClampAttr>(0.0, 6.0));
+    auto op = createMaxPool(mlir::OpBuilder::atBlockEnd(module->getBody()), getF16Type(), getF16Type(), nullptr,
+                            createClamp(0.0, 6.0));
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -2145,8 +2147,8 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_MaxPool_F16_F16_CLAMP) {
 
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_MaxPool_U8_U8_CLAMP) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
-    auto op = createMaxPool(mlir::OpBuilder::atBlockEnd(module->getBody()), getU8Type(), getU8Type(),
-                            create<IE::ClampAttr>(0.0, 6.0));
+    auto op = createMaxPool(mlir::OpBuilder::atBlockEnd(module->getBody()), getU8Type(), getU8Type(), nullptr,
+                            createClamp(0.0, 6.0));
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);
@@ -2190,7 +2192,7 @@ TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Subtract_F16_F16_U8_LEAKY_RELU) {
 TEST_F(NPU50xxPpeIfcUnitTest, FpPPE_Multiply_F16_F16_U8_CLAMP) {
     mlir::OwningOpRef<mlir::ModuleOp> module = mlir::ModuleOp::create(_loc);
     auto op = createMultiply(mlir::OpBuilder::atBlockEnd(module->getBody()), getF16Type(), getF16Type(), getU8Type(),
-                             create<IE::ClampAttr>(-25.0, 300.0));
+                             nullptr, createClamp(-25.0, 300.0));
     ASSERT_NE(op, nullptr);
     auto ppeAttr = _ppeIfc->retrievePPEAttribute(op);
     ASSERT_NE(ppeAttr, nullptr);

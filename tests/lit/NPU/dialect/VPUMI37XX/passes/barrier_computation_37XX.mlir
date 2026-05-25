@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --barrier-computation-VPUMI37XX %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --barrier-computation-VPUMI37XX %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 module @Test {
 
@@ -149,139 +149,139 @@ func.func @main(%arg0: memref<1x1x2x1000xf16>, %arg1: memref<1x1x2x1000xf16>) ->
 
     %barrier32 = VPUMI37XX.ConfigureBarrier {consumer_count=1:ui8, producer_count=1:ui8 } <0,-1> -> !VPURegMapped.Index<0:0:32>
 
-    // CHECK:       [[VAL32:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<0, 64> previousSameId(%2 : !VPURegMapped.Index<0:0:0>) -> !VPURegMapped.Index<0:0:32>
+    // CHECK:       [[VAL32:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<0, 64> previousSameId([[VAL0]] : !VPURegMapped.Index<0:0:0>) -> !VPURegMapped.Index<0:0:32>
 
     %barrier33 = VPUMI37XX.ConfigureBarrier {consumer_count=1:ui8, producer_count=1:ui8 } <1,-1> -> !VPURegMapped.Index<0:0:33>
 
-    // CHECK:       [[VAL33:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<1, 65> previousSameId(%3 : !VPURegMapped.Index<0:0:1>) -> !VPURegMapped.Index<0:0:33>
+    // CHECK:       [[VAL33:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<1, 65> previousSameId([[VAL1]] : !VPURegMapped.Index<0:0:1>) -> !VPURegMapped.Index<0:0:33>
 
     %barrier34 = VPUMI37XX.ConfigureBarrier {consumer_count=1:ui8, producer_count=1:ui8 } <2,-1> -> !VPURegMapped.Index<0:0:34>
 
-    // CHECK:       [[VAL34:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<2, -1> previousSameId(%4 : !VPURegMapped.Index<0:0:2>) -> !VPURegMapped.Index<0:0:34>
+    // CHECK:       [[VAL34:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<2, -1> previousSameId([[VAL2]] : !VPURegMapped.Index<0:0:2>) -> !VPURegMapped.Index<0:0:34>
 
     %barrier35 = VPUMI37XX.ConfigureBarrier {consumer_count=1:ui8, producer_count=1:ui8 } <3,-1> -> !VPURegMapped.Index<0:0:35>
 
-    // CHECK:       [[VAL35:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<3, -1> previousSameId(%5 : !VPURegMapped.Index<0:0:3>) -> !VPURegMapped.Index<0:0:35>
+    // CHECK:       [[VAL35:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<3, -1> previousSameId([[VAL3]] : !VPURegMapped.Index<0:0:3>) -> !VPURegMapped.Index<0:0:35>
 
     %barrier36 = VPUMI37XX.ConfigureBarrier {consumer_count=1:ui8, producer_count=1:ui8 } <4,-1> -> !VPURegMapped.Index<0:0:36>
 
-    // CHECK:       [[VAL36:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<4, -1> previousSameId(%6 : !VPURegMapped.Index<0:0:4>) -> !VPURegMapped.Index<0:0:36>
+    // CHECK:       [[VAL36:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<4, -1> previousSameId([[VAL4]] : !VPURegMapped.Index<0:0:4>) -> !VPURegMapped.Index<0:0:36>
 
     %barrier37 = VPUMI37XX.ConfigureBarrier {consumer_count=1:ui8, producer_count=1:ui8 } <5,-1> -> !VPURegMapped.Index<0:0:37>
 
-    // CHECK:       [[VAL37:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<5, -1> previousSameId(%7 : !VPURegMapped.Index<0:0:5>) -> !VPURegMapped.Index<0:0:37>
+    // CHECK:       [[VAL37:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<5, -1> previousSameId([[VAL5]] : !VPURegMapped.Index<0:0:5>) -> !VPURegMapped.Index<0:0:37>
 
     %barrier38 = VPUMI37XX.ConfigureBarrier {consumer_count=1:ui8, producer_count=1:ui8 } <6,-1> -> !VPURegMapped.Index<0:0:38>
 
-    // CHECK:       [[VAL38:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<6, -1> previousSameId(%8 : !VPURegMapped.Index<0:0:6>) -> !VPURegMapped.Index<0:0:38>
+    // CHECK:       [[VAL38:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<6, -1> previousSameId([[VAL6]] : !VPURegMapped.Index<0:0:6>) -> !VPURegMapped.Index<0:0:38>
 
     %barrier39 = VPUMI37XX.ConfigureBarrier {consumer_count=1:ui8, producer_count=1:ui8 } <7,-1> -> !VPURegMapped.Index<0:0:39>
 
-    // CHECK:       [[VAL39:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<7, -1> previousSameId(%9 : !VPURegMapped.Index<0:0:7>) -> !VPURegMapped.Index<0:0:39>
+    // CHECK:       [[VAL39:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<7, -1> previousSameId([[VAL7]] : !VPURegMapped.Index<0:0:7>) -> !VPURegMapped.Index<0:0:39>
 
     %barrier40 = VPUMI37XX.ConfigureBarrier {consumer_count=1:ui8, producer_count=1:ui8 } <8,-1> -> !VPURegMapped.Index<0:0:40>
 
-    // CHECK:       [[VAL40:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<8, -1> previousSameId(%10 : !VPURegMapped.Index<0:0:8>) -> !VPURegMapped.Index<0:0:40>
+    // CHECK:       [[VAL40:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<8, -1> previousSameId([[VAL8]] : !VPURegMapped.Index<0:0:8>) -> !VPURegMapped.Index<0:0:40>
 
     %barrier41 = VPUMI37XX.ConfigureBarrier {consumer_count=1:ui8, producer_count=1:ui8 } <9,-1> -> !VPURegMapped.Index<0:0:41>
 
-    // CHECK:       [[VAL41:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<9, -1> previousSameId(%11 : !VPURegMapped.Index<0:0:9>) -> !VPURegMapped.Index<0:0:41>
+    // CHECK:       [[VAL41:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<9, -1> previousSameId([[VAL9]] : !VPURegMapped.Index<0:0:9>) -> !VPURegMapped.Index<0:0:41>
 
     %barrier42 = VPUMI37XX.ConfigureBarrier {consumer_count=1:ui8, producer_count=1:ui8 } <10,-1> -> !VPURegMapped.Index<0:0:42>
 
-    // CHECK:       [[VAL42:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<10, -1> previousSameId(%12 : !VPURegMapped.Index<0:0:10>) -> !VPURegMapped.Index<0:0:42>
+    // CHECK:       [[VAL42:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<10, -1> previousSameId([[VAL10]] : !VPURegMapped.Index<0:0:10>) -> !VPURegMapped.Index<0:0:42>
 
     %barrier43 = VPUMI37XX.ConfigureBarrier {consumer_count=1:ui8, producer_count=1:ui8 } <11,-1> -> !VPURegMapped.Index<0:0:43>
 
-    // CHECK:       [[VAL43:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<11, -1> previousSameId(%13 : !VPURegMapped.Index<0:0:11>) -> !VPURegMapped.Index<0:0:43>
+    // CHECK:       [[VAL43:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<11, -1> previousSameId([[VAL11]] : !VPURegMapped.Index<0:0:11>) -> !VPURegMapped.Index<0:0:43>
 
     %barrier44 = VPUMI37XX.ConfigureBarrier {consumer_count=1:ui8, producer_count=1:ui8 } <12,-1> -> !VPURegMapped.Index<0:0:44>
 
-    // CHECK:       [[VAL44:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<12, -1> previousSameId(%14 : !VPURegMapped.Index<0:0:12>) -> !VPURegMapped.Index<0:0:44>
+    // CHECK:       [[VAL44:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<12, -1> previousSameId([[VAL12]] : !VPURegMapped.Index<0:0:12>) -> !VPURegMapped.Index<0:0:44>
 
     %barrier45 = VPUMI37XX.ConfigureBarrier {consumer_count=1:ui8, producer_count=1:ui8 } <13,-1> -> !VPURegMapped.Index<0:0:45>
 
-    // CHECK:       [[VAL45:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<13, -1> previousSameId(%15 : !VPURegMapped.Index<0:0:13>) -> !VPURegMapped.Index<0:0:45>
+    // CHECK:       [[VAL45:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<13, -1> previousSameId([[VAL13]] : !VPURegMapped.Index<0:0:13>) -> !VPURegMapped.Index<0:0:45>
 
     %barrier46 = VPUMI37XX.ConfigureBarrier {consumer_count=1:ui8, producer_count=1:ui8 } <14,-1> -> !VPURegMapped.Index<0:0:46>
 
-    // CHECK:       [[VAL46:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<14, -1> previousSameId(%16 : !VPURegMapped.Index<0:0:14>) -> !VPURegMapped.Index<0:0:46>
+    // CHECK:       [[VAL46:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<14, -1> previousSameId([[VAL14]] : !VPURegMapped.Index<0:0:14>) -> !VPURegMapped.Index<0:0:46>
 
     %barrier47 = VPUMI37XX.ConfigureBarrier {consumer_count=1:ui8, producer_count=1:ui8 } <15,-1> -> !VPURegMapped.Index<0:0:47>
 
-    // CHECK:       [[VAL47:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<15, -1> previousSameId(%17 : !VPURegMapped.Index<0:0:15>) -> !VPURegMapped.Index<0:0:47>
+    // CHECK:       [[VAL47:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<15, -1> previousSameId([[VAL15]] : !VPURegMapped.Index<0:0:15>) -> !VPURegMapped.Index<0:0:47>
 
     %barrier48 = VPUMI37XX.ConfigureBarrier {consumer_count=1:ui8, producer_count=1:ui8 } <16,-1> -> !VPURegMapped.Index<0:0:48>
 
-    // CHECK:       [[VAL48:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<16, -1> previousSameId(%18 : !VPURegMapped.Index<0:0:16>) -> !VPURegMapped.Index<0:0:48>
+    // CHECK:       [[VAL48:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<16, -1> previousSameId([[VAL16]] : !VPURegMapped.Index<0:0:16>) -> !VPURegMapped.Index<0:0:48>
 
     %barrier49 = VPUMI37XX.ConfigureBarrier {consumer_count=1:ui8, producer_count=1:ui8 } <17,-1> -> !VPURegMapped.Index<0:0:49>
 
-    // CHECK:       [[VAL49:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<17, -1> previousSameId(%19 : !VPURegMapped.Index<0:0:17>) -> !VPURegMapped.Index<0:0:49>
+    // CHECK:       [[VAL49:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<17, -1> previousSameId([[VAL17]] : !VPURegMapped.Index<0:0:17>) -> !VPURegMapped.Index<0:0:49>
 
     %barrier50 = VPUMI37XX.ConfigureBarrier {consumer_count=1:ui8, producer_count=1:ui8 } <18,-1> -> !VPURegMapped.Index<0:0:50>
 
-    // CHECK:       [[VAL50:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<18, -1> previousSameId(%20 : !VPURegMapped.Index<0:0:18>) -> !VPURegMapped.Index<0:0:50>
+    // CHECK:       [[VAL50:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<18, -1> previousSameId([[VAL18]] : !VPURegMapped.Index<0:0:18>) -> !VPURegMapped.Index<0:0:50>
 
     %barrier51 = VPUMI37XX.ConfigureBarrier {consumer_count=1:ui8, producer_count=1:ui8 } <19,-1> -> !VPURegMapped.Index<0:0:51>
 
-    // CHECK:       [[VAL51:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<19, -1> previousSameId(%21 : !VPURegMapped.Index<0:0:19>) -> !VPURegMapped.Index<0:0:51>
+    // CHECK:       [[VAL51:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<19, -1> previousSameId([[VAL19]] : !VPURegMapped.Index<0:0:19>) -> !VPURegMapped.Index<0:0:51>
 
     %barrier52 = VPUMI37XX.ConfigureBarrier {consumer_count=1:ui8, producer_count=1:ui8 } <20,-1> -> !VPURegMapped.Index<0:0:52>
 
-    // CHECK:       [[VAL52:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<20, -1> previousSameId(%22 : !VPURegMapped.Index<0:0:20>) -> !VPURegMapped.Index<0:0:52>
+    // CHECK:       [[VAL52:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<20, -1> previousSameId([[VAL20]] : !VPURegMapped.Index<0:0:20>) -> !VPURegMapped.Index<0:0:52>
 
     %barrier53 = VPUMI37XX.ConfigureBarrier {consumer_count=1:ui8, producer_count=1:ui8 } <21,-1> -> !VPURegMapped.Index<0:0:53>
 
-    // CHECK:       [[VAL53:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<21, -1> previousSameId(%23 : !VPURegMapped.Index<0:0:21>) -> !VPURegMapped.Index<0:0:53>
+    // CHECK:       [[VAL53:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<21, -1> previousSameId([[VAL21]] : !VPURegMapped.Index<0:0:21>) -> !VPURegMapped.Index<0:0:53>
 
     %barrier54 = VPUMI37XX.ConfigureBarrier {consumer_count=1:ui8, producer_count=1:ui8 } <22,-1> -> !VPURegMapped.Index<0:0:54>
 
-    // CHECK:       [[VAL54:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<22, -1> previousSameId(%24 : !VPURegMapped.Index<0:0:22>) -> !VPURegMapped.Index<0:0:54>
+    // CHECK:       [[VAL54:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<22, -1> previousSameId([[VAL22]] : !VPURegMapped.Index<0:0:22>) -> !VPURegMapped.Index<0:0:54>
 
     %barrier55 = VPUMI37XX.ConfigureBarrier {consumer_count=1:ui8, producer_count=1:ui8 } <23,-1> -> !VPURegMapped.Index<0:0:55>
 
-    // CHECK:       [[VAL55:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<23, -1> previousSameId(%25 : !VPURegMapped.Index<0:0:23>) -> !VPURegMapped.Index<0:0:55>
+    // CHECK:       [[VAL55:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<23, -1> previousSameId([[VAL23]] : !VPURegMapped.Index<0:0:23>) -> !VPURegMapped.Index<0:0:55>
 
     %barrier56 = VPUMI37XX.ConfigureBarrier {consumer_count=1:ui8, producer_count=1:ui8 } <24,-1> -> !VPURegMapped.Index<0:0:56>
 
-    // CHECK:       [[VAL56:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<24, -1> previousSameId(%26 : !VPURegMapped.Index<0:0:24>) -> !VPURegMapped.Index<0:0:56>
+    // CHECK:       [[VAL56:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<24, -1> previousSameId([[VAL24]] : !VPURegMapped.Index<0:0:24>) -> !VPURegMapped.Index<0:0:56>
 
     %barrier57 = VPUMI37XX.ConfigureBarrier {consumer_count=1:ui8, producer_count=1:ui8 } <25,-1> -> !VPURegMapped.Index<0:0:57>
 
-    // CHECK:       [[VAL57:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<25, -1> previousSameId(%27 : !VPURegMapped.Index<0:0:25>) -> !VPURegMapped.Index<0:0:57>
+    // CHECK:       [[VAL57:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<25, -1> previousSameId([[VAL25]] : !VPURegMapped.Index<0:0:25>) -> !VPURegMapped.Index<0:0:57>
 
     %barrier58 = VPUMI37XX.ConfigureBarrier {consumer_count=1:ui8, producer_count=1:ui8 } <26,-1> -> !VPURegMapped.Index<0:0:58>
 
-    // CHECK:       [[VAL58:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<26, -1> previousSameId(%28 : !VPURegMapped.Index<0:0:26>) -> !VPURegMapped.Index<0:0:58>
+    // CHECK:       [[VAL58:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<26, -1> previousSameId([[VAL26]] : !VPURegMapped.Index<0:0:26>) -> !VPURegMapped.Index<0:0:58>
 
     %barrier59 = VPUMI37XX.ConfigureBarrier {consumer_count=1:ui8, producer_count=1:ui8 } <27,-1> -> !VPURegMapped.Index<0:0:59>
 
-    // CHECK:       [[VAL59:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<27, -1> previousSameId(%29 : !VPURegMapped.Index<0:0:27>) -> !VPURegMapped.Index<0:0:59>
+    // CHECK:       [[VAL59:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<27, -1> previousSameId([[VAL27]] : !VPURegMapped.Index<0:0:27>) -> !VPURegMapped.Index<0:0:59>
 
     %barrier60 = VPUMI37XX.ConfigureBarrier {consumer_count=1:ui8, producer_count=1:ui8 } <28,-1> -> !VPURegMapped.Index<0:0:60>
 
-    // CHECK:       [[VAL60:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<28, -1> previousSameId(%30 : !VPURegMapped.Index<0:0:28>) -> !VPURegMapped.Index<0:0:60>
+    // CHECK:       [[VAL60:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<28, -1> previousSameId([[VAL28]] : !VPURegMapped.Index<0:0:28>) -> !VPURegMapped.Index<0:0:60>
 
     %barrier61 = VPUMI37XX.ConfigureBarrier {consumer_count=1:ui8, producer_count=1:ui8 } <29,-1> -> !VPURegMapped.Index<0:0:61>
 
-    // CHECK:       [[VAL61:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<29, -1> previousSameId(%31 : !VPURegMapped.Index<0:0:29>) -> !VPURegMapped.Index<0:0:61>
+    // CHECK:       [[VAL61:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<29, -1> previousSameId([[VAL29]] : !VPURegMapped.Index<0:0:29>) -> !VPURegMapped.Index<0:0:61>
 
     %barrier62 = VPUMI37XX.ConfigureBarrier {consumer_count=1:ui8, producer_count=1:ui8 } <30,-1> -> !VPURegMapped.Index<0:0:62>
 
-    // CHECK:       [[VAL62:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<30, -1> previousSameId(%32 : !VPURegMapped.Index<0:0:30>) -> !VPURegMapped.Index<0:0:62>
+    // CHECK:       [[VAL62:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<30, -1> previousSameId([[VAL30]] : !VPURegMapped.Index<0:0:30>) -> !VPURegMapped.Index<0:0:62>
 
     %barrier63 = VPUMI37XX.ConfigureBarrier {consumer_count=1:ui8, producer_count=1:ui8 } <31,-1> -> !VPURegMapped.Index<0:0:63>
 
-    // CHECK:       [[VAL63:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<31, -1> previousSameId(%33 : !VPURegMapped.Index<0:0:31>) -> !VPURegMapped.Index<0:0:63>
+    // CHECK:       [[VAL63:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<31, -1> previousSameId([[VAL31]] : !VPURegMapped.Index<0:0:31>) -> !VPURegMapped.Index<0:0:63>
 
     %barrier64 = VPUMI37XX.ConfigureBarrier {consumer_count=1:ui8, producer_count=1:ui8 } <0,-1> -> !VPURegMapped.Index<0:0:64>
 
-    // CHECK:       [[VAL64:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<0, -1> previousSameId(%34 : !VPURegMapped.Index<0:0:32>) -> !VPURegMapped.Index<0:0:64>
+    // CHECK:       [[VAL64:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<0, -1> previousSameId([[VAL32]] : !VPURegMapped.Index<0:0:32>) -> !VPURegMapped.Index<0:0:64>
 
     %barrier65 = VPUMI37XX.ConfigureBarrier {consumer_count=1:ui8, producer_count=1:ui8 } <1,-1> -> !VPURegMapped.Index<0:0:65>
 
-    // CHECK:       [[VAL65:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<1, -1> previousSameId(%35 : !VPURegMapped.Index<0:0:33>) -> !VPURegMapped.Index<0:0:65>
+    // CHECK:       [[VAL65:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 1 : ui8, producer_count = 1 : ui8}<1, -1> previousSameId([[VAL33]] : !VPURegMapped.Index<0:0:33>) -> !VPURegMapped.Index<0:0:65>
 
     %d64 = VPUMI37XX.NNDMA <{port = 0 : i64}> inputs(%arg0 : memref<1x1x2x1000xf16>) outputs(%arg1 : memref<1x1x2x1000xf16>) waits(%barrier64 : !VPURegMapped.Index<0:0:64>) updates(%barrier65 : !VPURegMapped.Index<0:0:65>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:64>
     %d63 = VPUMI37XX.NNDMA <{port = 0 : i64}> inputs(%arg0 : memref<1x1x2x1000xf16>) outputs(%arg1 : memref<1x1x2x1000xf16>) nextDMAIdx(%d64 : !VPURegMapped.Index<0:0:64>) waits(%barrier63 : !VPURegMapped.Index<0:0:63>) updates(%barrier64 : !VPURegMapped.Index<0:0:64>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:63>

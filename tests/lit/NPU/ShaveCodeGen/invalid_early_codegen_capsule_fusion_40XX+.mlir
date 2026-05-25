@@ -6,8 +6,8 @@
 // The EarlyCodegenCapsuleFusion pass relies on FusionChainAnalysis to be pre-computed & cached
 // So if there is no analysis cached (as in no previous pass perfomed it), the pass is expected to fail
 
-// RUN: vpux-opt --init-compiler="vpu-arch=%arch%" --early-codegen-capsule-fusion %s -verify-diagnostics
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --init-compiler="platform=%platform%" --early-codegen-capsule-fusion %s -verify-diagnostics
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 module @InvalidMultipleCosFuse {
   net.NetworkInfo entryPoint : @main inputsInfo : {

@@ -14,8 +14,6 @@
 #include "vcl_profiling.hpp"
 #include "vcl_query_network.hpp"
 
-#include "intel_npu/config/options.hpp"
-
 using namespace vpux;
 
 template <typename Allocator>
@@ -49,17 +47,31 @@ private:
 // outside of the extern "C" block to allow C++ templates
 template <typename Allocator>
 vcl_result_t allocatedExecutableCreate(vcl_compiler_handle_t compiler, vcl_executable_desc_t desc, Allocator* allocator,
-                                       uint8_t** blob, uint64_t* size) {
-    uint8_t* blobResult = nullptr;
-    uint64_t sizeResult = 0;
-    auto scoped = VPUXDriverCompiler::Scoped{[&]() {
-        *blob = blobResult;
-        *size = sizeResult;
-    }};
-
+                                       uint8_t** blob, uint64_t* size, uint8_t** compatibilityReqBuffer = nullptr,
+                                       uint64_t* compatibilityReqSize = nullptr) {
     if (!compiler || !allocator || !blob || !size || !desc.modelIRData) {
         return VCL_RESULT_ERROR_INVALID_ARGUMENT;
     }
+
+    if (!compatibilityReqBuffer != !compatibilityReqSize) {
+        // Both compatibilityReqBuffer and compatibilityReqSize should be provided together
+        return VCL_RESULT_ERROR_INVALID_ARGUMENT;
+    }
+
+    uint8_t* blobResult = nullptr;
+    uint64_t sizeResult = 0;
+    uint8_t* compatibilityReqBufferResult = nullptr;
+    uint64_t compatibilityReqSizeResult = 0;
+    auto scoped = VPUXDriverCompiler::Scoped{[&]() {
+        *blob = blobResult;
+        *size = sizeResult;
+        if (compatibilityReqBuffer) {
+            *compatibilityReqBuffer = compatibilityReqBufferResult;
+        }
+        if (compatibilityReqSize) {
+            *compatibilityReqSize = compatibilityReqSizeResult;
+        }
+    }};
 
     VPUXDriverCompiler::VPUXCompilerL0* pCompiler = reinterpret_cast<VPUXDriverCompiler::VPUXCompilerL0*>(compiler);
     VPUXDriverCompiler::VCLLogger* vclLogger = pCompiler->getLogger();
@@ -86,9 +98,13 @@ vcl_result_t allocatedExecutableCreate(vcl_compiler_handle_t compiler, vcl_execu
         // NetworkMetadata is part of the result, but unused in VCL
         // it'd just get destroyed at function call here
         VCLBlobAllocator vcl_allocator{allocator};
-        auto result = pCompiler->importNetwork(buildInfo, vcl_allocator);
+        const auto isCompatibilityReqRequested =
+                (compatibilityReqBuffer != nullptr) && (compatibilityReqSize != nullptr);
+        auto result = pCompiler->importNetwork(buildInfo, vcl_allocator, isCompatibilityReqRequested);
         blobResult = result.compiledNetwork.ptr;
         sizeResult = result.compiledNetwork.size;
+        compatibilityReqBufferResult = result.compatibilityString.ptr;
+        compatibilityReqSizeResult = result.compatibilityString.size;
     } catch (const std::exception& error) {
         vclLogger->outputError(formatv("Compiler returned msg:\n{0}", error.what()));
         return VCL_RESULT_ERROR_INVALID_ARGUMENT;
@@ -370,6 +386,14 @@ DLLEXPORT vcl_result_t vclExecutableCreate(vcl_compiler_handle_t compiler, vcl_e
     return ret;
 }
 
+DLLEXPORT vcl_result_t vclAllocatedExecutableCreate3(vcl_compiler_handle_t compiler, vcl_executable_desc_t desc,
+                                                     vcl_allocator2_t* allocator, uint8_t** blobBuffer,
+                                                     uint64_t* blobSize, uint8_t** compatibilityReqBuffer,
+                                                     uint64_t* compatibilityReqSize) {
+    return allocatedExecutableCreate(compiler, desc, allocator, blobBuffer, blobSize, compatibilityReqBuffer,
+                                     compatibilityReqSize);
+}
+
 DLLEXPORT vcl_result_t vclAllocatedExecutableCreate2(vcl_compiler_handle_t compiler, vcl_executable_desc_t desc,
                                                      vcl_allocator2_t* allocator, uint8_t** blob, uint64_t* size) {
     return allocatedExecutableCreate(compiler, desc, allocator, blob, size);
@@ -406,9 +430,8 @@ DLLEXPORT vcl_result_t vclExecutableGetSerializableBlob(vcl_executable_handle_t 
     }
     if (ret != VCL_RESULT_SUCCESS) {
         vclLogger->outputError("Failed to get blob");
-        return ret;
     }
-    return VCL_RESULT_SUCCESS;
+    return ret;
 }
 
 DLLEXPORT vcl_result_t vclExecutableDestroy(vcl_executable_handle_t executable) {
@@ -543,14 +566,18 @@ DLLEXPORT vcl_result_t VCL_APICALL vclGetCompilerIsOptionSupported(vcl_compiler_
     }
 
     VPUXDriverCompiler::VPUXCompilerL0* pCompiler = reinterpret_cast<VPUXDriverCompiler::VPUXCompilerL0*>(compiler);
-    vcl_result_t ret = VCL_RESULT_ERROR_UNKNOWN;
+    VPUXDriverCompiler::VCLLogger* vclLogger = pCompiler->getLogger();
 
-    if (pCompiler->isOptionValueSupported(option, value)) {
-        return VCL_RESULT_SUCCESS;
-    } else {
-        return VCL_RESULT_ERROR_UNSUPPORTED_FEATURE;
+    try {
+        if (pCompiler->isOptionValueSupported(option, value)) {
+            return VCL_RESULT_SUCCESS;
+        }
+    } catch (const std::exception& error) {
+        vclLogger->outputError(formatv("Failed to check option support:\n{0}", error.what()));
+        return VCL_RESULT_ERROR_INVALID_ARGUMENT;
     }
-    return ret;
+
+    return VCL_RESULT_ERROR_UNSUPPORTED_FEATURE;
 };
 
 #ifdef __cplusplus

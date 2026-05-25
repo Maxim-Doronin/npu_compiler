@@ -157,3 +157,20 @@ def Config_ExecutorKind :
 def Config_ExecutorKindAttr : Config_EnumAttr<Config_ExecutorKind, "executor_kind">;
 
 #endif
+
+//
+// HostBackendMode
+//
+
+def Config_HostBackendMode :
+        Config_I64EnumAttr<
+            "HostBackendMode",
+            "Host backend execution mode",
+            [
+                I64EnumAttrCase<"JIT",         0>,
+                I64EnumAttrCase<"Interpreter",  1>,
+            ]
+        > {
+}
+
+def Config_HostBackendModeAttr : Config_EnumAttr<Config_HostBackendMode, "host_backend_mode">;

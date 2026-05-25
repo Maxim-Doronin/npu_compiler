@@ -21,19 +21,11 @@ using DoubleOption = mlir::detail::PassOptions::Option<double>;
 
 enum class WorkloadManagementStatus { ENABLED = 0, DISABLED = 1, FAILED = 2 };
 
-enum class WorkloadManagementMode {
-    PWLM_V0_LCA = 0,
-    PWLM_V0_1_PAGES = 1,
-    PWLM_V1_BARRIER_FIFO = 2,
-    PWLM_V2_PAGES = 3,
-    FWLM_V1_PAGES = 4
-};
+enum class WorkloadManagementMode { PWLM_V0_1_PAGES = 0, FWLM_V1_PAGES = 1 };
 
-enum class AllocateShaveStackFrames { ENABLED = 0, DISABLED = 1 };
+enum class AllocateDDRStackFrames { ENABLED = 0, DISABLED = 1 };
 enum class WorkloadManagementBarrierProgrammingMode {
     LEGACY = 0,
-    NO_BARRIER_DMAS_SCHEDULED = 1,
-    INITIAL_BARRIER_DMAS_SCHEDULED = 2,
     ALL_BARRIER_DMAS_SCHEDULED = 3,
     ALL_BARRIER_DMAS_SCHEDULED_4K = 4,
     UNKNOWN = 255

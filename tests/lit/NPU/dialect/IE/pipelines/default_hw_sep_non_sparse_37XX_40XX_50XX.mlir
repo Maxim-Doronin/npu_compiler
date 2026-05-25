@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --vpu-arch=%arch% --default-hw-mode="enable-se-ptrs-operations=true enable-activation-sparsity=false enable-weights-sparsity=false" %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --platform=%platform% --default-hw-mode="enable-se-ptrs-operations=true enable-activation-sparsity=false enable-weights-sparsity=false" %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 
 // CHECK-LABEL: @Interpolate

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --optimize-concat-view-copies %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --optimize-concat-view-copies %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -27,7 +27,7 @@ func.func @DontOptimizeForInplaceUser(%arg0 : !DistributedBufferType, %arg1 : !D
 
     %copy2 = VPUIP.Copy inputs(%subview2 : memref<1x896x288x4xf16, {order = #NHWC, strides = [2064384, 1, 7168, 1792]}, @DDR>) outputs(%allocDistributed : !OverlappedBufferType) -> !OverlappedBufferType
 
-    %nceClusterTask = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 37893 : i64} <{eltwise_type = #VPU.eltwise_type<MULTIPLY>, is_inplace = true, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}>
+    %nceClusterTask = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 37893 : i64, resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{eltwise_type = #VPU.eltwise_type<MULTIPLY>, is_inplace = true, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}>
             input(%copy2 : !OverlappedBufferType)
             weights(%arg2 : !OverlappedBufferType)
             parent_input(%copy2 : !OverlappedBufferType)

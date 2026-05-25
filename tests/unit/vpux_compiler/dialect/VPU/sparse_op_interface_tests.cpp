@@ -10,8 +10,8 @@
 #include "vpux/compiler/dialect/VPU/IR/types.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
-#include "vpux/compiler/init.hpp"
-#include "vpux/compiler/interfaces_registry.hpp"
+#include "vpux/compiler/init/dialects_registry.hpp"
+#include "vpux/compiler/init/interfaces_registry.hpp"
 
 #include <mlir/IR/MLIRContext.h>
 #include <mlir/Parser/Parser.h>

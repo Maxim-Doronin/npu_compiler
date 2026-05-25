@@ -6,6 +6,7 @@
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/weights_separation.hpp"
 #include "vpux/compiler/utils/passes.hpp"
+#include "vpux/utils/core/scope_exit.hpp"
 
 #include "common/utils.hpp"
 
@@ -76,6 +77,12 @@ TEST(MLIR_VPU_ConstructDestructWsAnalysis, EnsureRaii) {
     mlir::MLIRContext ctx(registry);
     auto m = mlir::parseSourceString<mlir::ModuleOp>(inputIR, &ctx);
     ASSERT_TRUE(m.get() != nullptr);
+
+    // Note: for the sake of this test, any options would suffice
+    VPU::WeightsSeparationInfo::setOptions(m.get(), VPU::WeightsSeparationInfo::Options{});
+    VPUX_SCOPE_EXIT {
+        VPU::WeightsSeparationInfo::removeOptions(m.get());
+    };
 
     mlir::PassManager pm(m.get()->getName());
     pm.addPass(std::make_unique<CheckCachePass>(/*should be cached*/ false));  // no caching before

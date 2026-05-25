@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --process-asymmetric-zero-points-for-matmul="matmul-mixed-precision-decomposition-ratio=250" --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --process-asymmetric-zero-points-for-matmul="matmul-mixed-precision-decomposition-ratio=250" --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // Test for large filter scenario (>100MB) - typical for LLM vocabulary embedding layers
 // For LLM models (e.g., 0.5B parameters), the vocabulary dictionary in FP16 precision

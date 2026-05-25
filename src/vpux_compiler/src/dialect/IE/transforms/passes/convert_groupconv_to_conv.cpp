@@ -19,7 +19,7 @@
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
-#include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Transforms/WalkPatternRewriteDriver.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_CONVERTGROUPCONVTOCONV
@@ -150,6 +150,11 @@ bool ConvertGroupConvToConvPass::DepthwiseConvSinglePixelInputToMultiplyConverte
 
 mlir::LogicalResult ConvertGroupConvToConvPass::DepthwiseConvSinglePixelInputToMultiplyConverter::matchAndRewrite(
         IE::GroupConvolutionOp origOp, mlir::PatternRewriter& rewriter) const {
+    if (mlir::failed(
+                IE::canConvertGroupConvToConv(origOp, /*isAttrCheckEnabled=*/false, /*checkHandleLargePads=*/true))) {
+        return mlir::failure();
+    }
+
     if (!isSpecialPattern(origOp)) {
         return mlir::failure();
     }
@@ -388,6 +393,11 @@ bool isSupportAffineReshape(IE::AffineReshapeOp reshapeOp, IE::FakeQuantizeOp fa
 
 mlir::LogicalResult ConvertGroupConvToConvPass::GroupConvToSingleConvConverter::matchAndRewrite(
         IE::GroupConvolutionOp origOp, mlir::PatternRewriter& rewriter) const {
+    if (mlir::failed(
+                IE::canConvertGroupConvToConv(origOp, /*isAttrCheckEnabled=*/false, /*checkHandleLargePads=*/true))) {
+        return mlir::failure();
+    }
+
     _log.trace("Got GroupConvolutionOp layer at '{0}'", origOp->getLoc());
     VPUX_THROW_UNLESS(origOp.getType().getRank() == 4, "The pass currently can only support 4D input");
 
@@ -407,6 +417,7 @@ mlir::LogicalResult ConvertGroupConvToConvPass::GroupConvToSingleConvConverter::
     auto weightsCst = weights.getDefiningOp<Const::DeclareOp>();
     auto weightsFQ = weights.getDefiningOp<IE::FakeQuantizeOp>();
     auto weightsAffineReshapeOp = weights.getDefiningOp<IE::AffineReshapeOp>();
+    auto weightsReshapeOp = weights.getDefiningOp<IE::ReshapeOp>();
 
     if (weightsAffineReshapeOp != nullptr) {
         weightsFQ = weightsAffineReshapeOp.getInput().getDefiningOp<IE::FakeQuantizeOp>();
@@ -414,6 +425,12 @@ mlir::LogicalResult ConvertGroupConvToConvPass::GroupConvToSingleConvConverter::
         if (weightsFQ == nullptr || !isSupportAffineReshape(weightsAffineReshapeOp, weightsFQ)) {
             _log.trace("FakeQuantizeOp can't be found or quantized axis is split or merged by affineReshape at '{0}'",
                        origOp->getLoc());
+            return mlir::failure();
+        }
+    } else if (weightsReshapeOp != nullptr) {
+        weightsFQ = weightsReshapeOp.getInput().getDefiningOp<IE::FakeQuantizeOp>();
+        if (weightsFQ == nullptr || !IE::isPerTensorFQ({weightsFQ})) {
+            _log.trace("FakeQuantizeOp can't be found or not per-tensor quantization at '{0}'", origOp->getLoc());
             return mlir::failure();
         }
     }
@@ -478,6 +495,8 @@ mlir::LogicalResult ConvertGroupConvToConvPass::GroupConvToSingleConvConverter::
         auto groupWeightsSetup = weightsContentAttr.transform();
         if (weightsAffineReshapeOp != nullptr) {
             groupWeightsSetup = groupWeightsSetup.reshape(getShape(weightsAffineReshapeOp.getOutput()));
+        } else if (weightsReshapeOp != nullptr) {
+            groupWeightsSetup = groupWeightsSetup.reshape(getShape(weightsReshapeOp.getOutput()));
         }
 
         const auto subviewOffsets = Shape{(groupIdx - 1) * groupOutSize, 0, 0, 0};
@@ -585,6 +604,11 @@ private:
 
 mlir::LogicalResult ConvertGroupConvToConvPass::GroupConvToMultiConvConverter::matchAndRewrite(
         IE::GroupConvolutionOp origOp, mlir::PatternRewriter& rewriter) const {
+    if (mlir::failed(
+                IE::canConvertGroupConvToConv(origOp, /*isAttrCheckEnabled=*/false, /*checkHandleLargePads=*/true))) {
+        return mlir::failure();
+    }
+
     _log.trace("Got GroupConvolutionOp layer at '{0}'", origOp->getLoc());
     VPUX_THROW_UNLESS(origOp.getType().getRank() == 4, "The pass currently can only support 4D input");
 
@@ -691,31 +715,13 @@ mlir::LogicalResult ConvertGroupConvToConvPass::GroupConvToMultiConvConverter::m
 
 void ConvertGroupConvToConvPass::safeRunOnFunc() {
     auto& ctx = getContext();
-    mlir::ConversionTarget target(ctx);
-
-    //
-    target.addDynamicallyLegalOp<IE::GroupConvolutionOp>([&](IE::GroupConvolutionOp op) {
-        return mlir::failed(IE::canConvertGroupConvToConv(op, /*isAttrCheckEnabled=*/false,
-                                                          /*checkHandleLargePads=*/true));
-    });
-    target.addLegalOp<IE::ConvolutionOp>();
-    target.addLegalOp<IE::ReshapeOp>();
-    target.addLegalOp<IE::ConcatOp>();
-    target.addLegalOp<IE::SliceOp>();
-    target.addLegalOp<Const::DeclareOp>();
-    target.addLegalOp<IE::FakeQuantizeOp>();
-    target.addLegalOp<IE::TileOp>();
-    target.addLegalOp<IE::MultiplyOp>();
 
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<DepthwiseConvSinglePixelInputToMultiplyConverter>(&ctx, vpux::benefitHigh, _log);
     patterns.add<GroupConvToSingleConvConverter>(&ctx, vpux::benefitMid, _log);
     patterns.add<GroupConvToMultiConvConverter>(&ctx, vpux::benefitLow, _log);
 
-    auto func = getOperation();
-    if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
-        signalPassFailure();
-    }
+    walkAndApplyPatterns(getOperation(), std::move(patterns));
 }
 
 }  // namespace

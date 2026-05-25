@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --init-compiler="vpu-arch=%arch%" %s | FileCheck %s --strict-whitespace
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --init-compiler="platform=%platform%" %s | FileCheck %s --strict-whitespace
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
   func.func private @MLIR_VPURegMapped_CreateDpuVariantRegisterAllowOverlapTrue() {
     VPURegMapped.RegisterWrapper regAttr(<regForTest offset 12 size 32 allowOverlap {

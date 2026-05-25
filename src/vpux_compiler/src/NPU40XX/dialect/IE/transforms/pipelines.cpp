@@ -20,39 +20,6 @@ using namespace vpux;
 // Outlining
 //
 
-void vpux::IE::arch40xx::buildOutliningPipeline(mlir::OpPassManager& pm, const DefaultHWOptionsBase& options,
-                                                Logger log) {
-    const auto grc = getDefaultGreedyRewriteConfig();
-
-    // Blob compilation using 'debatcher' method leverages 'outlining' feature so that
-    // it will be turned on unless it was already enabled
-    bool isOutliningEnabled = options.functionOutlining.hasValue() || DebatcherOptions::isAvailable(options);
-    if (!canOutlineFromProfilingPerspective(options)) {
-        // TODO: E#140041 enable profiling with outlining
-        log.warning("Outlining was disabled due to profiling being enabled");
-        isOutliningEnabled = false;
-    }
-    if (isOutliningEnabled) {
-        if (options.enableLoopOutliner) {
-            pm.addPass(IE::createLoopOutlinerPass(log));
-        }
-        pm.addPass(mlir::createCanonicalizerPass(grc));
-
-        auto debatcherOptionsPtr = DebatcherOptions::create(options);
-        if (debatcherOptionsPtr) {
-            pm.addPass(IE::createDebatcherPass(*debatcherOptionsPtr, log));
-            pm.addPass(IE::createOutlinerPass(options, log));
-            pm.addPass(IE::createDeDebatcherPass(*debatcherOptionsPtr, log));
-            if (auto reorderingOptionsPtr = IE::DebatcherOpReorderingOptions::create(*debatcherOptionsPtr, log)) {
-                pm.addPass(IE::createOverrideTileExecutorNumPass(*reorderingOptionsPtr, log));
-            }
-        } else {
-            pm.addPass(IE::createOutlinerPass(options, log));
-            pm.addPass(IE::createDuplicateFQAcrossFunctionCallsPass(log));
-        }
-    }
-}
-
 void vpux::IE::arch40xx::buildLowPrecisionPipeline(mlir::OpPassManager& pm, const LowPrecisionOptions& options,
                                                    Logger log) {
     const auto grc = getDefaultGreedyRewriteConfig();
@@ -61,7 +28,7 @@ void vpux::IE::arch40xx::buildLowPrecisionPipeline(mlir::OpPassManager& pm, cons
     pm.addPass(IE::createSwapFakeQuantWithReshapeAndStridedSlicePass(log));
     pm.addPass(IE::createSwapConvertWithReshapeKindOpsPass(log));
     if (options.enableAlignScales) {
-        pm.addPass(IE::createAlignScalesPass(isOptionEnabled(options.enableSEPtrsOperations), log));
+        pm.addPass(IE::createAlignScalesPass(log));
     }
     if (options.enableAdjustNonZeroFakeQuant) {
         pm.addPass(IE::createAdjustNonZeroFakeQuantPass(log));
@@ -75,24 +42,20 @@ void vpux::IE::arch40xx::buildLowPrecisionPipeline(mlir::OpPassManager& pm, cons
 
     pm.addPass(mlir::createCanonicalizerPass());  // Note: folds constants before convert-to-dequantize
     pm.addPass(IE::createConvertToQuantizedOpsPass(log));
-    if (options.enablePropagateQuantDequant) {
-        pm.addPass(mlir::createCanonicalizerPass(grc));
-        pm.addPass(IE::createPropagateAndFuseQuantizeDequantizePass(log));
-    }
+    pm.addPass(mlir::createCanonicalizerPass(grc));
+    pm.addPass(IE::createPropagateAndFuseQuantizeDequantizePass(log));
     pm.addPass(IE::createFuseConvertWithQDQPass(log));
     if (options.enableSwapTransposeWithFQ) {
         pm.addPass(IE::createSwapTransposeWithFQPass(log));
     }
     pm.addPass(IE::createPropagateDequantThroughConcatPass(log));
     pm.addPass(IE::createConvertWeightsToU8Pass(log));
-    pm.addPass(IE::createFuseQuantizedOpsPass(
-            /*seOpsEnabled=*/isOptionEnabled(options.enableSEPtrsOperations),
-            /*seExperimentalOpsEnabled=*/isOptionEnabled(options.enableExperimentalSEPtrsOperations), log));
+    pm.addPass(IE::createFuseQuantizedOpsPass(log));
 
     // Enable sequence FuseQuantizedOps->FuseActivationOps->FuseOutstandingDequant->ConvertToMixedPrecision->
     // ConvertQuantizeOpsToNceOps. The sequence allows Conv->Quantize->Dequantize->LeakyReLU->Quantize->Dequantize
     // fused into a single Conv.
-    pm.addPass(IE::createFuseActivationOpsPass(options.enableFuseClampOperations, log));
+    pm.addPass(IE::createFuseActivationOpsPass(log));
 
     if (options.enableConvertWeightsToU8I4) {
         pm.addPass(IE::createConvertWeightsToI8Pass(log));
@@ -113,9 +76,7 @@ void vpux::IE::arch40xx::buildLowPrecisionPipeline(mlir::OpPassManager& pm, cons
     // of NCE operations to U8, condition that is necessary in rewriters like: FuseWithEltwiseConverter,
     // FloatOutAddRewriter where it required that the operands to have the same data type and this happens only after
     // execution of ConvertWeightsToU8.
-    pm.addPass(IE::createFuseQuantizedOpsPass(
-            /*seOpsEnabled=*/isOptionEnabled(options.enableSEPtrsOperations),
-            /*seExperimentalOpsEnabled=*/isOptionEnabled(options.enableExperimentalSEPtrsOperations), log));
+    pm.addPass(IE::createFuseQuantizedOpsPass(log));
     if (options.enableFuseOutstandingDequant) {
         if (!options.functionOutlining.hasValue()) {
             pm.addPass(IE::createFuseOutstandingDequant(log));
@@ -168,7 +129,7 @@ void vpux::IE::arch40xx::buildFinalTransformationPipeline(mlir::OpPassManager& p
 
     // Operation optimizations
     pm.addPass(IE::createPropagateShapeCastPass(log));
-    pm.addPass(IE::createPropagatePermuteCastThroughDequantizePass(log));
+    pm.addPass(IE::createPropagatePermuteCastPass(log));
     pm.addPass(IE::createMoveDynamicDequantizeToUserPass(log));
 }
 
@@ -181,12 +142,15 @@ void vpux::IE::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm, const I
     const auto grc = getDefaultGreedyRewriteConfig();
 
     pm.addPass(locverif::createStartLocationVerifierPass(log, options.locationsVerificationMode));
+    pm.addPass(IE::createForbidFourBitOutputsPass(log));
 
-    IE::arch40xx::buildOutliningPipeline(pm, options, log);
+    IE::buildOutliningPipeline(pm, options, log);
 
     // No passes should be run before this pipeline, with very few exceptions.
     IE::buildPostImportPipeline(pm, log);
     pm.addPass(mlir::createCanonicalizerPass(grc));
+
+    pm.addPass(IE::createDumpStatisticsOfIeOpsPass("Start of IE pipeline statistics", log));
 
     if (options.enableReduceNumTilesForSmallModelsPass) {
         pm.addPass(IE::createReduceNumTilesForSmallModelsPass(log));
@@ -216,35 +180,31 @@ void vpux::IE::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm, const I
     IE::buildOperationConversionPipeline(pm, IE::OperationConversionOptions(options), log);
 
     IE::buildAdjustShapePipeline(pm, log);
-    IE::buildSplitLargeOpsPipeline(pm, IE::SplitLargeOpsOptions(options), log);
+    IE::buildSplitLargeOpsPipeline(pm, log);
     IE::buildConvertToEfficientOpsPipeline(pm, IE::ConvertToEfficientOpsOptions(options), log);
 
-    IE::buildAdjustForVPUPipeline(pm, IE::AdjustForVPUOptions(options), log);
+    IE::buildAdjustForVPUPipeline(pm, log);
 
     pm.addPass(mlir::createCSEPass());
 
-    IE::buildHandleHyperParametersPipeline(pm, IE::HyperParameterOptions(options), log);
+    IE::buildHandleHyperParametersPipeline(pm, log);
     IE::buildConvertToConvolutionPipeline(pm, log);
     IE::buildReorderFakeQuantizePipeline(pm, IE::ReorderFakeQuantizeOptions(options), log);
 
     pm.addPass(locverif::createStopLocationVerifierPass(log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
-    if (options.enableOptimizeScaleShiftToDWConv) {
-        IE::buildScaleShiftProcessingPipeline(pm, log);
-    }
+    IE::buildScaleShiftProcessingPipeline(pm, log);
 
-    if (options.enableLowPrecision) {
-        IE::arch40xx::buildLowPrecisionPipeline(pm, IE::LowPrecisionOptions(options), log);
-        pm.addPass(IE::createConvertShapeTo4DPass(isOptionEnabled(options.forceConvertGatherTo4D), log));
-        pm.addPass(IE::createSwapViewOpAndClampPass(log));
-    }
+    IE::arch40xx::buildLowPrecisionPipeline(pm, IE::LowPrecisionOptions(options), log);
+    pm.addPass(IE::createConvertShapeTo4DPass(isOptionEnabled(options.forceConvertGatherTo4D), log));
+    pm.addPass(IE::createSwapViewOpAndClampPass(log));
+
     IE::buildOptimizeActivationsPipeline(pm, IE::OptimizeActivationsOptions(options), log);
 
     IE::buildSplitAndMapBilinearInterpolateOnDPUPipeline(pm, IE::SplitAndMapBilinearInterpolateOnDPUOptions(options),
                                                          log);
 
-    IE::buildBatchTransformationPipeline(pm, BatchUnrollOptions::create(options, log), options.enableUpstreamSlice,
-                                         log);
+    IE::buildBatchTransformationPipeline(pm, BatchUnrollOptions::create(options, log), log);
 
     IE::buildAdjustLayoutPipeline(pm, IE::AdjustLayoutOptions(options), log);
 
@@ -255,7 +215,7 @@ void vpux::IE::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm, const I
 
     IE::buildOptimizeSliceOpPipeline(pm, log);
 
-    IE::buildDimensionAlignmentPipeline(pm, IE::ExpandActivationChannelsOptions(options), log);
+    IE::buildDimensionAlignmentPipeline(pm, log);
 
     IE::arch40xx::buildFinalTransformationPipeline(pm, options, log);
 
@@ -269,6 +229,8 @@ void vpux::IE::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm, const I
     if (options.logOpOptimizations) {
         pm.addPass(IE::createLogOpOptimizationsPass());
     }
+
+    pm.addPass(IE::createDumpStatisticsOfIeOpsPass("End of IE pipeline statistics", log));
 }
 
 void vpux::IE::arch40xx::buildReferenceSWPipeline(mlir::OpPassManager& pm,
@@ -307,15 +269,13 @@ void vpux::IE::arch40xx::buildReferenceSWPipeline(mlir::OpPassManager& pm,
     pm.addPass(IE::createConvertToSpatialOpPass(false, log));
     pm.addPass(IE::createConvertGRNToNormalizeL2Pass(log));
     pm.addPass(IE::createResolveScatterUpdateByTransposePass(log));
-    IE::buildAdjustForVPUPipeline(pm, IE::AdjustForVPUOptions(options), log);
+    IE::buildAdjustForVPUPipeline(pm, log);
 
     pm.addPass(IE::createSplitFakeQuantPass(log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
     pm.addPass(IE::createDequantizeConstPass(options.runtimeDequantizationLimit,
                                              isOptionEnabled(options.enableRuntimeDequant), log));
-    if (options.enableMergeFakeQuant) {
-        pm.addPass(IE::createMergeFakeQuantPass(log));
-    }
+    pm.addPass(IE::createMergeFakeQuantPass(log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
 
     IE::buildAdjustLayoutPipeline(pm, IE::AdjustLayoutOptions(options), log);

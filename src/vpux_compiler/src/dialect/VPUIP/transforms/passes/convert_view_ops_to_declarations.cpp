@@ -67,7 +67,17 @@ Byte ViewLikeRewrite::calculateOffset(mlir::Value val) const {
     }
 
     if (auto subViewOp = mlir::dyn_cast_or_null<VPUIP::SubViewOp>(val.getDefiningOp())) {
-        offset += subViewOp.getByteOffset();
+        // When explicit output shapes and offsets are set on a SubViewOp with an OVERLAPPED
+        // distributed input, the per-cluster byte offset is computed via
+        // perClusterBufferOffsetAttrName during unrolling instead.
+        auto inputDistType = mlir::dyn_cast<VPUIP::DistributedBufferType>(subViewOp.getSource().getType());
+        bool isOverlappedWithExplicitAttrs =
+                subViewOp.getExplicitOutputShapes().has_value() && subViewOp.getExplicitOutputOffsets().has_value() &&
+                inputDistType != nullptr &&
+                (inputDistType.getDistribution().getMode().getValue() == VPU::DistributionMode::OVERLAPPED);
+        if (!isOverlappedWithExplicitAttrs) {
+            offset += subViewOp.getByteOffset();
+        }
     }
     if (auto extractFlatViewOp = mlir::dyn_cast_or_null<VPUIP::ExtractFlatSliceOp>(val.getDefiningOp())) {
         offset += extractFlatViewOp.getByteOffset();
@@ -131,6 +141,14 @@ Shape ViewLikeRewrite::calculateDimOffsets(mlir::Value val) const {
                     }
                 }
 
+                // Final dim tiling fixup. In case of final dim tiling above algorithm
+                // will get confused as strides on final dimension are not provided by
+                // getMemStrides. Below code manualy checks if final in dim is 1 and if
+                // there is tiling on that dimension.
+                if (viewOffsets[Dim(0)] != 0 && inShape[Dim(0)] == 1) {
+                    reshapedOffsets[0] = viewOffsets[Dim(0)];
+                }
+
                 return Shape(reshapedOffsets);
             })
             .Case<VPUIP::PermuteCastOp>([&](VPUIP::PermuteCastOp permuteCastOp) {
@@ -187,6 +205,47 @@ mlir::LogicalResult ViewLikeRewrite::matchAndRewrite(mlir::ViewLikeOpInterface o
     mlir::ArrayAttr sectionIndexAttr = sectionIndex.has_value() ? sectionIndex.value() : nullptr;
     auto newDeclareOp = rewriter.replaceOpWithNewOp<VPURT::DeclareBufferOp>(origOp, outType, section, sectionIndexAttr,
                                                                             offset.count(), swizzlingKey);
+
+    // When replacing a SubViewOp that slices a DistributedBuffer on the same axis as the
+    // distribution tiling axis, attach per-cluster buffer offsets (shape-level) so that
+    // UnrollDistributedOps can compute the correct per-cluster byte offsets.
+    // The per-cluster buffer offset = subViewStaticOffsets + output perClusterMemoryShapeOffsets,
+    // giving each cluster's actual offset in the input buffer's coordinate space.
+    if (auto subViewOp = mlir::dyn_cast<VPUIP::SubViewOp>(origOp.getOperation())) {
+        auto outputDistType = mlir::dyn_cast<VPUIP::DistributedBufferType>(subViewOp.getResult().getType());
+        auto inputDistType = mlir::dyn_cast<VPUIP::DistributedBufferType>(subViewOp.getSource().getType());
+        if (outputDistType != nullptr && inputDistType != nullptr && subViewOp.getExplicitOutputOffsets().has_value() &&
+            (inputDistType.getDistribution().getMode().getValue() == VPU::DistributionMode::OVERLAPPED)) {
+            const auto subViewOffsets = parseIntArrayAttr<int64_t>(subViewOp.getStaticOffsets());
+            const auto outputPerClusterOffsets = outputDistType.getPerClusterMemoryShapeOffsets();
+            const auto inputPerClusterOffsets = inputDistType.getPerClusterMemoryShapeOffsets();
+
+            SmallVector<Shape> perClusterBufferOffsets;
+            perClusterBufferOffsets.reserve(outputPerClusterOffsets.size());
+            for (size_t cluster = 0; cluster < outputPerClusterOffsets.size(); ++cluster) {
+                Shape combined(subViewOffsets);
+                for (size_t dim = 0; dim < combined.size(); ++dim) {
+                    combined[Dim(dim)] += outputPerClusterOffsets[cluster][Dim(dim)];
+                    combined[Dim(dim)] -= inputPerClusterOffsets[cluster][Dim(dim)];
+                }
+                perClusterBufferOffsets.push_back(std::move(combined));
+            }
+
+            for (size_t cluster = 0; cluster < perClusterBufferOffsets.size(); ++cluster) {
+                for (size_t dim = 0; dim < perClusterBufferOffsets[cluster].size(); ++dim) {
+                    VPUX_THROW_WHEN(perClusterBufferOffsets[cluster][Dim(dim)] < 0,
+                                    "Negative per-cluster buffer offset at cluster {0}, dim {1}: {2}. "
+                                    "Check subview offsets and distribution attributes of the source and result "
+                                    "buffers of the SubViewOp at {3}: {4}.",
+                                    cluster, dim, perClusterBufferOffsets[cluster][Dim(dim)], subViewOp.getLoc(),
+                                    subViewOp);
+                }
+            }
+
+            newDeclareOp->setAttr(vpux::perClusterBufferOffsetAttrName,
+                                  vpux::getIntArrayOfArray(rewriter.getContext(), perClusterBufferOffsets));
+        }
+    }
 
     if ((section == VPURT::BufferSection::NetworkInput || section == VPURT::BufferSection::NetworkOutput) &&
         vpux::net::isArgStrided(origOp->getParentOfType<mlir::ModuleOp>(),

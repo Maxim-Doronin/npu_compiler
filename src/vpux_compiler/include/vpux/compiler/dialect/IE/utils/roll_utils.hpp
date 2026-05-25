@@ -19,7 +19,8 @@ struct RollShiftAndAxes final {
 };
 
 mlir::FailureOr<RollShiftAndAxes> getShiftAndAxesForRollOp(mlir::Location loc, mlir::Value shiftValue,
-                                                           mlir::Value axesValue, ShapeRef inputShape);
+                                                           mlir::Value axesValue, ShapeRef inputShape,
+                                                           bool adjustSpatial = true);
 
 }  // namespace IE
 }  // namespace vpux

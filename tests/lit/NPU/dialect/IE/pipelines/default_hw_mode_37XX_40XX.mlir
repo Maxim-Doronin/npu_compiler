@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --mlir-elide-elementsattrs-if-larger 8 --default-hw-mode-ie %s | FileCheck %s --strict-whitespace
-// REQUIRES: arch-NPU37XX || arch-NPU40XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW" --mlir-elide-elementsattrs-if-larger 8 --default-hw-mode-ie %s | FileCheck %s --strict-whitespace
+// REQUIRES: platform-NPU3720 || platform-NPU4000
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -238,9 +238,8 @@ module @DynamicConvAddTranpose {
 
 // -----
 
-// E#129083
-// CHECK-LABEL: @NoMultiplyFQFusion
-module @NoMultiplyFQFusion {
+// CHECK-LABEL: @MultiplyFQFusion
+module @MultiplyFQFusion {
     net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x64x250x256xf32>
@@ -268,15 +267,14 @@ module @NoMultiplyFQFusion {
         return %add2 : tensor<1x64x250x256xf32>
 
         // CHECK-DAG:   [[BIAS:%.+]] = const.Declare tensor<1x64x250x256x{{[^:]+}}, {order = #NHWC}> = dense<2.000000e+00>
-        // CHECK-DAG:   [[SCALE:%.+]] = const.Declare tensor<64x1x1x1x{{[^:]+}}, {order = #NHWC}> = dense<3.000000e+00>
         // CHECK:       [[CONVERT1:%.+]] = IE.Convert([[ARG0]])
         // CHECK-NEXT:  [[PERMUTE_QUANT:%.+]] = IE.PermuteQuantize([[CONVERT1]])
 
         // CHECK-NEXT:  [[ADD1:%.+]] = IE.Add([[PERMUTE_QUANT]], [[PERMUTE_QUANT]])
-        // CHECK-NEXT:  [[GROUP_CONV:%.+]] = IE.GroupConvolution([[ADD1]], [[SCALE]])
+        // CHECK-NEXT:  [[QUANT_CAST:%.+]] = IE.QuantizeCast([[ADD1]])
+        // CHECK-NOT:   IE.GroupConvolution
         // CHECK-NOT:   IE.AvgPool
-        // CHECK-NOT:   IE.QuantizeCast
-        // CHECK-NEXT:  [[ADD2:%.+]] = IE.Add([[GROUP_CONV]], [[BIAS]])
+        // CHECK-NEXT:  [[ADD2:%.+]] = IE.Add([[QUANT_CAST]], [[BIAS]])
         // CHECK-NEXT:  [[CONVERT2:%.+]] = IE.Convert([[ADD2]])
         // CHECK-NEXT:  return [[CONVERT2]]
     }

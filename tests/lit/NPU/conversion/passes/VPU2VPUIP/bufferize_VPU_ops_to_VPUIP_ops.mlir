@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --one-shot-bufferize-VPU-to-VPUIP %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --one-shot-bufferize-VPU-to-VPUIP %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL:  func.func @ConstantLayer
 // CHECK-SAME:       ([[ARG:%.+]]: memref<1x2x2x2xf16>)
@@ -210,7 +210,7 @@ func.func @Concat(%input0: tensor<1x16x16x16xf16>, %input1: tensor<1x16x16x16xf1
     // CHECK: [[PART_1:%.+]] = VPUIP.Copy inputs([[ARG0]] : memref<1x16x16x16xf16>) outputs([[SUBVIEW_1]] : memref<1x16x16x16xf16, {order = #NCHW, strides = [8192, 256, 16, 1]}>) -> memref<1x16x16x16xf16, {order = #NCHW, strides = [8192, 256, 16, 1]}>
     // CHECK: [[SUBVIEW_2:%.+]] = VPUIP.SubView [[BUFFER_DDR]] [0, 16, 0, 0] [1, 16, 16, 16] : memref<1x32x16x16xf16> to memref<1x16x16x16xf16, {order = #NCHW, strides = [8192, 256, 16, 1]}>
     // CHECK: [[PART_2:%.+]] = VPUIP.Copy inputs([[ARG1]] : memref<1x16x16x16xf16>) outputs([[SUBVIEW_2]] : memref<1x16x16x16xf16, {order = #NCHW, strides = [8192, 256, 16, 1]}>) -> memref<1x16x16x16xf16, {order = #NCHW, strides = [8192, 256, 16, 1]}>
-    // CHECK: [[OUTPUT:%.+]] = VPUIP.ConcatView inputs([[PART_1]], [[PART_2]] : memref<1x16x16x16xf16, {order = #NCHW, strides = [8192, 256, 16, 1]}>, memref<1x16x16x16xf16, {order = #NCHW, strides = [8192, 256, 16, 1]}>) outputs(%alloc : memref<1x32x16x16xf16>) -> memref<1x32x16x16xf16>
+    // CHECK: [[OUTPUT:%.+]] = VPUIP.ConcatView inputs([[PART_1]], [[PART_2]] : memref<1x16x16x16xf16, {order = #NCHW, strides = [8192, 256, 16, 1]}>, memref<1x16x16x16xf16, {order = #NCHW, strides = [8192, 256, 16, 1]}>) outputs([[BUFFER_DDR]] : memref<1x32x16x16xf16>) -> memref<1x32x16x16xf16>
     // CHECK: return [[OUTPUT]] : memref<1x32x16x16xf16>
 }
 
@@ -1534,4 +1534,74 @@ func.func @SparseDistributedCopyCMXToDDR(%arg0: !Tensor_DDR, %arg1: !SMTensor_DD
     // CHECK-SAME:                                 is_weights>
 
     // CHECK:       return [[OUTPUT_SPARSE_COPY_CMX]]
+}
+
+// -----
+
+// CHECK-LABEL: func.func @ReinterpretCast
+// CHECK-SAME:      ([[ARG:%.+]]: memref<4x8xf16>)
+func.func @ReinterpretCast(%input: tensor<4x8xf16>) -> tensor<32xf16> {
+    %output = Core.ReinterpretCast(%input) : tensor<4x8xf16> -> tensor<32xf16>
+    return %output : tensor<32xf16>
+
+    // CHECK: [[OUTPUT:%.+]] = Core.ReinterpretCast([[ARG]]) : memref<4x8xf16> -> memref<32xf16>
+    // CHECK: return [[OUTPUT]] : memref<32xf16>
+}
+
+// -----
+
+#CHW = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
+
+// CHECK-LABEL: func.func @ReinterpretCastToBoundedBuffer
+// CHECK-SAME:      ([[ARG:%.+]]: memref<?x1x16xf16>)
+func.func @ReinterpretCastToBoundedBuffer(%input: tensor<?x1x16xf16>)
+        -> tensor<8x1x16xf16, {dynamic_dims_mask = #const.OpaqueI64Elements<[1, 0, 0]> : tensor<3xsi64>, order = #CHW}> {
+    %output = Core.ReinterpretCast(%input) : tensor<?x1x16xf16>
+        -> tensor<8x1x16xf16, {dynamic_dims_mask = #const.OpaqueI64Elements<[1, 0, 0]> : tensor<3xsi64>, order = #CHW}>
+    return %output : tensor<8x1x16xf16, {dynamic_dims_mask = #const.OpaqueI64Elements<[1, 0, 0]> : tensor<3xsi64>, order = #CHW}>
+
+    // CHECK: [[DATA:%.+]] = Core.ReinterpretCast([[ARG]]) : memref<?x1x16xf16> -> memref<8x1x16xf16>
+    // CHECK: [[SHAPE:%.+]] = memref.alloc() : memref<3xsi32>
+    // CHECK: [[BB:%.+]] = VPUIP.GroupBoundedBuffer([[DATA]], [[SHAPE]])
+    // CHECK-SAME:     : memref<8x1x16xf16>, memref<3xsi32> -> !VPUIP.BoundedBuffer<data=memref<8x1x16xf16>, dynamic_shape=memref<3xsi32>>
+    // CHECK: return [[BB]]
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: func.func @ReinterpretCastToBoundedBufferNHWC
+// CHECK-SAME:      ([[ARG:%.+]]: memref<1x3x?x?xf16>)
+func.func @ReinterpretCastToBoundedBufferNHWC(%input: tensor<1x3x?x?xf16>)
+        -> tensor<1x3x16x24xf16, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 1, 1]> : tensor<4xsi64>, order = #NHWC}> {
+    %output = Core.ReinterpretCast(%input) : tensor<1x3x?x?xf16>
+        -> tensor<1x3x16x24xf16, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 1, 1]> : tensor<4xsi64>, order = #NHWC}>
+    return %output : tensor<1x3x16x24xf16, {dynamic_dims_mask = #const.OpaqueI64Elements<[0, 0, 1, 1]> : tensor<4xsi64>, order = #NHWC}>
+
+    // CHECK: [[DATA:%.+]] = Core.ReinterpretCast([[ARG]]) : memref<1x3x?x?xf16> -> memref<1x3x16x24xf16, #NHWC>
+    // CHECK: [[SHAPE:%.+]] = memref.alloc() : memref<4xsi32>
+    // CHECK: [[BB:%.+]] = VPUIP.GroupBoundedBuffer([[DATA]], [[SHAPE]])
+    // CHECK-SAME:     : memref<1x3x16x24xf16, #NHWC>, memref<4xsi32> -> !VPUIP.BoundedBuffer<data=memref<1x3x16x24xf16, #NHWC>, dynamic_shape=memref<4xsi32>>
+    // CHECK: return [[BB]]
+}
+
+// -----
+
+#CHW = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
+
+// CHECK-LABEL: func.func @ReinterpretCastFromBoundedBuffer
+// CHECK-SAME:      ([[ARG:%.+]]: !VPUIP.BoundedBuffer<data=memref<8x1x16xf16>, dynamic_shape=memref<3xsi32>>)
+func.func @ReinterpretCastFromBoundedBuffer(
+        %input: tensor<8x1x16xf16, {dynamic_dims_mask = #const.OpaqueI64Elements<[1, 0, 0]> : tensor<3xsi64>, order = #CHW}>)
+        -> tensor<?x1x16xf16> {
+    %output = Core.ReinterpretCast(%input)
+        : tensor<8x1x16xf16, {dynamic_dims_mask = #const.OpaqueI64Elements<[1, 0, 0]> : tensor<3xsi64>, order = #CHW}>
+        -> tensor<?x1x16xf16>
+    return %output : tensor<?x1x16xf16>
+
+    // CHECK: [[DATA:%.+]], {{%.+}} = VPUIP.UngroupBoundedBuffer([[ARG]])
+    // CHECK-SAME:     : !VPUIP.BoundedBuffer<data=memref<8x1x16xf16>, dynamic_shape=memref<3xsi32>> -> memref<8x1x16xf16>, memref<3xsi32>
+    // CHECK: [[OUTPUT:%.+]] = Core.ReinterpretCast([[DATA]]) : memref<8x1x16xf16> -> memref<?x1x16xf16>
+    // CHECK: return [[OUTPUT]] : memref<?x1x16xf16>
 }

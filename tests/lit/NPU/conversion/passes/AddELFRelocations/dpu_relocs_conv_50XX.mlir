@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --init-compiler="vpu-arch=%arch%" --convert-VPUIPDPU-to-NPUReg50XX --create-elf-relocations %s | FileCheck %s
-// REQUIRES: dev-build && arch-NPU50XX
+// RUN: vpux-opt --init-compiler="platform=%platform%" --convert-VPUIPDPU-to-NPUReg50XX --create-elf-relocations %s | FileCheck %s
+// REQUIRES: dev-build && platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
@@ -18,7 +18,7 @@ module @DPURelocWeightTableReuseTest {
         DataInfo "output_0" : tensor<1x16x64x64xf16>
     }
     func.func @main() {
-        ELF.Main @ELFMain {
+        ELF.Main {
           ELF.CreateLogicalSection @program.metadata.cmx aligned(64) secType(VPU_SHT_CMX_METADATA) secFlags("SHF_NONE") secLocation(<CMX_NN>) {
               VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_DPUInvariant_0_0_22 idx(!VPURegMapped.Index<0:0:22>) <DPUInvariant>
           }

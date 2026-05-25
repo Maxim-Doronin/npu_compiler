@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --optimize-op-slice %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --optimize-op-slice %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL: @NoChangesAcrossInputsAtHeight
 // CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x16x4x4xf16>, [[ARG_1:%[^:]+]]: tensor<1x16x3x4xf16>) -> tensor<1x16x3x4xf16>

@@ -12,6 +12,11 @@ namespace ov {
 namespace test {
 
 class LSTMCellLayerTestCommon : public LSTMCellTest, virtual public VpuOv2LayerTest {};
+class LSTM_SCFTilingLayerTest : public LSTMCellLayerTestCommon {
+    void configure_model() override {
+        configuration[ov::intel_npu::compilation_mode_params.name()] = "scf-tiling=true";
+    }
+};
 
 TEST_P(LSTMCellLayerTestCommon, NPU3720_HW) {
     rel_threshold = 0.06;
@@ -25,7 +30,19 @@ TEST_P(LSTMCellLayerTestCommon, NPU4000_HW) {
     run(Platform::NPU4000);
 }
 
+TEST_P(LSTM_SCFTilingLayerTest, NPU4000_HW) {
+    rel_threshold = 0.06;
+    setDefaultHardwareMode();
+    run(Platform::NPU4000);
+}
+
 TEST_P(LSTMCellLayerTestCommon, NPU5010_HW) {
+    rel_threshold = 0.06;
+    setDefaultHardwareMode();
+    run(Platform::NPU5010);
+}
+
+TEST_P(LSTM_SCFTilingLayerTest, NPU5010_HW) {
     rel_threshold = 0.06;
     setDefaultHardwareMode();
     run(Platform::NPU5010);
@@ -71,5 +88,8 @@ INSTANTIATE_TEST_SUITE_P(smoke_precommit_LSTMCellCommon, LSTMCellLayerTestCommon
                          LSTMCellTest::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_LSTMCellCommon, LSTMCellLayerTestCommon, lstmCellConfig, LSTMCellTest::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(smoke_precommit_LSTMCell_SCFTiling, LSTM_SCFTilingLayerTest, lstmCellPrecommitConfig,
+                         LSTMCellTest::getTestCaseName);
 
 }  // namespace

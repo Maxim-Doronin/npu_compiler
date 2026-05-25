@@ -68,8 +68,8 @@ bool isLegalOpToConvertToSliceAndConv(IE::InterpolateOp op, LogCb logCb) {
     const auto outShape = getShape(op.getOutput());
     const auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
 
-    if (!VPU::NCEInterpolateOp::isSupported(op, logCb, /*checkLayout=*/false, /*checkChannelAlignment=*/false,
-                                            /*checkBatch=*/false)) {
+    auto seOp = mlir::dyn_cast<IE::SEOpInterface>(op.getOperation());
+    if (!seOp || !seOp.isSupported(logCb)) {
         return false;
     }
 

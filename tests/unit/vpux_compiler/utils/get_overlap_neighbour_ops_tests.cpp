@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -11,8 +11,8 @@
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/overlap_distribution_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sibling_ops_analysis.hpp"
-#include "vpux/compiler/init.hpp"
-#include "vpux/compiler/interfaces_registry.hpp"
+#include "vpux/compiler/init/dialects_registry.hpp"
+#include "vpux/compiler/init/interfaces_registry.hpp"
 
 #include "common/utils.hpp"
 

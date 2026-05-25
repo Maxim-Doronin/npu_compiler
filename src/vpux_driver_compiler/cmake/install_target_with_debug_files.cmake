@@ -10,8 +10,8 @@ function(install_target_with_debug_files target destination component)
     if(WIN32)
         # Install library to component
         install(TARGETS ${target}
-            RUNTIME DESTINATION ${destination}
-            COMPONENT ${component})
+            LIBRARY DESTINATION ${destination} COMPONENT ${component}
+            RUNTIME DESTINATION ${destination} COMPONENT ${component})
 
         # Install PDB files for Windows
         if(BUILD_COMPILER_FOR_DRIVER)
@@ -30,7 +30,7 @@ function(install_target_with_debug_files target destination component)
         endif()
     else()
         install(TARGETS ${target}
-            LIBRARY DESTINATION ${destination}
-            COMPONENT ${component})
+            LIBRARY DESTINATION ${destination} COMPONENT ${component}
+            RUNTIME DESTINATION ${destination} COMPONENT ${component})
     endif()
 endfunction()

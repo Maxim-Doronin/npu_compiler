@@ -3,10 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --query-ws-info %s | FileCheck --check-prefix=CHECK-DEFAULT %s
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --query-ws-info="memory-limit=1000" %s | FileCheck --check-prefix=CHECK-BIG-LIMIT %s
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --query-ws-info="memory-limit=4" %s | FileCheck --check-prefix=CHECK-SMALL-LIMIT %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --query-ws-info %s | FileCheck --check-prefix=CHECK-DEFAULT %s
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --query-ws-info="memory-limit=1000" %s | FileCheck --check-prefix=CHECK-BIG-LIMIT %s
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --query-ws-info="memory-limit=4" %s | FileCheck --check-prefix=CHECK-SMALL-LIMIT %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK-DEFAULT: module @NoConstants attributes {{.+}}VPU.WsTotalInitPartCount = 0 : i64
 // CHECK-BIG-LIMIT: module @NoConstants attributes {{.+}}VPU.WsTotalInitPartCount = 0 : i64

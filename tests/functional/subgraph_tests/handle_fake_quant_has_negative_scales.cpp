@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -45,6 +45,13 @@ using HandleFakeQuantHasNegativeScalesTestParams = std::tuple<std::vector<int8_t
 class HandleFakeQuantHasNegativeScalesSubGraphTestCommon :
         public VpuOv2LayerTest,
         public testing::WithParamInterface<HandleFakeQuantHasNegativeScalesTestParams> {
+    void configure_model() override {
+        // NOTE: FuseOutstandingDequant disabled because NPU produces inaccurate results
+        //       E#211263. Test handles FakeQuantize but when FuseOutstandingDequant enabled
+        //       FakeQuantize does not exist.
+        configuration[ov::intel_npu::compilation_mode_params.name()] = "fuse-outstanding-dequant=false";
+    }
+
     void SetUp() override {
         std::vector<int8_t> weightsValues;
         std::vector<float> zeroPointValues;

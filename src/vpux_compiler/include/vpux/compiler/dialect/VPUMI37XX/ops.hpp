@@ -12,6 +12,7 @@
 #include "vpux/compiler/dialect/VPUMI37XX/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/attributes.hpp"
+#include "vpux/compiler/dialect/VPURegMapped/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/types.hpp"
 #include "vpux/compiler/dialect/core/interfaces/ops_interfaces.hpp"
 

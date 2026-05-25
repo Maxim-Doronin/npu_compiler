@@ -13,7 +13,6 @@ add_tool_target(
     ENABLE_WARNINGS_AS_ERRORS
     LINK_LIBRARIES
          npu_elf
-         npu_llvm_utils
          npu_mlir_compiler_static
          npu_translate_utils_static
 )

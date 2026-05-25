@@ -3,16 +3,22 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/image.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
+#include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/error.hpp"
+#include "vpux/compiler/utils/infer_output_shape.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
+#include <mlir/Dialect/Affine/IR/AffineOps.h>
+#include <mlir/Dialect/Tensor/IR/Tensor.h>
 #include <mlir/IR/PatternMatch.h>
+#include <mlir/Support/LLVM.h>
 
 using namespace vpux;
 
@@ -27,23 +33,38 @@ mlir::LogicalResult vpux::IE::YuvToRgbOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    const auto inType = mlir::cast<mlir::RankedTensorType>(colorConv.getInput1().getType());
+    const auto input = colorConv.getInput1();
+    const auto inType = mlir::cast<mlir::RankedTensorType>(input.getType());
     const auto shape = inType.getShape();
-    if (shape[3] != 1) {
-        return errorAt(loc, "Incorrect input shape format: '{0}'", shape);
+    if (shape[Dims4D::Act::W.ind()] != 1) {
+        return errorAt(loc, "Incorrect input shape format. Expected Y input to have Width '1', got '{0}'", shape);
     }
 
-    SmallVector<int64_t> outShape{shape[0], shape[1], shape[2], 3};
+    auto [outStaticShape, outBounds, outDimMask] = callOnShapeOf(inType, [&](const auto& inShape) {
+        auto outShape = copyShape(inShape);
+        outShape[Dims4D::Act::W] = 3;
 
-    if (colorConv.getInput2() == nullptr) {
-        VPUX_THROW_UNLESS(colorConv.getInput3() == nullptr, "1xPlane config error");
-        VPUX_THROW_UNLESS(((outShape[1] * 2) % 3) == 0, "Invalid height");
-        outShape[1] = outShape[1] * 2 / 3;
-    }
-    const auto outDesc = vpux::getTensorAttr(inType);
-    inferredReturnShapes.emplace_back(outShape, inType.getElementType(), outDesc);
+        if (colorConv.getInput2() == nullptr) {
+            outShape[Dims4D::Act::C] = inShape[Dims4D::Act::C] * 2 / 3;
+        }
+
+        return splitShapeAndRepresentation(outShape);
+    });
+
+    auto outDesc = vpux::getTensorAttr(ctx, DimsOrder::fromValue(input), /*memSpace=*/nullptr, outBounds, outDimMask);
+
+    inferredReturnShapes.emplace_back(outStaticShape.raw(), inType.getElementType(), outDesc);
 
     return mlir::success();
+}
+
+//
+// ReifyRankedShapedTypeOpInterface
+//
+
+mlir::LogicalResult vpux::IE::YuvToRgbOp::reifyResultShapes(mlir::OpBuilder& builder,
+                                                            mlir::ReifiedRankedShapedTypeDims& reifiedReturnShapes) {
+    return reifyYuvToRgbTensors(getOperation(), builder, reifiedReturnShapes);
 }
 
 //
@@ -95,7 +116,8 @@ mlir::LogicalResult ConvertToMultiInputs::matchAndRewrite(IE::YuvToRgbOp yuvToRg
                                                                        input2_slice.getResult(), shapeEndAttr);
 
             rewriter.replaceOpWithNewOp<IE::YuvToRgbOp>(yuvToRgbOp, input1_slice.getResult(), input2_slice_reshape,
-                                                        nullptr, yuvToRgbOp.getInFmt(), yuvToRgbOp.getOutFmt());
+                                                        nullptr, yuvToRgbOp.getInFmt(), yuvToRgbOp.getOutFmt(),
+                                                        yuvToRgbOp.getScaleAttr());
             return mlir::success();
 
         } else {
@@ -148,7 +170,7 @@ mlir::LogicalResult ConvertToMultiInputs::matchAndRewrite(IE::YuvToRgbOp yuvToRg
 
             rewriter.replaceOpWithNewOp<IE::YuvToRgbOp>(yuvToRgbOp, inputY_slice.getResult(), inputU_slice.getResult(),
                                                         inputV_slice.getResult(), yuvToRgbOp.getInFmt(),
-                                                        yuvToRgbOp.getOutFmt());
+                                                        yuvToRgbOp.getOutFmt(), yuvToRgbOp.getScaleAttr());
             return mlir::success();
         }
     }

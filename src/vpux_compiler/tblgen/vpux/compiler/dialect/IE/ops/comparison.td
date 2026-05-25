@@ -28,8 +28,8 @@ def IE_EqualOp :
     let summary = "InferenceEngine Equal layer";
 
     let arguments = (ins
-        RankedTensorOf<[F16, F32, F64, SI32, SI64]>:$input1,
-        RankedTensorOf<[F16, F32, F64, SI32, SI64]>:$input2,
+        RankedTensorOf<[F16, F32, F64, SI32, SI64, Bool8]>:$input1,
+        RankedTensorOf<[F16, F32, F64, SI32, SI64, Bool8]>:$input2,
 
         IE_AutoBroadcastTypeAttr:$auto_broadcast
     );
@@ -51,8 +51,8 @@ def IE_GreaterOp :
     let summary = "InferenceEngine Greater layer";
 
     let arguments = (ins
-        RankedTensorOf<[F16, F32, F64, SI32, SI64]>:$input1,
-        RankedTensorOf<[F16, F32, F64, SI32, SI64]>:$input2,
+        RankedTensorOf<[F16, F32, F64, SI32, SI64, Bool8]>:$input1,
+        RankedTensorOf<[F16, F32, F64, SI32, SI64, Bool8]>:$input2,
 
         IE_AutoBroadcastTypeAttr:$auto_broadcast
     );
@@ -98,8 +98,8 @@ def IE_LessOp :
     let summary = "InferenceEngine Less layer";
 
     let arguments = (ins
-        RankedTensorOf<[F16, F32, F64, SI32, SI64]>:$input1,
-        RankedTensorOf<[F16, F32, F64, SI32, SI64]>:$input2,
+        RankedTensorOf<[F16, F32, F64, SI32, SI64, Bool8]>:$input1,
+        RankedTensorOf<[F16, F32, F64, SI32, SI64, Bool8]>:$input2,
 
         IE_AutoBroadcastTypeAttr:$auto_broadcast
     );
@@ -144,8 +144,8 @@ def IE_NotEqualOp :
     let summary = "InferenceEngine NotEqual layer";
 
     let arguments = (ins
-        RankedTensorOf<[F16, F32, F64, SI32, SI64]>:$input1,
-        RankedTensorOf<[F16, F32, F64, SI32, SI64]>:$input2,
+        RankedTensorOf<[F16, F32, F64, SI32, SI64, Bool8]>:$input1,
+        RankedTensorOf<[F16, F32, F64, SI32, SI64, Bool8]>:$input2,
 
         IE_AutoBroadcastTypeAttr:$auto_broadcast
     );
@@ -163,6 +163,24 @@ def IE_IsInfOp :
             ]
         > {
     let summary = "InferenceEngine IsInf layer";
+
+    let arguments = (ins
+        RankedTensorOf<[F16, F32, F64]>:$input
+    );
+
+    let results = (outs
+        RankedTensorOf<[Bool8]>:$output
+    );
+}
+
+def IE_IsFiniteOp :
+        IE_LayerOp<
+            "IsFinite",
+            [
+                IE_EltwiseOp
+            ]
+        > {
+    let summary = "InferenceEngine IsFinite layer";
 
     let arguments = (ins
         RankedTensorOf<[F16, F32, F64]>:$input

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --convert-IE-to-VPU-NCE %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW" --convert-IE-to-VPU-NCE %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -68,39 +68,6 @@ func.func @FloatClamp0to120(%arg0: tensor<1x256x56x56xf16, {order = #NHWC}>,
     // CHECK-SAME:          lrelu_mult = 1638 : i64,
     // CHECK-SAME:          lrelu_shift = 14 : i64,
     // CHECK-SAME:          fp_prelu_alpha = 0.10000000149011612 : f64
-    // CHECK-SAME:      >
-    // CHECK-SAME:  } -> tensor<1x256x56x56xf16, {order = #NHWC}>
-}
-
-// -----
-
-#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-
-// CHECK-LABEL: @FloatClampIntersection0to120
-// CHECK-SAME:  ([[INPUT_0:%[^:]+]]: tensor<1x256x56x56xf16, {order = #NHWC}>,
-// CHECK-SAME:   [[INPUT_1:%[^:]+]]: tensor<1x256x56x56xf16, {order = #NHWC}>)
-func.func @FloatClampIntersection0to120(%arg0: tensor<1x256x56x56xf16, {order = #NHWC}>,
-                       %arg1: tensor<1x256x56x56xf16, {order = #NHWC}>)
-                       -> tensor<1x256x56x56xf16, {order = #NHWC}> {
-
-    %0 = IE.Add(%arg0, %arg1) {
-            auto_broadcast = #IE.auto_broadcast_type<NUMPY>,
-            post_op = #IE.Clamp<min = 0.000000e+00 : f64, max = 1.200000e+02 : f64>,
-            clamp = {min = 0.000000e+00 : f64, max = 1.280000e+02 : f64}
-        } : tensor<1x256x56x56xf16, {order = #NHWC}>, tensor<1x256x56x56xf16, {order = #NHWC}>
-            -> tensor<1x256x56x56xf16, {order = #NHWC}>
-
-    return %0 : tensor<1x256x56x56xf16, {order = #NHWC}>
-
-    // CHECK:       [[ELTWISE:%.+]] = VPU.NCE.Eltwise([[INPUT_0]], [[INPUT_1]]) {
-    // CHECK-SAME:      op_type = #VPU.eltwise_type<ADD>,
-    // CHECK-SAME:      ppe = #VPU.PPEInt<
-    // CHECK-SAME:          mode = <LRELUX>,
-    // CHECK-SAME:          clamp_low = -2147483648 : i64,
-    // CHECK-SAME:          clamp_high = 22400 : i64,
-    // CHECK-SAME:          lrelu_mult = 1 : i64,
-    // CHECK-SAME:          lrelu_shift = 0 : i64,
-    // CHECK-SAME:          fp_prelu_alpha = 1.000000e+00 : f64
     // CHECK-SAME:      >
     // CHECK-SAME:  } -> tensor<1x256x56x56xf16, {order = #NHWC}>
 }

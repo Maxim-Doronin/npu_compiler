@@ -169,7 +169,7 @@ void VCLTestsCommon::postProcessNetOptions(const std::string& device) {
     netOptions += std::string{" DEVICE_ID=\""} + std::string{"NPU."} + device + std::string{"\""};
 }
 
-IRInfoTestType VCLTestsCommon::readJson2Vec(std::string fileName) {
+IRInfoTestType VCLTestsCommon::readJson2Vec(const std::string& fileName) {
     /// The map that contains model name and it configuration
     IRInfoTestType irInfos;
     std::ifstream configFile(fileName);
@@ -179,6 +179,8 @@ IRInfoTestType VCLTestsCommon::readJson2Vec(std::string fileName) {
     }
     std::string line;
     std::size_t lineNo{};
+    const std::string enabledKey = "enabled";
+    const std::string defaultEnabledStr = "false";
     while (std::getline(configFile, line)) {
         std::unordered_map<std::string, std::string> irInfo;
         auto expectedRes = llvm::json::parse(line);
@@ -203,7 +205,7 @@ IRInfoTestType VCLTestsCommon::readJson2Vec(std::string fileName) {
 
         /// If the test config is enabled
         bool enabled;
-        auto find = irInfo.find("enabled");
+        auto find = irInfo.find(enabledKey);
         std::istringstream valueOfEnabled;
         if (find != irInfo.end()) {
             /// Store the user setting
@@ -211,7 +213,7 @@ IRInfoTestType VCLTestsCommon::readJson2Vec(std::string fileName) {
         } else {
             /// Skip this test config by default
             std::cout << "Not found enabled entry, using false as its default\n";
-            valueOfEnabled.str("false");
+            valueOfEnabled.str(defaultEnabledStr);
         }
         valueOfEnabled >> std::boolalpha >> enabled;
 

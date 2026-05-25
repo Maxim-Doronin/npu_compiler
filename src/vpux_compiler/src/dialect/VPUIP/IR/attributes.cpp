@@ -293,3 +293,99 @@ void VPUIP::OutwardHaloRegionAttr::print(::mlir::AsmPrinter& odsPrinter) const {
 
     odsPrinter << ">";
 }
+
+mlir::Attribute VPUIP::FetchDMAAttr::parse(mlir::AsmParser& parser, mlir::Type) {
+    if (parser.parseLess()) {
+        return {};
+    }
+
+    // ExecutorKind wrapped in <>
+    if (parser.parseLess()) {
+        return {};
+    }
+    llvm::StringRef execStr;
+    if (parser.parseKeyword(&execStr) || parser.parseGreater()) {
+        return {};
+    }
+    auto executorKind = config::symbolizeExecutorKind(execStr).value();
+    vpux::config::ExecutorKindAttr executorAttr =
+            vpux::config::ExecutorKindAttr::get(parser.getContext(), executorKind);
+
+    if (parser.parseComma()) {
+        return {};
+    }
+
+    // Tile and List
+    mlir::IntegerAttr tileIdx, listIdx;
+    if (parser.parseKeyword("tile") || parser.parseEqual() || parser.parseAttribute(tileIdx) || parser.parseComma() ||
+        parser.parseKeyword("list") || parser.parseEqual() || parser.parseAttribute(listIdx) || parser.parseComma()) {
+        return {};
+    }
+
+    // Fetch type wrapped in <>
+    if (parser.parseKeyword("fetchType") || parser.parseEqual() || parser.parseLess()) {
+        return {};
+    }
+    llvm::StringRef fetchStr;
+    if (parser.parseKeyword(&fetchStr) || parser.parseGreater()) {
+        return {};
+    }
+    auto fetchTypeVal = VPUIP::symbolizeFetchType(fetchStr).value();
+    VPUIP::FetchTypeAttr fetchTypeAttr = VPUIP::FetchTypeAttr::get(parser.getContext(), fetchTypeVal);
+
+    // Conditional fields
+    mlir::IntegerAttr execGroupIdx, logicalTaskIdx, descId;
+    if (fetchTypeVal == VPUIP::FetchType::DescriptorGroup) {
+        if (parser.parseComma() || parser.parseKeyword("group") || parser.parseEqual() ||
+            parser.parseAttribute(execGroupIdx)) {
+            return {};
+        }
+    } else {
+        if (parser.parseComma() || parser.parseKeyword("logicalTaskIdx") || parser.parseEqual() ||
+            parser.parseAttribute(logicalTaskIdx) || parser.parseComma() || parser.parseKeyword("descId") ||
+            parser.parseEqual() || parser.parseAttribute(descId)) {
+            return {};
+        }
+    }
+
+    if (parser.parseGreater()) {
+        return {};
+    }
+
+    return get(parser.getContext(), executorAttr, tileIdx, listIdx, fetchTypeAttr, execGroupIdx, logicalTaskIdx,
+               descId);
+}
+
+void VPUIP::FetchDMAAttr::print(mlir::AsmPrinter& printer) const {
+    printer << "<";
+
+    // Executor kind as plain keyword (DMA_NN, DPU, etc.)
+    printer << "<" << config::stringifyExecutorKind(getTargetExecutorKindAttr().getValue()) << ">";
+    printer << ", ";
+
+    // Tile index
+    printer << "tile = ";
+    printer.printAttribute(getTileIdx());
+    printer << ", ";
+
+    // List index
+    printer << "list = ";
+    printer.printAttribute(getListIdx());
+    printer << ", ";
+
+    // Fetch type as <SingleDescriptor> or <DescriptorGroup>
+    printer << "fetchType = <" << VPUIP::stringifyFetchType(getFetchType().getValue()) << ">";
+
+    // Conditional fields based on fetch type
+    if (getFetchType().getValue() == VPUIP::FetchType::DescriptorGroup) {
+        printer << ", group = ";
+        printer.printAttribute(getExecGroupIdx());
+    } else {
+        printer << ", logicalTaskIdx = ";
+        printer.printAttribute(getLogicalTaskIdx());
+        printer << ", descId = ";
+        printer.printAttribute(getDescId());
+    }
+
+    printer << ">";
+}

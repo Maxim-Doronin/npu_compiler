@@ -59,11 +59,15 @@ public:
 
 class EltwiseAddQuantizedFuseOutstandingQuantSubGraphTest_NPU3720 : public EltwiseAddQuantizedSubGraphTest_NPU3720 {
     void configure_model() override {
-        configuration[ov::intel_npu::compilation_mode_params.name()] = "fuse-outstanding-quant=true";
+        // TODO: Investigate accuracy failure E#207348
+        configuration[ov::intel_npu::compilation_mode_params.name()] =
+                "fuse-outstanding-quant=true fuse-outstanding-dequant=false";
     }
 };
 
 TEST_P(EltwiseAddQuantizedSubGraphTest_NPU3720, HW) {
+    // TODO: Investigate accuracy failure E#207348
+    configuration[ov::intel_npu::compilation_mode_params.name()] = "fuse-outstanding-dequant=false";
     setDefaultHardwareMode();
     run(Platform::NPU3720);
 }

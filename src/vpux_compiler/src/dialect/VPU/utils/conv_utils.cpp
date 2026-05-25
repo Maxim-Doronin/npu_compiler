@@ -5,6 +5,7 @@
 
 #include "vpux/compiler/dialect/VPU/utils/conv_utils.hpp"
 #include "vpux/compiler/core/attributes/dims_order.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/utils/conv_utils.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
@@ -119,194 +120,6 @@ bool vpux::VPU::isSupportedConv(IE::ConvolutionOp op, LogCb logCb, bool checkLay
                                    checkChannelAlignment, logCb, supportsInputActCompression);
 }
 
-namespace {
-
-bool isFilterConst(mlir::Value filter) {
-    // While adjusting the layout, an intermediate Reorder operation can be introduced, before it gets fused into the
-    // filter constant
-    if (auto reorderOp = filter.getDefiningOp<IE::ReorderOp>()) {
-        filter = reorderOp.getInput();
-    }
-
-    auto constOp = filter.getDefiningOp<Const::DeclareOp>();
-    if (auto fqOp = filter.getDefiningOp<IE::FakeQuantizeOp>()) {
-        constOp = fqOp.getInput().getDefiningOp<Const::DeclareOp>();
-    }
-
-    if (auto dequantOp = filter.getDefiningOp<IE::DequantizeOp>()) {
-        constOp = dequantOp.getInput().getDefiningOp<Const::DeclareOp>();
-    }
-
-    return constOp != nullptr;
-}
-
-bool isSupportedSEPTransposedConvImpl(mlir::Operation* op, NDTypeInterface inputType, NDTypeInterface filterType,
-                                      NDTypeInterface outputType, mlir::ArrayAttr kernelStridesAttr,
-                                      mlir::ArrayAttr dilationsAttr, mlir::ArrayAttr outputPaddingAttr,
-                                      PadInfo origPads, LogCb logCb, bool checkLayout, bool checkChannelAlignment,
-                                      bool supportsInputActCompression) {
-    const auto dilations = parseIntArrayAttr<int64_t>(dilationsAttr);
-    if (dilations[Dims4D::Dilation::X.ind()] > 1 || dilations[Dims4D::Dilation::Y.ind()] > 1) {
-        logCb(formatv("Dilated transposed convolution is not supported"));
-        return false;
-    }
-
-    if (origPads.left < 0 || origPads.top < 0 || origPads.right < 0 || origPads.bottom < 0) {
-        logCb(formatv("Negative padding is unsupported"));
-        return false;
-    }
-
-    const auto filterShape = filterType.getShape().raw();
-    const auto KY = filterShape[filterShape.size() - 2];
-    const auto KX = filterShape[filterShape.size() - 1];
-
-    const auto outputPadding = Shape(parseIntArrayAttr<int64_t>(outputPaddingAttr));
-
-    const auto inputShape = getBoundedShape(inputType);
-    const auto origKernelStrides = Shape(parseIntArrayAttr<int64_t>(kernelStridesAttr));
-    const auto zerosY = origKernelStrides[Dims4D::Strides::Y] - 1;
-    const auto zerosX = origKernelStrides[Dims4D::Strides::X] - 1;
-    const auto newPadTop = KY - 1;
-    const auto newPadBottom = KY - 1 + outputPadding[Dims4D::PadsOutput::Y];
-    const auto newPadLeft = KX - 1;
-    const auto newPadRight = KX - 1 + outputPadding[Dims4D::PadsOutput::X];
-    const auto newY = inputShape[Dims4D::Act::H] + zerosY * (inputShape[Dims4D::Act::H] - 1) + newPadTop + newPadBottom;
-    const auto newX = inputShape[Dims4D::Act::W] + zerosX * (inputShape[Dims4D::Act::W] - 1) + newPadLeft + newPadRight;
-
-    const Shape newInputShape{inputShape[Dims4D::Act::N], inputShape[Dims4D::Act::C], newY, newX};
-
-    // In case of dynamic bounded types, check that the NCEConv is legal on the bounded shape
-    mlir::Type convInputType = inputType;
-    if (mlir::isa<Core::BoundedTensorType>(convInputType)) {
-        convInputType = vpux::getTensorType(newInputShape, inputType.getElementType(), inputType.getDimsOrder(),
-                                            inputType.getMemSpace(), /*Bounds=*/{}, /*DynamicDimsMask=*/{});
-    } else {
-        convInputType = mlir::cast<NDTypeInterface>(convInputType).changeShape(newInputShape);
-    }
-
-    mlir::Type convFilterType = filterType;
-    if (mlir::isa<Core::BoundedTensorType>(convFilterType)) {
-        convFilterType = vpux::getTensorType(getBoundedShape(convFilterType), filterType.getElementType(),
-                                             filterType.getDimsOrder(), filterType.getMemSpace(), /*Bounds=*/{},
-                                             /*DynamicDimsMask=*/{});
-    }
-
-    mlir::Type convOutputType = outputType;
-    if (mlir::isa<Core::BoundedTensorType>(convOutputType)) {
-        convOutputType = vpux::getTensorType(getBoundedShape(convOutputType), outputType.getElementType(),
-                                             outputType.getDimsOrder(), outputType.getMemSpace(), /*Bounds=*/{},
-                                             /*DynamicDimsMask=*/{});
-    }
-
-    const int64_t SY = 1;
-    const int64_t SX = 1;
-
-    PadInfo pads(0, 0, 0, 0);
-
-    return VPU::isNCEConvSupported(op, convInputType, convFilterType, convOutputType, dilations, KY, KX, SY, SX, pads,
-                                   checkLayout, checkChannelAlignment, logCb, supportsInputActCompression);
-}
-
-}  // namespace
-
-bool VPU::isSupportedSEPTransposedConv(IE::TransposedConvolutionOp op, LogCb logCb, bool checkLayout,
-                                       bool checkChannelAlignment, bool supportsInputActCompression) {
-    auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
-    auto filterType = mlir::cast<vpux::NDTypeInterface>(op.getFilter().getType());
-    auto outputType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
-    if (inputType.getShape().size() != 4) {
-        logCb(formatv("Only 4D inputs are supported, got {0} dimensions", inputType.getShape().size()));
-        return false;
-    }
-    if (filterType.getShape().size() != 4) {
-        logCb(formatv("Only 4D filters are supported, got {0} dimensions", filterType.getShape().size()));
-        return false;
-    }
-    if (outputType.getShape().size() != 4) {
-        logCb(formatv("Only 4D outputs are supported, got {0} dimensions", outputType.getShape().size()));
-        return false;
-    }
-    if (inputType.getShape()[Dims4D::Act::C] != filterType.getShape()[Dims4D::Filter::IC]) {
-        logCb(formatv("The filter channels are inconsistent with activation channels"));
-        return false;
-    }
-    if (op.getPadsBegin().size() != 2 || op.getPadsEnd().size() != 2) {
-        logCb(formatv("Pads begin and pads end should have a 2D shape, but got {0}D and {1}D", op.getPadsBegin().size(),
-                      op.getPadsEnd().size()));
-        return false;
-    }
-
-    auto origPads = PadInfo(op.getPadsBegin(), op.getPadsEnd());
-    return isSupportedSEPTransposedConvImpl(op.getOperation(), inputType, filterType, outputType, op.getStrides(),
-                                            op.getDilations(), op.getSpatialOutputPadding(), origPads, logCb,
-                                            checkLayout, checkChannelAlignment, supportsInputActCompression);
-}
-
-bool VPU::isSupportedSEPTransposedConv(IE::GroupTransposedConvolutionOp op, LogCb logCb, bool checkLayout,
-                                       bool checkChannelAlignment, bool supportsInputActCompression) {
-    if (!isFilterConst(op.getFilter())) {
-        return false;
-    }
-    auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
-    auto filterType = mlir::cast<vpux::NDTypeInterface>(op.getFilter().getType());
-    auto outputType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
-    if (inputType.getShape().size() != 4) {
-        logCb(formatv("Only 4D inputs are supported, got {0} dimensions", inputType.getShape().size()));
-        return false;
-    }
-    if (filterType.getShape().size() != 5) {
-        logCb(formatv("Only 5D filters are supported, got {0} dimensions", filterType.getShape().size()));
-        return false;
-    }
-    if (outputType.getShape().size() != 4) {
-        logCb(formatv("Only 4D outputs are supported, got {0} dimensions", outputType.getShape().size()));
-        return false;
-    }
-    if (op.getPadsBegin().size() != 2 || op.getPadsEnd().size() != 2) {
-        logCb(formatv("Pads begin and pads end should have a 2D shape, but got {0}D and {1}D", op.getPadsBegin().size(),
-                      op.getPadsEnd().size()));
-        return false;
-    }
-
-    auto origPads = PadInfo(op.getPadsBegin(), op.getPadsEnd());
-    return isSupportedSEPTransposedConvImpl(op.getOperation(), inputType, filterType, outputType, op.getStrides(),
-                                            op.getDilations(), op.getSpatialOutputPadding(), origPads, logCb,
-                                            checkLayout, checkChannelAlignment, supportsInputActCompression);
-}
-
-bool VPU::isSupportedSEPTransposedConv(VPU::TransposedConvolutionOp op, LogCb logCb, bool checkLayout,
-                                       bool checkChannelAlignment, bool supportsInputActCompression) {
-    auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
-    auto filterType = mlir::cast<vpux::NDTypeInterface>(op.getFilter().getType());
-    auto outputType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
-    if (inputType.getShape().size() != 4) {
-        logCb(formatv("Only 4D inputs are supported, got {0} dimensions", inputType.getShape().size()));
-        return false;
-    }
-    if (filterType.getShape().size() != 4) {
-        logCb(formatv("Only 4D filters are supported, got {0} dimensions", filterType.getShape().size()));
-        return false;
-    }
-    if (outputType.getShape().size() != 4) {
-        logCb(formatv("Only 4D outputs are supported, got {0} dimensions", outputType.getShape().size()));
-        return false;
-    }
-    if (inputType.getShape()[Dims4D::Act::C] != filterType.getShape()[Dims4D::Filter::IC]) {
-        logCb(formatv("The filter channels are inconsistent with activation channels"));
-        return false;
-    }
-    if (op.getPadsBegin().size() != 2 || op.getPadsEnd().size() != 2) {
-        logCb(formatv("Pads begin and pads end should have a 2D shape, but got {0}D and {1}D", op.getPadsBegin().size(),
-                      op.getPadsEnd().size()));
-        return false;
-    }
-
-    auto origPads = PadInfo(op.getPadsBegin(), op.getPadsEnd());
-    return isSupportedSEPTransposedConvImpl(op.getOperation(), inputType, filterType, outputType, op.getStrides(),
-                                            op.getDilations(), op.getSpatialOutputPadding(), origPads, logCb,
-                                            checkLayout, checkChannelAlignment, supportsInputActCompression);
-}
-
 std::optional<bool> VPU::isSEPConvCompatibleWithClusterStrategy(VPU::NCEConvolutionOp nceConv,
                                                                 VPU::MultiClusterStrategy strategy) {
     auto sparseInput = mlir::dyn_cast<vpux::VPU::SparseTensorType>(nceConv.getInput().getType());
@@ -382,9 +195,6 @@ PadInfo vpux::VPU::shrinkPadsForDilatedConvolution(const PadInfo& pads, const Ar
 }
 
 namespace {
-using ScaleVecType =
-        std::variant<std::vector<vpux::type::float8_e4m3>, std::vector<vpux::type::float8_e5m2>, std::vector<float>>;
-
 // The original scale is computed as:
 // ((activation_scale * weights_scale) / output_scale) * static_scale
 
@@ -404,31 +214,33 @@ mlir::Value updateScaleTableForConvOps(mlir::PatternRewriter& rewriter, mlir::Va
     assert(origScaleTable != nullptr && "Scale table does not exist.");
 
     auto scaleTableConst = origScaleTable.getDefiningOp<Const::DeclareOp>();
-    VPUX_THROW_WHEN(scaleTableConst == nullptr, "Scale table must be const");
+    if (scaleTableConst) {
+        auto scaleTableContent = scaleTableConst.getContent();
+        auto scaleTableValues = scaleTableContent.getValues<T>();
 
-    auto scaleTableContent = scaleTableConst.getContent();
-    auto scaleTableValues = scaleTableContent.getValues<T>();
+        std::vector<T> scaleTableVec;
+        scaleTableVec.reserve(oCh);
+        std::copy(scaleTableValues.begin(), scaleTableValues.end(), std::back_inserter(scaleTableVec));
 
-    std::vector<T> scaleTableVec;
-    scaleTableVec.reserve(oCh);
-    std::copy(scaleTableValues.begin(), scaleTableValues.end(), std::back_inserter(scaleTableVec));
+        for (int64_t i = 0; i < oCh; ++i) {
+            double origScale = 1.0;
+            const auto newScale = ppeConverter(0, 0, inputRescale[i], scaleTableType);
 
-    for (int64_t i = 0; i < oCh; ++i) {
-        double origScale = 1.0;
-        const auto newScale = ppeConverter(0, 0, inputRescale[i], scaleTableType);
+            origScale = scaleRetrieveConverter(scaleTableVec[i], scaleTableType);
+            scaleTableVec[i] = std::get<T>(newScale);
 
-        origScale = scaleRetrieveConverter(scaleTableVec[i], scaleTableType);
-        scaleTableVec[i] = std::get<T>(newScale);
+            outQuantScales.push_back(origScale / inputRescale[i]);
+        }
 
-        outQuantScales.push_back(origScale / inputRescale[i]);
+        const auto scaleTableShape = VPU::NCESparsity::inferWeightsTableShape(oCh, /*newFormat=*/true);
+        auto convScaleTable =
+                VPU::createNewWeightsTableTensor<T>(rewriter, loc, scaleTableVec, scaleTableShape, scaleTableType);
+        log.trace("Created updated scale table for decomposed Conv ops.");
+        return convScaleTable;
+    } else {
+        outQuantScales = SmallVector<double>(oCh, 1.0);
+        return origScaleTable;
     }
-
-    const auto scaleTableShape = VPU::NCESparsity::inferWeightsTableShape(oCh, /*newFormat=*/true);
-    auto convScaleTable =
-            VPU::createNewWeightsTableTensor<T>(rewriter, loc, scaleTableVec, scaleTableShape, scaleTableType);
-
-    log.trace("Created updated scale table for decomposed Conv ops.");
-    return convScaleTable;
 }
 
 // Do conv scale update as described above, but replace the corresponding values inside weights table
@@ -709,6 +521,12 @@ mlir::Value vpux::VPU::splitNCEConvolutionOverIC(VPU::NCEConvolutionOp origOp, m
         updateScaleInConvWeightTable(weightTable, weightTableVec, inputRescale, ppeConverter, scaleRetrieveConverter,
                                      origInType.getElementType(), outQuantScales, kernelN, log.nest());
     } else if (scaleTable != nullptr) {
+        // We need to split the scales into input and output scales. However, if the scale is a non-constant table,
+        // splitting is not possible. A throw is triggered here, we should check the previous pass to prevent this case
+        if (!mlir::isa<Const::DeclareOp>(scaleTable.getDefiningOp())) {
+            VPUX_THROW_UNLESS(outElemType.isF16() || outElemType.isF32(),
+                              "Only F16 and F32 output types are supported for non-constant scale tables");
+        }
         auto scaleTableType = mlir::cast<NDTypeInterface>(scaleTable.getType()).getElementType();
         if (mlir::isa<mlir::Float8E4M3FNType>(scaleTableType)) {
             convScaleTable = updateScaleTableForConvOps<vpux::type::float8_e4m3>(
@@ -815,7 +633,10 @@ mlir::Value vpux::VPU::splitNCEConvolutionOverIC(VPU::NCEConvolutionOp origOp, m
 
     const auto opType = VPU::EltwiseType::ADD;
     VPU::NCEEltwiseOp addResult = nullptr;
-
+    VPU::MPEEngineAttr mpeEngineModeAttr = nullptr;
+    if (auto mpeEngineInterface = mlir::dyn_cast<IE::MPEEngineInfoOpInterface>(origOp.getOperation())) {
+        mpeEngineModeAttr = mlir::cast<VPU::MPEEngineAttr>(mpeEngineInterface.getMPEEngineMode());
+    }
     // Assumption: Unless the output type has per channel quantization scales, there is no way for the output scale
     // to be per channel. The scale is computed as:
     // input_quant_scale * weights_quant_scale  * static_scale / output_quant_scale
@@ -832,10 +653,12 @@ mlir::Value vpux::VPU::splitNCEConvolutionOverIC(VPU::NCEConvolutionOp origOp, m
         auto eltwiseOutputType =
                 (index == convOps.size() - 2 && hasPerTensorOrNoOutputScales) ? origOutType : f16TypeOutputs;
         auto ppeAttr = (index == convOps.size() - 2 && hasPerTensorOrNoOutputScales) ? finalPpeAttr : eltwisePpeAttr;
+
         auto outputPadding = origOp.getOutputPaddingAttr();
         addResult = rewriter.create<VPU::NCEEltwiseOp>(appendLoc(origOp->getLoc(), "accumulator_{0}", index),
                                                        eltwiseOutputType, addOperand, convOps[index + 1].getOutput(),
-                                                       opType, ppeAttr, /*multicluster_strategy_attr=*/nullptr,
+                                                       opType, ppeAttr, mpeEngineModeAttr,
+                                                       /*multicluster_strategy_attr=*/nullptr,
                                                        /*in_place=*/nullptr, outputPadding, outputPadding);
 
         // change NCEConv's output layout to supported NCEEltwise input layout
@@ -847,7 +670,7 @@ mlir::Value vpux::VPU::splitNCEConvolutionOverIC(VPU::NCEConvolutionOp origOp, m
         //                                         NCEElt (inL=NHWC,out=NCHW)
         if (auto iface = mlir::dyn_cast<IE::LayoutInfoOpInterface>(addResult.getOperation())) {
             auto orderInfo = iface.getLayoutInfo();
-            iface.inferLayoutInfo(orderInfo, /*seOpsEnabled=*/false, /*seExperimentalOpsEnabled=*/false);
+            iface.inferLayoutInfo(orderInfo);
             const auto supportOrder1 = orderInfo.getInput(0);
             const auto supportOrder2 = orderInfo.getInput(1);
             const auto inputOrder1 = DimsOrder::fromValue(addResult.getInput1());
@@ -956,7 +779,8 @@ mlir::Value vpux::VPU::splitNCEConvolutionOverIC(VPU::NCEConvolutionOp origOp, m
         auto nceDepthConvolutionOp = rewriter.create<VPU::NCEDepthConvolutionOp>(
                 appendLoc(origOp->getLoc(), "dw_conv_out_scale"), origOutType, addResult.getOutput(), alignedWeights,
                 dwWeightTable, /*data_ptr_table=*/nullptr, /*sparsity_ptr_table=*/nullptr, dwScaleTable, dwBiasTable,
-                /*zp_table=*/nullptr, strides, padding, finalPpeAttr, getIntArrayAttr(rewriter, weightsShape.raw()),
+                /*zp_table=*/nullptr, strides, padding, finalPpeAttr, mpeEngineModeAttr,
+                getIntArrayAttr(rewriter, weightsShape.raw()),
                 /*multiClusterStrategyAttr=*/nullptr, origOp.getOutputPaddingAttr(), nullptr);
 
         return nceDepthConvolutionOp.getOutput();

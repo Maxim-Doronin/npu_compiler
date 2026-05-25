@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/dialect/VPU/transforms/factories/nce_workload_channels.hpp"
 #include <mlir/IR/Types.h>
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
@@ -31,15 +30,6 @@ namespace vpux::VPU::arch40xx {
  * - The optimization is disabled if the total workload number is greater than the max barrier slot number,
  *   as this would cause the workload to be executed in linearization mode.
  */
-bool hasAnyChannelSupportedByKernelOptimization(ArrayRef<int64_t> supportedChannels, const int64_t KX,
-                                                const int64_t SX) {
-    return (std::find(supportedChannels.begin(), supportedChannels.end(),
-                      VPU::NCEInvariant::VPU_CHANNEL_SIZE_FOR_L1OPT16) != supportedChannels.end() ||
-            std::find(supportedChannels.begin(), supportedChannels.end(),
-                      VPU::NCEInvariant::VPU_CHANNEL_SIZE_FOR_L1OPT32) != supportedChannels.end()) &&
-           KX == 3 && SX == 1;
-}
-
 SmallVector<int64_t> getChannelsSupportedByKernelOptimization(ArrayRef<int64_t> workloadsChannels,
                                                               const int64_t maxSlotsSum) {
     SmallVector<int64_t> supportedChannels;
@@ -65,10 +55,6 @@ SmallVector<int64_t> getChannelsSupportedByKernelOptimization(ArrayRef<int64_t> 
     }
 
     return supportedChannels;
-}
-
-bool isNCEPermuteOffsetsCorrectionNeeded(VPU::NCEOpInterface) {
-    return false;
 }
 
 }  // namespace vpux::VPU::arch40xx

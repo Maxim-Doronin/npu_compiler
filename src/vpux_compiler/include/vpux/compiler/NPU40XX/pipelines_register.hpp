@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "vpux/compiler/pipelines_register.hpp"
+#include "vpux/compiler/init/pipelines_register.hpp"
 
 namespace vpux {
 

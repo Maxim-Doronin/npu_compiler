@@ -6,12 +6,7 @@
 #pragma once
 
 #include "vpux/compiler/NPU40XX/dialect/VPU/IR/ops_interfaces.hpp"
-#include "vpux/compiler/core/attributes/shape.hpp"
-#include "vpux/compiler/dialect/VPU/utils/scf/scf_utils.hpp"
-#include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
-#include "vpux/compiler/dialect/core/types.hpp"
-#include "vpux/compiler/utils/attributes.hpp"
-#include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/core/layers.hpp"
 
 #include <mlir/Dialect/Affine/Utils.h>
 #include <mlir/Dialect/Arith/IR/Arith.h>
@@ -34,6 +29,7 @@ struct UnrollConfig {
     llvm::SmallVector<int64_t> unrollFactors;
     llvm::SmallVector<int64_t> accessOrder;
     size_t totalBlocks;
+    llvm::SmallVector<mlir::scf::ForOp> forOps;
 };
 
 constexpr uint32_t TWO_BIT_MASK = 0x3;

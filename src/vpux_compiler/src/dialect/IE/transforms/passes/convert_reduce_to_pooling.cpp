@@ -72,6 +72,16 @@ bool isBatchDimReduction(ArrayRef<int64_t> axes) {
     return false;
 }
 
+bool isAxesConsecutive(ArrayRef<int64_t> axes) {
+    for (size_t i = 1; i < axes.size(); i++) {
+        if (axes[i] - axes[i - 1] != 1) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 void constructAvgOpParams(ArrayRef<int64_t> inputShape, ArrayRef<int64_t> outputShape, ArrayRef<int64_t> axes,
                           bool avoidExpandCase, SmallVector<int64_t>& kernel, SmallVector<int64_t>& strides,
                           SmallVector<int64_t>& padBegin, SmallVector<int64_t>& padEnd,
@@ -287,7 +297,7 @@ mlir::LogicalResult generalReduceRewrite(
     return mlir::success();
 }
 
-bool isValidOperationForConversion(mlir::Operation* op, Logger log) {
+bool isValidOperationForConversion(mlir::Operation* op, Logger log, bool checkConsecutiveAxes = true) {
     const auto isLegalOp = [&](mlir::Operation* op) {
         const auto logCb = [&](const formatv_object_base& msg) {
             log.trace("{0}", msg.str());
@@ -324,10 +334,9 @@ bool isValidOperationForConversion(mlir::Operation* op, Logger log) {
         }
 
         std::sort(axes.begin(), axes.end());
-        for (size_t i = 1; i < axes.size(); i++) {
-            if (axes[i] - axes[i - 1] != 1) {
-                return false;
-            }
+
+        if (checkConsecutiveAxes && !isAxesConsecutive(axes)) {
+            return false;
         }
 
         const auto inputElementType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType()).getElementType();
@@ -516,6 +525,100 @@ mlir::LogicalResult ReduceMinRewriter::matchAndRewrite(IE::ReduceMinOp origOp, m
 }
 
 //
+// ReduceSimplifyAxesRewriter
+//
+// Simplifies Reduce op by removing trivial reduction axes (where input dim is 1)
+// and forcing keepDims=true. A trailing Reshape restores the original output shape
+// when keepDims was false or trivial axes were dropped.
+// After simplification, some Reduce cases become eligible for conversion to
+// pooling operations.
+// Example: ReduceMean(1x1x3136x64, axes=[1,3], keepDims=false)
+//       -> ReduceMean(1x1x3136x64, axes=[3], keepDims=true) -> Reshape
+//
+
+template <class ConcreteOp>
+class ReduceSimplifyAxesRewriter final : public mlir::OpRewritePattern<ConcreteOp> {
+public:
+    ReduceSimplifyAxesRewriter(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit, Logger log)
+            : mlir::OpRewritePattern<ConcreteOp>(ctx, benefit), _log(log) {
+        this->setDebugName("ReduceSimplifyAxesRewriter");
+    }
+
+    mlir::LogicalResult matchAndRewrite(ConcreteOp origOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+template <class ConcreteOp>
+mlir::LogicalResult ReduceSimplifyAxesRewriter<ConcreteOp>::matchAndRewrite(ConcreteOp origOp,
+                                                                            mlir::PatternRewriter& rewriter) const {
+    _log.trace("[{0}] Got Reduce layer at '{1}'", this->getDebugName(), origOp->getLoc());
+
+    if (isValidOperationForConversion(origOp, _log)) {
+        return mlir::failure();
+    }
+
+    auto axesAttr = origOp.getAxesValue();
+    if (!axesAttr.has_value()) {
+        return mlir::failure();
+    }
+    auto axes = parseIntArrayAttr<int64_t>(axesAttr.value());
+
+    const auto inputShape = getShape(origOp.getInput());
+    const auto rank = static_cast<int64_t>(inputShape.size());
+
+    // Normalize negative axes
+    for (auto& axis : axes) {
+        if (axis < 0) {
+            axis += rank;
+        }
+    }
+    std::sort(axes.begin(), axes.end());
+
+    // Remove axes where input dim is 1 (trivial reduction)
+    SmallVector<int64_t> simplifiedAxes;
+    for (const auto& axis : axes) {
+        if (inputShape[Dim(axis)] != 1) {
+            simplifiedAxes.push_back(axis);
+        }
+    }
+
+    // Nothing to simplify when all axes are non-trivial
+    if (simplifiedAxes.size() == axes.size() || simplifiedAxes.empty()) {
+        return mlir::failure();
+    }
+
+    if (!isAxesConsecutive(simplifiedAxes) || !isValidOperationForConversion(origOp, _log, false)) {
+        return mlir::failure();
+    }
+
+    auto* ctx = origOp->getContext();
+    // Create new Reduce op with keepDims=true and only non-trivial axes
+    const auto keepDimsAttr = mlir::UnitAttr::get(ctx);
+    const auto newAxesAttr = getIntArrayAttr(ctx, simplifiedAxes);
+
+    auto* newOp = rewriter.clone(*origOp.getOperation());
+    newOp->setAttr("axes_value", newAxesAttr);
+    newOp->setAttr("keep_dims", keepDimsAttr);
+    vpux::inferReturnTypes(newOp, vpux::InferShapedTypeMode::SHAPE | vpux::InferShapedTypeMode::LAYOUT);
+    mlir::Value output = newOp->getResult(0);
+
+    // Reshape to restore original output shape (accounts for removed trivial axes and keepDims=false)
+    const auto origOutputShape = to_small_vector(getShape(origOp.getOutput()));
+    const auto newOutputShape = to_small_vector(getShape(output));
+    if (origOutputShape != newOutputShape) {
+        const auto outputShapeAttr = getIntArrayAttr(ctx, origOutputShape);
+        output = rewriter.create<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_out"), output, outputShapeAttr);
+    }
+
+    rewriter.replaceOp(origOp, output);
+    _log.trace("[{0}] done", this->getDebugName());
+
+    return mlir::success();
+}
+
+//
 // ReduceSumBatchToChannelRewriter
 //
 
@@ -584,6 +687,10 @@ void ConvertReduceToPoolingPass::safeRunOnFunc() {
     auto func = getOperation();
 
     mlir::RewritePatternSet patterns(&ctx);
+    patterns.add<ReduceSimplifyAxesRewriter<IE::ReduceMeanOp>>(&ctx, benefitLevels[0], _log);
+    patterns.add<ReduceSimplifyAxesRewriter<IE::ReduceMaxOp>>(&ctx, benefitLevels[0], _log);
+    patterns.add<ReduceSimplifyAxesRewriter<IE::ReduceMinOp>>(&ctx, benefitLevels[0], _log);
+    patterns.add<ReduceSimplifyAxesRewriter<IE::ReduceSumOp>>(&ctx, benefitLevels[0], _log);
     patterns.add<ReduceSumBatchToChannelRewriter>(&ctx, benefitLevels[0], _log);
     patterns.add<ReduceMeanRewriter>(&ctx, benefitLevels[1], _log);
     patterns.add<ReduceMaxRewriter>(&ctx, benefitLevels[1], _log);

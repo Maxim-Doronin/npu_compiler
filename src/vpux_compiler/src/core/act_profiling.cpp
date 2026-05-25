@@ -7,6 +7,7 @@
 
 #include "vpux/compiler/core/act_profiling.hpp"
 #include "vpux/compiler/core/profiling.hpp"
+#include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
@@ -215,6 +216,7 @@ mlir::Value ActShaveProfiler::replaceOpWithProfiledOp(VPUIP::SwKernelOp origSwTa
     auto swTask = _builder.create<VPUIP::SwKernelOp>(loc, origSwTask, profilingSlot);
     swTask.getProfilingDataMutable().assign(profilingSlot);
     swTask.setProfilingMetadataAttr(profMeta);
+    copyLoopAttributes(origSwTask, swTask);
 
     swTask.getRegion().takeBody(origSwTask.getRegion());
 

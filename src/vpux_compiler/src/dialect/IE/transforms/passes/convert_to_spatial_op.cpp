@@ -192,7 +192,8 @@ mlir::LogicalResult TransposeInterpolation::matchAndRewrite(IE::InterpolateOp or
 
 class TransposeRoll final : public mlir::OpRewritePattern<IE::RollOp> {
 public:
-    TransposeRoll(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<IE::RollOp>(ctx), _log(log) {
+    TransposeRoll(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit, Logger log)
+            : mlir::OpRewritePattern<IE::RollOp>(ctx, benefit), _log(log) {
         setDebugName("TransposeRoll");
     }
 
@@ -210,7 +211,9 @@ mlir::LogicalResult TransposeRoll::matchAndRewrite(IE::RollOp origOp, mlir::Patt
         _log.trace("{0}", msg.str());
     };
 
-    if (VPU::isSupportedSEPRoll(origOp, logCb, /*checkLayout=*/false, /*checkChannelAlignment=*/true)) {
+    auto seOp = mlir::dyn_cast<IE::SEOpInterface>(origOp.getOperation());
+    if (seOp && seOp.isSupported(logCb, /*checkLayout=*/false, /*checkChannelAlignment=*/true)) {
+        _log.trace("Roll Operation {0} can be executed using SEP", origOp);
         return mlir::failure();
     }
 
@@ -285,6 +288,88 @@ mlir::LogicalResult TransposeRoll::matchAndRewrite(IE::RollOp origOp, mlir::Patt
 }
 
 //
+// DecomposeRollToSliceConcat
+//
+
+class DecomposeRollToSliceConcat final : public mlir::OpRewritePattern<IE::RollOp> {
+public:
+    DecomposeRollToSliceConcat(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit, Logger log)
+            : mlir::OpRewritePattern<IE::RollOp>(ctx, benefit), _log(log) {
+        setDebugName("DecomposeRollToSliceConcat");
+    }
+
+public:
+    mlir::LogicalResult matchAndRewrite(IE::RollOp origOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+mlir::LogicalResult DecomposeRollToSliceConcat::matchAndRewrite(IE::RollOp origOp,
+                                                                mlir::PatternRewriter& rewriter) const {
+    _log.trace("[{0}] Got '{1}' at '{2}'", this->getDebugName(), origOp->getName(), origOp.getLoc());
+
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getData().getType());
+    const auto inputShape = inputType.getShape();
+
+    auto shiftAndAxesOrFail =
+            IE::getShiftAndAxesForRollOp(origOp.getLoc(), origOp.getShift(), origOp.getAxes(), inputShape, false);
+    if (mlir::failed(shiftAndAxesOrFail)) {
+        return mlir::failure();
+    }
+
+    const auto shiftAndAxes = shiftAndAxesOrFail.value();
+    const auto& shifts = shiftAndAxes.shift;
+    const auto& axes = shiftAndAxes.axes;
+    const auto rank = inputShape.size();
+
+    if (llvm::all_of(shifts, [](int64_t s) {
+            return s == 0;
+        })) {
+        _log.trace("All shifts are zero, nothing to decompose");
+        return mlir::failure();
+    }
+
+    auto* ctx = rewriter.getContext();
+    mlir::Value current = origOp.getData();
+
+    for (const auto& [idx, axisAndShift] : llvm::enumerate(llvm::zip(axes, shifts))) {
+        const auto [axis, shift] = axisAndShift;
+        if (shift == 0) {
+            continue;
+        }
+
+        const auto dimSize = inputShape[Dim(axis)];
+        const auto splitPoint = dimSize - shift;  // shift is normalized to [0, dimSize)
+
+        // tailSlice: [splitPoint .. dimSize) along the roll axis — the part that wraps to the front
+        SmallVector<int64_t> tailOffsets(rank, 0);
+        SmallVector<int64_t> tailSizes(inputShape.begin(), inputShape.end());
+        tailOffsets[checked_cast<size_t>(axis)] = splitPoint;
+        tailSizes[checked_cast<size_t>(axis)] = shift;
+
+        // headSlice: [0 .. splitPoint) along the roll axis — the part that wraps to the back
+        SmallVector<int64_t> headOffsets(rank, 0);
+        SmallVector<int64_t> headSizes(inputShape.begin(), inputShape.end());
+        headSizes[checked_cast<size_t>(axis)] = splitPoint;
+
+        auto sliceTail =
+                rewriter.create<IE::SliceOp>(appendLoc(origOp.getLoc(), "slice_tail_{0}", idx), current,
+                                             getIntArrayAttr(ctx, tailOffsets), getIntArrayAttr(ctx, tailSizes));
+
+        auto sliceHead =
+                rewriter.create<IE::SliceOp>(appendLoc(origOp.getLoc(), "slice_head_{0}", idx), current,
+                                             getIntArrayAttr(ctx, headOffsets), getIntArrayAttr(ctx, headSizes));
+        current = rewriter.create<IE::ConcatOp>(appendLoc(origOp.getLoc(), "concat_{0}", idx),
+                                                mlir::ValueRange{sliceTail, sliceHead}, axis)
+                          .getOutput();
+    }
+
+    rewriter.replaceOp(origOp, current);
+    return mlir::success();
+}
+
+//
 // ConvertToSpatialOpPass
 //
 
@@ -327,14 +412,18 @@ void ConvertToSpatialOpPass::safeRunOnFunc() {
     auto func = getOperation();
     auto moduleOp = getModuleOp(func);
 
+    const uint32_t levelCount = 2;
+    SmallVector<mlir::PatternBenefit> benefitLevels = getBenefitLevels(levelCount);
+
     mlir::RewritePatternSet patterns(&ctx);
     if (!_m2iEnabled) {
         patterns.add<TransposeInterpolation>(&ctx, _log);
     }
 
     if (vpux::config::hasEnableSEPtrsOperations(moduleOp)) {
-        patterns.add<TransposeRoll>(&ctx, _log);
+        patterns.add<TransposeRoll>(&ctx, benefitLevels[0], _log);
     }
+    patterns.add<DecomposeRollToSliceConcat>(&ctx, benefitLevels[1], _log);
     collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 

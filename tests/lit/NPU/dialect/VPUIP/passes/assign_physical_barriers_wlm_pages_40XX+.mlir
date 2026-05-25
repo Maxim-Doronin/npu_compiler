@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --assign-physical-barriers="num-barriers=4 workload-management-mode=PWLM_V2_PAGES" %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --assign-physical-barriers="num-barriers=4 workload-management-mode=FWLM_V1_PAGES" %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -73,7 +73,7 @@ func.func @DmaAndDpuGraph() -> memref<1x16x8x32xf16,  #NHWC, [@CMX_NN, 0]> {
     VPURT.Task waits(%bar1: !VPURT.Barrier)
                updates(%bar2, %bar3: !VPURT.Barrier, !VPURT.Barrier)
     {
-        VPUIP.NCEClusterTask <{
+        VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>
             }>
             input(%buf0: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>) weights(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) parent_input(%buf0: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>) parent_output(%buf3: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>) outputs(%buf3: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>
@@ -84,7 +84,7 @@ func.func @DmaAndDpuGraph() -> memref<1x16x8x32xf16,  #NHWC, [@CMX_NN, 0]> {
     VPURT.Task waits(%bar2: !VPURT.Barrier)
                updates(%bar4: !VPURT.Barrier)
     {
-        VPUIP.NCEClusterTask <{
+        VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>
             }>
             input(%buf0: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>) weights(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) parent_input(%buf0: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>) parent_output(%buf3: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>) outputs(%buf3: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>
@@ -95,7 +95,7 @@ func.func @DmaAndDpuGraph() -> memref<1x16x8x32xf16,  #NHWC, [@CMX_NN, 0]> {
     VPURT.Task waits(%bar3: !VPURT.Barrier)
                updates(%bar4: !VPURT.Barrier)
     {
-        VPUIP.NCEClusterTask <{
+        VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>
             }>
             input(%buf0: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>) weights(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) parent_input(%buf0: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>) parent_output(%buf3: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>) outputs(%buf3: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>
@@ -106,7 +106,7 @@ func.func @DmaAndDpuGraph() -> memref<1x16x8x32xf16,  #NHWC, [@CMX_NN, 0]> {
     VPURT.Task waits(%bar4: !VPURT.Barrier)
                updates(%bar5: !VPURT.Barrier)
     {
-        VPUIP.NCEClusterTask <{
+        VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>
             }>
             input(%buf0: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>) weights(%buf1: memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>) parent_input(%buf0: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>) parent_output(%buf3: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>) outputs(%buf3: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>
@@ -123,12 +123,12 @@ func.func @DmaAndDpuGraph() -> memref<1x16x8x32xf16,  #NHWC, [@CMX_NN, 0]> {
 
     return %buf3: memref<1x16x8x32xf16, #NHWC, [@CMX_NN, 0]>
 
-    // CHECK:   [[BAR0:%.+]] = VPURT.ConfigureBarrier<1> <{isStartBarrier, wlmPage = 0 : i64}> -> !VPURT.Barrier
-    // CHECK:   [[BAR1:%.+]] = VPURT.ConfigureBarrier<0> <{wlmPage = 0 : i64}> -> !VPURT.Barrier
-    // CHECK:   [[BAR2:%.+]] = VPURT.ConfigureBarrier<3> <{wlmPage = 1 : i64}> -> !VPURT.Barrier
-    // CHECK:   [[BAR3:%.+]] = VPURT.ConfigureBarrier<2> <{wlmPage = 1 : i64}> -> !VPURT.Barrier
-    // CHECK:   [[BAR4:%.+]] = VPURT.ConfigureBarrier<1> <{wlmPage = 2 : i64}> -> !VPURT.Barrier
-    // CHECK:   [[BAR5:%.+]] = VPURT.ConfigureBarrier<0> <{wlmPage = 2 : i64}> -> !VPURT.Barrier
+    // CHECK:   [[BAR0:%.+]] = VPURT.ConfigureBarrier<0> <{isStartBarrier, wlmPage = 0 : i64}> -> !VPURT.Barrier
+    // CHECK:   [[BAR1:%.+]] = VPURT.ConfigureBarrier<1> <{wlmPage = 0 : i64}> -> !VPURT.Barrier
+    // CHECK:   [[BAR2:%.+]] = VPURT.ConfigureBarrier<2> <{wlmPage = 1 : i64}> -> !VPURT.Barrier
+    // CHECK:   [[BAR3:%.+]] = VPURT.ConfigureBarrier<3> <{wlmPage = 1 : i64}> -> !VPURT.Barrier
+    // CHECK:   [[BAR4:%.+]] = VPURT.ConfigureBarrier<0> <{wlmPage = 2 : i64}> -> !VPURT.Barrier
+    // CHECK:   [[BAR5:%.+]] = VPURT.ConfigureBarrier<1> <{wlmPage = 2 : i64}> -> !VPURT.Barrier
     // CHECK:   [[BAR6:%.+]] = VPURT.ConfigureBarrier<2> <{isFinalBarrier, wlmPage = 3 : i64}> -> !VPURT.Barrier
 }
 }

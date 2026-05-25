@@ -7,6 +7,7 @@
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
+#include "vpux/compiler/utils/memref_attr_utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include <llvm/ADT/SmallVector.h>
@@ -24,6 +25,12 @@ SmallVector<mlir::Value> allocateBuffersOfType(const Logger& log, mlir::Location
         if (type == nullptr) {
             return mlir::Value();
         } else if (auto memref = mlir::dyn_cast<mlir::MemRefType>(type)) {
+            // drop strided layout for memref.alloc, because it doesn't support it
+            if (hasStridedLayout(type)) {
+                memref = mlir::MemRefType::get(memref.getShape(), memref.getElementType(), nullptr,
+                                               memref.getMemorySpace());
+            }
+
             return static_cast<mlir::Value>(builder.create<mlir::memref::AllocOp>(loc, memref).getMemref());
         } else if (auto distributedBuffer = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(type)) {
             return static_cast<mlir::Value>(

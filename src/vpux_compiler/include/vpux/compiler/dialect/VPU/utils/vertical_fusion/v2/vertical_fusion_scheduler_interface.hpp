@@ -124,6 +124,14 @@ protected:
                                      StrategyCost& accumulatedPrefetchCost) const;
 
     /*
+      Calculate the DMA copy cost for a view-like op with different input and output sizes.
+      Returns std::nullopt if no DMA copy is needed.
+    */
+    std::optional<StrategyCost> getViewLikeOpDMACost(mlir::Operation* operation, VFConfig& config,
+                                                     const TilingOperationStorage::UPtr& tilingInfo, size_t tileIdx,
+                                                     const std::unique_ptr<VPU::LayerVPUNNCost>& costFunction) const;
+
+    /*
       Check if the VF can support shared weights
     */
     virtual bool isSharedWeightsSupported(VFConfig& config) const;

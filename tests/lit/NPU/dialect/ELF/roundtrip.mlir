@@ -3,11 +3,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: env IE_NPU_LOG_FILTER=LOG_ERROR vpux-opt --init-compiler="vpu-arch=%arch%" %s | vpux-opt --init-compiler="vpu-arch=%arch% allow-custom-values=true" | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: env IE_NPU_LOG_FILTER=LOG_ERROR vpux-opt --init-compiler="platform=%platform%" %s | vpux-opt --init-compiler="platform=%platform% allow-custom-values=true" | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 func.func @elf_roundtrip() {
-  ELF.Main @ELFMain {
+  ELF.Main {
     ELF.CreateSection @data1 aligned(64) secType(SHT_PROGBITS) secFlags(SHF_EXECINSTR) secLocation(<DDR>) {
     }
     ELF.CreateLogicalSection @buffer1 aligned(64) secType(SHT_NOBITS) secFlags("SHF_NONE") secLocation(<CMX_NN>) {
@@ -28,7 +28,7 @@ func.func @elf_roundtrip() {
   return
 }
 
-//CHECK: ELF.Main @ELFMain {
+//CHECK: ELF.Main {
 //CHECK: ELF.CreateSection @data1 aligned(64) secType(SHT_PROGBITS) secFlags(SHF_EXECINSTR) secLocation(<DDR>)
 //CHECK: ELF.CreateLogicalSection @buffer1 aligned(64) secType(SHT_NOBITS) secFlags("SHF_NONE") secLocation(<CMX_NN>)
 //CHECK: ELF.CreateSymbolTableSection @symtab  secFlags("SHF_NONE")

@@ -17,6 +17,7 @@
 
 #include <llvm/ADT/SetOperations.h>
 
+#include <algorithm>
 #include <fstream>
 
 using namespace vpux;
@@ -190,6 +191,30 @@ std::optional<size_t> vpux::BarrierInfo::getPrevTaskOnQueueWithWaitBar(size_t ta
     return currentTaskInd;
 }
 
+// Return the closest next task on the same queue that has update barrier
+// Example:  Op0 -> Op1 -> Op2 -> Bar0
+//  When called for Op0 it would return Op2 as Op2 has update barrier
+std::optional<size_t> vpux::BarrierInfo::getNextTaskOnQueueWithUpdateBar(size_t taskInd,
+                                                                         VPURT::TaskQueueType taskQueueType) const {
+    VPUX_THROW_UNLESS(getNumOfTasks() > taskInd, "Task index '{0}' out of range", taskInd);
+    VPUX_THROW_WHEN(_taskQueueTypeMap.empty(), "Task queue map not initialized");
+    VPUX_THROW_WHEN(_taskQueueTypeMap.find(taskQueueType) == _taskQueueTypeMap.end(),
+                    "Task queue map not initialized for executor of task {0}", taskInd);
+
+    const auto& taskBitVec = _taskQueueTypeMap.at(taskQueueType);
+
+    auto currentTaskInd = taskInd;
+    do {
+        auto nextTaskInd = taskBitVec.find_next(currentTaskInd);
+        if (nextTaskInd < 0) {
+            return std::nullopt;
+        }
+        currentTaskInd = static_cast<size_t>(nextTaskInd);
+    } while (_taskUpdateBarriers[currentTaskInd].empty());
+
+    return currentTaskInd;
+}
+
 //
 // getWaitBarriers
 //
@@ -199,7 +224,7 @@ BarrierInfo::TaskSet& vpux::BarrierInfo::getWaitBarriers(size_t taskInd) {
     return _taskWaitBarriers[taskInd];
 }
 
-void vpux::BarrierInfo::dumpBarriers(std::string fileNamePrefix, std::optional<bool> wlmEnabled) {
+void vpux::BarrierInfo::dumpBarriers(const std::string& fileNamePrefix) {
     dumpBarrierDependencies(_taskUpdateBarriers, fileNamePrefix + ".taskUpdateBarriers");
     dumpBarrierDependencies(_taskWaitBarriers, fileNamePrefix + ".taskWaitBarriers");
     dumpBarrierDependencies(_barrierProducerMap, fileNamePrefix + ".barrierProducerMap");
@@ -218,13 +243,13 @@ void vpux::BarrierInfo::dumpBarriers(std::string fileNamePrefix, std::optional<b
     initializeTaskQueueTypeMap(executorKind);
     buildTaskQueueTypeMap();
     dumpQueues(_taskQueueTypeMap, fileNamePrefix + ".taskQueueTypeMap");
-    dumpTaskIdxToQueueIdxMapping(fileNamePrefix + ".taskIdxToQueueIdxMap", wlmEnabled);
+    dumpTaskIdxToQueueIdxMapping(fileNamePrefix + ".taskIdxToQueueIdxMap");
     // restore original state of _taskQueueTypeMap to keep the state unchanged
     _taskQueueTypeMap = std::move(taskQueueTypeMapOrig);
 }
 
 void vpux::BarrierInfo::dumpBarrierDependencies(const SmallVector<BarrierInfo::TaskSet>& depsMap,
-                                                std::string fileName) {
+                                                const std::string& fileName) {
     VPUX_THROW_WHEN(fileName.empty(), "Output file name prefix for barriers dump was not provided");
     _log.trace("Dumping barrier dependencies to {0}", fileName);
     std::ofstream ofs(fileName);
@@ -248,7 +273,7 @@ void vpux::BarrierInfo::dumpBarrierDependencies(const SmallVector<BarrierInfo::T
     ofs.close();
 }
 
-void vpux::BarrierInfo::dumpSlots(std::string fileName) {
+void vpux::BarrierInfo::dumpSlots(const std::string& fileName) {
     VPUX_THROW_WHEN(fileName.empty(), "Output file name prefix for barriers dump was not provided");
     _log.trace("Dumping barrier slots to {0}", fileName);
     std::ofstream ofs(fileName);
@@ -261,7 +286,7 @@ void vpux::BarrierInfo::dumpSlots(std::string fileName) {
 }
 
 void vpux::BarrierInfo::dumpQueues(const std::map<VPURT::TaskQueueType, llvm::BitVector>& queueMap,
-                                   std::string fileName) {
+                                   const std::string& fileName) {
     VPUX_THROW_WHEN(fileName.empty(), "Output file name prefix for barriers dump was not provided");
     _log.trace("Dumping tasks queues to {0}", fileName);
     std::ofstream ofs(fileName);
@@ -278,7 +303,7 @@ void vpux::BarrierInfo::dumpQueues(const std::map<VPURT::TaskQueueType, llvm::Bi
     ofs.close();
 }
 
-void vpux::BarrierInfo::dumpTaskIdxToQueueIdxMapping(std::string fileName, std::optional<bool> wlmEnabled) {
+void vpux::BarrierInfo::dumpTaskIdxToQueueIdxMapping(const std::string& fileName) {
     VPUX_THROW_WHEN(fileName.empty(), "Output file name prefix for barriers dump was not provided");
     _log.trace("Dumping task to invariant id mapping to {0}", fileName);
     std::ofstream ofs(fileName);
@@ -293,10 +318,7 @@ void vpux::BarrierInfo::dumpTaskIdxToQueueIdxMapping(std::string fileName, std::
         }
     });
 
-    auto execGroupAnalysis =
-            wlmEnabled.has_value() && wlmEnabled.value()
-                    ? ExecutionGroupAnalysis(_func)
-                    : ExecutionGroupAnalysis(_func, /* ignoreVariantLimit */ true, /* ignoreInvariantLimit */ false);
+    auto execGroupAnalysis = ExecutionGroupAnalysis(_func);
 
     ExecutionGroupListMap execGroups = execGroupAnalysis.getExecutionGroups();
     for (const auto& [queue, tasksBitVec] : _taskQueueTypeMap) {
@@ -312,7 +334,6 @@ void vpux::BarrierInfo::dumpTaskIdxToQueueIdxMapping(std::string fileName, std::
             return std::optional<int>(std::nullopt);
         };
 
-        auto execGrpTypeStr = wlmEnabled.has_value() && wlmEnabled.value() ? "execGrp:" : "nonWLMexecGrp:";
         for (auto taskIndex : tasksBitVec.set_bits()) {
             bool isSyncDma = syncDmaTaskIndices.contains(taskIndex);
             auto blockIdx = getControlGraphBlockIndex(taskIndex);
@@ -320,7 +341,7 @@ void vpux::BarrierInfo::dumpTaskIdxToQueueIdxMapping(std::string fileName, std::
             std::string execGrpStr = execGrp.has_value() ? std::to_string(execGrp.value()) : "NONE";
             std::string opDescriptionStr = isSyncDma ? "SyncDMA" : "NONE";
             ofs << taskIndex << " " << taskIndexInQueue << " " << config::stringifyExecutorKind(queue.type).str() << "_"
-                << static_cast<size_t>(queue.id) << " block:" << blockIdx << " " << execGrpTypeStr << execGrpStr
+                << static_cast<size_t>(queue.id) << " block:" << blockIdx << " execGrp:" << execGrpStr
                 << " syncPoint:" << isSyncPoint(taskIndex) << " desc:" << opDescriptionStr << std::endl;
             taskIndexInQueue++;
         }
@@ -1631,20 +1652,15 @@ bool BarrierInfo::verifyBarriersUsersCount(size_t maxUsersCount) {
     return checkBarrierUsersCount(_barrierProducerMap, true) && checkBarrierUsersCount(_barrierConsumerMap, false);
 }
 
-bool BarrierInfo::verifyBarriersForTaskDescriptorFetch(const ExecutionGroupListMap& executionGroups, bool wlmEnabled) {
+bool BarrierInfo::verifyBarriersForTaskDescriptorFetch(const ExecutionGroupListMap& executionGroups) {
     clearTaskQueueTypeMap();
     buildTaskQueueTypeMap();
 
     for (size_t blockIdx = 0; blockIdx < getControlGraphBlockCount(); ++blockIdx) {
-        auto taskControlMapAndOffset = buildTaskControlMap(blockIdx, /* considerTaskFifoDependency */ true);
-        std::optional<size_t> blockIdxOfTaskControlMap = blockIdx;
-        std::optional<size_t> legalizationBarrierIdx = std::nullopt;
         for (auto [queue, fifoExecGroups] : executionGroups) {
             int numberOfGroups = static_cast<int>(fifoExecGroups.size());
             for (int grpIdx = 0; grpIdx < numberOfGroups - 1; grpIdx++) {
-                if (!hasBarrierDependencyRequiredForDescriptorFetch(grpIdx, blockIdx, fifoExecGroups,
-                                                                    taskControlMapAndOffset, blockIdxOfTaskControlMap,
-                                                                    wlmEnabled, legalizationBarrierIdx)) {
+                if (!hasBarrierDependencyRequiredForDescriptorFetch(grpIdx, blockIdx, fifoExecGroups)) {
                     auto lastTaskInGroup = *fifoExecGroups[grpIdx].rbegin();
                     _log.error(
                             "Task {0} from block {1} in execution group {2} ({3}.{4}) does not have an update barrier "
@@ -1674,14 +1690,10 @@ std::optional<size_t> vpux::BarrierInfo::getFirstTaskInGroupFromBlock(int grpIdx
     return firstTaskInGroupInBlock;
 }
 
-bool vpux::BarrierInfo::hasBarrierDependencyRequiredForDescriptorFetch(
-        int grpIdx, size_t blockIdx, const ExecutionGroupList& fifoExecGroups,
-        std::pair<SmallVector<llvm::BitVector>, size_t>& taskControlMapAndOffset,
-        std::optional<size_t>& blockIdxOfTaskControlMap, bool wlmEnabled,
-        std::optional<size_t>& legalizationBarrierIdx) {
+bool vpux::BarrierInfo::hasBarrierDependencyRequiredForDescriptorFetch(int grpIdx, size_t blockIdx,
+                                                                       const ExecutionGroupList& fifoExecGroups) {
     int numberOfGroups = static_cast<int>(fifoExecGroups.size());
     VPUX_THROW_UNLESS(grpIdx >= 0 && grpIdx < numberOfGroups, "Invalid group index");
-    legalizationBarrierIdx = std::nullopt;
 
     if (grpIdx + 1 == numberOfGroups) {
         // no barrier is required at the end of last group
@@ -1712,37 +1724,7 @@ bool vpux::BarrierInfo::hasBarrierDependencyRequiredForDescriptorFetch(
         return false;
     }
 
-    if (wlmEnabled) {
-        // For WLM case, if barrier exists at the end of execution group, new barrier is not required.
-        return true;
-    }
-
-    // For non-WLM case, additional verifications are required.
-
-    auto hasPath = [&](size_t taskA, size_t taskB) {
-        return isDepFromTaskAToTaskB(taskA, taskB, taskControlMapAndOffset, blockIdxOfTaskControlMap);
-    };
-
-    // If none of the consumers of the execution group update barriers depend on grand child group,
-    // then the new barrier is not needed.
-    for (auto endGrpUpdateBarrier : endGrpUpdateBarriers) {
-        auto barrierConsumers = getBarrierConsumers(endGrpUpdateBarrier);
-
-        bool hasConsumersDependentOnGrandChildGrp = false;
-        for (const auto& consumer : barrierConsumers) {
-            if (hasPath(firstTaskInGrandChildGroup.value(), consumer)) {
-                hasConsumersDependentOnGrandChildGrp = true;
-                break;
-            }
-        }
-
-        if (!hasConsumersDependentOnGrandChildGrp) {
-            legalizationBarrierIdx = endGrpUpdateBarrier;
-            return true;
-        }
-    }
-
-    return false;
+    return true;
 }
 
 bool vpux::BarrierInfo::adjustTasksDependenciesToGraphSplitConstraints(const TaskSet& tasks) {
@@ -2836,7 +2818,7 @@ unsigned vpux::BarrierInfo::createBarrierDependenciesImpliedByFIFO(
     };
 
     auto [blockStartInd, blockEndInd] =
-            getControlGraphBlockTaskRange(blockIdx, /* blockStartSyncPoint */ false, /* blockEndSyncPoint */ false);
+            getControlGraphBlockTaskRange(blockIdx, /* blockStartSyncPoint */ true, /* blockEndSyncPoint */ true);
 
     // Go over the FIFOs, if the two tasks are in the same blockRange and does not have barrier dependency
     // add a temporary dependency between them
@@ -2870,173 +2852,6 @@ unsigned vpux::BarrierInfo::createBarrierDependenciesImpliedByFIFO(
     }
 
     return newDepsCount;
-}
-
-bool vpux::BarrierInfo::createBarrierDependenciesForDescriptorFetchInNonWlm(size_t blockIdx,
-                                                                            ExecutionGroupListMap& executionGroups) {
-    // This method requires task queue map built with buildTaskQueueTypeMap()
-    VPUX_THROW_WHEN(_taskQueueTypeMap.empty(), "TaskQueueTypeMap has not been created");
-
-    auto barrierConsumerDependsOnGrandChildGroup =
-            [&](const size_t firstTaskInGrandChildGroup, const size_t reusableWaitBarrier,
-                std::pair<SmallVector<llvm::BitVector>, size_t>& taskControlMapAndOffset,
-                std::optional<size_t>& blockIdxOfTaskControlMap) {
-                for (const auto& consumer : getBarrierConsumers(reusableWaitBarrier)) {
-                    if (isDepFromTaskAToTaskB(firstTaskInGrandChildGroup, consumer, taskControlMapAndOffset,
-                                              blockIdxOfTaskControlMap)) {
-                        return true;
-                    }
-                }
-                return false;
-            };
-
-    auto canWaitBarrierBeUpdatedWithoutDeadlock =
-            [&](const size_t producer, const size_t consumer,
-                std::pair<SmallVector<llvm::BitVector>, size_t>& taskControlMapAndOffset,
-                std::optional<size_t>& blockIdxOfTaskControlMap, size_t& reusableWaitBarrier) {
-                // Check if there exist a consumer wait barrier that can be updated by producer without creating a
-                // deadlock. A wait barrier can be updated without deadlock if the barrier new producer does not depend
-                // on any of the barrier consumers (except when the consumer is the producer itself).
-                const auto availableWaitBarriers = getWaitBarriers(consumer);
-
-                for (auto waitBarrier : availableWaitBarriers) {
-                    bool reuseWaitBar = true;
-                    const auto waitBarrierConsumers = getBarrierConsumers(waitBarrier);
-                    for (const auto& barConsumer : waitBarrierConsumers) {
-                        if (isDepFromTaskAToTaskB(barConsumer, producer, taskControlMapAndOffset,
-                                                  blockIdxOfTaskControlMap)) {
-                            reuseWaitBar = false;
-                            break;
-                        }
-                    }
-                    if (!reuseWaitBar) {
-                        continue;
-                    }
-                    reusableWaitBarrier = waitBarrier;
-                    return true;
-                }
-                return false;
-            };
-
-    auto compareBarriersByLatestConsumer = [](const std::pair<size_t, size_t>& bar1,
-                                              const std::pair<size_t, size_t>& bar2) {
-        return bar1.second > bar2.second;
-    };
-    std::set<std::pair<size_t, size_t>, decltype(compareBarriersByLatestConsumer)> legalizationBarriers(
-            compareBarriersByLatestConsumer);
-    auto updatingBarrierInvalidatesPreviousExecGroup = [&](const size_t barrierIdx,
-                                                           std::pair<SmallVector<llvm::BitVector>, size_t>&
-                                                                   taskControlMapAndOffset,
-                                                           std::optional<size_t>& blockIdxOfTaskControlMap) {
-        // if path exists from any consumer of the barrier barrierIdx to any consumer of the previous exec group
-        // legalization barriers (clean_after barriers) then updating this barrier would invalidate the previous
-        // execution group
-        for (auto [legalizationBarrier, legalizationBarrierLatestConsumer] : legalizationBarriers) {
-            if (getBarrierEarliestConsumer(barrierIdx) > legalizationBarrierLatestConsumer) {
-                // no need to check further as legalization barriers are sorted by latest consumer in descending order
-                return false;
-            }
-            for (const auto& consumer : getBarrierConsumers(barrierIdx)) {
-                for (const auto& consumerOfCleanAfterBar : getBarrierConsumers(legalizationBarrier)) {
-                    if (isDepFromTaskAToTaskB(consumer, consumerOfCleanAfterBar, taskControlMapAndOffset,
-                                              blockIdxOfTaskControlMap)) {
-                        _log.debug("Updating barrier {0} invalidates previous execution group because of path from "
-                                   "consumer {1} to consumer {2} of legalization barrier {3}",
-                                   barrierIdx, consumer, consumerOfCleanAfterBar, legalizationBarrier);
-                        return true;
-                    }
-                }
-            }
-        }
-        return false;
-    };
-
-    auto createNewBarrier = [&](const size_t producer, size_t consumer) {
-        size_t barIdx = _barrierProducerMap.size();
-        _barrierProducerMap.push_back({});
-        _barrierConsumerMap.push_back({});
-        auto taskOp = getTaskOpAtIndex(producer);
-        mlir::OpBuilder builder(taskOp);
-        auto newBarrier = builder.create<VPURT::DeclareVirtualBarrierOp>(taskOp->getLoc());
-        newBarrier.setBarrierIndex(barIdx);
-        _allBarrierOps.push_back(newBarrier);
-        addProducer(barIdx, producer);
-        addConsumer(barIdx, consumer);
-    };
-
-    // build task control map for current block and all executor kinds
-    auto taskControlMapAndOffset = buildTaskControlMap(blockIdx, /* considerTaskFifoDependency */ true);
-    std::optional<size_t> blockIdxOfTaskControlMap = blockIdx;
-    // Insert barrier between execution groups when required
-    bool newDependenciesCreated = false;
-    for (auto [queue, fifoExecGroups] : executionGroups) {
-        legalizationBarriers.clear();
-        _log.trace("Processing queue: {0}{1} for block '{2}' with '{3}' execution groups",
-                   vpux::config::stringifyExecutorKind(queue.type), queue.id, blockIdx, fifoExecGroups.size());
-        if (fifoExecGroups.size() <= 1) {
-            continue;  // No dependencies need to be created if there are no groups or all tasks fit into a single
-                       // group.
-        }
-
-        int numberOfGroups = static_cast<int>(fifoExecGroups.size());
-        for (int grpIdx = 0; grpIdx < numberOfGroups - 1; grpIdx++) {
-            std::optional<size_t> legalizationBarrierIdx(std::nullopt);
-            if (!hasBarrierDependencyRequiredForDescriptorFetch(grpIdx, blockIdx, fifoExecGroups,
-                                                                taskControlMapAndOffset, blockIdxOfTaskControlMap,
-                                                                false, legalizationBarrierIdx)) {
-                _log.debug("{2}{3} group index: '{0}' in block '{1}' does not have required barrier dependency", grpIdx,
-                           blockIdx, vpux::config::stringifyExecutorKind(queue.type), queue.id);
-                // define last task in group as producer of the new barrier
-                auto newBarProducer = *fifoExecGroups[grpIdx].rbegin();
-                // define first task in child group as consumer of the new barrier
-                auto newBarConsumer = *fifoExecGroups[grpIdx + 1].begin();
-
-                if (getWaitBarriers(newBarConsumer).empty()) {
-                    _log.debug("Consumer task {0} has no wait barriers, creating new barrier with producer {1}",
-                               newBarConsumer, newBarProducer);
-                    createNewBarrier(newBarProducer, newBarConsumer);
-                    newDependenciesCreated = true;
-                    continue;
-                }
-
-                // If new barrier consumer has at least one wait barrier, then reuse it by updating it from the
-                // last task in current group, if it doesn't generate a deadlock and if the barrier does not depend on
-                // grand child group
-                VPUX_THROW_UNLESS(grpIdx + 2 < numberOfGroups,
-                                  "Grand child group does not exist for group index '{0}' in block '{1}' and "
-                                  "legalization barrier is requested",
-                                  grpIdx, blockIdx);
-                auto firstTaskInGrandChildGroup = *fifoExecGroups[grpIdx + 2].begin();
-                size_t reusableWaitBarrier = -1;  // dummy value
-                if (canWaitBarrierBeUpdatedWithoutDeadlock(newBarProducer, newBarConsumer, taskControlMapAndOffset,
-                                                           blockIdxOfTaskControlMap, reusableWaitBarrier) &&
-                    !barrierConsumerDependsOnGrandChildGroup(firstTaskInGrandChildGroup, reusableWaitBarrier,
-                                                             taskControlMapAndOffset, blockIdxOfTaskControlMap) &&
-                    !updatingBarrierInvalidatesPreviousExecGroup(reusableWaitBarrier, taskControlMapAndOffset,
-                                                                 blockIdxOfTaskControlMap)) {
-                    _log.debug("Consumer task {0} has reusable wait barrier {1} - adding new producer ({2}) to it.",
-                               newBarConsumer, reusableWaitBarrier, newBarProducer);
-                    addProducer(reusableWaitBarrier, newBarProducer);
-                    legalizationBarriers.insert(
-                            std::make_pair(reusableWaitBarrier, getBarrierLatestConsumer(reusableWaitBarrier)));
-                    newDependenciesCreated = true;
-                    continue;
-                }
-
-                // Create barrier between tasks on the same queue. This will generate parallel wait barriers
-                _log.trace("Creating new barrier between producer task {0} and consumer task {1}", newBarConsumer,
-                           newBarProducer);
-                createNewBarrier(newBarProducer, newBarConsumer);
-                newDependenciesCreated = true;
-            } else {
-                if (legalizationBarrierIdx.has_value()) {
-                    legalizationBarriers.insert(std::make_pair(
-                            legalizationBarrierIdx.value(), getBarrierLatestConsumer(legalizationBarrierIdx.value())));
-                }
-            }
-        }
-    }
-    return newDependenciesCreated;
 }
 
 unsigned vpux::BarrierInfo::removeBarrierDependenciesImpliedByFIFO() {
@@ -3455,19 +3270,43 @@ bool vpux::BarrierInfo::isDepFromBarAToBarB(size_t barA, size_t barB,
 void vpux::BarrierInfo::updateIR() {
     // update IR using stored dependencies
     for (size_t taskInd = 0; taskInd < getNumOfTasks(); ++taskInd) {
-        auto taskOp = getTaskOpAtIndex(taskInd);
+        updateIRForTask(taskInd);
+    }
+}
 
-        taskOp.getWaitBarriersMutable().clear();
-        for (auto barrierInd : _taskWaitBarriers[taskInd]) {
-            auto barrierOp = getBarrierOpAtIndex(static_cast<size_t>(barrierInd));
-            taskOp.getWaitBarriersMutable().append(barrierOp.getBarrier());
+void vpux::BarrierInfo::updateIRForTask(size_t taskInd) {
+    VPUX_THROW_UNLESS(taskInd < getNumOfTasks(), "Task index {0} is out of range", taskInd);
+    auto taskOp = getTaskOpAtIndex(taskInd);
+
+    const auto hasSameBarriers = [](mlir::Operation::operand_range currentBarriers, ArrayRef<mlir::Value> newBarriers) {
+        if (currentBarriers.size() != newBarriers.size()) {
+            return false;
         }
 
-        taskOp.getUpdateBarriersMutable().clear();
-        for (auto barrierInd : _taskUpdateBarriers[taskInd]) {
+        return std::equal(currentBarriers.begin(), currentBarriers.end(), newBarriers.begin());
+    };
+
+    const auto collectNewBarriers = [&](const TaskSet& newBarrierInds) {
+        SmallVector<mlir::Value, 8> newBarriers;
+        newBarriers.reserve(newBarrierInds.size());
+        for (auto barrierInd : newBarrierInds) {
             auto barrierOp = getBarrierOpAtIndex(static_cast<size_t>(barrierInd));
-            taskOp.getUpdateBarriersMutable().append(barrierOp.getBarrier());
+            newBarriers.push_back(barrierOp.getBarrier());
         }
+        return newBarriers;
+    };
+    const auto& newWaitBarrierInds = _taskWaitBarriers[taskInd];
+    auto newWaitBarriers = collectNewBarriers(newWaitBarrierInds);
+    if (!hasSameBarriers(taskOp.getWaitBarriers(), newWaitBarriers)) {
+        auto waitBarriersMutable = taskOp.getWaitBarriersMutable();
+        waitBarriersMutable.assign(newWaitBarriers);
+    }
+
+    const auto& newUpdateBarrierInds = _taskUpdateBarriers[taskInd];
+    auto newUpdateBarriers = collectNewBarriers(newUpdateBarrierInds);
+    if (!hasSameBarriers(taskOp.getUpdateBarriers(), newUpdateBarriers)) {
+        auto updateBarriersMutable = taskOp.getUpdateBarriersMutable();
+        updateBarriersMutable.assign(newUpdateBarriers);
     }
 }
 

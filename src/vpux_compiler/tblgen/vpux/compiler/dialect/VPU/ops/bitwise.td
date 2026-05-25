@@ -181,5 +181,88 @@ def VPU_BitwiseNotOp :
     let elemComparisonModes = [IE_TypeComparisonMode_ALLOW_DISTRIBUTED_OUTPUT];
 }
 
+def VPU_BitwiseRightShiftOp :
+        VPU_LayerOp<
+            "BitwiseRightShift",
+            [
+                VPU_TilingBuilderOpInterface,
+                DeclareOpInterfaceMethods<VPU_SWOpInterface>,
+                DeclareOpInterfaceMethods<VPU_ClusteredOpInterface>,
+                VPU_EltwiseOp
+            ]
+        > {
+    let summary = "BitwiseRightShift VPU layer";
+
+    let arguments = (ins
+        AnyTypeOf<[RankedTensorOf<[I8, SI8, I32, SI32]>, VPU_DistributedTensor]>:$input1,
+        AnyTypeOf<[RankedTensorOf<[I8, SI8, I32, SI32]>, VPU_DistributedTensor]>:$input2,
+
+        IE_AutoBroadcastTypeAttr:$auto_broadcast,
+
+        OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy
+    );
+
+    let results = (outs
+        AnyTypeOf<[RankedTensorOf<[I8, SI8, I32, SI32]>, VPU_DistributedTensor]>:$output
+    );
+
+    let builders = [
+        OpBuilder<(ins
+            "::mlir::Value":$input1,
+            "::mlir::Value":$input2,
+            "vpux::IE::AutoBroadcastTypeAttr":$auto_broadcast
+        )>
+    ];
+
+    let extraClassDeclaration = [{
+        bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers, Byte reservedMem);
+
+        bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers);
+    }] # baseExtraClassDeclaration;
+
+    let elemComparisonModes = [IE_TypeComparisonMode_ALLOW_DISTRIBUTED_OUTPUT];
+}
+
+def VPU_BitwiseLeftShiftOp :
+        VPU_LayerOp<
+            "BitwiseLeftShift",
+            [
+                VPU_TilingBuilderOpInterface,
+                DeclareOpInterfaceMethods<VPU_SWOpInterface>,
+                DeclareOpInterfaceMethods<VPU_ClusteredOpInterface>,
+                VPU_EltwiseOp
+            ]
+        > {
+    let summary = "BitwiseLeftShift VPU layer";
+
+    let arguments = (ins
+        AnyTypeOf<[RankedTensorOf<[I8, SI8, I32, SI32]>, VPU_DistributedTensor]>:$input1,
+        AnyTypeOf<[RankedTensorOf<[I8, SI8, I32, SI32]>, VPU_DistributedTensor]>:$input2,
+
+        IE_AutoBroadcastTypeAttr:$auto_broadcast,
+
+        OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy
+    );
+
+    let results = (outs
+        AnyTypeOf<[RankedTensorOf<[I8, SI8, I32, SI32]>, VPU_DistributedTensor]>:$output
+    );
+
+    let builders = [
+        OpBuilder<(ins
+            "::mlir::Value":$input1,
+            "::mlir::Value":$input2,
+            "vpux::IE::AutoBroadcastTypeAttr":$auto_broadcast
+        )>
+    ];
+
+    let extraClassDeclaration = [{
+        bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers, Byte reservedMem);
+
+        bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers);
+    }] # baseExtraClassDeclaration;
+
+    let elemComparisonModes = [IE_TypeComparisonMode_ALLOW_DISTRIBUTED_OUTPUT];
+}
 
 #endif

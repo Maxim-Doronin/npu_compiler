@@ -66,7 +66,7 @@ template <typename OpType>
 void fillNNrtConfig(npu40xx::nn_public::VpuNNShaveRuntimeConfigs& shv_rt_configs, mlir::Operation* op,
                     std::optional<mlir::SymbolRefAttr> getActShaveRt, std::optional<uint64_t> shaveStacksSize,
                     bool isActShaveProfilingEnabled, bool getIsActKernelInvocations, ArrayRef<uint32_t> stackFrames) {
-    shv_rt_configs.dpu_perf_mode = npu40xx::nn_public::VpuHWPStatMode::MODE3;
+    shv_rt_configs.dpu_perf_mode = static_cast<uint8_t>(npu40xx::nn_public::VpuHWPStatMode::MODE3);
     if (getIsActKernelInvocations) {
         shv_rt_configs.use_schedule_embedded_rt = false;
         shv_rt_configs.code_window_buffer_size = NPUReg40XX::defaultActRtCodeSectionSize;
@@ -77,7 +77,7 @@ void fillNNrtConfig(npu40xx::nn_public::VpuNNShaveRuntimeConfigs& shv_rt_configs
         shv_rt_configs.perf_metrics_mask = isActShaveProfilingEnabled ? NPUReg40XX::defaultPerfMetricsMask : 0;
 
         if (getActShaveRt.has_value()) {
-            auto actShaveRtRef = mlir::SymbolTable::lookupNearestSymbolFrom(op, getActShaveRt.value());
+            auto actShaveRtRef = ELF::lookupNearestSymbolFrom(op, getActShaveRt.value());
             auto actShaveRtOp = mlir::cast<OpType>(actShaveRtRef);
 
             shv_rt_configs.use_schedule_embedded_rt = true;

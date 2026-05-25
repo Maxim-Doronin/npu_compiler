@@ -45,7 +45,7 @@ void UnrollPerAxisTileDMAPass::safeRunOnFunc() {
     }
 
     mlir::RewritePatternSet patterns(&ctx);
-    auto& strategyFactory = VPUIP::getVPUIPStrategyFactory(&ctx);
+    const auto& strategyFactory = VPUIP::getVPUIPStrategyFactory(&ctx);
     auto dmaPortCount = config::getNumOfDMAPorts(func);
     auto unrollStrategy = strategyFactory->getUnrollPerAxisTileDMAStrategy(dmaPortCount);
     unrollStrategy->addPatterns(patterns, _log);

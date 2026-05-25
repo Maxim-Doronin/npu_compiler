@@ -13,8 +13,6 @@ namespace VPUIP {
 struct OptimizeCopiesOptionsBase : mlir::PassPipelineOptions<OptimizeCopiesOptionsBase> {
     OptimizeCopiesOptionsBase() = default;
 
-    BoolOption enableOptimizeCopies{*this, "optimize-copies", llvm::cl::desc("Enable optimize-copies pass"),
-                                    llvm::cl::init(true)};
     BoolOption enableOptimizeConstCopies{*this, "optimize-const-copies", llvm::cl::desc("Enable optimize-const-copies"),
                                          llvm::cl::init(true)};
     BoolOption enableOpsAsDMA{*this, "enable-ops-as-dma",
@@ -25,15 +23,13 @@ struct OptimizeCopiesOptionsBase : mlir::PassPipelineOptions<OptimizeCopiesOptio
             ::llvm::cl::desc("Option for enabling WLM enqueue barriers search algorithm at VPURT. To be used only for "
                              "experiments."),
             ::llvm::cl::init(WorkloadManagementMode::PWLM_V0_1_PAGES),
-            ::llvm::cl::values(clEnumValN(WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES",
-                                          "WLM with split into subgraphs (pages)"),
-                               clEnumValN(WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO",
-                                          "WLM enqueue barriers search algorithm at VPURT ENABLED"),
-                               clEnumValN(WorkloadManagementMode::PWLM_V0_1_PAGES, "PWLM_V0_1_PAGES",
-                                          "PWLM with split into subgraphs (pages)"),
-                               clEnumValN(WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA",
-                                          "WLM enqueue barriers search algorithm at VPURT DISABLED. Use LCA based "
-                                          "enqueue algorithm at VPUMI"))};
+            ::llvm::cl::values(
+                    clEnumValN(WorkloadManagementMode::PWLM_V0_1_PAGES, "PWLM_V0_1_PAGES",
+                               "PWLM with split into subgraphs (pages)"),
+                    clEnumValN(WorkloadManagementMode::PWLM_V0_1_PAGES, "PWLM_V0_LCA",
+                               "This is a deprecated WLM mode which is no longer supported. The option is kept for "
+                               "backwards compatibility only and the mode redirects to PWLM_V0_1_PAGES mode, which has "
+                               "the same vpu-fw compatibility but offers numerous stability improvements."))};
 
     template <class OtherOptions>
     explicit OptimizeCopiesOptionsBase(const OtherOptions& options) {

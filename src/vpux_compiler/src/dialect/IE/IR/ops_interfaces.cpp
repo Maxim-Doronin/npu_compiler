@@ -114,10 +114,6 @@ IE::PostOpAttr vpux::IE::attributizePostOp(mlir::Operation* postOp) {
             .Case<IE::ReLUOp>([](auto reluOp) {
                 return IE::ReluAttr::get(reluOp.getContext());
             })
-            // TODO: remove option after E#-83187
-            .Case<IE::ClampOp>([](auto clampOp) {
-                return IE::ClampAttr::get(clampOp.getContext(), clampOp.getMinAttr(), clampOp.getMaxAttr());
-            })
             .Case<IE::LeakyReluOp>([](auto leakyReluOp) {
                 return IE::LeakyReluAttr::get(leakyReluOp.getContext(), leakyReluOp.getNegativeSlopeAttr());
             })

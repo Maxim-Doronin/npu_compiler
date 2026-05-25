@@ -33,6 +33,12 @@ void registerStrategies(mlir::DialectRegistry& registry, config::ArchKind arch);
 
 }  // namespace vpux::IE
 
+namespace vpux::VPU {
+
+void registerStrategies(mlir::DialectRegistry& registry, config::ArchKind arch);
+
+}  // namespace vpux::VPU
+
 namespace vpux::VPUIP {
 
 void registerStrategies(mlir::DialectRegistry& registry, config::ArchKind arch);

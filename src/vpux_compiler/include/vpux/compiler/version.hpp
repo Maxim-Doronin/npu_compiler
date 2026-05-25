@@ -9,13 +9,21 @@
 // The NPU Compiler version
 // This version is exposed via L0 API and reported as (read-only) plugin property NPU_COMPILER_VERSION
 //
-#define NPU_COMPILER_VERSION_MAJOR 7
-#define NPU_COMPILER_VERSION_MINOR 29
+#define NPU_COMPILER_VERSION_MAJOR 8
+#define NPU_COMPILER_VERSION_MINOR 1
 
 /*
 
 Change Log:
 -----------
+NPU Compiler 8.1.0
+  - Add support of blob compatibility string
+
+NPU Compiler 8.0.0
+  - Split a compiler library into a loader library "openvino_intel_npu_compiler_loader" and a core compiler library
+"openvino_intel_npu_compiler".
+   2026 UD20 release
+
 NPU Compiler 7.29.0
   - 2026 UD12 release
 

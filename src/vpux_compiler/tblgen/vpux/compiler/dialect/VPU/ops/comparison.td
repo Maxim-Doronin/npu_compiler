@@ -27,8 +27,8 @@ def VPU_EqualOp :
     let summary = "Equal VPU layer";
 
     let arguments = (ins
-        AnyTypeOf<[RankedTensorOf<[F16, F32, SI32]>, VPU_DistributedTensor]>:$input1,
-        AnyTypeOf<[RankedTensorOf<[F16, F32, SI32]>, VPU_DistributedTensor]>:$input2,
+        AnyTypeOf<[RankedTensorOf<[F16, F32, SI32, Bool8]>, VPU_DistributedTensor]>:$input1,
+        AnyTypeOf<[RankedTensorOf<[F16, F32, SI32, Bool8]>, VPU_DistributedTensor]>:$input2,
 
         IE_AutoBroadcastTypeAttr:$auto_broadcast,
         OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy
@@ -69,8 +69,8 @@ def VPU_GreaterOp :
     let summary = "Greater VPU layer";
 
     let arguments = (ins
-        AnyTypeOf<[RankedTensorOf<[F16, F32, SI32]>, VPU_DistributedTensor]>:$input1,
-        AnyTypeOf<[RankedTensorOf<[F16, F32, SI32]>, VPU_DistributedTensor]>:$input2,
+        AnyTypeOf<[RankedTensorOf<[F16, F32, SI32, Bool8]>, VPU_DistributedTensor]>:$input1,
+        AnyTypeOf<[RankedTensorOf<[F16, F32, SI32, Bool8]>, VPU_DistributedTensor]>:$input2,
 
         IE_AutoBroadcastTypeAttr:$auto_broadcast,
         OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy
@@ -153,8 +153,8 @@ def VPU_LessOp :
     let summary = "Less VPU layer";
 
     let arguments = (ins
-        AnyTypeOf<[RankedTensorOf<[F16, F32, SI32]>, VPU_DistributedTensor]>:$input1,
-        AnyTypeOf<[RankedTensorOf<[F16, F32, SI32]>, VPU_DistributedTensor]>:$input2,
+        AnyTypeOf<[RankedTensorOf<[F16, F32, SI32, Bool8]>, VPU_DistributedTensor]>:$input1,
+        AnyTypeOf<[RankedTensorOf<[F16, F32, SI32, Bool8]>, VPU_DistributedTensor]>:$input2,
 
         IE_AutoBroadcastTypeAttr:$auto_broadcast,
         OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy
@@ -238,8 +238,8 @@ def VPU_NotEqualOp :
     let summary = "NotEqual VPU layer";
 
     let arguments = (ins
-        AnyTypeOf<[RankedTensorOf<[F16, F32, SI32]>, VPU_DistributedTensor]>:$input1,
-        AnyTypeOf<[RankedTensorOf<[F16, F32, SI32]>, VPU_DistributedTensor]>:$input2,
+        AnyTypeOf<[RankedTensorOf<[F16, F32, SI32, Bool8]>, VPU_DistributedTensor]>:$input1,
+        AnyTypeOf<[RankedTensorOf<[F16, F32, SI32, Bool8]>, VPU_DistributedTensor]>:$input2,
 
         IE_AutoBroadcastTypeAttr:$auto_broadcast,
         OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy
@@ -278,6 +278,42 @@ def VPU_IsInfOp :
             ]
         > {
     let summary = "IsInf VPU layer";
+
+    let arguments = (ins
+        AnyTypeOf<[RankedTensorOf<[F16, F32]>, VPU_DistributedTensor]>:$input,
+        OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy
+    );
+
+    let results = (outs
+        AnyTypeOf<[RankedTensorOf<[Bool8]>, VPU_DistributedTensor]>:$output
+    );
+
+    let builders = [
+        OpBuilder<(ins
+            "::mlir::Value":$input
+        )>
+    ];
+
+    let extraClassDeclaration = [{
+        bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers, Byte reservedMem);
+
+        bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers);
+    }] # baseExtraClassDeclaration;
+
+    let elemComparisonModes = [IE_TypeComparisonMode_ALLOW_DISTRIBUTED_OUTPUT];
+}
+
+def VPU_IsFiniteOp :
+        VPU_LayerOp<
+            "IsFinite",
+            [
+                VPU_TilingBuilderOpInterface,
+                DeclareOpInterfaceMethods<VPU_SWOpInterface>,
+                DeclareOpInterfaceMethods<VPU_ClusteredOpInterface>,
+                VPU_EltwiseOp
+            ]
+        > {
+    let summary = "IsFinite VPU layer";
 
     let arguments = (ins
         AnyTypeOf<[RankedTensorOf<[F16, F32]>, VPU_DistributedTensor]>:$input,

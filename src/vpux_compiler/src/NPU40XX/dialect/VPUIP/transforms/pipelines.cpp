@@ -45,18 +45,21 @@ void vpux::VPUIP::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
                                                    const VPUIP::arch40xx::DefaultHWOptions& options, Logger log) {
     const auto grc = getDefaultGreedyRewriteConfig();
 
+    // Ensure the cost model analysis is constructed
+    // The analysis is constructed if it does not exist yet and reused otherwise,
+    // so it does not really affect the Default pipeline where the cache is created in VPU dialect,
+    // but it helps specifically for the WS where VPUIP pipeline can be run separately by dedicated PassManager
+    pm.addPass(VPU::createCostModelAnalysisConstructPass(log));
     if (options.enableShaveCodeGen) {
         ShaveCodeGen::buildShaveCodeGenPipelineVPUIP(pm);
     }
 
-    if (options.enableShaveKernelTiling) {
-        pm.addPass(VPUIP::createTileActShaveKernelTaskPass(log));
-    }
-    if (options.enableOptimizeCopies || options.enableOpsAsDMA) {
-        // This pass is a part of "copy optimization pipeline", but need to be done before because
-        // WrapWithPermuteAsNNDMA depends on it.
-        pm.addPass(VPUIP::createMovePureViewOpBeforeCopyPass(log));
-    }
+    pm.addPass(VPUIP::createTileActShaveKernelTaskPass(log));
+
+    // This pass is a part of "copy optimization pipeline", but need to be done before because
+    // WrapWithPermuteAsNNDMA depends on it.
+    pm.addPass(VPUIP::createMovePureViewOpBeforeCopyPass(log));
+
     if (options.enableOpsAsDMA) {
         pm.addPass(VPUIP::createWrapWithPermuteAsNNDMAPass(log));
     }
@@ -108,9 +111,7 @@ void vpux::VPUIP::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
         pm.addPass(VPUIP::createComputeSESizesPass(/*onlyInputsConcatOverC=*/true, log));
     }
 
-    if (options.enableConstantFusion) {
-        pm.addPass(VPUIP::createFuseConstantsPass(log));
-    }
+    pm.addPass(VPUIP::createFuseConstantsPass(log));
 
     if (options.enableWeightsSwizzling || options.enableActivationSwizzling) {
         pm.addPass(VPUIP::createSwizzlingPass(options.enableWeightsSwizzling, options.enableActivationSwizzling, log));
@@ -162,10 +163,6 @@ void vpux::VPUIP::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     pm.addPass(VPUIP::createAddSwKernelCacheHandlingOpsPass(log));
 
     VPUIP::buildHardwareAdaptationPipeline(pm, log);
-
-    if (options.enableDpuFromShaveControl) {
-        pm.addPass(VPUIP::createSyncShvDpuPass(log));
-    }
 
     // Level 1 : VPU RunTime
     pm.addPass(VPUIP::createUnrollSwKernelPass(log));
@@ -220,9 +217,7 @@ void vpux::VPUIP::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
         pm.addPass(VPUIP::createDMATaskProfilingHwDdrPass(options.enableDMAProfiling, log));
     }
 
-    if (options.enableControlGraphSplit) {
-        pm.addPass(VPURT::createSplitControlGraphPass(options.controlGraphSplitBlockSize, log));
-    }
+    pm.addPass(VPURT::createSplitControlGraphPass(options.controlGraphSplitBlockSize, log));
 
     if (!options.linearizeSchedule) {
         pm.addPass(VPUIP::createBarrierOptimizationPass(options.workloadManagementMode, log));
@@ -236,23 +231,16 @@ void vpux::VPUIP::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
         pm.addPass(VPUIP::createComputeTaskStrippingPass(log, dpuDryRunMode, options.shaveDryRun));
     }
 
-    if (options.enableSWKernelInstructionPrefetch) {
-        pm.addPass(VPUIP::createAddSwKernelInstructionPrefetchPass(log));
-    }
+    pm.addPass(VPUIP::createAddSwKernelInstructionPrefetchPass(log));
 
     pm.addPass(VPURT::createInsertBarrierToMarkTheEndOfDescriptorGroupPass(
             options.workloadManagementBarrierCountThreshold, options.workloadManagementMode, log));
 
-    if (options.workloadManagementEnable) {
-        if (options.workloadManagementMode != WorkloadManagementMode::FWLM_V1_PAGES) {
-            if (options.workloadManagementMode == WorkloadManagementMode::PWLM_V0_1_PAGES) {
-                pm.addPass(VPUIP::createAddPlaceholderFetchDMAsPWLMPass(log));
-            } else {
-                pm.addPass(VPUIP::createLegalizeScheduleForPartialWlmFetchDmasPass(log));
-            }
-        } else {
-            pm.addPass(VPUIP::createAddPlaceholderFetchDMAsPass(log));
-        }
+    if (options.workloadManagementMode == WorkloadManagementMode::FWLM_V1_PAGES) {
+        pm.addPass(VPUIP::createAddPlaceholderFetchDMAsPass(log));
+    }
+    if (options.workloadManagementMode == WorkloadManagementMode::PWLM_V0_1_PAGES) {
+        pm.addPass(VPUIP::createAddPlaceholderFetchDMAsPWLMPass(log));
     }
 
     if (!isInliningRequired || !options.enableBarrierSchedWithFunctionOutlining) {
@@ -260,8 +248,8 @@ void vpux::VPUIP::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
         // Possible TODO for adding the barrier before legalization is to convert the pass to a Module pass.
         pm.addPass(VPURT::createAddFinalBarrierPass(options.workloadManagementMode, log));
     }
-    VPURT::buildBarrierLegalizationPipeline(pm, options.workloadManagementEnable, options.workloadManagementMode,
-                                            /* unevenVariantSplitFlag */ true, log);
+    VPURT::buildBarrierLegalizationPipeline(pm, /* workloadManagementEnabled */ true, /* unevenVariantSplitFlag */ true,
+                                            log);
 
     if (isInliningRequired && options.enableBarrierSchedWithFunctionOutlining) {
         if (auto debatcherReorderingOptionsPtr = IE::DebatcherOpReorderingOptions::create(options, log)) {
@@ -276,9 +264,8 @@ void vpux::VPUIP::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
 
     pm.addPass(VPUIP::createAddStartBarrierPass(options.workloadManagementMode, log));
 
-    if (options.workloadManagementEnable &&
-        (options.workloadManagementMode >= WorkloadManagementMode::PWLM_V2_PAGES ||
-         options.workloadManagementMode == WorkloadManagementMode::PWLM_V0_1_PAGES)) {
+    if (options.workloadManagementMode == WorkloadManagementMode::FWLM_V1_PAGES ||
+        options.workloadManagementMode == WorkloadManagementMode::PWLM_V0_1_PAGES) {
         pm.addPass(VPURT::createWlmSplitGraphToPagesPass(log));
         // TODO: E#146544: Add a pass that will insert dummy tasks
         pm.addPass(VPURT::createWlmLegalizeSplitGraphToPagesPass(log));
@@ -296,9 +283,7 @@ void vpux::VPUIP::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
         pm.addPass(VPUIP::createCompressSpillDmaPass(log));
     }
 
-    if (options.enableDmaOutOfOrder) {
-        pm.addPass(VPUIP::createDMAOutOfOrderOptimizationPass(options.workloadManagementMode, log));
-    }
+    pm.addPass(VPUIP::createDMAOutOfOrderOptimizationPass(options.workloadManagementMode, log));
 
     if (options.enableProfiling) {
         if (options.enableDPUProfiling) {
@@ -310,24 +295,11 @@ void vpux::VPUIP::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     }
 
     pm.addPass(VPURT::createAssignPhysicalBarriersPass(options.workloadManagementMode, log));
-    if (options.workloadManagementEnable && options.workloadManagementMode == WorkloadManagementMode::FWLM_V1_PAGES) {
+
+    pm.addPass(VPURT::createOptimizeBarriersSlotsUsagePass(log));
+
+    if (options.workloadManagementMode == WorkloadManagementMode::FWLM_V1_PAGES) {
         pm.addPass(VPURT::createFindWlmEnqueueDmasBarrierPass(log));
-    }
-
-    if (options.workloadManagementEnable &&
-        (options.workloadManagementMode >= WorkloadManagementMode::PWLM_V2_PAGES ||
-         options.workloadManagementMode == WorkloadManagementMode::PWLM_V0_1_PAGES)) {
-        pm.addPass(VPURT::createOptimizeBarriersSlotsUsagePass(log));
-    }
-
-    if (!options.workloadManagementEnable ||
-        (options.workloadManagementMode < WorkloadManagementMode::PWLM_V2_PAGES &&
-         options.workloadManagementMode != WorkloadManagementMode::PWLM_V0_1_PAGES)) {
-        // BarrierSimulation pass performs final verification of barrier schedule but does not change the IR.
-        // To save compilation time it may be skipped - TODO E#178177
-        // For FWLM skip this pass as FWLM passes use barrier consumption order which is not fully supported by this
-        // pass
-        pm.addPass(VPURT::createBarrierSimulationPass(log));
     }
 
     pm.addPass(VPUIP::createUpdateSwKernelParamsPass(log));
@@ -337,7 +309,7 @@ void vpux::VPUIP::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
         pm.addPass(VPURT::createIntermediateBufferOutputPass(log));
     }
 
-    if (options.workloadManagementEnable && options.workloadManagementMode == WorkloadManagementMode::PWLM_V0_1_PAGES) {
+    if (options.workloadManagementMode == WorkloadManagementMode::PWLM_V0_1_PAGES) {
         pm.addPass(VPURT::createFindWlmEnqueueBarrierWithPagesPass(log));
     }
 
@@ -353,9 +325,8 @@ void vpux::VPUIP::arch40xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     // [E170237] Temporary keep it under developer mode due to long compilation time
     if (isDeveloperBuild()) {
         // At the end of scheduling verify if WLM constraints are satisfied
-        if (options.workloadManagementEnable &&
-            (options.workloadManagementMode >= WorkloadManagementMode::PWLM_V2_PAGES ||
-             options.workloadManagementMode == WorkloadManagementMode::PWLM_V0_1_PAGES)) {
+        if (options.workloadManagementMode == WorkloadManagementMode::FWLM_V1_PAGES ||
+            options.workloadManagementMode == WorkloadManagementMode::PWLM_V0_1_PAGES) {
             pm.addPass(VPURT::createCheckWlmPageSplitConstraintsPass(options.workloadManagementMode, log));
         }
     }
@@ -401,22 +372,21 @@ void vpux::VPUIP::arch40xx::buildReferenceSWPipeline(mlir::OpPassManager& pm,
     pm.addPass(VPURT::createInsertBarrierToMarkTheEndOfDescriptorGroupPass(
             options.workloadManagementBarrierCountThreshold, options.workloadManagementMode, log));
 
-    if (options.workloadManagementEnable) {
-        if (options.workloadManagementMode == WorkloadManagementMode::PWLM_V0_1_PAGES) {
-            pm.addPass(VPUIP::createAddPlaceholderFetchDMAsPWLMPass(log));
-        } else {
-            pm.addPass(VPUIP::createLegalizeScheduleForPartialWlmFetchDmasPass(log));
-        }
+    if (options.workloadManagementMode == WorkloadManagementMode::FWLM_V1_PAGES) {
+        pm.addPass(VPUIP::createAddPlaceholderFetchDMAsPass(log));
+    }
+    if (options.workloadManagementMode == WorkloadManagementMode::PWLM_V0_1_PAGES) {
+        pm.addPass(VPUIP::createAddPlaceholderFetchDMAsPWLMPass(log));
     }
 
     pm.addPass(VPURT::createAddFinalBarrierPass(options.workloadManagementMode, log));
-    VPURT::buildBarrierLegalizationPipeline(pm, options.workloadManagementEnable, options.workloadManagementMode,
-                                            /* unevenVariantSplitFlag */ true, log);
+    VPURT::buildBarrierLegalizationPipeline(pm, /* workloadManagementEnabled */ true, /* unevenVariantSplitFlag */ true,
+                                            log);
     pm.addPass(VPUIP::createAddStartBarrierPass(options.workloadManagementMode, log));
 
     // Level 1 : VPU RunTime
 
-    if (options.workloadManagementEnable && options.workloadManagementMode == WorkloadManagementMode::PWLM_V0_1_PAGES) {
+    if (options.workloadManagementMode == WorkloadManagementMode::PWLM_V0_1_PAGES) {
         pm.addPass(VPURT::createWlmSplitGraphToPagesPass(log));
         pm.addPass(VPURT::createWlmLegalizeSplitGraphToPagesPass(log));
     }
@@ -429,20 +399,12 @@ void vpux::VPUIP::arch40xx::buildReferenceSWPipeline(mlir::OpPassManager& pm,
 
     pm.addPass(VPURT::createAssignPhysicalBarriersPass(options.workloadManagementMode, log));
 
-    if (options.workloadManagementEnable && options.workloadManagementMode == WorkloadManagementMode::PWLM_V0_1_PAGES) {
-        pm.addPass(VPURT::createOptimizeBarriersSlotsUsagePass(log));
-    }
+    pm.addPass(VPURT::createOptimizeBarriersSlotsUsagePass(log));
 
-    if (!options.workloadManagementEnable ||
-        options.workloadManagementMode != WorkloadManagementMode::PWLM_V0_1_PAGES) {
-        // BarrierSimulation pass performs final verification of barrier schedule but does not change the IR.
-        // To save compilation time it may be skipped - TODO E#178177
-        pm.addPass(VPURT::createBarrierSimulationPass(log));
-    }
     pm.addPass(VPUIP::createUpdateSwKernelParamsPass(log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
 
-    if (options.workloadManagementEnable && options.workloadManagementMode == WorkloadManagementMode::PWLM_V0_1_PAGES) {
+    if (options.workloadManagementMode == WorkloadManagementMode::PWLM_V0_1_PAGES) {
         pm.addPass(VPURT::createFindWlmEnqueueBarrierWithPagesPass(log));
     }
 }

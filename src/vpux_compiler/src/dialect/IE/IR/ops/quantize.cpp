@@ -234,6 +234,11 @@ mlir::LogicalResult FuseQuantizeWithConvert::matchAndRewrite(IE::QuantizeOp orig
         return mlir::failure();
     }
 
+    // Same check as ConvertQuantizeRewriter.
+    if (inIntegerType.isSigned() != outUniformType.isSigned()) {
+        return mlir::failure();
+    }
+
     // Get the scale of the quantized type
     const auto quantizeScale = outUniformType.getScale();
     const auto quantizeZeroPoint = outUniformType.getZeroPoint();
@@ -257,4 +262,14 @@ mlir::LogicalResult FuseQuantizeWithConvert::matchAndRewrite(IE::QuantizeOp orig
 void vpux::IE::QuantizeOp::getCanonicalizationPatterns(mlir::RewritePatternSet& patterns, mlir::MLIRContext* ctx) {
     patterns.add<FuseFQsWithSimilarScales>(ctx);
     patterns.add<FuseQuantizeWithConvert>(ctx);
+}
+
+//
+// ShaveCodeGenSupportedOpInterface
+//
+
+bool vpux::IE::QuantizeOp::shouldJITCompile() {
+    auto outType = getOutput().getType().getElementType();
+
+    return mlir::isa<mlir::quant::UniformQuantizedType, mlir::quant::UniformQuantizedPerAxisType>(outType);
 }

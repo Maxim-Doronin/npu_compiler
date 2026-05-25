@@ -227,6 +227,11 @@ mlir::OpFoldResult reifyDim(mlir::OpBuilder builder, mlir::Value value, size_t i
 SmallVector<mlir::OpFoldResult> reifyTrivialTensor(mlir::OpBuilder builder, mlir::Value input,
                                                    std::optional<mlir::Location> loc = std::nullopt);
 
+mlir::LogicalResult reifyInterpolateResultShape(mlir::OpBuilder& builder, mlir::Location loc, mlir::Value input,
+                                                mlir::Value scales, const std::optional<mlir::ArrayAttr>& scalesAttr,
+                                                ArrayRef<int64_t> axesVal, mlir::ShapedType outputShapedType,
+                                                mlir::ReifiedRankedShapedTypeDims& reifiedReturnShapes);
+
 mlir::FailureOr<SmallVector<mlir::OpFoldResult>> reifyEltwiseTensors(mlir::OpBuilder& builder, mlir::Value input1,
                                                                      mlir::Value input2,
                                                                      IE::AutoBroadcastType broadcastType,
@@ -334,4 +339,15 @@ ShapeInfo inferEltwiseOutputShapeInfo(const ShapeInfo& in1ShapeInfo, const Shape
 ShapeInfo inferEltwiseOutputShapeInfo(const ShapeInfo& in1ShapeInfo, const ShapeInfo& in2ShapeInfo,
                                       IE::AutoBroadcastType broadcastType, mlir::Location loc);
 
+/**
+ * @brief Reify tensors for YuvToRgb operation.
+ *
+ * @param op - operation to reify (IE::YuvToRgb or VPU::YuvToRgb)
+ * @param builder - builder to create new operations
+ * @param reifiedReturnShapes - output parameter containing with the reified dims
+
+ * @return mlir::success() if reification succeeded, mlir::failure() otherwise
+ */
+mlir::LogicalResult reifyYuvToRgbTensors(mlir::Operation* op, mlir::OpBuilder& builder,
+                                         mlir::ReifiedRankedShapedTypeDims& reifiedReturnShapes);
 }  // namespace vpux

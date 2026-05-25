@@ -55,8 +55,8 @@ bool FuseWithTransposedConv::isSupportedConvBasedOp(IE::TransposedConvolutionOp 
     const auto logCb = [&](const formatv_object_base& msg) {
         log.trace("{0}", msg.str());
     };
-    return VPU::isSupportedSEPTransposedConv(transposedConvOp, logCb, /*checkLayout=*/false,
-                                             /*checkChannelAlignment=*/false);
+    auto seOp = mlir::dyn_cast<IE::SEOpInterface>(transposedConvOp.getOperation());
+    return seOp && seOp.isSupported(logCb);
 }
 
 IE::TransposedConvolutionOp FuseWithTransposedConv::createNewConvBasedOp(IE::QuantizeOp quantizeOp,

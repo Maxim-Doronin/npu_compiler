@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-groupconv-to-conv %s | FileCheck %s
-// REQUIRES: arch-NPU50XX
-// COM: F8 is only supported on NPU50+, no need to run these tests on all arches.
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --convert-groupconv-to-conv %s | FileCheck %s
+// REQUIRES: platform-NPU5010
+// COM: F8 is only supported on NPU50+, no need to run these tests on all platforms.
 
 // CHECK-LABEL: @ConvertQuantizedGroupConvToSingleConvF8E4M3FN
 // CHECK-SAME:    [[INPUT:%.+]]:  tensor<1x64x80x80xf16>
@@ -364,5 +364,30 @@ func.func @ConvertDepthwise1x1KernelGroupConvWithLargePaddingToSingleConv(%input
 
     // CHECK:       [[CONV:%.+]] = IE.Convolution([[INPUT]]
     // CHECK-SAME:      {dilations = [1, 1], pads_begin = [8, 0], pads_end = [0, 8], strides = [1, 1]}
+    // CHECK:       return [[CONV]]
+}
+
+// -----
+
+// CHECK-LABEL: @NotConvertDepthwise1x1KernelGroupConvWithNonConstWeightsToMultiConv
+// CHECK-SAME:    [[INPUT:%.+]]: tensor<1x512x32x1xf16>
+func.func @NotConvertDepthwise1x1KernelGroupConvWithNonConstWeightsToMultiConv(%input: tensor<1x512x32x1xf16>, %slice_input: tensor<512x1x3x1xf16>) -> tensor<1x512x48x1xf16> {
+    %weights = IE.Slice %slice_input [0, 0, 0, 0] [512, 1, 1, 1] : tensor<512x1x3x1xf16> to tensor<512x1x1x1xf16>
+    %result = IE.GroupConvolution(%input, %weights) {
+        dilations = [1, 1],
+        groups = 512 : i64,
+        pads_begin = [16, 0],
+        pads_end = [0, 0],
+        strides = [1, 1]
+    } : tensor<1x512x32x1xf16>, tensor<512x1x1x1xf16> -> tensor<1x512x48x1xf16>
+
+    return %result : tensor<1x512x48x1xf16>
+
+    // 1x1 kernel depthwise GroupConv with large padding should be converted to single Convolution
+    // by GroupConvToSingleConvConverter, in case that's not possible we should preserve it for NCEDepthConvolution
+    // CHECK-NOT:   IE.Convolution
+
+    // CHECK:       [[CONV:%.+]] = IE.GroupConvolution([[INPUT]]
+    // CHECK-SAME:      {dilations = [1, 1], groups = 512 : i64, pads_begin = [16, 0], pads_end = [0, 0], strides = [1, 1]}
     // CHECK:       return [[CONV]]
 }

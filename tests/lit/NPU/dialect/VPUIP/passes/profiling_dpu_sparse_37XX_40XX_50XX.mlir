@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW allow-custom-values=true" --dpu-profiling %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW allow-custom-values=true" --dpu-profiling %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
@@ -33,7 +33,7 @@ module @DpuProfilingSparse  {
     %0 = memref.alloc() : !Output_CMX
     %sm = memref.alloc() : !Output_CMX_SM
 
-    %1:2 = VPUIP.NCEClusterTask <{
+    %1:2 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 1, 0, 0, 0, 0>} <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [3, 3],
             kernel_strides = [1, 1],
@@ -132,7 +132,7 @@ module @DpuProfilingSparseWithMulticlustering  {
 
     %0 = VPURT.AllocDistributed -> !OutputDistributed
     %sm = VPURT.AllocDistributed -> !OutputDistributed_SM
-    %1:2 = VPUIP.NCEClusterTask <{
+    %1:2 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 1, 0, 0, 0, 0>} <{
           kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
           kernel_size = [3, 3],
           kernel_strides = [1, 1],

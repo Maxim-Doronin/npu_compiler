@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --init-compiler="vpu-arch=%arch%" --constant-dpu-prof-hwp-base %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --init-compiler="platform=%platform%" --constant-dpu-prof-hwp-base %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -25,7 +25,8 @@ func.func @main(%input: !InputType, %weights: !WeightType) -> (!OutputType, !Pro
 
 
   VPURT.Task updates(%bar0 : !VPURT.Barrier) {
-    %0:2 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 1 : i64} <{kernel_padding = #VPU.Padding<left = 3 : i64, right = 2 : i64, top = 3 : i64, bottom = 2 : i64>, kernel_size = [7, 7], kernel_strides = [2, 2], task_type = #VPUIP.nce_task_type<CONV>}>
+    %0:2 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 1 : i64, resultSegmentSizes = array<i32: 1, 0, 1, 0, 0, 0>}
+     <{kernel_padding = #VPU.Padding<left = 3 : i64, right = 2 : i64, top = 3 : i64, bottom = 2 : i64>, kernel_size = [7, 7], kernel_strides = [2, 2], task_type = #VPUIP.nce_task_type<CONV>}>
     input(%input : !InputType)
     weights(%weights : !WeightType)
     parent_input(%input : !InputType)

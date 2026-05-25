@@ -27,9 +27,8 @@ namespace {
 class SatisfyOneWaitBarrierPerTaskPass final :
         public VPURT::impl::SatisfyOneWaitBarrierPerTaskBase<SatisfyOneWaitBarrierPerTaskPass> {
 public:
-    explicit SatisfyOneWaitBarrierPerTaskPass(const bool unevenVariantSplitFlag,
-                                              std::optional<WorkloadManagementMode> workloadManagementMode, Logger log)
-            : _unevenVariantSplitFlag(unevenVariantSplitFlag), _workloadManagementMode(workloadManagementMode) {
+    explicit SatisfyOneWaitBarrierPerTaskPass(const bool unevenVariantSplitFlag, Logger log)
+            : _unevenVariantSplitFlag(unevenVariantSplitFlag) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
@@ -38,7 +37,6 @@ private:
     bool _mergeWaitBarriersIteratively = true;
     bool _considerTaskExecutorType = true;
     bool _unevenVariantSplitFlag;
-    std::optional<WorkloadManagementMode> _workloadManagementMode;
 };
 
 void SatisfyOneWaitBarrierPerTaskPass::safeRunOnFunc() {
@@ -81,11 +79,6 @@ void SatisfyOneWaitBarrierPerTaskPass::safeRunOnFunc() {
     VPUX_THROW_UNLESS(barrierInfo.verifyControlGraphSplit(), "Encountered split of control graph is incorrect");
     barrierInfo.clearAttributes();
     VPURT::postProcessBarrierOps(func);
-    if (!_workloadManagementMode.has_value() ||
-        (_workloadManagementMode.value() < WorkloadManagementMode::FWLM_V1_PAGES &&
-         _workloadManagementMode.value() != WorkloadManagementMode::PWLM_V0_1_PAGES)) {
-        VPUX_THROW_UNLESS(VPURT::verifyBarrierSlots(func, _log), "Barrier slot count check failed");
-    }
     auto hasOneWaitBarrierPerTask = VPURT::verifyOneWaitBarrierPerTask(func, _log);
     if (mergeBarriersIteratively) {
         VPUX_THROW_UNLESS(hasOneWaitBarrierPerTask, "Encountered task with more than one wait barrier");
@@ -98,7 +91,7 @@ void SatisfyOneWaitBarrierPerTaskPass::safeRunOnFunc() {
 // createSatisfyOneWaitBarrierPerTaskPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::VPURT::createSatisfyOneWaitBarrierPerTaskPass(
-        const bool unevenVariantSplitFlag, std::optional<WorkloadManagementMode> workloadManagementMode, Logger log) {
-    return std::make_unique<SatisfyOneWaitBarrierPerTaskPass>(unevenVariantSplitFlag, workloadManagementMode, log);
+std::unique_ptr<mlir::Pass> vpux::VPURT::createSatisfyOneWaitBarrierPerTaskPass(const bool unevenVariantSplitFlag,
+                                                                                Logger log) {
+    return std::make_unique<SatisfyOneWaitBarrierPerTaskPass>(unevenVariantSplitFlag, log);
 }

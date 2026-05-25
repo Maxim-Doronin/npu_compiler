@@ -35,7 +35,8 @@ class ConvInterpolateTransposeTestCommon :
         public VpuOv2LayerTest,
         public testing::WithParamInterface<ConvInterpolateTransposeTestParams> {
     void configure_model() override {
-        configuration[ov::intel_npu::compilation_mode_params.name()] = "map-interpolate-on-dpu=false";
+        configuration[ov::intel_npu::compilation_mode_params.name()] =
+                "disabled-passes=map-bilinear-interpolate-on-dpu";
     }
     void SetUp() override {
         const auto testParams = GetParam();

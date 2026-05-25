@@ -273,14 +273,17 @@ bool isConstDeclareOpFilledAllOne(Const::DeclareOp op) {
 }
 }  // namespace
 
-VPUNN::SEPModeInfo vpux::getSEPModeInfo(VPUIP::SEPInfo sepInfo) {
+VPUNN::SEPModeInfo vpux::getSEPModeInfo(const VPUIP::SEPInfo& sepInfo) {
     const auto getWHCBShape = [](ShapeRef shape) {
         VPUX_THROW_UNLESS(shape.size() == 4, "Shape '{0}' has illegal rank: {1}, expected: 4", shape, shape.size());
         return VPUNN::WHCBTensorShape(
                 static_cast<unsigned int>(shape[Dims4D::Act::W]), static_cast<unsigned int>(shape[Dims4D::Act::H]),
                 static_cast<unsigned int>(shape[Dims4D::Act::C]), static_cast<unsigned int>(shape[Dims4D::Act::N]));
     };
-    return VPUNN::SEPModeInfo{true, getWHCBShape(sepInfo.sepTableShape), getWHCBShape(sepInfo.sepActShape)};
+    VPUNN::SEPModeInfo sepModeInfo{true, getWHCBShape(sepInfo.sepTableShape), getWHCBShape(sepInfo.sepActShape)};
+    // Set no_sparse_map flag when SEP is on but sparsity map is not present
+    sepModeInfo.no_sparse_map = !sepInfo.hasSparseMap;
+    return sepModeInfo;
 }
 
 VPUNN::DPUWorkload vpux::getDPUWorkload(VPUIP::DPUTaskOp dpuTaskOp, [[maybe_unused]] config::ArchKind arch) {
@@ -459,8 +462,11 @@ VPUNN::DPUWorkload vpux::getDPUWorkload(VPUIP::DPUTaskOp dpuTaskOp, [[maybe_unus
                 dataShape = perClusterMemoryShapes[clusterId];
             }
         }
+
+        const bool hasSparseMap = nceClusterOp.getInputSparsityMap() != nullptr;
+
         vpunnDPUWorkload.sep_activators =
-                getSEPModeInfo(VPUIP::SEPInfo{vpux::Shape({1, 1, IH, IW}), std::move(dataShape)});
+                getSEPModeInfo(VPUIP::SEPInfo{vpux::Shape({1, 1, IH, IW}), std::move(dataShape), hasSparseMap});
     }
 
     // The workloads that use the IDU / ODU autopad features must be explicitly marked for VPUNN to correctly calculate

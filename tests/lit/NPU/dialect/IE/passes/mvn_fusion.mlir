@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --mvn-fusion --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --mvn-fusion --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL: @FuseMVNInsideSqrt
 // CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<1x1500x512xf32>) -> tensor<1500x512xf32>
@@ -238,4 +238,216 @@ func.func @FuseOvRefMvn3D(%arg0: tensor<151x1x768xf32>) -> tensor<151x1x768xf32>
     // CHECK:      [[RESHAPE_OUT:%.+]] = IE.AffineReshape([[MVN]])
     // CHECK-SAME:                      tensor<151x1x768x1xf32> -> tensor<151x1x768xf32>
     // CHECK:        return [[RESHAPE_OUT]] : tensor<151x1x768xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @FuseMVNWithSquaredDiff
+// CHECK-SAME:  [[INPUT:%.+]]: tensor<1x8x64xf32>
+func.func @FuseMVNWithSquaredDiff(%arg0: tensor<1x8x64xf32>) -> tensor<1x8x64xf32> {
+    // TFLite-style LayerNorm: variance computed via SquaredDifference(x, mean).
+    // Pattern: out = x*rsqrt + Reshape(0 - mean*rsqrt) = (x - mean) / sqrt(var + eps).
+    %cst_axes    = const.Declare tensor<1xsi32> = dense<2>              : tensor<1xsi32>
+    %cst_neg_half = const.Declare tensor<f32>   = dense<-5.000000e-01>  : tensor<f32>
+    %cst_eps     = const.Declare tensor<f32>    = dense<1.000000e-06>   : tensor<f32>
+    %cst_zero    = const.Declare tensor<f32>    = dense<0.000000e+00>   : tensor<f32>
+
+    %mean    = IE.ReduceMean(%arg0, %cst_axes)
+                   : tensor<1x8x64xf32>, tensor<1xsi32> -> tensor<1x8xf32>
+    %mean_r  = IE.Reshape(%mean) {shape_value = [1, 8, 1]}
+                   : tensor<1x8xf32> -> tensor<1x8x1xf32>
+    %sq_diff = IE.SquaredDiff(%arg0, %mean_r) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+                   : tensor<1x8x64xf32>, tensor<1x8x1xf32> -> tensor<1x8x64xf32>
+    %var     = IE.ReduceMean(%sq_diff, %cst_axes)
+                   : tensor<1x8x64xf32>, tensor<1xsi32> -> tensor<1x8xf32>
+    %var_eps = IE.Add(%var, %cst_eps) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+                   : tensor<1x8xf32>, tensor<f32> -> tensor<1x8xf32>
+    %rsqrt   = IE.Power(%var_eps, %cst_neg_half) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+                   : tensor<1x8xf32>, tensor<f32> -> tensor<1x8xf32>
+    %rsqrt_r = IE.Reshape(%rsqrt) {shape_value = [1, 8, 1]}
+                   : tensor<1x8xf32> -> tensor<1x8x1xf32>
+    %x_mul   = IE.Multiply(%arg0, %rsqrt_r) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+                   : tensor<1x8x64xf32>, tensor<1x8x1xf32> -> tensor<1x8x64xf32>
+    %neg_mul = IE.Multiply(%mean, %rsqrt) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+                   : tensor<1x8xf32>, tensor<1x8xf32> -> tensor<1x8xf32>
+    %neg     = IE.Subtract(%cst_zero, %neg_mul) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+                   : tensor<f32>, tensor<1x8xf32> -> tensor<1x8xf32>
+    %neg_r   = IE.Reshape(%neg) {shape_value = [1, 8, 1]}
+                   : tensor<1x8xf32> -> tensor<1x8x1xf32>
+    %result  = IE.Add(%x_mul, %neg_r) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+                   : tensor<1x8x64xf32>, tensor<1x8x1xf32> -> tensor<1x8x64xf32>
+    return %result : tensor<1x8x64xf32>
+
+    // CHECK-NOT: IE.SquaredDiff
+    // CHECK-NOT: IE.Power
+    // CHECK-NOT: IE.ReduceMean
+    // CHECK:     [[PRE_RESHAPE:%.+]] = IE.AffineReshape([[INPUT]])
+    // CHECK-SAME:    tensor<1x8x64xf32> -> tensor<1x8x64x1xf32>
+    // CHECK:     [[MVN:%.+]] = IE.MVN([[PRE_RESHAPE]])
+    // CHECK-SAME:    across_channels = false
+    // CHECK-SAME:    eps = 9.9999999747524271E-7 : f64
+    // CHECK-SAME:    normalize_variance = true
+    // CHECK-SAME:    tensor<1x8x64x1xf32> -> tensor<1x8x64x1xf32>
+    // CHECK:     [[POST_RESHAPE:%.+]] = IE.AffineReshape([[MVN]])
+    // CHECK-SAME:    tensor<1x8x64x1xf32> -> tensor<1x8x64xf32>
+    // CHECK:     return [[POST_RESHAPE]] : tensor<1x8x64xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @FuseMVNWithSquaredDiffTranspose
+// CHECK-SAME:  [[INPUT:%.+]]: tensor<8x64x49xf32>
+func.func @FuseMVNWithSquaredDiffTranspose(%arg0: tensor<8x64x49xf32>) -> tensor<8x64x49xf32> {
+    // TFLite-style LayerNorm with axes [0, 1] on a 8x64x49 tensor.
+    // canConvertToMVN1 cannot handle this case with a pure reshape because the
+    // values to be normalized (8*64=512 per W-position) are not contiguous in
+    // the original layout. getMVN1Mapping applies a Transpose [2,0,1] to
+    // rearrange 8x64x49 -> 49x8x64, then a Reshape to 1x49x8x64, applies MVN,
+    // and inverts via Reshape + Transpose [1,2,0].
+    %cst_axes     = const.Declare tensor<2xsi32> = dense<[0, 1]>          : tensor<2xsi32>
+    %cst_neg_half = const.Declare tensor<f32>    = dense<-5.000000e-01>   : tensor<f32>
+    %cst_eps      = const.Declare tensor<f32>    = dense<1.000000e-06>    : tensor<f32>
+    %cst_zero     = const.Declare tensor<f32>    = dense<0.000000e+00>    : tensor<f32>
+
+    // mean: reduce axes [0,1] from 8x64x49 -> 49 (no keep_dims)
+    %mean    = IE.ReduceMean(%arg0, %cst_axes)
+                   : tensor<8x64x49xf32>, tensor<2xsi32> -> tensor<49xf32>
+    %mean_r  = IE.Reshape(%mean) {shape_value = [1, 1, 49]}
+                   : tensor<49xf32> -> tensor<1x1x49xf32>
+    %sq_diff = IE.SquaredDiff(%arg0, %mean_r) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+                   : tensor<8x64x49xf32>, tensor<1x1x49xf32> -> tensor<8x64x49xf32>
+    %var     = IE.ReduceMean(%sq_diff, %cst_axes)
+                   : tensor<8x64x49xf32>, tensor<2xsi32> -> tensor<49xf32>
+    %var_eps = IE.Add(%var, %cst_eps) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+                   : tensor<49xf32>, tensor<f32> -> tensor<49xf32>
+    %rsqrt   = IE.Power(%var_eps, %cst_neg_half) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+                   : tensor<49xf32>, tensor<f32> -> tensor<49xf32>
+    %rsqrt_r = IE.Reshape(%rsqrt) {shape_value = [1, 1, 49]}
+                   : tensor<49xf32> -> tensor<1x1x49xf32>
+    %x_mul   = IE.Multiply(%arg0, %rsqrt_r) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+                   : tensor<8x64x49xf32>, tensor<1x1x49xf32> -> tensor<8x64x49xf32>
+    %neg_mul = IE.Multiply(%mean, %rsqrt) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+                   : tensor<49xf32>, tensor<49xf32> -> tensor<49xf32>
+    %neg     = IE.Subtract(%cst_zero, %neg_mul) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+                   : tensor<f32>, tensor<49xf32> -> tensor<49xf32>
+    %neg_r   = IE.Reshape(%neg) {shape_value = [1, 1, 49]}
+                   : tensor<49xf32> -> tensor<1x1x49xf32>
+    %result  = IE.Add(%x_mul, %neg_r) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+                   : tensor<8x64x49xf32>, tensor<1x1x49xf32> -> tensor<8x64x49xf32>
+    return %result : tensor<8x64x49xf32>
+
+    // CHECK-NOT: IE.SquaredDiff
+    // CHECK-NOT: IE.Power
+    // CHECK-NOT: IE.ReduceMean
+    // Pre-Transpose [2,0,1]: 8x64x49 -> 49x8x64
+    // CHECK:     [[PRE_TRANSPOSE:%.+]] = IE.Transpose([[INPUT]])
+    // CHECK-SAME:    tensor<8x64x49xf32> -> tensor<49x8x64xf32>
+    // Reshape: 49x8x64 -> 1x49x8x64
+    // CHECK:     [[PRE_RESHAPE:%.+]] = IE.AffineReshape([[PRE_TRANSPOSE]])
+    // CHECK-SAME:    tensor<49x8x64xf32> -> tensor<1x49x8x64xf32>
+    // MVN normalizes over H=8,W=64 for each of the 49 channels (= axes [0,1])
+    // CHECK:     [[MVN:%.+]] = IE.MVN([[PRE_RESHAPE]])
+    // CHECK-SAME:    across_channels = false
+    // CHECK-SAME:    eps = 9.9999999747524271E-7 : f64
+    // CHECK-SAME:    normalize_variance = true
+    // CHECK-SAME:    tensor<1x49x8x64xf32> -> tensor<1x49x8x64xf32>
+    // Reshape: 1x49x8x64 -> 49x8x64
+    // CHECK:     [[POST_RESHAPE:%.+]] = IE.AffineReshape([[MVN]])
+    // CHECK-SAME:    tensor<1x49x8x64xf32> -> tensor<49x8x64xf32>
+    // Post-Transpose [1,2,0]: 49x8x64 -> 8x64x49
+    // CHECK:     [[POST_TRANSPOSE:%.+]] = IE.Transpose([[POST_RESHAPE]])
+    // CHECK-SAME:    tensor<49x8x64xf32> -> tensor<8x64x49xf32>
+    // CHECK:     return [[POST_TRANSPOSE]] : tensor<8x64x49xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @FuseMVNWithSquaredDiffAxes02
+// CHECK-SAME:  [[INPUT:%.+]]: tensor<1x8x64xf32>
+func.func @FuseMVNWithSquaredDiffAxes02(%arg0: tensor<1x8x64xf32>) -> tensor<1x8x64xf32> {
+    // TFLite-style LayerNorm with axes [0, 2] on a batch-1 tensor.
+    // Reducing over dim-0 (batch=1) is trivial; canConvertToMVN1 treats [0,2] as [2].
+    %cst_axes    = const.Declare tensor<2xsi32> = dense<[0, 2]>         : tensor<2xsi32>
+    %cst_neg_half = const.Declare tensor<f32>   = dense<-5.000000e-01>  : tensor<f32>
+    %cst_eps     = const.Declare tensor<f32>    = dense<1.000000e-06>   : tensor<f32>
+    %cst_zero    = const.Declare tensor<f32>    = dense<0.000000e+00>   : tensor<f32>
+
+    %mean    = IE.ReduceMean(%arg0, %cst_axes)
+                   : tensor<1x8x64xf32>, tensor<2xsi32> -> tensor<8xf32>
+    %mean_r  = IE.Reshape(%mean) {shape_value = [1, 8, 1]}
+                   : tensor<8xf32> -> tensor<1x8x1xf32>
+    %sq_diff = IE.SquaredDiff(%arg0, %mean_r) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+                   : tensor<1x8x64xf32>, tensor<1x8x1xf32> -> tensor<1x8x64xf32>
+    %var     = IE.ReduceMean(%sq_diff, %cst_axes)
+                   : tensor<1x8x64xf32>, tensor<2xsi32> -> tensor<8xf32>
+    %var_eps = IE.Add(%var, %cst_eps) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+                   : tensor<8xf32>, tensor<f32> -> tensor<8xf32>
+    %rsqrt   = IE.Power(%var_eps, %cst_neg_half) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+                   : tensor<8xf32>, tensor<f32> -> tensor<8xf32>
+    %rsqrt_r = IE.Reshape(%rsqrt) {shape_value = [1, 8, 1]}
+                   : tensor<8xf32> -> tensor<1x8x1xf32>
+    %x_mul   = IE.Multiply(%arg0, %rsqrt_r) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+                   : tensor<1x8x64xf32>, tensor<1x8x1xf32> -> tensor<1x8x64xf32>
+    %neg_mul = IE.Multiply(%mean, %rsqrt) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+                   : tensor<8xf32>, tensor<8xf32> -> tensor<8xf32>
+    %neg     = IE.Subtract(%cst_zero, %neg_mul) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+                   : tensor<f32>, tensor<8xf32> -> tensor<8xf32>
+    %neg_r   = IE.Reshape(%neg) {shape_value = [1, 8, 1]}
+                   : tensor<8xf32> -> tensor<1x8x1xf32>
+    %result  = IE.Add(%x_mul, %neg_r) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+                   : tensor<1x8x64xf32>, tensor<1x8x1xf32> -> tensor<1x8x64xf32>
+    return %result : tensor<1x8x64xf32>
+
+    // CHECK-NOT: IE.SquaredDiff
+    // CHECK-NOT: IE.Power
+    // CHECK-NOT: IE.ReduceMean
+    // CHECK:     [[PRE_RESHAPE:%.+]] = IE.AffineReshape([[INPUT]])
+    // CHECK-SAME:    tensor<1x8x64xf32> -> tensor<1x8x1x64xf32>
+    // CHECK:     [[MVN:%.+]] = IE.MVN([[PRE_RESHAPE]])
+    // CHECK-SAME:    across_channels = false
+    // CHECK-SAME:    eps = 9.9999999747524271E-7 : f64
+    // CHECK-SAME:    normalize_variance = true
+    // CHECK-SAME:    tensor<1x8x1x64xf32> -> tensor<1x8x1x64xf32>
+    // CHECK:     [[POST_RESHAPE:%.+]] = IE.AffineReshape([[MVN]])
+    // CHECK-SAME:    tensor<1x8x1x64xf32> -> tensor<1x8x64xf32>
+    // CHECK:     return [[POST_RESHAPE]] : tensor<1x8x64xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @FuseOvRefMvnIndependentReduceMean
+// CHECK-SAME:  [[INPUT:%.+]]: tensor<1x32x15x64xf16>
+func.func @FuseOvRefMvnIndependentReduceMean(%arg0: tensor<1x32x15x64xf16>) -> tensor<1x32x15x64xf16> {
+    // Two independent ReduceMean ops on the same input with the same axes,
+    // producing two independent SubtractOps (Sub1 for numerator, Sub2 for variance).
+    %cst_axes = const.Declare tensor<2xsi32> = dense<[2, -1]> : tensor<2xsi32>
+    %cst_eps = const.Declare tensor<1xf16> = dense<0.00002> : tensor<1xf16>
+
+    // mean1 -> Sub1 (numerator path)
+    %mean1 = IE.ReduceMean(%arg0, %cst_axes) {keep_dims} : tensor<1x32x15x64xf16>, tensor<2xsi32> -> tensor<1x32x1x1xf16>
+    %sub1 = IE.Subtract(%arg0, %mean1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x32x15x64xf16>, tensor<1x32x1x1xf16> -> tensor<1x32x15x64xf16>
+
+    // mean2 -> Sub2 (variance path, independent but semantically equivalent)
+    %mean2 = IE.ReduceMean(%arg0, %cst_axes) {keep_dims} : tensor<1x32x15x64xf16>, tensor<2xsi32> -> tensor<1x32x1x1xf16>
+    %sub2 = IE.Subtract(%arg0, %mean2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x32x15x64xf16>, tensor<1x32x1x1xf16> -> tensor<1x32x15x64xf16>
+
+    // variance = ReduceMean(Sub2 * Sub2)
+    %sq = IE.Multiply(%sub2, %sub2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x32x15x64xf16>, tensor<1x32x15x64xf16> -> tensor<1x32x15x64xf16>
+    %var = IE.ReduceMean(%sq, %cst_axes) {keep_dims} : tensor<1x32x15x64xf16>, tensor<2xsi32> -> tensor<1x32x1x1xf16>
+    %add_eps = IE.Add(%var, %cst_eps) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x32x1x1xf16>, tensor<1xf16> -> tensor<1x32x1x1xf16>
+    %sqrt = IE.Sqrt(%add_eps) : tensor<1x32x1x1xf16> -> tensor<1x32x1x1xf16>
+
+    // out = Sub1 / sqrt(var + eps)
+    %result = IE.Divide(%sub1, %sqrt) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x32x15x64xf16>, tensor<1x32x1x1xf16> -> tensor<1x32x15x64xf16>
+
+    return %result : tensor<1x32x15x64xf16>
+
+    // CHECK-NOT: IE.Subtract
+    // CHECK-NOT: IE.Multiply
+    // CHECK-NOT: IE.ReduceMean
+    // CHECK:     [[MVN:%.+]] = IE.MVN([[INPUT]])
+    // CHECK-SAME:    across_channels = false
+    // CHECK-SAME:    normalize_variance = true
+    // CHECK-SAME:    tensor<1x32x15x64xf16> -> tensor<1x32x15x64xf16>
+    // CHECK:     return [[MVN]] : tensor<1x32x15x64xf16>
 }

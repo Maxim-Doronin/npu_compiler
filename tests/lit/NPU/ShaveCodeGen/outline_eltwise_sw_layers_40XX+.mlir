@@ -3,13 +3,13 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt %s --split-input-file --init-compiler="vpu-arch=%arch%" \
+// RUN: vpux-opt %s --split-input-file --init-compiler="platform=%platform%" \
 // RUN:     --encapsulate-codegen-ops                                 \
 // RUN:     --convert-eltwise-layers-to-math                          \
 // RUN:     --canonicalize                                            \
 // RUN:     --outline-codegen-capsules                                \
 // RUN:   | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 module @NoBitcastUI {
   net.NetworkInfo entryPoint : @main inputsInfo : {

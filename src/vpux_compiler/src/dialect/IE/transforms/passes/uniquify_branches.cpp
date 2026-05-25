@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/core/attributes/dims_order.hpp"
+#include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
@@ -348,10 +349,14 @@ public:
     SmallVector<int64_t> getNewSizes(IE::SliceOp sliceOp, IE::TransposeOp layerOp) const override;
 };
 
-bool MoveTransposeBeforeSlice::doesSliceAndLayerOpModifySameAxis(IE::SliceOp, ArrayRef<uint64_t> sliceAxes,
+bool MoveTransposeBeforeSlice::doesSliceAndLayerOpModifySameAxis(IE::SliceOp sliceOp, ArrayRef<uint64_t> sliceAxes,
                                                                  IE::TransposeOp layerOp) const {
     const auto perm = DimsOrder::fromAffineMap(layerOp.getOrderValue().value());
-    return doesSliceAndPermutationModifySameAxis(perm, sliceAxes, _log);
+    const auto srcOrder = mlir::cast<vpux::NDTypeInterface>(sliceOp.getSource().getType()).getDimsOrder();
+    const auto memSliceAxes = to_small_vector(sliceAxes | transformed([&](uint64_t logicalAxis) {
+                                                  return checked_cast<uint64_t>(srcOrder.dimPos(Dim(logicalAxis)));
+                                              }));
+    return doesSliceAndPermutationModifySameAxis(perm, memSliceAxes, _log);
 }
 
 bool MoveTransposeBeforeSlice::sameAttributes(IE::TransposeOp layerOp, IE::TransposeOp currLayerOp) const {
@@ -391,13 +396,14 @@ public:
                                        IE::PermuteCastOp layerOp) const override;
 };
 
-bool MovePermuteCastBeforeSlice::doesSliceAndLayerOpModifySameAxis(IE::SliceOp, ArrayRef<uint64_t> sliceAxes,
+bool MovePermuteCastBeforeSlice::doesSliceAndLayerOpModifySameAxis(IE::SliceOp sliceOp, ArrayRef<uint64_t> sliceAxes,
                                                                    IE::PermuteCastOp layerOp) const {
-    const auto orderPerm = DimsOrder::fromAffineMap(layerOp.getDstOrder());
     const auto memPerm = DimsOrder::fromAffineMap(layerOp.getMemPerm());
-
-    return doesSliceAndPermutationModifySameAxis(orderPerm, sliceAxes, _log) ||
-           doesSliceAndPermutationModifySameAxis(memPerm, sliceAxes, _log);
+    const auto srcOrder = mlir::cast<vpux::NDTypeInterface>(sliceOp.getSource().getType()).getDimsOrder();
+    const auto memSliceAxes = to_small_vector(sliceAxes | transformed([&](uint64_t logicalAxis) {
+                                                  return checked_cast<uint64_t>(srcOrder.dimPos(Dim(logicalAxis)));
+                                              }));
+    return doesSliceAndPermutationModifySameAxis(memPerm, memSliceAxes, _log);
 }
 
 bool MovePermuteCastBeforeSlice::sameAttributes(IE::PermuteCastOp layerOp, IE::PermuteCastOp currLayerOp) const {
@@ -603,13 +609,14 @@ public:
     SmallVector<int64_t> getNewSizes(IE::SliceOp sliceOp, IE::MemPermuteOp layerOp) const override;
 };
 
-bool MoveMemPermuteBeforeSlice::doesSliceAndLayerOpModifySameAxis(IE::SliceOp, ArrayRef<uint64_t> sliceAxes,
+bool MoveMemPermuteBeforeSlice::doesSliceAndLayerOpModifySameAxis(IE::SliceOp sliceOp, ArrayRef<uint64_t> sliceAxes,
                                                                   IE::MemPermuteOp layerOp) const {
-    const auto orderPerm = DimsOrder::fromAffineMap(layerOp.getDstOrder());
     const auto memPerm = DimsOrder::fromAffineMap(layerOp.getMemPerm());
-
-    return doesSliceAndPermutationModifySameAxis(orderPerm, sliceAxes, _log) ||
-           doesSliceAndPermutationModifySameAxis(memPerm, sliceAxes, _log);
+    const auto srcOrder = mlir::cast<vpux::NDTypeInterface>(sliceOp.getSource().getType()).getDimsOrder();
+    const auto memSliceAxes = to_small_vector(sliceAxes | transformed([&](uint64_t logicalAxis) {
+                                                  return checked_cast<uint64_t>(srcOrder.dimPos(Dim(logicalAxis)));
+                                              }));
+    return doesSliceAndPermutationModifySameAxis(memPerm, memSliceAxes, _log);
 }
 
 bool MoveMemPermuteBeforeSlice::sameAttributes(IE::MemPermuteOp layerOp, IE::MemPermuteOp currLayerOp) const {
@@ -669,8 +676,14 @@ bool MoveQuantizeCastBeforeSlice::doesSliceAndLayerOpModifySameAxis(IE::SliceOp,
 bool MoveQuantizeCastBeforeSlice::isBeneficialTransformation(IE::SliceOp, IE::QuantizeCastOp layerOp,
                                                              ArrayRef<IE::QuantizeCastOp>) const {
     auto dstElemType = layerOp.getDstElemType();
-    return mlir::isa<mlir::quant::QuantileQuantizedPerAxisType>(dstElemType) ||
-           mlir::isa<mlir::quant::QuantileQuantizedType>(dstElemType);
+    if (mlir::isa<mlir::quant::UniformQuantizedType, mlir::quant::UniformQuantizedPerAxisType>(dstElemType)) {
+        const auto quantized = mlir::cast<mlir::quant::QuantizedType>(dstElemType);
+        if (mlir::isa<vpux::type::QuantileType>(quantized.getStorageType())) {
+            return true;
+        }
+        return false;
+    }
+    return false;
 }
 
 bool MoveQuantizeCastBeforeSlice::sameAttributes(IE::QuantizeCastOp layerOp, IE::QuantizeCastOp currLayerOp) const {
@@ -825,7 +838,7 @@ mlir::LogicalResult MoveReorderBeforeEltwiseOp::matchAndRewrite(IE::ReorderOp la
         // Check if the operation could support the new layout
         auto orderInfo = iface.getLayoutInfo();
         orderInfo.setInput(0, refOutOrder);
-        iface.inferLayoutInfo(orderInfo, /*seOpsEnabled=*/false, /*seExperimentalOpsEnabled=*/false);
+        iface.inferLayoutInfo(orderInfo);
         if (orderInfo.getInput(0) != refOutOrder || orderInfo.getOutput(0) != refOutOrder) {
             return mlir::failure();
         }

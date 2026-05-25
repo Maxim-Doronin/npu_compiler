@@ -58,6 +58,7 @@ constexpr StringLiteral bandwidthAttrName = "config.bandwidth"; /*!< This attrib
                       */
 
 constexpr StringLiteral compilationModeAttrName = "config.compilationMode";
+constexpr StringLiteral hostBackendModeAttrName = "config.hostBackendMode";
 
 }  // namespace
 
@@ -89,6 +90,23 @@ StringLiteral vpux::config::getMemoryDerateAttrName() {
 
 StringLiteral vpux::config::getMemoryBandwidthAttrName() {
     return bandwidthAttrName;
+}
+
+//
+// HostBackendMode
+//
+
+void vpux::config::setHostBackendMode(mlir::ModuleOp module, HostBackendMode mode) {
+    module->setAttr(hostBackendModeAttrName, config::HostBackendModeAttr::get(module.getContext(), mode));
+}
+
+config::HostBackendMode vpux::config::getHostBackendMode(mlir::ModuleOp module) {
+    if (auto attr = module->getAttr(hostBackendModeAttrName)) {
+        VPUX_THROW_UNLESS(mlir::isa<config::HostBackendModeAttr>(attr),
+                          "Module attribute '{0}' has unsupported value '{1}'", hostBackendModeAttrName, attr);
+        return mlir::cast<config::HostBackendModeAttr>(attr).getValue();
+    }
+    return config::HostBackendMode::JIT;
 }
 
 //

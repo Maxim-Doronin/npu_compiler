@@ -90,12 +90,12 @@ public:
 
 class FuseD2sExpandCommon_HostCompile : public FuseD2sExpandCommon {
     void configure_model() override {
-        configuration[ov::intel_npu::compilation_mode_params.name()] = "enable-d2s-to-transposed-conv-conversion=false "
-                                                                       "enable-ops-as-dma=false "
-                                                                       "enable-fuse-d2s-expand=true "
-                                                                       "adjust-input-shape=false "
-                                                                       "adjust-convolution-shape=false "
-                                                                       "optimize-slice-with-stride=false";
+        configuration[ov::intel_npu::compilation_mode_params.name()] =
+                "enable-d2s-to-transposed-conv-conversion=false "
+                "enable-ops-as-dma=false "
+                "enable-fuse-d2s-expand=true "
+                "disabled-passes=(adjust-input-shape|optimize-slice-with-stride) "
+                "adjust-convolution-shape=false";
     }
 };
 
@@ -106,8 +106,9 @@ TEST_P(FuseD2sExpandCommon, NPU4000_HW) {
 
 TEST_P(FuseD2sExpandCommon_HostCompile, NPU4000_HC) {
     setSkipInferenceCallback([](std::stringstream& skip) {
-        skip << "Host Pipeline does not support inference yet: C#164943";
+        skip << "Host Pipeline does not support inference yet: C#208362";
     });
+
     setHostCompileMode();
     setPluginCompilerType();
     run(Platform::NPU4000);
@@ -120,8 +121,9 @@ TEST_P(FuseD2sExpandCommon, NPU5010_HW) {
 
 TEST_P(FuseD2sExpandCommon_HostCompile, NPU5010_HC) {
     setSkipInferenceCallback([](std::stringstream& skip) {
-        skip << "Host Pipeline does not support inference yet: C#164943";
+        skip << "Host Pipeline does not support inference yet: C#208362";
     });
+
     setHostCompileMode();
     setPluginCompilerType();
     run(Platform::NPU5010);
@@ -179,7 +181,8 @@ INSTANTIATE_TEST_SUITE_P(smoke_FuseD2sExpand_big_u8q, FuseD2sExpandCommon,
 // Dynamic Shapes, FP
 INSTANTIATE_TEST_SUITE_P(smoke_FuseD2sExpand_Dyn_f16, FuseD2sExpandCommon_HostCompile,
                          ::testing::Values(FuseD2sDynExpandParams{
-                                 /* inputShape = */ generateTestShape(1, 12, 1079, 319_Dyn),
+                                 /* inputShape = */ generateTestShape(std::vector<BoundedDim>{1, 12, 1079, 319_Dyn},
+                                                                      hostCompileSmallShapesLimitationCallback),
                                  /* blockSize = */ 2,
                                  /* inType = */ ov::element::f16,
                                  /* enableFQ = */ false,
@@ -188,7 +191,8 @@ INSTANTIATE_TEST_SUITE_P(smoke_FuseD2sExpand_Dyn_f16, FuseD2sExpandCommon_HostCo
 // isolated tiling (missing SCF VF fusion) case due to E#201991
 INSTANTIATE_TEST_SUITE_P(smoke_FuseD2sExpand_Dyn_f16_Permute, FuseD2sExpandCommon_HostCompile,
                          ::testing::Values(FuseD2sDynExpandParams{
-                                 /* inputShape = */ generateTestShape(1, 12, 1079, 319_Dyn),
+                                 /* inputShape = */ generateTestShape(std::vector<BoundedDim>{1, 12, 1079, 319_Dyn},
+                                                                      hostCompileSmallShapesLimitationCallback),
                                  /* blockSize = */ 2,
                                  /* inType = */ ov::element::f16,
                                  /* enableFQ = */ false,
@@ -196,7 +200,8 @@ INSTANTIATE_TEST_SUITE_P(smoke_FuseD2sExpand_Dyn_f16_Permute, FuseD2sExpandCommo
                          FuseD2sExpandCommon_HostCompile::getTestCaseName);
 INSTANTIATE_TEST_SUITE_P(smoke_FuseD2sExpand_2Dyn_f16, FuseD2sExpandCommon_HostCompile,
                          ::testing::Values(FuseD2sDynExpandParams{
-                                 /* inputShape = */ generateTestShape(1, 12, 1079_Dyn, 319_Dyn),
+                                 /* inputShape = */ generateTestShape(std::vector<BoundedDim>{1, 12, 1079_Dyn, 319_Dyn},
+                                                                      hostCompileSmallShapesLimitationCallback),
                                  /* blockSize = */ 2,
                                  /* inType = */ ov::element::f16,
                                  /* enableFQ = */ false,
@@ -205,7 +210,8 @@ INSTANTIATE_TEST_SUITE_P(smoke_FuseD2sExpand_2Dyn_f16, FuseD2sExpandCommon_HostC
 // isolated tiling (missing SCF VF fusion) case due to E#201991
 INSTANTIATE_TEST_SUITE_P(smoke_FuseD2sExpand_2Dyn_f16_Permute, FuseD2sExpandCommon_HostCompile,
                          ::testing::Values(FuseD2sDynExpandParams{
-                                 /* inputShape = */ generateTestShape(1, 12, 1079_Dyn, 319_Dyn),
+                                 /* inputShape = */ generateTestShape(std::vector<BoundedDim>{1, 12, 1079_Dyn, 319_Dyn},
+                                                                      hostCompileSmallShapesLimitationCallback),
                                  /* blockSize = */ 2,
                                  /* inType = */ ov::element::f16,
                                  /* enableFQ = */ false,
@@ -215,7 +221,8 @@ INSTANTIATE_TEST_SUITE_P(smoke_FuseD2sExpand_2Dyn_f16_Permute, FuseD2sExpandComm
 // Dynamic Shapes, Quantized
 INSTANTIATE_TEST_SUITE_P(smoke_FuseD2sExpand_Dyn_u8q, FuseD2sExpandCommon_HostCompile,
                          ::testing::Values(FuseD2sDynExpandParams{
-                                 /* inputShape = */ generateTestShape(1, 12, 1079, 319_Dyn),
+                                 /* inputShape = */ generateTestShape(std::vector<BoundedDim>{1, 12, 1079, 319_Dyn},
+                                                                      hostCompileSmallShapesLimitationCallback),
                                  /* blockSize = */ 2,
                                  /* inType = */ ov::element::f16,
                                  /* enableFQ = */ true,
@@ -224,7 +231,8 @@ INSTANTIATE_TEST_SUITE_P(smoke_FuseD2sExpand_Dyn_u8q, FuseD2sExpandCommon_HostCo
 // isolated tiling (missing SCF VF fusion) case due to E#201991
 INSTANTIATE_TEST_SUITE_P(smoke_FuseD2sExpand_Dyn_u8q_Permute, FuseD2sExpandCommon_HostCompile,
                          ::testing::Values(FuseD2sDynExpandParams{
-                                 /* inputShape = */ generateTestShape(1, 12, 1079, 319_Dyn),
+                                 /* inputShape = */ generateTestShape(std::vector<BoundedDim>{1, 12, 1079, 319_Dyn},
+                                                                      hostCompileSmallShapesLimitationCallback),
                                  /* blockSize = */ 2,
                                  /* inType = */ ov::element::f16,
                                  /* enableFQ = */ true,
@@ -232,7 +240,8 @@ INSTANTIATE_TEST_SUITE_P(smoke_FuseD2sExpand_Dyn_u8q_Permute, FuseD2sExpandCommo
                          FuseD2sExpandCommon_HostCompile::getTestCaseName);
 INSTANTIATE_TEST_SUITE_P(smoke_FuseD2sExpand_2Dyn_u8q, FuseD2sExpandCommon_HostCompile,
                          ::testing::Values(FuseD2sDynExpandParams{
-                                 /* inputShape = */ generateTestShape(1, 12, 1079_Dyn, 319_Dyn),
+                                 /* inputShape = */ generateTestShape(std::vector<BoundedDim>{1, 12, 1079_Dyn, 319_Dyn},
+                                                                      hostCompileSmallShapesLimitationCallback),
                                  /* blockSize = */ 2,
                                  /* inType = */ ov::element::f16,
                                  /* enableFQ = */ true,
@@ -241,7 +250,8 @@ INSTANTIATE_TEST_SUITE_P(smoke_FuseD2sExpand_2Dyn_u8q, FuseD2sExpandCommon_HostC
 // isolated tiling (missing SCF VF fusion) case due to E#201991
 INSTANTIATE_TEST_SUITE_P(smoke_FuseD2sExpand_2Dyn_u8q_Permute, FuseD2sExpandCommon_HostCompile,
                          ::testing::Values(FuseD2sDynExpandParams{
-                                 /* inputShape = */ generateTestShape(1, 12, 1079_Dyn, 319_Dyn),
+                                 /* inputShape = */ generateTestShape(std::vector<BoundedDim>{1, 12, 1079_Dyn, 319_Dyn},
+                                                                      hostCompileSmallShapesLimitationCallback),
                                  /* blockSize = */ 2,
                                  /* inType = */ ov::element::f16,
                                  /* enableFQ = */ true,

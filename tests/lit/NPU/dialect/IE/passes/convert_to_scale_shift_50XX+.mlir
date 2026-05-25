@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-to-scale-shift %s | FileCheck %s
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --convert-to-scale-shift %s | FileCheck %s
+// REQUIRES: platform-NPU5010
 
 // CHECK-LABEL: @ConvertMultiplyToScaleShiftWithBroadcastAndWithinDPULimits
 // CHECK-SAME:  [[INPUT0:%.+]]: tensor<1x9216x1024x1xf16>, [[INPUT1:%.+]]: tensor<1x9216x1x1xf16>

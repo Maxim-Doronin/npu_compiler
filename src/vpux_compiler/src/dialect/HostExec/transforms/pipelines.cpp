@@ -12,7 +12,9 @@
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
 #include "mlir/Conversion/Passes.h"
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"
+#include "vpux/compiler/conversion.hpp"
 #include "vpux/compiler/dialect/HostExec/transforms/passes.hpp"
+#include "vpux/compiler/dialect/bytecode/transforms/passes.hpp"
 #include "vpux/compiler/dialect/core/transforms/passes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -26,19 +28,19 @@ using namespace vpux;
 //
 
 void HostExec::registerHostExecPipelines() {
-    mlir::PassPipelineRegistration<>("hostexec-to-llvm",
-                                     "Performs full lowering HostExec to LLVM dialect for host compilation",
-                                     [](mlir::OpPassManager& pm) {
-                                         buildHostExecPipeline(pm);
-                                     });
+    mlir::PassPipelineRegistration<HostExec::HostExecOptions>(
+            "hostexec-to-llvm", "Performs full lowering HostExec to LLVM dialect for host compilation",
+            [](mlir::OpPassManager& pm, const HostExec::HostExecOptions& options) {
+                buildHostExecPipeline(pm, options.enablePipelinedCmdListRecording.getValue(), Logger::global());
+            });
 }
 
-void HostExec::buildHostExecPipeline(mlir::OpPassManager& pm, Logger /*log*/) {
+void HostExec::buildHostExecPipeline(mlir::OpPassManager& pm, bool enablePipelinedCmdListRecording, Logger /*log*/) {
     const auto grc = getDefaultGreedyRewriteConfig();
 
     pm.addPass(mlir::createArithToLLVMConversionPass());
     pm.addPass(HostExec::createSerializeELFToBinaryPass());
-    pm.addPass(HostExec::createConvertToLLVMUMDCallsPass());
+    pm.addPass(HostExec::createConvertToLLVMUMDCallsPass(enablePipelinedCmdListRecording));
     pm.addPass(HostExec::createSerializeNetworkMetadataPass());
     pm.addPass(HostExec::createGenerateExecutionContextFuncsPass());
 
@@ -66,4 +68,11 @@ void HostExec::buildHostExecPipeline(mlir::OpPassManager& pm, Logger /*log*/) {
 
     pm.addPass(mlir::createCanonicalizerPass(grc));
     pm.addPass(mlir::createCSEPass());
+}
+
+void HostExec::buildBytecodeBackendPipeline(mlir::OpPassManager& pm, Logger log) {
+    pm.addPass(HostExec::createSerializeELFToBinaryPass());
+    pm.addPass(bytecode::createSerializeKernelsToBytecodePass());
+    pm.addPass(bytecode::createConvertHostcodeToBytecodePass(log));
+    pm.addPass(bytecode::createConvertIntermediateBytecodeOpsPass(log));
 }

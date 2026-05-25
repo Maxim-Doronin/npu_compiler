@@ -44,3 +44,22 @@ bool IE::isTrivialReorder(IE::ReorderOp origOp) {
 
     return isTrivialReorder(inOrder, outOrder, inShape);
 }
+
+bool IE::isTrivialTranspose(IE::TransposeOp origOp) {
+    if (!origOp.getOrderValue().has_value()) {
+        return false;
+    }
+
+    const auto inOrder = DimsOrder::fromValue(origOp.getInput());
+    const auto inShape = getShape(origOp.getInput());
+    const auto inMemShape = inOrder.toMemoryOrder(inShape);
+    const auto perm = inOrder.toAffineMap(origOp.getContext()).compose(origOp.getOrderValue().value());
+    return isTrivialPermute(inMemShape, perm);
+}
+
+bool IE::isTrivialMemPermute(IE::MemPermuteOp origOp) {
+    const auto inOrder = DimsOrder::fromValue(origOp.getInput());
+    const auto inShape = getShape(origOp.getInput());
+    const auto inMemShape = inOrder.toMemoryOrder(inShape);
+    return isTrivialPermute(inMemShape, origOp.getMemPerm());
+}

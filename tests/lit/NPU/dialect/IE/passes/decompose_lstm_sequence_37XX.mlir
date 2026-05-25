@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --decompose-lstm-sequence %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --decompose-lstm-sequence %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 // CHECK-LABEL: func.func @DecomposeLSTMSequenceToLSTMCells(
 // CHECK-SAME:      [[VAL_0:%.+]]: tensor<1x3x64xf32>) -> (tensor<1x2x3x128xf32>, tensor<1x2x128xf32>, tensor<1x2x128xf32>) {

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL: @EraseTiledInfo
 #C = affine_map<(d0) -> (d0)>
@@ -16,7 +16,7 @@ func.func @EraseTiledInfo() -> memref<8xf32> {
         memref<8xf32>
     return %1 : memref<8xf32>
     // CHECK: [[CST:%.+]] = const.Declare memref<8xf32> = dense<1.000000e+00> : tensor<8xf32>, [#const.Reorder<#C>]
-    // CHECK: return %cst : memref<8xf32>
+    // CHECK: return [[CST]] : memref<8xf32>
 }
 
 // -----

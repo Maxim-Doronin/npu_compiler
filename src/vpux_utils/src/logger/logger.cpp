@@ -6,6 +6,9 @@
 //
 
 #include "vpux/utils/logger/logger.hpp"
+#if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
+#include "vpux/utils/core/developer_build_utils.hpp"
+#endif
 
 #include <llvm/ADT/SmallString.h>
 #include <llvm/Support/Debug.h>
@@ -100,10 +103,18 @@ bool vpux::Logger::isActive(LogLevel msgLevel) const {
 #if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
     // Global filter - read once from environment, shared by all Logger instances
     static const auto logFilter = []() -> llvm::Regex {
-        if (const auto env = std::getenv("IE_NPU_LOG_FILTER")) {
-            if (env[0] != '\0') {
-                return llvm::Regex(env, llvm::Regex::IgnoreCase);
+        const auto logFilterEnv = std::getenv("IE_NPU_LOG_FILTER");
+        const auto logFilterEnabled = logFilterEnv != nullptr && logFilterEnv[0] != '\0';
+
+        if (isPerfDebugMode()) {
+            if (logFilterEnabled) {
+                std::string combinedFilter = std::string(logFilterEnv) + "|" + perfDebugDefaultLogFilter.str();
+                return llvm::Regex(combinedFilter, llvm::Regex::IgnoreCase);
             }
+            return llvm::Regex(perfDebugDefaultLogFilter.str(), llvm::Regex::IgnoreCase);
+        }
+        if (logFilterEnabled) {
+            return llvm::Regex(logFilterEnv, llvm::Regex::IgnoreCase);
         }
         return {};
     }();

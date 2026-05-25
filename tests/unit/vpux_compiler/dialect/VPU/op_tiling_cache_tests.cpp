@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -16,6 +16,7 @@
 #include "vpux/compiler/dialect/VPU/utils/op_tiling_cache.hpp"
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
+#include "vpux/compiler/init/hw_strategy_registry.hpp"
 
 #include <vpu_layer_strategy.h>
 
@@ -52,12 +53,15 @@ llvm::StringLiteral inputIR = R"(
 })";
 
 TEST_F(MLIR_OpTilingCacheTest, OutputTilingTest) {
+    const auto archKind = config::ArchKind::NPU40XX;
+    vpux::VPU::registerStrategies(registry, archKind);
+    mlir::MLIRContext ctx(registry);
     auto module = mlir::parseSourceString<mlir::ModuleOp>(inputIR, &ctx);
     ASSERT_TRUE(module.get() != nullptr);
     module.get()->removeAttr("config.arch");
 
     mlir::PassManager pm(module.get()->getName(), mlir::OpPassManager::Nesting::Implicit);
-    auto initCompilerOptions = VPU::InitCompilerOptions(config::ArchKind::NPU40XX, config::CompilationMode::DefaultHW);
+    auto initCompilerOptions = VPU::InitCompilerOptions(archKind, config::CompilationMode::DefaultHW);
     VPU::buildInitCompilerPipeline(pm, initCompilerOptions, vpux::Logger::global());
     ASSERT_TRUE(mlir::succeeded(pm.run(module.get())));
 
@@ -85,12 +89,15 @@ TEST_F(MLIR_OpTilingCacheTest, OutputTilingTest) {
 }
 
 TEST_F(MLIR_OpTilingCacheTest, OpDPUCostTest) {
+    const auto archKind = config::ArchKind::NPU40XX;
+    vpux::VPU::registerStrategies(registry, archKind);
+    mlir::MLIRContext ctx(registry);
     auto module = mlir::parseSourceString<mlir::ModuleOp>(inputIR, &ctx);
     ASSERT_TRUE(module.get() != nullptr);
     module.get()->removeAttr("config.arch");
 
     mlir::PassManager pm(module.get()->getName(), mlir::OpPassManager::Nesting::Implicit);
-    auto initCompilerOptions = VPU::InitCompilerOptions(config::ArchKind::NPU40XX, config::CompilationMode::DefaultHW);
+    auto initCompilerOptions = VPU::InitCompilerOptions(archKind, config::CompilationMode::DefaultHW);
     VPU::buildInitCompilerPipeline(pm, initCompilerOptions, vpux::Logger::global());
     ASSERT_TRUE(mlir::succeeded(pm.run(module.get())));
 

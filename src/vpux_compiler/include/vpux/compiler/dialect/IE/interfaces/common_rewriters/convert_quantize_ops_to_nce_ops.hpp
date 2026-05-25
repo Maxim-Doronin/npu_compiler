@@ -12,6 +12,8 @@
 
 #include <mlir/IR/PatternMatch.h>
 
+#include <utility>
+
 namespace vpux::IE {
 
 //
@@ -21,20 +23,25 @@ namespace vpux::IE {
 template <class ConcreteOp>
 class QuantizeDequantizeToAvgPool final : public mlir::OpRewritePattern<ConcreteOp> {
 public:
-    QuantizeDequantizeToAvgPool(mlir::MLIRContext* ctx, Logger log)
-            : mlir::OpRewritePattern<ConcreteOp>(ctx, benefitLow), _log(log) {
+    QuantizeDequantizeToAvgPool(mlir::MLIRContext* ctx, const std::function<bool(ConcreteOp)>& canSkipConversion,
+                                Logger log)
+            : mlir::OpRewritePattern<ConcreteOp>(ctx, benefitLow), _canSkipConversion(canSkipConversion), _log(log) {
     }
 
 public:
     mlir::LogicalResult matchAndRewrite(ConcreteOp originOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
+    std::function<bool(ConcreteOp)> _canSkipConversion;
     Logger _log;
 };
 
 template <class ConcreteOp>
 mlir::LogicalResult QuantizeDequantizeToAvgPool<ConcreteOp>::matchAndRewrite(ConcreteOp originOp,
                                                                              mlir::PatternRewriter& rewriter) const {
+    if (_canSkipConversion(originOp)) {
+        return mlir::failure();
+    }
     auto newPooling = IE::createIdentityAvgPool(originOp.getInput(), originOp.getType(), rewriter, originOp->getLoc());
     rewriter.replaceOp(originOp, newPooling->getResult(0));
     return mlir::success();
@@ -46,13 +53,16 @@ mlir::LogicalResult QuantizeDequantizeToAvgPool<ConcreteOp>::matchAndRewrite(Con
 
 class QuantizeToAddRewriter final : public mlir::OpRewritePattern<IE::QuantizeOp> {
 public:
-    QuantizeToAddRewriter(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<IE::QuantizeOp>(ctx), _log(log) {
+    QuantizeToAddRewriter(mlir::MLIRContext* ctx, const std::function<bool(IE::QuantizeOp)>& canSkipConversion,
+                          Logger log)
+            : mlir::OpRewritePattern<IE::QuantizeOp>(ctx), _canSkipConversion(canSkipConversion), _log(log) {
     }
 
 public:
     mlir::LogicalResult matchAndRewrite(IE::QuantizeOp originOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
+    std::function<bool(IE::QuantizeOp)> _canSkipConversion;
     Logger _log;
 };
 
@@ -62,14 +72,16 @@ private:
 
 class DequantizeToAddRewriter final : public mlir::OpRewritePattern<IE::DequantizeOp> {
 public:
-    DequantizeToAddRewriter(mlir::MLIRContext* ctx, Logger log)
-            : mlir::OpRewritePattern<IE::DequantizeOp>(ctx), _log(log) {
+    DequantizeToAddRewriter(mlir::MLIRContext* ctx, const std::function<bool(IE::DequantizeOp)>& canSkipConversion,
+                            Logger log)
+            : mlir::OpRewritePattern<IE::DequantizeOp>(ctx), _canSkipConversion(canSkipConversion), _log(log) {
     }
 
 public:
     mlir::LogicalResult matchAndRewrite(IE::DequantizeOp originOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
+    std::function<bool(IE::DequantizeOp)> _canSkipConversion;
     Logger _log;
 };
 
@@ -79,14 +91,16 @@ private:
 
 class DequantizeToDwRewriter final : public mlir::OpRewritePattern<IE::DequantizeOp> {
 public:
-    DequantizeToDwRewriter(mlir::MLIRContext* ctx, Logger log)
-            : mlir::OpRewritePattern<IE::DequantizeOp>(ctx), _log(log) {
+    DequantizeToDwRewriter(mlir::MLIRContext* ctx, const std::function<bool(IE::DequantizeOp)>& canSkipConversion,
+                           Logger log)
+            : mlir::OpRewritePattern<IE::DequantizeOp>(ctx), _canSkipConversion(canSkipConversion), _log(log) {
     }
 
 public:
     mlir::LogicalResult matchAndRewrite(IE::DequantizeOp DequantizeOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
+    std::function<bool(IE::DequantizeOp)> _canSkipConversion;
     Logger _log;
 };
 
@@ -96,13 +110,16 @@ private:
 
 class QuantizeToDwRewriter final : public mlir::OpRewritePattern<IE::QuantizeOp> {
 public:
-    QuantizeToDwRewriter(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<IE::QuantizeOp>(ctx), _log(log) {
+    QuantizeToDwRewriter(mlir::MLIRContext* ctx, const std::function<bool(IE::QuantizeOp)>& canSkipConversion,
+                         Logger log)
+            : mlir::OpRewritePattern<IE::QuantizeOp>(ctx), _canSkipConversion(canSkipConversion), _log(log) {
     }
 
 public:
     mlir::LogicalResult matchAndRewrite(IE::QuantizeOp originOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
+    std::function<bool(IE::QuantizeOp)> _canSkipConversion;
     Logger _log;
 };
 
@@ -112,14 +129,16 @@ private:
 
 class DequantizeToConvRewriter final : public mlir::OpRewritePattern<IE::DequantizeOp> {
 public:
-    DequantizeToConvRewriter(mlir::MLIRContext* ctx, Logger log)
-            : mlir::OpRewritePattern<IE::DequantizeOp>(ctx), _log(log) {
+    DequantizeToConvRewriter(mlir::MLIRContext* ctx, const std::function<bool(IE::DequantizeOp)>& canSkipConversion,
+                             Logger log)
+            : mlir::OpRewritePattern<IE::DequantizeOp>(ctx), _canSkipConversion(canSkipConversion), _log(log) {
     }
 
 public:
     mlir::LogicalResult matchAndRewrite(IE::DequantizeOp originOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
+    std::function<bool(IE::DequantizeOp)> _canSkipConversion;
     Logger _log;
 };
 

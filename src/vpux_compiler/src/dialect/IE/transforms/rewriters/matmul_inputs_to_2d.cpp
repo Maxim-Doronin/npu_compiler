@@ -53,7 +53,7 @@ private:
 };
 
 static SmallVector<mlir::Value> sliceTensor(const mlir::Value tensorToSplit, const mlir::Location location,
-                                            mlir::PatternRewriter& rewriter, const std::string& tensorName) {
+                                            mlir::PatternRewriter& rewriter, StringRef tensorName) {
     const auto tensorShape = getShape(tensorToSplit);
     int64_t batch = 1;
     int64_t width = 1;
@@ -172,7 +172,7 @@ struct DequantizeChainInfo {
 
 // Slice DynamicDequantize chain: QuantizeCast -> DynamicDequantize -> Convert (optional) -> AffineReshape
 SmallVector<mlir::Value> sliceDequantizeChain(DequantizeChainInfo& chainInfo, const mlir::Location location,
-                                              mlir::PatternRewriter& rewriter, const std::string& tensorName) {
+                                              mlir::PatternRewriter& rewriter, StringRef tensorName) {
     const auto ctx = rewriter.getContext();
 
     // Get the QuantizeCast input to slice (QuantizeCast is mandatory)
@@ -250,7 +250,7 @@ SmallVector<mlir::Value> sliceDequantizeChain(DequantizeChainInfo& chainInfo, co
 
 // Create slice for specific GroupConvolution
 mlir::Value createGroupConvSlice(mlir::PatternRewriter& rewriter, mlir::Value input, int64_t groupIdx, int64_t groups,
-                                 ShapeRef inputShape, mlir::Location loc, const std::string& name) {
+                                 ShapeRef inputShape, mlir::Location loc, StringRef name) {
     int64_t startBatch = groupIdx * VPU::NCEInvariant::VPU_DIMENSION_LIMIT;
     Shape sliceOffsets = Shape(inputShape.size(), 0);
     sliceOffsets[Dim(0)] = startBatch;

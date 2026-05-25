@@ -38,7 +38,7 @@ def DataSectionOp :
         ELF_Op<"CreateSection",
             [
                 Symbol,
-                SymbolContainer,
+                SymbolTable,
                 NoRegionArguments,
                 DeclareOpInterfaceMethods<ELF_SectionInterface>,
                 DeclareOpInterfaceMethods<ELF_SymbolicallyRepresentedOpInterface>
@@ -78,7 +78,7 @@ def LogicalSectionOp :
         ELF_Op<"CreateLogicalSection",
             [
                 Symbol,
-                SymbolContainer,
+                SymbolTable,
                 NoRegionArguments,
                 DeclareOpInterfaceMethods<ELF_SectionInterface>,
                 DeclareOpInterfaceMethods<ELF_SymbolicallyRepresentedOpInterface>
@@ -115,25 +115,20 @@ def LogicalSectionOp :
     }];
 }
 
-//
-// CreateMetadataSectionOp
-//
-
-def CreateMetadataSectionOp :
-        ELF_Op<"CreateMetadataSection",
-            [
-                Symbol,
-                NoRegionArguments
-            ]
-            # GraphRegionNoTerminator.traits
-        > {
+def CreateMetadataSectionOp : ELF_Op<"CreateMetadataSection", [
+    // E-207808: re-consider if this op must be a `Symbol`
+    Symbol,
+    // E-207808: it was made `SymbolTable` just to satisfy VPUASM.NetworkMetadata being a `Symbol`
+    SymbolTable,
+    NoRegionArguments
+] # GraphRegionNoTerminator.traits> {
     let summary = "Create ELF Metadata Section";
 
     let arguments = (ins
         SymbolNameAttr:$sym_name,
         UI64Attr:$secAddrAlign,
         ELF_SectionFlagsAttr:$secFlags
-        );
+    );
 
     let regions = (region
         SizedRegion<1>:$content
@@ -182,18 +177,13 @@ def PerformanceMetricsOp :
       ];
 }
 
-//
-// CreateProfilingSectionOp
-//
-
-def CreateProfilingSectionOp :
-        ELF_Op<"CreateProfilingSection",
-            [
-                Symbol,
-                NoRegionArguments
-            ]
-            # GraphRegionNoTerminator.traits
-        > {
+def CreateProfilingSectionOp : ELF_Op<"CreateProfilingSection", [
+    // E-207822: re-consider if this op must be a `Symbol`
+    Symbol,
+    // E-207822: it was made `SymbolTable` just to satisfy VPUASM.ProfilingMetadata being a `Symbol`
+    SymbolTable,
+    NoRegionArguments
+] # GraphRegionNoTerminator.traits> {
     let summary = "Create ELF Profiling Metadata Section";
 
     let description = [{
@@ -206,7 +196,7 @@ def CreateProfilingSectionOp :
         SymbolNameAttr:$sym_name,
         UI64Attr:$secAddrAlign,
         ELF_SectionFlagsAttr:$secFlags
-        );
+    );
 
     let regions = (region
         SizedRegion<1>:$content
@@ -234,7 +224,7 @@ def CreateSymbolTableSectionOp :
         ELF_Op<"CreateSymbolTableSection",
             [
                 Symbol,
-                SymbolContainer,
+                SymbolTable,
                 NoRegionArguments,
                 DeclareOpInterfaceMethods<ELF_SectionInterface>
             ]
@@ -342,7 +332,7 @@ def DmaSymbolSectionOp :
         ELF_Op<"DmaSymbolSection",
             [
                 Symbol,
-                SymbolContainer,
+                SymbolTable,
                 NoRegionArguments,
                 DeclareOpInterfaceMethods<ELF_SectionInterface>
             ]
@@ -471,36 +461,23 @@ def PadOp :
         attr-dict}];
 }
 
-//
-// ABIVersionOp
-//
-
 def ABIVersionOp :
         ELF_Op<"ABIVersion",
             [
                 DeclareOpInterfaceMethods<ELF_BinaryOpInterface, ["serialize"]>,
                 DeclareOpInterfaceMethods<ELF_BinarySizeOpInterface, ["getBinarySize", "getAlignmentRequirements"]>,
-                DeclareOpInterfaceMethods<ELF_WrappableOpInterface>,
-                Symbol
+                DeclareOpInterfaceMethods<ELF_WrappableOpInterface>
             ]
         > {
     let summary = "Represents a versioning mechanism for the ELF Container and ABI";
-
-    let arguments = (ins
-          SymbolNameAttr:$sym_name
-        );
-
-    let assemblyFormat = [{attr-dict}];
-
-    let builders = [
-        OpBuilder<(ins)>
-        ];
+    let assemblyFormat = [{
+        attr-dict
+    }];
 }
 
 def MainOp :
         ELF_Op<"Main",
             [
-                Symbol,
                 SymbolTable,
                 IsolatedFromAbove
             ]
@@ -509,18 +486,13 @@ def MainOp :
 
     let summary = "Main ELF op encapsulating the ELF contents";
 
-    let arguments = (ins
-        SymbolNameAttr:$sym_name
-    );
-
     let regions = (region
         SizedRegion<1>:$content
     );
 
     let assemblyFormat = [{
-        attr-dict
-        $sym_name
         $content
+        attr-dict
     }];
 
 }

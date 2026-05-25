@@ -19,11 +19,12 @@
 #include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/reduce.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops/arithmetic.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/dpu.hpp"
 #include "vpux/compiler/dialect/VPU/interfaces/ppe_factory.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
-#include "vpux/compiler/init.hpp"
+#include "vpux/compiler/init/dialects_registry.hpp"
 
 using namespace vpux;
 
@@ -31,6 +32,10 @@ template <typename ConcreteModel, typename MainOpType>
 class LayerWithClampOpModel : public IE::LayerWithPostOpInterface::ExternalModel<ConcreteModel, MainOpType> {
 public:
     bool isSupportedPostOp(mlir::Operation*, mlir::Operation*, const LogCb&) const {
+        return true;
+    }
+
+    bool isSupportedClampProperties(mlir::Operation*, double, double, mlir::Type, const LogCb&) const {
         return true;
     }
 
@@ -132,8 +137,14 @@ protected:
         return builder.create<Const::DeclareOp>(mlir::UnknownLoc::get(&_ctx), content.getType(), std::move(content));
     }
 
+    mlir::DictionaryAttr createClamp(float min, float max) {
+        const auto minAttr = vpux::getFPAttr(&_ctx, min);
+        const auto maxAttr = vpux::getFPAttr(&_ctx, max);
+        return mlir::DictionaryAttr::get(&_ctx, {{"min", minAttr}, {"max", maxAttr}});
+    }
+
     IE::AddOp createAdd(mlir::OpBuilder builder, mlir::Type in1ElemType, mlir::Type in2ElemType, mlir::Type outElemType,
-                        IE::PostOpAttr postOpAttr) {
+                        IE::PostOpAttr postOpAttr, mlir::DictionaryAttr clampAttr = nullptr) {
         auto input1 = builder.create<mlir::tensor::EmptyOp>(mlir::UnknownLoc::get(&_ctx),
                                                             ArrayRef<int64_t>{1, 16, 32, 32}, in1ElemType);
         auto input2 = builder.create<mlir::tensor::EmptyOp>(mlir::UnknownLoc::get(&_ctx),
@@ -143,7 +154,7 @@ protected:
         const auto broadcast = IE::AutoBroadcastTypeAttr::get(&_ctx, IE::AutoBroadcastType::NONE_OR_EXPLICIT);
 
         return builder.create<IE::AddOp>(_loc, outType, input1.getResult(), input2.getResult(), broadcast, postOpAttr,
-                                         /*clamp=*/nullptr,
+                                         clampAttr,
                                          /*outputPadding=*/nullptr,
                                          /*inputPadding=*/nullptr);
     }
@@ -165,7 +176,7 @@ protected:
     }
 
     IE::MultiplyOp createMultiply(mlir::OpBuilder builder, mlir::Type in1ElemType, mlir::Type in2ElemType,
-                                  mlir::Type outElemType, IE::PostOpAttr postOpAttr) {
+                                  mlir::Type outElemType, IE::PostOpAttr postOpAttr, mlir::DictionaryAttr clampAttr) {
         auto input1 = builder.create<mlir::tensor::EmptyOp>(mlir::UnknownLoc::get(&_ctx),
                                                             ArrayRef<int64_t>{1, 16, 32, 32}, in1ElemType);
         auto input2 = builder.create<mlir::tensor::EmptyOp>(mlir::UnknownLoc::get(&_ctx),
@@ -175,14 +186,14 @@ protected:
         const auto broadcast = IE::AutoBroadcastTypeAttr::get(&_ctx, IE::AutoBroadcastType::NONE_OR_EXPLICIT);
 
         return builder.create<IE::MultiplyOp>(_loc, outType, input1.getResult(), input2.getResult(), broadcast,
-                                              postOpAttr, /*clamp=*/nullptr,
+                                              postOpAttr, clampAttr,
                                               /*outputPadding=*/nullptr,
                                               /*inputPadding=*/nullptr);
     }
 
     IE::ConvolutionOp createConvolution(mlir::OpBuilder builder, mlir::Type inElemType, mlir::Type weightsElemType,
                                         mlir::Type outElemType, double scale, IE::PostOpAttr postOpAttr,
-                                        Const::DeclareOp bias) {
+                                        mlir::DictionaryAttr clampAttr, Const::DeclareOp bias) {
         auto input = builder.create<mlir::tensor::EmptyOp>(mlir::UnknownLoc::get(&_ctx),
                                                            ArrayRef<int64_t>{1, 16, 32, 32}, inElemType);
         const auto outType = mlir::RankedTensorType::get(ArrayRef<int64_t>{1, 16, 32, 32}, outElemType);
@@ -197,12 +208,13 @@ protected:
 
         return builder.create<IE::ConvolutionOp>(
                 _loc, outType, input.getResult(), weights.getResult(), bias != nullptr ? bias.getResult() : nullptr,
-                /*scale*/ nullptr, strides, padsBegin, padsEnd, dilations, postOpAttr, /*clamp=*/nullptr, staticScale,
+                /*scale*/ nullptr, strides, padsBegin, padsEnd, dilations, postOpAttr, clampAttr, staticScale,
                 /*outputPadding=*/nullptr, /*inputPadding=*/nullptr);
     }
 
     IE::AvgPoolOp createAvgPool(mlir::OpBuilder builder, mlir::Type inElemType, mlir::Type outElemType,
-                                ArrayRef<int64_t> kernelShape, double scale, IE::PostOpAttr postOpAttr) {
+                                ArrayRef<int64_t> kernelShape, double scale, IE::PostOpAttr postOpAttr,
+                                mlir::DictionaryAttr clampAttr) {
         auto input = builder.create<mlir::tensor::EmptyOp>(mlir::UnknownLoc::get(&_ctx),
                                                            ArrayRef<int64_t>{1, 16, 32, 32}, inElemType);
         const auto outType = mlir::RankedTensorType::get(ArrayRef<int64_t>{1, 16, 32, 32}, outElemType);
@@ -215,12 +227,12 @@ protected:
         const auto staticScale = getFPAttr(&_ctx, scale);
 
         return builder.create<IE::AvgPoolOp>(_loc, outType, input.getResult(), kernel, strides, padsBegin, padsEnd,
-                                             rounding, nullptr, postOpAttr, /*clamp=*/nullptr, staticScale,
+                                             rounding, nullptr, postOpAttr, clampAttr, staticScale,
                                              /*outputPadding=*/nullptr, /*inputPadding=*/nullptr);
     }
 
     IE::MaxPoolOp createMaxPool(mlir::OpBuilder builder, mlir::Type inElemType, mlir::Type outElemType,
-                                IE::PostOpAttr postOpAttr) {
+                                IE::PostOpAttr postOpAttr, mlir::DictionaryAttr clampAttr) {
         auto input = builder.create<mlir::tensor::EmptyOp>(mlir::UnknownLoc::get(&_ctx),
                                                            ArrayRef<int64_t>{1, 16, 32, 32}, inElemType);
         const auto outType = mlir::RankedTensorType::get(ArrayRef<int64_t>{1, 16, 32, 32}, outElemType);
@@ -232,7 +244,7 @@ protected:
         const auto rounding = IE::RoundingTypeAttr::get(&_ctx, IE::RoundingType::FLOOR);
 
         return builder.create<IE::MaxPoolOp>(_loc, outType, input.getResult(), kernel, strides, padsBegin, padsEnd,
-                                             rounding, postOpAttr, /*clamp=*/nullptr,
+                                             rounding, postOpAttr, clampAttr,
                                              /*outputPadding=*/nullptr,
                                              /*inputPadding=*/nullptr);
     }
@@ -269,9 +281,9 @@ protected:
         const auto axesAttr = getIntArrayAttr(&_ctx, axes);
         const auto typeAttr = VPU::ReduceTypeAttr::get(&_ctx, reduceType);
         const auto inputPaddingAttr = inputPadding.empty() ? nullptr : getIntArrayAttr(&_ctx, inputPadding);
-        return builder.create<VPU::NCEReduceOp>(_loc, outType, input.getResult(), axesAttr, /*ppe=*/nullptr, typeAttr,
-                                                /*multiClusterStrategy=*/nullptr, /*output_padding=*/nullptr,
-                                                inputPaddingAttr);
+        return builder.create<VPU::NCEReduceOp>(
+                _loc, outType, input.getResult(), axesAttr, /*ppe=*/nullptr, nullptr, typeAttr,
+                /*multiClusterStrategy=*/nullptr, /*output_padding=*/nullptr, inputPaddingAttr);
     }
 
     VPU::NCEInterpolateOp createNCEInterpolate(mlir::OpBuilder builder, mlir::Type inElemType,
@@ -289,7 +301,8 @@ protected:
         const auto rawFilterShape = getIntArrayAttr(&_ctx, mlir::cast<NDTypeInterface>(weights.getType()).getShape());
 
         return builder.create<VPU::NCEInterpolateOp>(_loc, outType, input, weights, weightsTable, nullptr, nullptr,
-                                                     nullptr, nullptr, nullptr, strides, oldPpeAttr, rawFilterShape,
+                                                     nullptr, nullptr, nullptr, strides, oldPpeAttr, nullptr,
+                                                     rawFilterShape,
                                                      /*multiClusterStrategy=*/nullptr,
                                                      /*mode=*/nullptr);
     }
@@ -316,7 +329,7 @@ protected:
                 _loc, outType, input, weights, weightsTable, /*dataPointerTensor=*/nullptr,
                 /*sparsityPointerTensor=*/nullptr,
                 /*scaleTensor=*/nullptr, /*biasTensor=*/nullptr, /*zeroPointTensor=*/nullptr, strides, padAttr,
-                oldPpeAttr, rawFilterShape,
+                oldPpeAttr, nullptr, rawFilterShape,
                 /*multiClusterStrategy=*/nullptr,
                 /*outputPaddingAttr=*/nullptr,
                 /*inputPaddingAttr=*/nullptr);

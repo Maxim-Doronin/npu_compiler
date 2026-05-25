@@ -4,12 +4,16 @@
 //
 
 #define NOMINMAX
+#define __STDC_FORMAT_MACROS 1
 
 #include "level_zero_wrapper.h"
+
+#include <inttypes.h>
 
 #include <stdio.h>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
@@ -20,10 +24,10 @@
 #include <type_traits>
 #include <vector>
 #include "intel_npu/utils/zero/zero_utils.hpp"
-#include "vpux/compiler/core/developer_build_utils.hpp"
 #include "vpux/compiler/dialect/HostExec/params.hpp"
 #include "vpux/compiler/dialect/VPUMI37XX/network_description.hpp"
 #include "vpux/compiler/network_metadata.hpp"
+#include "vpux/utils/core/developer_build_utils.hpp"
 #include "vpux/utils/logger/logger.hpp"
 #include "vpux_headers/serial_metadata.hpp"
 #include "ze_graph_ext.h"
@@ -74,9 +78,12 @@ inline error_t memcpy_s(void* dest, size_t destsz, const void* src, size_t count
 // End of workaround for win specific save funtions
 
 #define RETURN_SUCCESS() return static_cast<uint32_t>(ZE_RESULT_SUCCESS);
+#if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
+#define ENABLE_COMMANDLIST_SUBMISSION_MODE
+#endif
 
 #ifdef TEST
-NPU_API(void*) npu_level_zero_alloc(int64_t size, void*) {
+NPU_API(void*) npu_level_zero_alloc(int64_t size, void*, void*) {
     printf("npu_level_zero_alloc was called %lld\n", size);
 #if !defined(WIN32)
     void* result = aligned_alloc(64, size);
@@ -118,7 +125,7 @@ npu_level_zero_execute_graph(void** input, int32_t numInputs, void** output, int
 }
 
 NPU_API(int32_t)
-npu_level_zero_submit_commandlist(void* commandList, void* commandQueue, void* fence, void* event) {
+npu_level_zero_submit_commandlist(void* commandList, void* commandQueue, void* fence, void* event, void* execCtx) {
     printf("npu_level_zero_submit_commandlist was called\n");
     RETURN_SUCCESS();
 }
@@ -148,7 +155,6 @@ npu_level_zero_get_network_metadata(void* metadata, uint64_t metadataSize, void*
 }
 
 #else
-
 struct graph_info {
     ze_graph_handle_t graphHandle;
     uint32_t numArgs;
@@ -160,22 +166,45 @@ struct graph_info {
     }
 };
 
+#if defined(WIN32)
+constexpr uint32_t default_cmdlist_id = 1;
+#else
+constexpr uint32_t default_cmdlist_id = 0;
+#endif
+
 constexpr size_t max_message_length = 256;
 std::unique_ptr<vpux::Logger> logger = nullptr;
 static char lastErrorMessage[max_message_length];
-#define ERROR_HANDLE(result, msg)                                                         \
-    if (result != ZE_RESULT_SUCCESS) {                                                    \
-        size_t size = std::min(static_cast<size_t>(max_message_length - 1), strlen(msg)); \
-        std::strncpy(lastErrorMessage, msg, size);                                        \
-        lastErrorMessage[size] = '\0';                                                    \
-        if (logger != nullptr) {                                                          \
-            logger->error("{0}. code{1}", lastErrorMessage, result);                      \
-        }                                                                                 \
-        return static_cast<int32_t>(result);                                              \
+#define ERROR_HANDLE(result, format, ...)                                                              \
+    if (result != ZE_RESULT_SUCCESS) {                                                                 \
+        std::snprintf(lastErrorMessage, max_message_length, format ": 0x%04X", ##__VA_ARGS__, result); \
+        if (logger != nullptr) {                                                                       \
+            logger->error("{0}", lastErrorMessage);                                                    \
+        }                                                                                              \
+        return static_cast<int32_t>(result);                                                           \
     }
 
 ze_graph_dditable_ext_t* ddiTableHandle = nullptr;
 std::map<void*, graph_info>* graphMap = nullptr;
+
+enum UseInternalCmdListMode {
+    USE_INTERNAL_CMDLIST_MODE_DEFAULT = 0,  // No use of internal command list
+    USE_INTERNAL_CMDLIST_MODE_PER_INFERENCE_GROUP =
+            1,  // Use internal command list for each inference group, and submit after each group
+    USE_INTERNAL_CMDLIST_MODE_PER_INFERENCE =
+            2,  // Use internal command list for each inference, and submit after each inference
+};
+
+#if defined(ENABLE_COMMANDLIST_SUBMISSION_MODE)
+UseInternalCmdListMode useInternalCmdListMode = USE_INTERNAL_CMDLIST_MODE_DEFAULT;
+uint64_t maxCmdListCount = 200;
+std::vector<ze_command_list_handle_t>* commandlistPool = nullptr;
+uint64_t curCmdListIndex = 0;
+ze_command_list_handle_t curCmdListHandle = nullptr;
+
+uint64_t maxInferenceCountPerGroup = 10;
+uint64_t curInferenceCountInGroup = 0;
+#endif
 
 struct scratch_buffer {
     ze_context_handle_t contextHandle;
@@ -219,12 +248,39 @@ struct execution_context {
     // commandListIndex, networkArgIndex, list of bindings for the same network argument in the same command list
     std::vector<std::vector<std::vector<graph_argument_binding>>> argumentBindings;
     std::vector<uint64_t> mutableCommandListIds;
+    std::vector<ze_event_handle_t> events;
+    ze_event_pool_handle_t eventPool;
+    size_t numSubGraphs;
+    bool isEventPoolInitialized;
+    size_t curEventIndex;
+    size_t signalEventCount;
+    std::unique_ptr<scratch_buffer, ze_memory_deleter> scratchBuffer = nullptr;
+
     execution_context(size_t numSubGraphs, size_t numNetworkArgs)
-            : argumentBindings(numSubGraphs), mutableCommandListIds(numSubGraphs) {
+            : argumentBindings(numSubGraphs), mutableCommandListIds(numSubGraphs), numSubGraphs(numSubGraphs) {
         for (auto& bindings : argumentBindings) {
             bindings.resize(numNetworkArgs);
         }
+        eventPool = nullptr;
+        isEventPoolInitialized = false;
+        curEventIndex = 0;
+        signalEventCount = 0;
     }
+
+    ~execution_context() {
+        if (eventPool != nullptr) {
+            for (auto& event : events) {
+                zeEventDestroy(event);
+            }
+
+            zeEventPoolDestroy(eventPool);
+        }
+
+        if (scratchBuffer != nullptr) {
+            scratchBuffer.reset();
+        }
+    }
+
     void add_binding(size_t graphIndex, const graph_argument_binding& binding) {
         argumentBindings[graphIndex][binding.networkArgIndex].emplace_back(binding);
 
@@ -288,8 +344,8 @@ struct execution_context {
                     mutable_cmd_id_desc.flags = ZE_MUTABLE_COMMAND_EXP_FLAG_GRAPH_ARGUMENTS;
                     auto result = zeCommandListGetNextCommandIdExp(commandListHandle, &mutable_cmd_id_desc, &cmdId);
                     if (result == ZE_RESULT_ERROR_UNINITIALIZED) {
-                        // If the command list is closed, set cmdId to 0
-                        cmdId = 0;
+                        // If the command list is closed, initialize cmdId with default_cmdlist_id
+                        cmdId = default_cmdlist_id;
                     } else {
                         if (result == ZE_RESULT_ERROR_INVALID_ENUMERATION) {
                             // If ZE_MUTABLE_COMMAND_EXP_FLAG_GRAPH_ARGUMENTS is not supported by the driver, try again
@@ -303,11 +359,64 @@ struct execution_context {
             }
 
             for (uint64_t i = 1; i < numCommandLists; ++i) {
-                // For other command lists, we can just set the mutable command id to 1
-                // as no inference execution command will be recorded in those command lists in npu plugin
-                mutableCommandListIds[i] = 1;
+                // For command lists after the first, initialize the mutable command id with
+                // default_cmdlist_id because the NPU plugin does not pre-record inference
+                // execution commands in those command lists. The default value is platform-specific.
+                mutableCommandListIds[i] = default_cmdlist_id;
             }
         }
+
+        resetEvents();
+    }
+
+    int32_t createEventPool(ze_device_handle_t deviceHandle, ze_context_handle_t context) {
+        if (numSubGraphs > 1) {
+            auto eventCount = (numSubGraphs - 1);
+            ze_event_pool_desc_t event_pool_desc = {ZE_STRUCTURE_TYPE_EVENT_POOL_DESC, nullptr,
+                                                    ZE_EVENT_POOL_FLAG_HOST_VISIBLE, static_cast<uint32_t>(eventCount)};
+            auto result = zeEventPoolCreate(context, &event_pool_desc, /*numDevices*/ 1, &deviceHandle, &eventPool);
+            ERROR_HANDLE(result, "Failed to create event pool for execution context");
+
+            events.resize(eventCount);
+            for (size_t i = 0; i < eventCount; i++) {
+                ze_event_desc_t event_desc = {ZE_STRUCTURE_TYPE_EVENT_DESC, nullptr, static_cast<uint32_t>(i), 0, 0};
+                result = zeEventCreate(eventPool, &event_desc, &events[i]);
+                ERROR_HANDLE(result, "Failed to create event");
+            }
+        }
+
+        isEventPoolInitialized = true;
+        return ZE_RESULT_SUCCESS;
+    }
+
+    void resetEvents() {
+        curEventIndex = 0;
+        signalEventCount = 0;
+    }
+
+    ze_event_handle_t getSignalEvent() {
+        if (events.empty()) {
+            return nullptr;
+        }
+
+        if (curEventIndex < events.size()) {
+            signalEventCount++;
+            return events[curEventIndex];
+        }
+
+        return nullptr;
+    }
+
+    ze_event_handle_t getWaitEvent() {
+        if (events.empty() || (signalEventCount == 0)) {
+            return nullptr;
+        }
+
+        signalEventCount = 0;
+        if (curEventIndex < events.size()) {
+            return events[curEventIndex++];
+        }
+        return nullptr;
     }
 };
 
@@ -323,6 +432,49 @@ NPU_API(void) __mlir_execution_engine_init() {
     if (logLevelFlag.size() > 0 && std::string(logLevelFlag).find("LOG_") == 0) {
         logger = std::make_unique<vpux::Logger>(llvm::StringLiteral("LEVEL_ZERO_WRAPPER"),
                                                 vpux::Logger::global().level());
+    }
+#endif
+
+#if defined(ENABLE_COMMANDLIST_SUBMISSION_MODE)
+    std::string internalCmdListFlag;
+    vpux::parseEnv("ENABLE_INTERNAL_CMDLIST", internalCmdListFlag);
+    if (internalCmdListFlag.size() > 0) {
+        useInternalCmdListMode = internalCmdListFlag == "1"
+                                         ? USE_INTERNAL_CMDLIST_MODE_PER_INFERENCE_GROUP
+                                         : (internalCmdListFlag == "2" ? USE_INTERNAL_CMDLIST_MODE_PER_INFERENCE
+                                                                       : USE_INTERNAL_CMDLIST_MODE_DEFAULT);
+        if (logger) {
+            logger->info("Internal CommandList Mode: {0}", static_cast<uint64_t>(useInternalCmdListMode));
+        }
+    }
+
+    std::string internalCmdListCountFlag;
+    vpux::parseEnv("INTERNAL_CMDLIST_MAX_COUNT", internalCmdListCountFlag);
+    if (internalCmdListCountFlag.size() > 0) {
+        int64_t internalCmdListCount = std::stoll(internalCmdListCountFlag);
+        if (internalCmdListCount > 0) {
+            maxCmdListCount = internalCmdListCount;
+            if (logger) {
+                logger->info("Max number of command lists: {0}", maxCmdListCount);
+            }
+        }
+    }
+
+    std::string internalMaxInferenceCountPerGroupFlag;
+    vpux::parseEnv("INTERNAL_CMDLIST_MAX_INFERENCE_COUNT_PER_GROUP", internalMaxInferenceCountPerGroupFlag);
+    if (internalMaxInferenceCountPerGroupFlag.size() > 0) {
+        int64_t internalCmdListMaxInferenceCountPerGroup = std::stoll(internalMaxInferenceCountPerGroupFlag);
+        if (internalCmdListMaxInferenceCountPerGroup > 0) {
+            maxInferenceCountPerGroup = internalCmdListMaxInferenceCountPerGroup;
+            if (logger) {
+                logger->info("Max number of inferences per group: {0}", maxInferenceCountPerGroup);
+            }
+        }
+    }
+
+    if (useInternalCmdListMode != USE_INTERNAL_CMDLIST_MODE_DEFAULT) {
+        commandlistPool = new std::vector<ze_command_list_handle_t>();
+        commandlistPool->reserve(maxCmdListCount);
     }
 #endif
 }
@@ -344,12 +496,27 @@ NPU_API(void) __mlir_execution_engine_destroy() {
         scratchBuffer.reset();
     }
 
+#if defined(ENABLE_COMMANDLIST_SUBMISSION_MODE)
+    if (commandlistPool) {
+        for (auto handle : *commandlistPool) {
+            if (handle != nullptr) {
+                zeCommandListDestroy(handle);
+            }
+        }
+
+        delete commandlistPool;
+    }
+#endif
+
     if (logger) {
         logger.reset();
     }
 }
 
-NPU_API(void*) npu_level_zero_alloc(int64_t bytes, void* context) {
+NPU_API(void*) npu_level_zero_alloc(int64_t bytes, void* context, void* executionContext) {
+    auto execCtx = reinterpret_cast<execution_context*>(executionContext);
+    auto& scratchBuffer = (execCtx != nullptr) ? execCtx->scratchBuffer : ::scratchBuffer;
+
     if (scratchBuffer != nullptr && scratchBuffer->size >= bytes) {
         return scratchBuffer->data;
     }
@@ -380,10 +547,10 @@ NPU_API(int32_t) npu_level_zero_append_memory_copy(void* src, void* dst, int64_t
     auto commandListHandle =
             (commandList == nullptr) ? nullptr : *reinterpret_cast<ze_command_list_handle_t*>(commandList);
     if (commandListHandle == nullptr) {
-        ERROR_HANDLE(ZE_RESULT_ERROR_INVALID_NULL_HANDLE, "Invalid nullpointer");
+        ERROR_HANDLE(ZE_RESULT_ERROR_INVALID_NULL_HANDLE, "Invalid commandListHandle");
     }
     auto result = zeCommandListAppendMemoryCopy(commandListHandle, dst, src, size, nullptr, 0, nullptr);
-    ERROR_HANDLE(result, "Failed to append memory copy");
+    ERROR_HANDLE(result, "Failed to append memory copy from: %p to: %p, size: %" PRId64, src, dst, size);
 
     RETURN_SUCCESS();
 }
@@ -420,12 +587,17 @@ npu_level_zero_create_graph(void* kernel, int64_t kernelSize, void* context, voi
     ze_pfnGraphCreate_ext_t pfnCreate = ddiTableHandle->pfnCreate;
     ze_graph_handle_t graphHandle = nullptr;
     auto result = pfnCreate(contextHandle, deviceHandle, &desc, &graphHandle);
-    ERROR_HANDLE(result, "Failed to create graph");
+    ERROR_HANDLE(result, "Failed to create graph, kern: %p, size: %" PRId64, kernel, kernelSize);
 
     ze_graph_properties_t props{};
     props.stype = ZE_STRUCTURE_TYPE_GRAPH_PROPERTIES;
     result = ddiTableHandle->pfnGetProperties(graphHandle, &props);
     auto numInputArguments = 0;
+
+    if (logger) {
+        logger->debug("Get properties of graph arguments: {0}, kernel: {1}, size: {2}", props.numGraphArgs, kernel,
+                      kernelSize);
+    }
     for (uint32_t index = 0; index < props.numGraphArgs; ++index) {
         ze_graph_argument_properties_3_t arg3{};
         arg3.stype = ZE_STRUCTURE_TYPE_GRAPH_ARGUMENT_PROPERTIES_3;
@@ -433,7 +605,8 @@ npu_level_zero_create_graph(void* kernel, int64_t kernelSize, void* context, voi
         ze_graph_argument_property_strides_t strides{ZE_STRUCTURE_TYPE_GRAPH_ARGUMENT_PROPERTY_STRIDES, nullptr, false};
         arg3.pNext = reinterpret_cast<void*>(&strides);
         result = ddiTableHandle->pfnGetArgumentProperties3(graphHandle, index, &arg3);
-        ERROR_HANDLE(result, "Failed to get argument properties");
+        ERROR_HANDLE(result, "Failed to get properties of arg: %" PRIu32 " kern: %p size: %" PRId64, index, kernel,
+                     kernelSize);
 
         if (arg3.type == ZE_GRAPH_ARGUMENT_TYPE_INPUT) {
             numInputArguments++;
@@ -444,16 +617,20 @@ npu_level_zero_create_graph(void* kernel, int64_t kernelSize, void* context, voi
     auto commandQueueHandle = static_cast<ze_command_queue_handle_t>(commandQueue);
     ze_pfnAppendGraphInitialize_ext_t pfnAppendGraphInitialize = ddiTableHandle->pfnAppendGraphInitialize;
 
+    if (logger) {
+        logger->debug("Initialize graph of kernel: {0} size: {1}", kernel, kernelSize);
+    }
     if (commandListHandle != nullptr) {
         result = pfnAppendGraphInitialize(commandListHandle, graphHandle, /*profiling_query_handle*/ nullptr, 0,
                                           nullptr);
-        ERROR_HANDLE(result, "Failed to append graph initialize");
+        ERROR_HANDLE(result, "Failed to append graph initialize, kern: %p size: %" PRId64, kernel, kernelSize);
     }
 
     (*graphMap)[kernel] = graph_info(graphHandle, props.numGraphArgs, numInputArguments);
 
     if (logger) {
-        logger->info("Created graph for kernel");
+        logger->info("Created graph for kernel: {0}, size: {1}, commandList: {2}", kernel, kernelSize,
+                     commandListHandle);
     }
 
     RETURN_SUCCESS();
@@ -467,6 +644,9 @@ npu_level_zero_create_graphs(void** kernels, int64_t* kernelSizes, int32_t numKe
     auto commandQueueHandle = static_cast<ze_command_queue_handle_t>(commandQueue);
     ze_pfnAppendGraphInitialize_ext_t pfnAppendGraphInitialize = ddiTableHandle->pfnAppendGraphInitialize;
 
+    if (logger) {
+        logger->debug("Create multiple graphs: {0}", numKernels);
+    }
     for (int32_t kernelIndex = 0; kernelIndex < numKernels; ++kernelIndex) {
         ze_graph_desc_t desc = {ZE_STRUCTURE_TYPE_GRAPH_PROPERTIES,
                                 nullptr,
@@ -481,17 +661,23 @@ npu_level_zero_create_graphs(void** kernels, int64_t* kernelSizes, int32_t numKe
         ze_pfnGraphCreate_ext_t pfnCreate = ddiTableHandle->pfnCreate;
         ze_graph_handle_t graphHandle = nullptr;
         auto result = pfnCreate(contextHandle, deviceHandle, &desc, &graphHandle);
-        ERROR_HANDLE(result, "Failed to create graph");
+        ERROR_HANDLE(result, "Failed to create graph, idx: %" PRId32 ", kern: %p, size: %" PRId64, kernelIndex,
+                     kernels[kernelIndex], kernelSizes[kernelIndex]);
 
         ze_graph_properties_t props{};
         props.stype = ZE_STRUCTURE_TYPE_GRAPH_PROPERTIES;
         result = ddiTableHandle->pfnGetProperties(graphHandle, &props);
         auto numInputArguments = 0;
+        if (logger) {
+            logger->debug("Get properties of arguments: {0} of idx: {1}", props.numGraphArgs, kernelIndex);
+        }
         for (uint32_t index = 0; index < props.numGraphArgs; ++index) {
             ze_graph_argument_properties_3_t arg3{};
             arg3.stype = ZE_STRUCTURE_TYPE_GRAPH_ARGUMENT_PROPERTIES;
             result = ddiTableHandle->pfnGetArgumentProperties3(graphHandle, index, &arg3);
-            ERROR_HANDLE(result, "Failed to get argument properties\n");
+            ERROR_HANDLE(result,
+                         "Failed to get properties of arg: %" PRIu32 ", idx: %" PRId32 ", kern: %p, size: %" PRId64,
+                         index, kernelIndex, kernels[kernelIndex], kernelSizes[kernelIndex]);
 
             if (arg3.type == ZE_GRAPH_ARGUMENT_TYPE_INPUT) {
                 numInputArguments++;
@@ -502,7 +688,8 @@ npu_level_zero_create_graphs(void** kernels, int64_t* kernelSizes, int32_t numKe
 
         result = pfnAppendGraphInitialize(commandListHandle, graphHandle, /*profiling_query_handle*/ nullptr, 0,
                                           nullptr);
-        ERROR_HANDLE(result, "Failed to append graph initialize");
+        ERROR_HANDLE(result, "Failed to append graph initialize, idx: %" PRId32 " kern: %p, size: %" PRId64,
+                     kernelIndex, kernels[kernelIndex], kernelSizes[kernelIndex]);
 
         (*graphMap)[kernels[kernelIndex]] = graph_info(graphHandle, props.numGraphArgs, numInputArguments);
     }
@@ -545,65 +732,200 @@ int32_t set_arguments(uint64_t index, const vpux::HostExec::MemRefDesc& desc, ze
 NPU_API(int32_t)
 npu_level_zero_execute_graph(void** inputDescs, int32_t numInputs, void** outputDescs, int32_t numOutputs,
                              void* kernelName, void* kernel, int64_t kernelSize, void* context, void* device,
-                             void* ddiTable, void** commandList, int64_t commandListIndex, void* execCtx) {
+                             void* ddiTable, void** commandList, int64_t commandListIndex, void* commandQueue,
+                             void* execCtx) {
     if (logger) {
         const char* kernelNameStr = static_cast<const char*>(kernelName);
-        logger->info("Executing graph for kernel {0} at address {1} of size {2} in cmdListIndex {3}", kernelNameStr,
-                     kernel, kernelSize, commandListIndex);
+        logger->info(
+                "Executing graph for kernel {0} at address {1} of size {2} in cmdListIndex {3} and execContext {4}",
+                kernelNameStr, kernel, kernelSize, commandListIndex, execCtx);
+    }
+
+    auto* execContext = reinterpret_cast<execution_context*>(execCtx);
+    if (execCtx != nullptr && execContext->isEventPoolInitialized == false) {
+        if (logger) {
+            logger->info("Creating event pool for execution context");
+        }
+
+        auto deviceHandle = static_cast<ze_device_handle_t>(device);
+        auto contextHandle = static_cast<ze_context_handle_t>(context);
+        auto result = execContext->createEventPool(deviceHandle, contextHandle);
+        ERROR_HANDLE(result, "Failed to create event pool for execution context");
     }
     auto inputs = reinterpret_cast<vpux::HostExec::MemRefDesc*>(inputDescs);
     auto outputs = reinterpret_cast<vpux::HostExec::MemRefDesc*>(outputDescs);
 
     if (inputs == nullptr || outputs == nullptr) {
-        ERROR_HANDLE(ZE_RESULT_ERROR_INVALID_NULL_POINTER, "Invalid nullpointer");
+        ERROR_HANDLE(ZE_RESULT_ERROR_INVALID_NULL_POINTER, "Invalid nullpointer, input: %p, output: %p", inputs,
+                     outputs);
     }
 
     if (numInputs <= 0 || numOutputs <= 0) {
-        ERROR_HANDLE(ZE_RESULT_ERROR_INVALID_SIZE, "Invalid size");
+        ERROR_HANDLE(ZE_RESULT_ERROR_INVALID_SIZE, "Invalid size, inputs: %" PRId32 ", outputs: %" PRId32, numInputs,
+                     numOutputs);
     }
 
     graph_info graphInfo = (*graphMap)[kernel];
+
+#if defined(ENABLE_COMMANDLIST_SUBMISSION_MODE)
+    if (useInternalCmdListMode != USE_INTERNAL_CMDLIST_MODE_DEFAULT) {
+        if (curCmdListHandle != nullptr) {
+            if (useInternalCmdListMode == USE_INTERNAL_CMDLIST_MODE_PER_INFERENCE_GROUP) {
+                if (curInferenceCountInGroup >= maxInferenceCountPerGroup) {
+                    npu_level_zero_submit_commandlist(reinterpret_cast<void**>(&curCmdListHandle), commandQueue,
+                                                      nullptr, nullptr, execCtx);
+                }
+            } else {
+                npu_level_zero_submit_commandlist(reinterpret_cast<void**>(&curCmdListHandle), commandQueue, nullptr,
+                                                  nullptr, execCtx);
+            }
+        }
+
+        if (commandlistPool == nullptr) {
+            commandlistPool = new std::vector<ze_command_list_handle_t>();
+        }
+
+        if (commandlistPool->size() == 0) {
+            commandlistPool->resize(maxCmdListCount);
+            auto deviceHandle = static_cast<ze_device_handle_t>(device);
+            auto contextHandle = static_cast<ze_context_handle_t>(context);
+            auto commandQueueGroupOrdinal = intel_npu::zeroUtils::findCommandQueueGroupOrdinal(
+                    deviceHandle, ZE_COMMAND_QUEUE_GROUP_PROPERTY_FLAG_COMPUTE);
+            for (uint64_t i = 0; i < maxCmdListCount; ++i) {
+                ze_mutable_command_list_exp_desc_t mutable_desc = {ZE_STRUCTURE_TYPE_MUTABLE_COMMAND_LIST_EXP_DESC,
+                                                                   nullptr, 0};
+                ze_command_list_desc_t desc = {ZE_STRUCTURE_TYPE_COMMAND_LIST_DESC, &mutable_desc,
+                                               commandQueueGroupOrdinal, 0};
+                ze_command_list_handle_t cmdListHandle = nullptr;
+                zeCommandListCreate(contextHandle, deviceHandle, &desc, &cmdListHandle);
+                commandlistPool->at(i) = cmdListHandle;
+            }
+        }
+    }
+#endif
+
     if (graphInfo.graphHandle == nullptr) {
+#if defined(ENABLE_COMMANDLIST_SUBMISSION_MODE)
+        if (useInternalCmdListMode != USE_INTERNAL_CMDLIST_MODE_DEFAULT) {
+            if (curCmdListHandle != nullptr) {
+                if (useInternalCmdListMode == USE_INTERNAL_CMDLIST_MODE_PER_INFERENCE_GROUP) {
+                    if (curInferenceCountInGroup > 0) {
+                        npu_level_zero_submit_commandlist(reinterpret_cast<void**>(&curCmdListHandle), commandQueue,
+                                                          nullptr, nullptr, execCtx);
+                    }
+                }
+            }
+        }
+#endif
         // this is required until graph_init function is generated
         auto result = npu_level_zero_create_graph(kernel, kernelSize, context, device, ddiTable, nullptr, nullptr);
 
-        ERROR_HANDLE(result, "Failed to compile a graph");
+        ERROR_HANDLE(result, "Failed to compile a graph, kern: %p, size: %" PRId64, kernel, kernelSize);
 
         graphInfo = (*graphMap)[kernel];
         if (graphInfo.graphHandle == nullptr) {
-            ERROR_HANDLE(ZE_RESULT_ERROR_INVALID_ARGUMENT, "Invalid arguments");
+            ERROR_HANDLE(ZE_RESULT_ERROR_INVALID_ARGUMENT, "Invalid graph handle, kern: %p, size: %" PRId64, kernel,
+                         kernelSize);
         }
     }
     if (graphInfo.numArgs != (numInputs + numOutputs)) {
-        ERROR_HANDLE(ZE_RESULT_ERROR_INVALID_ARGUMENT, "Invalid arguments");
+        ERROR_HANDLE(ZE_RESULT_ERROR_INVALID_ARGUMENT,
+                     "Invalid arguments, kern: %p, size: %" PRId64 ", numArgs: %" PRIu32 ", inputs: %" PRId32
+                     ", outputs: %" PRId32,
+                     kernel, kernelSize, graphInfo.numArgs, numInputs, numOutputs);
     }
     auto* ddiTableHandle = static_cast<ze_graph_dditable_ext_t*>(ddiTable);
 
     const auto graphHandle = graphInfo.graphHandle;
+    if (logger) {
+        logger->debug("Begin setting arguments: {0} of kern: {1}", graphInfo.numArgs, kernel);
+    }
     for (uint32_t index = 0; index < graphInfo.numArgs; ++index) {
         // Process inputs
         if (index < graphInfo.numInputArgs) {
             ERROR_HANDLE(set_arguments(index, inputs[index], graphHandle, ddiTableHandle),
-                         "Failed to set input arguments");
+                         "Failed to set input argument [%" PRIu32 "/%" PRIu32 "] for kern: %p", index,
+                         graphInfo.numArgs, kernel);
 
         } else {
             ERROR_HANDLE(set_arguments(index, outputs[index - graphInfo.numInputArgs], graphHandle, ddiTableHandle),
-                         "Failed to set output arguments");
+                         "Failed to set output argument [%" PRIu32 "/%" PRIu32 "] for kern: %p", index,
+                         graphInfo.numArgs, kernel);
         }
     }
 
     ze_pfnAppendGraphExecute_ext_t pfnAppendGraphExecute = ddiTableHandle->pfnAppendGraphExecute;
-    auto commandListHandle =
-            (commandList == nullptr) ? nullptr : *reinterpret_cast<ze_command_list_handle_t*>(commandList);
+    ze_command_list_handle_t commandListHandle = nullptr;
+
+#if defined(ENABLE_COMMANDLIST_SUBMISSION_MODE)
+    if (useInternalCmdListMode != USE_INTERNAL_CMDLIST_MODE_DEFAULT) {
+        if (useInternalCmdListMode == USE_INTERNAL_CMDLIST_MODE_PER_INFERENCE_GROUP) {
+            if (curCmdListHandle == nullptr) {
+                curCmdListHandle = commandlistPool->at(curCmdListIndex);
+            }
+            curInferenceCountInGroup += 1;
+        } else {
+            curCmdListHandle = commandlistPool->at(curCmdListIndex);
+        }
+        commandListHandle = curCmdListHandle;
+    } else {
+#endif
+        commandListHandle =
+                (commandList == nullptr) ? nullptr : *reinterpret_cast<ze_command_list_handle_t*>(commandList);
+#if defined(ENABLE_COMMANDLIST_SUBMISSION_MODE)
+    }
+#endif
 
     if (commandListHandle == nullptr) {
-        ERROR_HANDLE(ZE_RESULT_ERROR_INVALID_NULL_HANDLE, "Invalid nullpointer");
+        ERROR_HANDLE(ZE_RESULT_ERROR_INVALID_NULL_HANDLE, "Invalid commandListHandle");
     }
 
-    auto result = pfnAppendGraphExecute(commandListHandle, graphHandle, nullptr, nullptr, 0, nullptr);
+    ze_event_handle_t waitEvent = nullptr;
+    uint32_t numWaitEvents = 0;
+    if (execContext != nullptr) {
+        const auto mutableCmdListCount = execContext->mutableCommandListIds.size();
+        if (static_cast<size_t>(commandListIndex) < mutableCmdListCount) {
+            auto id = execContext->mutableCommandListIds[commandListIndex];
+            if (id == default_cmdlist_id) {
+                waitEvent = execContext->getWaitEvent();
+                if (waitEvent != nullptr) {
+                    numWaitEvents = 1;
+                }
+            }
+        } else {
+            ERROR_HANDLE(ZE_RESULT_ERROR_INVALID_NULL_POINTER, "Invalid commandList Index: %" PRId64 ", got: %" PRIu64,
+                         commandListIndex, mutableCmdListCount);
+        }
+    }
+
+    ze_result_t result = ZE_RESULT_SUCCESS;
+    if (numWaitEvents > 0 && waitEvent != nullptr) {
+        if (logger) {
+            logger->debug("Appending a barrier with a WAIT event: {0}, numWaitEvents: {1}", waitEvent, numWaitEvents);
+        }
+        result = zeCommandListAppendBarrier(commandListHandle, nullptr, numWaitEvents, &waitEvent);
+        if (result == ZE_RESULT_ERROR_UNINITIALIZED) {
+            result = zeCommandListReset(commandListHandle);
+            ERROR_HANDLE(result, "Failed to reset a command list");
+            result = zeCommandListAppendBarrier(commandListHandle, nullptr, numWaitEvents, &waitEvent);
+            ERROR_HANDLE(result, "Failed to append barrier before graph execute, kern: %p, numWaitEvents: %d", kernel,
+                         numWaitEvents);
+            result = zeCommandListAppendEventReset(commandListHandle, waitEvent);
+        } else {
+            ERROR_HANDLE(result, "Failed to append a barrier before graph execute, kern: %p, numWaitEvents: %d", kernel,
+                         numWaitEvents);
+            result = zeCommandListAppendEventReset(commandListHandle, waitEvent);
+        }
+
+        ERROR_HANDLE(result, "Failed to append an event reset waitEvent: %p, numWaitEvents: %d", waitEvent,
+                     numWaitEvents);
+    }
+
+    result = pfnAppendGraphExecute(commandListHandle, graphHandle, nullptr, nullptr, 0, nullptr);
+
     if (result == ZE_RESULT_ERROR_UNINITIALIZED) {
         result = zeCommandListReset(commandListHandle);
-        ERROR_HANDLE(result, "Failed to reset command list");
+        ERROR_HANDLE(result, "Failed to reset command list: %p, kern: %p", commandListHandle, kernel);
         result = pfnAppendGraphExecute(commandListHandle, graphHandle, nullptr, nullptr, 0, nullptr);
     }
 
@@ -621,18 +943,28 @@ npu_level_zero_execute_graph(void** inputDescs, int32_t numInputs, void** output
     }
 #endif
 
-    ERROR_HANDLE(result, "Failed to append graph execute");
+    ERROR_HANDLE(result, "Failed to append graph execute in command list: %p, kern: %p, numWaits: %d",
+                 commandListHandle, kernel, numWaitEvents);
 
-    if (execCtx != nullptr) {
-        auto* execContext = reinterpret_cast<execution_context*>(execCtx);
+#if !defined(ENABLE_COMMANDLIST_SUBMISSION_MODE)
+    const bool isMutableCommandListEnabled = execCtx != nullptr;
+#else
+    const bool isMutableCommandListEnabled =
+            execCtx != nullptr && useInternalCmdListMode == USE_INTERNAL_CMDLIST_MODE_DEFAULT;
+#endif
+
+    if (isMutableCommandListEnabled) {
         if (commandListIndex >= execContext->mutableCommandListIds.size()) {
-            ERROR_HANDLE(ZE_RESULT_ERROR_INVALID_NULL_POINTER, "Invalid commandList Index");
+            ERROR_HANDLE(ZE_RESULT_ERROR_INVALID_NULL_POINTER, "Invalid commandList Index: %" PRId64 ", got: %" PRIu64,
+                         commandListIndex, execContext->mutableCommandListIds.size());
         }
 
         // Need to increase cmdId for each execute graph call
         // as it is used to index inferences stored in a command list
         uint64_t cmdId = execContext->mutableCommandListIds[commandListIndex]++;
-
+        if (logger) {
+            logger->debug("Begin execution ctx arguments: {0} rebinding, kern: {1}", graphInfo.numArgs, kernel);
+        }
         for (uint32_t index = 0; index < graphInfo.numArgs; ++index) {
             // Process inputs
             if (index < graphInfo.numInputArgs) {
@@ -663,48 +995,104 @@ npu_level_zero_execute_graph(void** inputDescs, int32_t numInputs, void** output
     }
 
     if (logger) {
-        logger->info("Executed graph for kernel");
+        logger->info("Executed graph for kernel: {0}", kernel);
     }
 
     RETURN_SUCCESS();
 }
 
 NPU_API(int32_t)
-npu_level_zero_submit_commandlist(void** commandLists, void* commandQueue, void* fence, void* event) {
+npu_level_zero_submit_commandlist(void* commandLists, void* commandQueue, void* fence, void* event, void* execCtx) {
     if (logger) {
-        logger->info("Submitting command list: fence{0}, event {1}", fence, event);
+        logger->info("Submitting command list: {0}, fence: {1}, event: {2}", commandLists, fence, event);
     }
 
-    auto commandListHandle =
-            (commandLists == nullptr) ? nullptr : *reinterpret_cast<ze_command_list_handle_t*>(commandLists);
+    ze_command_list_handle_t commandListHandle = nullptr;
+#if defined(ENABLE_COMMANDLIST_SUBMISSION_MODE)
+    if (useInternalCmdListMode != USE_INTERNAL_CMDLIST_MODE_DEFAULT) {
+        commandListHandle = curCmdListHandle;
+        curCmdListHandle = nullptr;
+        curCmdListIndex = (curCmdListIndex + 1) % maxCmdListCount;
+    } else {
+#endif
+        commandListHandle =
+                (commandLists == nullptr) ? nullptr : *reinterpret_cast<ze_command_list_handle_t*>(commandLists);
+#if defined(ENABLE_COMMANDLIST_SUBMISSION_MODE)
+    }
+#endif
+
     auto commandQueueHandle = static_cast<ze_command_queue_handle_t>(commandQueue);
     auto fenceHandle = static_cast<ze_fence_handle_t>(fence);
     auto eventHandle = static_cast<ze_event_handle_t>(event);
+    auto result = ZE_RESULT_SUCCESS;
     if (commandListHandle == nullptr) {
-        ERROR_HANDLE(ZE_RESULT_ERROR_INVALID_NULL_HANDLE, "Invalid nullpointer");
+        ERROR_HANDLE(ZE_RESULT_ERROR_INVALID_NULL_HANDLE,
+                     "Invalid commandListHandle for submission, command queue: %p, fence: %p, event: %p", commandQueue,
+                     fence, event);
     }
+
+#if defined(ENABLE_COMMANDLIST_SUBMISSION_MODE)
+    if (useInternalCmdListMode != USE_INTERNAL_CMDLIST_MODE_DEFAULT) {
+        if (fenceHandle != nullptr) {
+            curCmdListIndex = 0;
+            if (useInternalCmdListMode == USE_INTERNAL_CMDLIST_MODE_PER_INFERENCE_GROUP) {
+                curInferenceCountInGroup = 0;
+            }
+        }
+    }
+#endif
 
     // note commnad queue is null when immediate command list is used
     if (commandQueueHandle != nullptr) {
         if (eventHandle != nullptr) {
-            zeCommandListAppendBarrier(commandListHandle, nullptr, 0, nullptr);
-            zeCommandListAppendSignalEvent(commandListHandle, eventHandle);
-            zeCommandListClose(commandListHandle);
-            auto result = zeCommandQueueExecuteCommandLists(commandQueueHandle, 1, &commandListHandle, nullptr);
-            ERROR_HANDLE(result, "Failed to zeCommandQueueExecuteCommandList");
+            result = zeCommandListAppendBarrier(commandListHandle, nullptr, 0, nullptr);
+            ERROR_HANDLE(result, "Failed to zeCommandListAppendBarrier");
+
+            result = zeCommandListAppendSignalEvent(commandListHandle, eventHandle);
+            ERROR_HANDLE(result, "Failed to zeCommandListAppendSignalEvent");
+
+            result = zeCommandListClose(commandListHandle);
+            ERROR_HANDLE(result, "Failed to zeCommandListClose");
+
+            result = zeCommandQueueExecuteCommandLists(commandQueueHandle, 1, &commandListHandle, nullptr);
+            ERROR_HANDLE(
+                    result,
+                    "Failed to zeCommandQueueExecuteCommandList with event: %p, command queue: %p, command list: %p",
+                    event, commandQueue, commandLists);
 
         } else {
             if (fence == nullptr) {
-                // add a barrier at the end of command list to ensure all commands are finished
-                zeCommandListAppendBarrier(commandListHandle, nullptr, 0, nullptr);
+#if defined(ENABLE_COMMANDLIST_SUBMISSION_MODE)
+                if (useInternalCmdListMode == USE_INTERNAL_CMDLIST_MODE_DEFAULT) {
+#endif
+                    // add a barrier at the end of command list to ensure all commands are finished
+                    auto execContext = reinterpret_cast<execution_context*>(execCtx);
+                    auto signalEvent = (execContext != nullptr) ? execContext->getSignalEvent() : nullptr;
+                    if (logger) {
+                        logger->debug("Append barrier with SIGNAL event: {0} for command list: {1}", signalEvent,
+                                      commandListHandle);
+                    }
+                    result = zeCommandListAppendBarrier(commandListHandle, signalEvent, 0, nullptr);
+                    ERROR_HANDLE(result, "Failed to zeCommandListAppendBarrier");
+#if defined(ENABLE_COMMANDLIST_SUBMISSION_MODE)
+                } else {
+                    // add a barrier at the end of command list to ensure all commands are finished
+                    result = zeCommandListAppendBarrier(commandListHandle, nullptr, 0, nullptr);
+                    ERROR_HANDLE(result, "Failed to zeCommandListAppendBarrier");
+                }
+#endif
             }
-            zeCommandListClose(commandListHandle);
-            auto result = zeCommandQueueExecuteCommandLists(commandQueueHandle, 1, &commandListHandle, fenceHandle);
-            ERROR_HANDLE(result, "Failed to zeCommandQueueExecuteCommandList");
+            result = zeCommandListClose(commandListHandle);
+            ERROR_HANDLE(result, "Failed to zeCommandListClose");
+            result = zeCommandQueueExecuteCommandLists(commandQueueHandle, 1, &commandListHandle, fenceHandle);
+            ERROR_HANDLE(
+                    result,
+                    "Failed to zeCommandQueueExecuteCommandList with fence: %p, command queue: %p, command list: %p",
+                    fence, commandQueue, commandLists);
         }
     }
     if (logger) {
-        logger->info("Submitted command list");
+        logger->info("Submitted command list: {0}", commandLists);
     }
     RETURN_SUCCESS();
 }
@@ -717,31 +1105,36 @@ npu_level_zero_get_last_error(char** pError) {
 NPU_API(int32_t)
 npu_level_zero_reset_commandlist(void** commandLists) {
     if (commandLists == nullptr) {
-        ERROR_HANDLE(ZE_RESULT_ERROR_INVALID_ARGUMENT, "Invalid argument");
+        ERROR_HANDLE(ZE_RESULT_ERROR_INVALID_ARGUMENT, "Invalid commandLists");
     }
 
     auto commandListHandle = *reinterpret_cast<ze_command_list_handle_t*>(commandLists);
 
     if (commandListHandle == nullptr) {
-        ERROR_HANDLE(ZE_RESULT_ERROR_INVALID_ARGUMENT, "Invalid argument");
+        ERROR_HANDLE(ZE_RESULT_ERROR_INVALID_ARGUMENT, "Invalid commandListHandle");
     }
 
     auto result = zeCommandListReset(commandListHandle);
-    ERROR_HANDLE(result, "Failed to reset a commandlist");
+    ERROR_HANDLE(result, "Failed to reset a commandlist: %p", commandLists);
     RETURN_SUCCESS();
 }
 
 NPU_API(int32_t)
 npu_level_zero_reset_commandlists(void** commandLists, int32_t numCommandLists) {
+    if (logger) {
+        logger->debug("Reset command lists: {0}", numCommandLists);
+    }
     for (int32_t index = 0; index < numCommandLists; ++index) {
         auto commandListHandle = static_cast<ze_command_list_handle_t>(commandLists[index]);
 
         if (commandListHandle == nullptr) {
-            ERROR_HANDLE(ZE_RESULT_ERROR_INVALID_ARGUMENT, "Invalid argument");
+            ERROR_HANDLE(ZE_RESULT_ERROR_INVALID_ARGUMENT, "Invalid commandListHandle: [%" PRIu32 "/%" PRIu32 "]",
+                         index, numCommandLists);
         }
 
         auto result = zeCommandListReset(commandListHandle);
-        ERROR_HANDLE(result, "Failed to reset a commandlist");
+        ERROR_HANDLE(result, "Failed to reset a commandlist: %p, ind: [%" PRIu32 "/%" PRIu32 "]", commandLists[index],
+                     index, numCommandLists);
     }
 
     RETURN_SUCCESS();
@@ -751,7 +1144,9 @@ NPU_API(int32_t)
 npu_level_zero_get_network_metadata(void* metadata, uint64_t metadataSize, void* networkMetadata, void* inputDescs,
                                     void* outputDescs) {
     if (metadata == nullptr || networkMetadata == nullptr || inputDescs == nullptr || outputDescs == nullptr) {
-        ERROR_HANDLE(ZE_RESULT_ERROR_INVALID_ARGUMENT, "Invalid argument");
+        ERROR_HANDLE(ZE_RESULT_ERROR_INVALID_ARGUMENT,
+                     "Invalid argument, meta: %p, netMeta: %p, inputDescs: %p, outputDescs: %p", metadata,
+                     networkMetadata, inputDescs, outputDescs);
     }
 
     auto blob = reinterpret_cast<uint8_t*>(metadata);
@@ -926,6 +1321,9 @@ npu_level_zero_update_mutable_command_list(void* handle, void* networkArgArr, ui
     }
 
     execution_context* context = reinterpret_cast<execution_context*>(handle);
+    if (context != nullptr) {
+        context->resetEvents();
+    }
     uint64_t* networkArgArray = reinterpret_cast<uint64_t*>(networkArgArr);
     uint64_t* argIndexArray = reinterpret_cast<uint64_t*>(argIndexArr);
     if (context != nullptr && argIndexArr != nullptr && networkArgArray != nullptr) {
@@ -959,7 +1357,7 @@ npu_level_zero_update_mutable_command_list(void* handle, void* networkArgArr, ui
                         oss << "Failed to set mutable argument:" << binding << " with buffer pointer " << std::hex
                             << bufferPtr << std::dec;
 
-                        ERROR_HANDLE(result, oss.str().c_str());
+                        ERROR_HANDLE(result, "%s", oss.str().c_str());
                     }
                 }
             }

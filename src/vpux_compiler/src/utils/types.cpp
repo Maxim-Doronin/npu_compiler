@@ -150,8 +150,8 @@ mlir::Float16Type vpux::getFp16Type(mlir::MLIRContext* ctx) {
 //
 
 Bit vpux::getElemTypeSize(mlir::Type type) {
-    if (const auto quantileFloatType = mlir::dyn_cast<vpux::type::QuantileFloatType>(type)) {
-        return Bit(quantileFloatType.getStorageTypeIntegralWidth());
+    if (const auto quantileType = mlir::dyn_cast<vpux::type::QuantileType>(type)) {
+        return Bit(quantileType.getStorageWidth());
     }
 
     if (const auto ndType = mlir::dyn_cast<vpux::NDTypeInterface>(type)) {

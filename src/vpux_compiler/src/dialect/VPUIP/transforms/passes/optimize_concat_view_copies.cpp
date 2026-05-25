@@ -8,6 +8,7 @@
 #include <mlir/IR/Value.h>
 #include <mlir/Support/LLVM.h>
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
+#include <vpux/utils/core/range.hpp>
 #include "vpux/compiler/core/aliases_info.hpp"
 #include "vpux/compiler/core/attributes/dim.hpp"
 #include "vpux/compiler/core/attributes/stride_reqs.hpp"
@@ -131,7 +132,7 @@ mlir::LogicalResult AvoidConcatExtraChannel::checkConcatUsers(VPUIP::ConcatViewO
 
     const auto concatOutChannelSize = getShape(concatOp.getOutput())[Dims4D::Act::C];
     for (const auto user : subviews) {
-        auto subview = mlir::dyn_cast_or_null<VPUIP::SubViewOp>(user);
+        auto subview = mlir::dyn_cast_if_present<VPUIP::SubViewOp>(user);
 
         if (subview == nullptr) {
             return mlir::failure();
@@ -879,6 +880,7 @@ public:
 
     bool isIdentityPool(VPUIP::NCEClusterTaskOp avgPoolOp) const;
     bool isLegalConcatViewInputPattern(VPUIP::ConcatViewOp concatViewOp, vpux::Logger log) const;
+    VPUIP::CopyOp getResultCMXToDDRCopy(mlir::Operation* op) const;
 
 public:
     mlir::LogicalResult matchAndRewrite(VPUIP::ConcatViewOp concatViewOp, mlir::PatternRewriter& rewriter) const final;
@@ -921,6 +923,23 @@ bool ReuseConcatViewAsInput::isIdentityPool(VPUIP::NCEClusterTaskOp avgPoolOp) c
     return true;
 }
 
+VPUIP::CopyOp ReuseConcatViewAsInput::getResultCMXToDDRCopy(mlir::Operation* op) const {
+    for (auto result : op->getResults()) {
+        if (!result.hasOneUse()) {
+            continue;
+        }
+        auto copyOp = mlir::dyn_cast<VPUIP::CopyOp>(*result.getUsers().begin());
+        if (copyOp == nullptr || copyOp.use_empty()) {
+            continue;
+        }
+        if (VPUIP::isCopyFromDDR(copyOp) || !VPUIP::isCopyToDDR(copyOp)) {
+            continue;
+        }
+        return copyOp;
+    }
+    return nullptr;
+}
+
 bool ReuseConcatViewAsInput::isLegalConcatViewInputPattern(VPUIP::ConcatViewOp concatViewOp, vpux::Logger log) const {
     // Check the pattern from the CMX ConcatViewOp, it has a user
     if (concatViewOp.getOutput().use_empty()) {
@@ -939,20 +958,10 @@ bool ReuseConcatViewAsInput::isLegalConcatViewInputPattern(VPUIP::ConcatViewOp c
         return false;
     }
 
-    // Check the Consumer of CMX ConcatViewOp has a copyOp user
-    if (concatUserOp->getResult(0).use_empty() || !concatUserOp->getResult(0).hasOneUse()) {
-        log.nest().nest().trace("Consumer of concatViewOp has more than one user");
-        return false;
-    }
-
-    auto userOp = concatUserOp->getResult(0).getUsers().begin();
-    auto copyOp = mlir::dyn_cast<VPUIP::CopyOp>(*userOp);
-    if (copyOp == nullptr || copyOp.use_empty()) {
-        log.nest().nest().trace("Consumer of concatViewOp has no copyOp user or copyOp has no user");
-        return false;
-    }
-
-    if (VPUIP::isCopyFromDDR(copyOp) || !VPUIP::isCopyToDDR(copyOp)) {
+    // For multi-result ops (e.g. TopK), find the actual CMX-to-DDR CopyOp among all results.
+    auto copyOp = getResultCMXToDDRCopy(concatUserOp);
+    if (copyOp == nullptr) {
+        log.nest().nest().trace("Consumer of concatViewOp has no valid result with a CMX-to-DDR copyOp user");
         return false;
     }
 
@@ -972,7 +981,7 @@ bool ReuseConcatViewAsInput::isLegalConcatViewInputPattern(VPUIP::ConcatViewOp c
 
     // Get the inputs and subviews of CMX ConcatViewOp
     for (auto input : concatViewOp.getInputs()) {
-        auto nceClusterTaskOp = mlir::dyn_cast_or_null<VPUIP::NCEClusterTaskOp>(input.getDefiningOp());
+        auto nceClusterTaskOp = mlir::dyn_cast_if_present<VPUIP::NCEClusterTaskOp>(input.getDefiningOp());
         if (nceClusterTaskOp == nullptr) {
             return false;
         }
@@ -1033,8 +1042,9 @@ mlir::LogicalResult ReuseConcatViewAsInput::reuseConcatViewInputs(VPUIP::ConcatV
                                                                   mlir::PatternRewriter& rewriter,
                                                                   vpux::Logger log) const {
     auto concatUserOp = *concatViewOp.getOutput().getUsers().begin();
-    auto userOp = concatUserOp->getResult(0).getUsers().begin();
-    auto copyOp = mlir::cast<VPUIP::CopyOp>(*userOp);
+    auto copyOp = getResultCMXToDDRCopy(concatUserOp);
+    VPUX_THROW_UNLESS(copyOp != nullptr, "ReuseConcatViewAsInput: no valid CMX-to-DDR CopyOp found at '{0}'",
+                      concatUserOp->getLoc());
     auto userConcatOp = mlir::cast<VPUIP::ConcatViewOp>(*copyOp.getOutput().getUsers().begin());
     auto preSubviewsSize = concatViewOp.getInputs().size();
     SmallVector<VPUIP::SubViewOp> nextSubViews;
@@ -1528,7 +1538,7 @@ mlir::FailureOr<ConcatOutputs> OptimizeDDR2DDRCopyInputsOfConcatView::getValidCo
     }
 
     const auto isDuplicatedChildDistributedCopyOp = [](mlir::Operation* op) {
-        auto copyOp = mlir::dyn_cast_or_null<VPUIP::CopyOp>(op);
+        auto copyOp = mlir::dyn_cast_if_present<VPUIP::CopyOp>(op);
         if (copyOp == nullptr || !VPUIP::isCopyFromDDR(copyOp) || VPUIP::isCopyToDDR(copyOp)) {
             return false;
         }
@@ -1711,7 +1721,7 @@ mlir::FailureOr<ConcatOutputs> OptimizeDDR2DDRCopyInputsOfConcatView::getValidCo
     const auto concatAxis = *concatAxes.begin();
 
     const auto isValidSegmentedChildDistributedCopyOp = [&](mlir::Operation* op) {
-        auto copyOp = mlir::dyn_cast_or_null<VPUIP::CopyOp>(op);
+        auto copyOp = mlir::dyn_cast_if_present<VPUIP::CopyOp>(op);
         if (copyOp == nullptr || !VPUIP::isCopyFromDDR(copyOp) || VPUIP::isCopyToDDR(copyOp)) {
             return false;
         }
@@ -2054,24 +2064,34 @@ OptimizeDDR2DDRCopyInputsOfConcatView::searchSubViewCopyUsersThroughPermuteCast(
     SmallVector<VPUIP::SubViewOp> subViewOps;
     SmallVector<VPUIP::CopyOp> copyOps;
 
-    mlir::Operation* rootOp;
-    auto permuteCastOp = mlir::dyn_cast_or_null<VPUIP::PermuteCastOp>(*concatViewOp->getUsers().begin());
+    mlir::Operation* rootOp = concatViewOp.getOperation();
+    if (concatViewOp.use_empty()) {
+        return mlir::failure();
+    }
+
+    auto permuteCastOp = mlir::dyn_cast_if_present<VPUIP::PermuteCastOp>(*concatViewOp->getUsers().begin());
     if (permuteCastOp != nullptr) {
         if (!concatViewOp->hasOneUse()) {
             return mlir::failure();
         }
         rootOp = permuteCastOp.getOperation();
-    } else {
-        rootOp = concatViewOp.getOperation();
     }
 
     for (auto* user : rootOp->getUsers()) {
-        auto subViewOp = mlir::dyn_cast_or_null<VPUIP::SubViewOp>(user);
+        auto subViewOp = mlir::dyn_cast_if_present<VPUIP::SubViewOp>(user);
         if (subViewOp == nullptr || !subViewOp->hasOneUse()) {
             return mlir::failure();
         }
 
-        auto copyOp = mlir::dyn_cast_or_null<VPUIP::CopyOp>(*user->getUsers().begin());
+        auto copyOp = mlir::dyn_cast_if_present<VPUIP::CopyOp>(*user->getUsers().begin());
+        auto postPermuteCastOp = mlir::dyn_cast_if_present<VPUIP::PermuteCastOp>(*user->getUsers().begin());
+        if (postPermuteCastOp != nullptr) {
+            if (!postPermuteCastOp->hasOneUse()) {
+                return mlir::failure();
+            }
+            copyOp = mlir::dyn_cast_if_present<VPUIP::CopyOp>(*postPermuteCastOp->getUsers().begin());
+        }
+
         if (copyOp == nullptr || !copyOp->hasOneUse() || !vpux::VPUIP::hasDistributedOperand(copyOp)) {
             return mlir::failure();
         }
@@ -2101,22 +2121,25 @@ OptimizeDDR2DDRCopyInputsOfConcatView::searchSubViewCopyUsersThroughPermuteCast(
             /           |           \
     SubView         SubView         SubView
         |               |               |
+ [PermuteCastOp]  [PermuteCastOp]  [PermuteCastOp]
+        |               |               |
 DistributedCopy DistributedCopy DistributedCopy
         |               |               |
 */
 // Return ConcatOutputsOfSubViewCopyUsers struct if pattern can match, otherwise return mlir::failure().
 mlir::FailureOr<ConcatOutputsOfSubViewCopyUsers>
 OptimizeDDR2DDRCopyInputsOfConcatView::getValidConcatOutputsOfSubViewCopyUsers(VPUIP::ConcatViewOp concatViewOp) const {
+    auto nestedLog = _log.nest();
     auto outputs = searchSubViewCopyUsersThroughPermuteCast(concatViewOp);
     if (mlir::failed(outputs)) {
-        _log.nest().trace("[{0}] Invalid output: can't find SubView and Copy users after PermuteCast", getDebugName());
+        nestedLog.trace("[{0}] Invalid output: can't find SubView and Copy users after PermuteCast", getDebugName());
         return mlir::failure();
     }
 
     const auto concatAxes =
             vpux::IE::getDiffInOutSizeDims(getShape(concatViewOp.getOperands()[0]), getShape(concatViewOp.getResult()));
     if (concatAxes.empty() || concatAxes.size() != 1) {
-        _log.nest().trace("[{0}] Only support concat on single dimension", getDebugName());
+        nestedLog.trace("[{0}] Only support concat on single dimension", getDebugName());
         return mlir::failure();
     }
 
@@ -2129,23 +2152,30 @@ OptimizeDDR2DDRCopyInputsOfConcatView::getValidConcatOutputsOfSubViewCopyUsers(V
         const auto subViewAxes =
                 vpux::IE::getDiffInOutSizeDims(getShape(subViewOp.getSource()), getShape(subViewOp.getResult()));
         if (subViewAxes.empty() || subViewAxes.size() != 1) {
-            _log.nest().trace("[{0}] Only support SubView on single dimension", getDebugName());
+            nestedLog.trace("[{0}] Only support SubView on single dimension", getDebugName());
             return mlir::failure();
         }
 
         if (subViewAxes.front() != firstSubViewAxes.front()) {
-            _log.nest().trace("[{0}] All SubView axes should be the same", getDebugName());
+            nestedLog.trace("[{0}] All SubView axes should be the same", getDebugName());
             return mlir::failure();
         }
 
         if (subViewAxes.front() == concatAxes.front()) {
-            _log.nest().trace("[{0}] SubView axis should be different with ConcatView axis", getDebugName());
+            nestedLog.trace("[{0}] SubView axis should be different with ConcatView axis", getDebugName());
+            return mlir::failure();
+        }
+
+        auto childPermuteCastOp = mlir::dyn_cast_if_present<VPUIP::PermuteCastOp>(*subViewOp->getUsers().begin());
+        // Currently only support PermuteCastOp that does not change the logical shape
+        if (childPermuteCastOp != nullptr &&
+            getShape(childPermuteCastOp.getSource()) != getShape(childPermuteCastOp.getResult())) {
             return mlir::failure();
         }
     }
 
     const auto isDuplicatedChildDistributedCopyOp = [](mlir::Operation* op) {
-        auto copyOp = mlir::dyn_cast_or_null<VPUIP::CopyOp>(op);
+        auto copyOp = mlir::dyn_cast_if_present<VPUIP::CopyOp>(op);
         if (copyOp == nullptr || !VPUIP::isCopyFromDDR(copyOp) || VPUIP::isCopyToDDR(copyOp)) {
             return false;
         }
@@ -2163,14 +2193,14 @@ OptimizeDDR2DDRCopyInputsOfConcatView::getValidConcatOutputsOfSubViewCopyUsers(V
 
     for (auto copyOp : outputs.value().outputDistributedCopyOps) {
         if (!isDuplicatedChildDistributedCopyOp(copyOp)) {
-            _log.nest().trace("[{0}] Invalid output: no duplicated distributed CopyOp", getDebugName());
+            nestedLog.trace("[{0}] Invalid output: no duplicated distributed CopyOp", getDebugName());
             return mlir::failure();
         }
 
         auto outputBuffer = copyOp.getOutputBuff();
         auto masterBuffer = VPUIP::getRootAlloc<VPURT::AllocDistributed>(outputBuffer);
         if (masterBuffer == nullptr) {
-            _log.nest().trace("[{0}] Invalid output: buffer isn't master buffer", getDebugName());
+            nestedLog.trace("[{0}] Invalid output: buffer isn't master buffer", getDebugName());
             return mlir::failure();
         }
     }
@@ -2196,6 +2226,8 @@ OptimizeDDR2DDRCopyInputsOfConcatView::getValidConcatOutputsOfSubViewCopyUsers(V
                             /                       |                       \
     SubView(512x16x1x1@NHWC)            SubView(512x16x1x1@NHWC)    ...    SubView(512x16x1x1@NHWC)
                 |                                   |                                   |
+        [PermuteCastOp]                     [PermuteCastOp]                     [PermuteCastOp]
+                |                                   |                                   |
 DistributedCopy(512x16x1x1@NHWC)    DistributedCopy(512x16x1x1@NHWC)    DistributedCopy(512x16x1x1@NHWC)
             |                                       |                                   |
         NCE Task0                               NCE Task1                            NCE TaskN
@@ -2210,6 +2242,8 @@ DistributedCopy(512x16x1x1@NHWC)    DistributedCopy(512x16x1x1@NHWC)    Distribu
                                 |
                     PermuteCast(512x16x1x1@NHWC)
                                 |
+        [PermuteCastOp (will be merged into the previous one)]
+                                |
                             NCE Task0
 
                             ...
@@ -2221,6 +2255,8 @@ DistributedCopy(512x16x1x1@NHWC)    DistributedCopy(512x16x1x1@NHWC)    Distribu
         SubView         ConcatView(512x16x1x1)          SubView
                                 |
                     PermuteCast(512x16x1x1@NHWC)
+                                |
+        [PermuteCastOp (will be merged into the previous one)]
                                 |
                             NCE TaskN
 
@@ -2241,6 +2277,10 @@ mlir::LogicalResult OptimizeDDR2DDRCopyInputsOfConcatView::processConcatOutputsO
     const auto origConcatShape = getShape(concatViewOp.getOutput());
     for (auto subViewOp : concatOutputs.outputSubViewOps) {
         auto childDistributedCopyOp = mlir::dyn_cast<VPUIP::CopyOp>(*subViewOp->getUsers().begin());
+        auto childPermuteCastOp = mlir::dyn_cast_if_present<VPUIP::PermuteCastOp>(*subViewOp->getUsers().begin());
+        if (childPermuteCastOp != nullptr) {
+            childDistributedCopyOp = mlir::dyn_cast_if_present<VPUIP::CopyOp>(*childPermuteCastOp->getUsers().begin());
+        }
         VPUX_THROW_WHEN(childDistributedCopyOp == nullptr, "Can't find CopyOp user");
 
         auto outputBuffer = childDistributedCopyOp.getOutputBuff();
@@ -2292,18 +2332,33 @@ mlir::LogicalResult OptimizeDDR2DDRCopyInputsOfConcatView::processConcatOutputsO
         }
 
         auto newConcatOp = rewriter.create<VPUIP::ConcatViewOp>(concatViewOp->getLoc(), newConcatInputs, outputBuffer);
-
         auto lastValue = newConcatOp.getOutput();
-        if (permuteCastOp != nullptr) {
-            auto origPermuteCastShape = getShape(permuteCastOp.getResult());
-            Shape newPermuteCastShape = origPermuteCastShape.raw();
+
+        // [PermuteCast0] -> Subview -> [PermuteCast1] -> DistributedCopy
+        // becomes
+        // Subview -> DistributedCopy -> ConcatView -> [PermuteCast0] -> [PermuteCast1]
+        // which can be futher simplified to
+        // Subview -> DistributedCopy -> ConcatView -> [merged PermuteCast0 + PermuteCast1]
+        // if both PermuteCast ops are present in the original pattern
+        if (permuteCastOp != nullptr || childPermuteCastOp != nullptr) {
+            auto lastPermCastType = childPermuteCastOp != nullptr
+                                            ? mlir::cast<NDTypeInterface>(childPermuteCastOp.getResult().getType())
+                                            : mlir::cast<NDTypeInterface>(permuteCastOp.getResult().getType());
+            auto newPermuteCastShape = Shape(lastPermCastType.getShape());
             newPermuteCastShape[subViewAxis] = getShape(subViewOp.getResult())[subViewAxis];
-            auto newPermuteCastType =
-                    mlir::cast<NDTypeInterface>(permuteCastOp.getResult().getType()).changeShape(newPermuteCastShape);
-            const auto newType = getDuplicatedDistributedType(newPermuteCastType, outputBufferType, ctx);
+
+            const auto newType = getDuplicatedDistributedType(lastPermCastType.changeShape(newPermuteCastShape),
+                                                              outputBufferType, ctx);
+            const auto loc = permuteCastOp != nullptr ? permuteCastOp->getLoc() : childPermuteCastOp->getLoc();
+
+            auto memPerm = childPermuteCastOp != nullptr ? childPermuteCastOp.getMemPermAttr().getAffineMap()
+                                                         : permuteCastOp.getMemPermAttr().getAffineMap();
+            if (permuteCastOp != nullptr && childPermuteCastOp != nullptr) {
+                memPerm = memPerm.compose(permuteCastOp.getMemPermAttr().getAffineMap());
+            }
+
             auto newPermuteCastOp = rewriter.create<VPUIP::PermuteCastOp>(
-                    permuteCastOp->getLoc(), newType, newConcatOp.getOutput(), permuteCastOp.getDstOrderAttr(),
-                    permuteCastOp.getMemPermAttr());
+                    loc, newType, newConcatOp.getOutput(), newType.getDimsOrder().toAffineMap(ctx), memPerm);
             lastValue = newPermuteCastOp.getResult();
         }
 
@@ -2314,7 +2369,14 @@ mlir::LogicalResult OptimizeDDR2DDRCopyInputsOfConcatView::processConcatOutputsO
     }
 
     // Remove old operations
-    for (auto subViewOp : concatOutputs.outputSubViewOps) {
+    for (auto subViewOp : llvm::make_early_inc_range(concatOutputs.outputSubViewOps)) {
+        if (!subViewOp->use_empty()) {
+            if (auto childPermuteCastOp =
+                        mlir::dyn_cast_if_present<VPUIP::PermuteCastOp>(*subViewOp->getUsers().begin())) {
+                rewriter.eraseOp(childPermuteCastOp);
+            }
+        }
+
         rewriter.eraseOp(subViewOp);
     }
     if (permuteCastOp != nullptr) {
@@ -2370,13 +2432,14 @@ mlir::LogicalResult OptimizeDDR2DDRCopyInputsOfConcatView::processConcatOutputsO
     auto childDistributedCopyOp = concatOutputs.outputDistributedCopy;
     auto outputBuffer = childDistributedCopyOp.getOutputBuff();
     const auto outputBufferType = mlir::dyn_cast<VPUIP::DistributedBufferType>(outputBuffer.getType());
+    auto nestedLog = _log.nest();
     if (outputBufferType == nullptr) {
-        _log.nest().trace("[{0}] ConcatView '{1}' at '{2}' user distributed copy buffer does not have distributedType",
-                          getDebugName(), concatViewOp->getName(), concatViewOp->getLoc());
+        nestedLog.trace("[{0}] ConcatView '{1}' at '{2}' user distributed copy buffer does not have distributedType",
+                        getDebugName(), concatViewOp->getName(), concatViewOp->getLoc());
         return mlir::failure();
     }
 
-    _log.trace("[{0}] Got '{1}' at '{2}'", getDebugName(), concatViewOp->getName(), concatViewOp->getLoc());
+    nestedLog.trace("[{0}] Got '{1}' at '{2}'", getDebugName(), concatViewOp->getName(), concatViewOp->getLoc());
 
     // Create new subgraph to move ConcatView and viewlike ops to CMX
     auto ctx = rewriter.getContext();
@@ -2408,17 +2471,17 @@ mlir::LogicalResult OptimizeDDR2DDRCopyInputsOfConcatView::processConcatOutputsO
 mlir::LogicalResult OptimizeDDR2DDRCopyInputsOfConcatView::processConcatOutputsOfSegmentedCopyUser(
         VPUIP::ConcatViewOp concatViewOp, const ConcatInputs& concatInputs, const ConcatOutputs& concatOutputs,
         mlir::PatternRewriter& rewriter) const {
+    auto nestedLog = _log.nest();
     auto childDistributedCopyOp = concatOutputs.outputDistributedCopy;
     auto outputBuffer = childDistributedCopyOp.getOutputBuff();
     const auto outputBufferType = mlir::dyn_cast<VPUIP::DistributedBufferType>(outputBuffer.getType());
     if (outputBufferType == nullptr) {
-        _log.nest().trace("[{0}] ConcatView '{1}' at '{2}' user distributed copy buffer does not have distributedType",
-                          getDebugName(), concatViewOp->getName(), concatViewOp->getLoc());
+        nestedLog.trace("[{0}] ConcatView '{1}' at '{2}' user distributed copy buffer does not have distributedType",
+                        getDebugName(), concatViewOp->getName(), concatViewOp->getLoc());
         return mlir::failure();
     }
 
-    _log.trace("[{0}] Got '{1}' at '{2}'", getDebugName(), concatViewOp->getName(), concatViewOp->getLoc());
-
+    nestedLog.trace("[{0}] Got '{1}' at '{2}'", getDebugName(), concatViewOp->getName(), concatViewOp->getLoc());
     // Create new subgraph to move ConcatView and viewlike ops to CMX
     auto ctx = rewriter.getContext();
 
@@ -2432,12 +2495,13 @@ mlir::LogicalResult OptimizeDDR2DDRCopyInputsOfConcatView::processConcatOutputsO
 
     auto tileOverDimForConcat = backInferDimAfterChangedByViewLikeOperations(Dim(tileIndex), concatOutputs.viewLikeOps);
     if (mlir::failed(tileOverDimForConcat)) {
-        _log.nest().trace("[{0}] backInferDimAfterChangedByViewLikeOperations failed", getDebugName());
+        nestedLog.trace("[{0}] backInferDimAfterChangedByViewLikeOperations failed", getDebugName());
         return mlir::failure();
     }
 
     auto tilingDims = tileOverDimForConcat.value();
     if (tilingDims.size() != (concatOutputs.viewLikeOps.size() + 1)) {
+        nestedLog.trace("[{0}] Tiling dimensions size mismatch", getDebugName());
         return mlir::failure();
     }
 
@@ -2466,6 +2530,7 @@ mlir::LogicalResult OptimizeDDR2DDRCopyInputsOfConcatView::processConcatOutputsO
 mlir::LogicalResult OptimizeDDR2DDRCopyInputsOfConcatView::processUnbalancedConcat(
         VPUIP::ConcatViewOp concatViewOp, const ConcatInputs& concatInputs, const ConcatOutputs& concatOutputs,
         mlir::PatternRewriter& rewriter) const {
+    auto nestedLog = _log.nest();
     _log.trace("[{0}] Got '{1}' at '{2}' in processUnbalancedConcat", getDebugName(), concatViewOp->getName(),
                concatViewOp->getLoc());
 
@@ -2494,7 +2559,7 @@ mlir::LogicalResult OptimizeDDR2DDRCopyInputsOfConcatView::processUnbalancedConc
         VPUX_THROW_WHEN(subViewOp == nullptr, "Can't find SubViewOp");
 
         auto newReshapeOutput = rewriteReshapeOp(inputCopyOp.getInput());
-        _log.trace("view shape {0}", getShape(newReshapeOutput));
+        nestedLog.trace("view shape {0}", getShape(newReshapeOutput));
 
         auto newSubView = rewriter.create<VPUIP::SubViewOp>(
                 appendLoc(subViewOp->getLoc(), "subview_cmx"), outputBuffer, subViewOp.getStaticOffsetsAttr(),
@@ -2512,25 +2577,27 @@ mlir::LogicalResult OptimizeDDR2DDRCopyInputsOfConcatView::processUnbalancedConc
                                                             outputBuffer);
     rewriter.replaceOp(outDistributedCopyOp, newConcatOp.getOutput());
 
-    _log.trace("processUnbalancedConcat Done");
+    nestedLog.trace("processUnbalancedConcat Done");
 
     return mlir::success();
 }
 
 mlir::LogicalResult OptimizeDDR2DDRCopyInputsOfConcatView::matchAndRewrite(VPUIP::ConcatViewOp concatViewOp,
                                                                            mlir::PatternRewriter& rewriter) const {
+    auto nestedLog = _log.nest();
+    nestedLog.trace("[{0}] Got '{1}' at '{2}'", getDebugName(), concatViewOp->getName(), concatViewOp->getLoc());
     auto concatMemAlloc = VPUIP::getRootAlloc<mlir::memref::AllocOp>(concatViewOp.getOutputBuff());
     if (concatMemAlloc == nullptr) {
-        _log.nest().trace("[{0}] Cannot rewrite because current concat '{1}' output isn't master buffer",
-                          getDebugName(), concatViewOp->getLoc());
+        nestedLog.trace("[{0}] Cannot rewrite because current concat '{1}' output isn't master buffer", getDebugName(),
+                        concatViewOp->getLoc());
         return mlir::failure();
     }
 
     // Check inputs of ConcatView
     auto checkInputs = getValidConcatInputs(concatViewOp);
     if (mlir::failed(checkInputs)) {
-        _log.nest().trace("[{0}] Invalid inputs for '{1}' at '{2}'", getDebugName(), concatViewOp->getName(),
-                          concatViewOp->getLoc());
+        nestedLog.trace("[{0}] Invalid inputs for '{1}' at '{2}'", getDebugName(), concatViewOp->getName(),
+                        concatViewOp->getLoc());
         return mlir::failure();
     }
 
@@ -2539,32 +2606,32 @@ mlir::LogicalResult OptimizeDDR2DDRCopyInputsOfConcatView::matchAndRewrite(VPUIP
     // Check output of ConcatView and process corresponding pattern
     auto checkOutputsOfDuplicatedCopyUser = getValidConcatOutputsOfDuplicatedCopyUser(concatViewOp);
     if (mlir::succeeded(checkOutputsOfDuplicatedCopyUser)) {
-        _log.nest().trace("[{0}] Got '{1}' at '{2}' with DUPLICATED Copy Users", getDebugName(),
-                          concatViewOp->getName(), concatViewOp->getLoc());
+        nestedLog.trace("[{0}] Got '{1}' at '{2}' with DUPLICATED Copy Users", getDebugName(), concatViewOp->getName(),
+                        concatViewOp->getLoc());
         ConcatOutputs concatOutputs = checkOutputsOfDuplicatedCopyUser.value();
         return processConcatOutputsOfDuplicatedCopyUser(concatViewOp, concatInputs, concatOutputs, rewriter);
     }
 
     auto checkOutputsOfSegmentedCopyUser = getValidConcatOutputsOfSegmentedCopyUser(concatViewOp);
     if (mlir::succeeded(checkOutputsOfSegmentedCopyUser)) {
-        _log.nest().trace("[{0}] Got '{1}' at '{2}' with SEGMENTED Copy Users", getDebugName(), concatViewOp->getName(),
-                          concatViewOp->getLoc());
+        nestedLog.trace("[{0}] Got '{1}' at '{2}' with SEGMENTED Copy Users", getDebugName(), concatViewOp->getName(),
+                        concatViewOp->getLoc());
         ConcatOutputs concatOutputs = checkOutputsOfSegmentedCopyUser.value();
         return processConcatOutputsOfSegmentedCopyUser(concatViewOp, concatInputs, concatOutputs, rewriter);
     }
 
     auto checkOutputsOfSubViewCopyUsers = getValidConcatOutputsOfSubViewCopyUsers(concatViewOp);
     if (mlir::succeeded(checkOutputsOfSubViewCopyUsers)) {
-        _log.nest().trace("[{0}] Got '{1}' at '{2}' with SubView and Copy Users", getDebugName(),
-                          concatViewOp->getName(), concatViewOp->getLoc());
+        nestedLog.trace("[{0}] Got '{1}' at '{2}' with SubView and Copy Users", getDebugName(), concatViewOp->getName(),
+                        concatViewOp->getLoc());
         ConcatOutputsOfSubViewCopyUsers concatOutputs = checkOutputsOfSubViewCopyUsers.value();
         return processConcatOutputsOfSubViewCopyUsers(concatViewOp, concatInputs, concatOutputs, rewriter);
     }
 
     auto checkUnbalancedConcat = getValidUnbalancedConcat(concatViewOp, concatInputs);
     if (mlir::succeeded(checkUnbalancedConcat)) {
-        _log.nest().trace("[{0}] Got '{1}' at '{2}' with Reshape Users", getDebugName(), concatViewOp->getName(),
-                          concatViewOp->getLoc());
+        nestedLog.trace("[{0}] Got '{1}' at '{2}' with Reshape Users", getDebugName(), concatViewOp->getName(),
+                        concatViewOp->getLoc());
         ConcatOutputs concatOutputs = checkUnbalancedConcat.value();
         return processUnbalancedConcat(concatViewOp, concatInputs, concatOutputs, rewriter);
     }
@@ -2664,12 +2731,12 @@ mlir::LogicalResult OptimizeConcatSubviewPattern::matchAndRewrite(VPUIP::ConcatV
 
     // check output
     for (auto user : concatOp->getUsers()) {
-        auto subview = mlir::dyn_cast_or_null<VPUIP::SubViewOp>(user);
+        auto subview = mlir::dyn_cast_if_present<VPUIP::SubViewOp>(user);
         if (subview == nullptr || !subview->hasOneUse()) {
             return mlir::failure();
         }
 
-        auto tilingCopy = mlir::dyn_cast_or_null<VPUIP::CopyOp>(*(subview->getUsers().begin()));
+        auto tilingCopy = mlir::dyn_cast_if_present<VPUIP::CopyOp>(*(subview->getUsers().begin()));
         if (tilingCopy == nullptr || !vpux::VPUIP::hasDistributedOperand(tilingCopy)) {
             return mlir::failure();
         }
@@ -2790,7 +2857,7 @@ protected:
         int64_t leftViewOffset;  // Offset from beginning if was viewed
         int64_t rightInputSize;
         Dim origConcatDim;
-        Dim newConcatDim;  // Concat Dim after GReshape + PermuteCast
+        Dim newConcatDim;  // Concat Dim after GenericReshape + PermuteCast
         VPUIP::PermuteCastOp castOp;
     };
 
@@ -2950,7 +3017,7 @@ protected:
             afterReshapeType = strideUpdatedOutType.value();
         }
 
-        reshapeOutput = rewriter.createOrFold<VPUIP::GenericReshapeOp>(appendLoc(loc, "greshape_{0}", locSuffix),
+        reshapeOutput = rewriter.createOrFold<VPUIP::GenericReshapeOp>(appendLoc(loc, "reshape_{0}", locSuffix),
                                                                        afterReshapeType, branchInput);
 
         // Create PermuteCastOp on top of the reshape operation
@@ -3986,6 +4053,892 @@ private:
     }
 };
 
+// Common base for multi-branch unbalanced DDR concat splitting patterns.
+// Provides helpers shared by SplitMultiLeftUnbalancedDDRConcatOnSameAxis and
+// SplitMultiLeftUnbalancedDDRConcatOnOtherAxis.
+class SplitMultiUnbalancedDDRConcatBase : public mlir::OpRewritePattern<VPUIP::ConcatViewOp> {
+public:
+    SplitMultiUnbalancedDDRConcatBase(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpRewritePattern<VPUIP::ConcatViewOp>(ctx), _log(log) {
+    }
+
+protected:
+    // Collects SubViewOp → CopyOp (to CMX_NN) pairs from all users of permuteCastOp.
+    // Returns false on any unexpected user pattern or when no consumers are found.
+    bool collectSubViewCopyConsumers(VPUIP::PermuteCastOp permuteCastOp, SmallVector<VPUIP::SubViewOp>& subViews,
+                                     SmallVector<VPUIP::CopyOp>& cmxCopies, Logger log) const {
+        for (auto* user : permuteCastOp->getUsers()) {
+            auto viewOp = mlir::dyn_cast<VPUIP::SubViewOp>(user);
+            if (viewOp == nullptr || !viewOp->hasOneUse()) {
+                log.trace("PermuteCast user is not a single-use SubViewOp");
+                return false;
+            }
+            auto copyOp = getSingleUserOfType<VPUIP::CopyOp>(viewOp);
+            if (copyOp == nullptr) {
+                log.trace("SubViewOp user is not a CopyOp");
+                return false;
+            }
+            auto dstType = mlir::cast<vpux::NDTypeInterface>(copyOp.getOutputBuff().getType());
+            if (dstType.getMemoryKind() != VPU::MemoryKind::CMX_NN) {
+                log.trace("CMX copy destination is not CMX_NN");
+                return false;
+            }
+            subViews.push_back(viewOp);
+            cmxCopies.push_back(copyOp);
+        }
+        if (subViews.empty()) {
+            log.trace("No SubView consumers");
+            return false;
+        }
+        return true;
+    }
+
+    // Applies GenericReshapeOp then PermuteCastOp to input, reusing the dimension order and
+    // permutation attributes from permuteCastRef.
+    mlir::Value applyReshapeAndPermuteCast(mlir::PatternRewriter& rewriter, mlir::Value input, ShapeRef newShape,
+                                           VPUIP::PermuteCastOp permuteCastRef, mlir::Location reshapeLoc,
+                                           mlir::Location permcastLoc) const {
+        auto inputType = mlir::cast<vpux::NDTypeInterface>(input.getType());
+        auto afterReshapeType = inputType.changeShape(newShape);
+        auto reshapeOut = rewriter.createOrFold<VPUIP::GenericReshapeOp>(reshapeLoc, afterReshapeType, input);
+        auto permCastDimsOrder =
+                mlir::cast<vpux::NDTypeInterface>(permuteCastRef->getResult(0).getType()).getDimsOrder();
+        auto afterPermCastType = afterReshapeType.changeDimsOrder(permCastDimsOrder);
+        return rewriter.create<VPUIP::PermuteCastOp>(permcastLoc, afterPermCastType, reshapeOut,
+                                                     permuteCastRef.getDstOrderAttr(), permuteCastRef.getMemPermAttr());
+    }
+
+    // Erases operations that have no remaining uses.
+    void eraseDeadOps(mlir::PatternRewriter& rewriter, ArrayRef<mlir::Operation*> ops) const {
+        for (auto* op : ops) {
+            if (op != nullptr && op->use_empty()) {
+                rewriter.eraseOp(op);
+            }
+        }
+    }
+
+    // Holds the matched GenericReshapeOp → PermuteCastOp structural result.
+    struct ConcatPrefixResult {
+        VPUIP::GenericReshapeOp genReshapeOp;
+        VPUIP::PermuteCastOp permuteCastOp;
+    };
+
+    // Validates that concatOp has ≥ minInputs DDR inputs and is followed by a single
+    // GenericReshapeOp → PermuteCastOp chain.  Returns the matched ops on success.
+    mlir::FailureOr<ConcatPrefixResult> matchConcatReshapePermuteCastChain(VPUIP::ConcatViewOp concatOp,
+                                                                           size_t minInputs, Logger log) const {
+        if (concatOp.getInputs().size() < minInputs) {
+            log.trace("Need at least {0} inputs, got {1}", minInputs, concatOp.getInputs().size());
+            return mlir::failure();
+        }
+        if (vpux::getBufferType(concatOp).getMemoryKind() != VPU::MemoryKind::DDR) {
+            log.trace("Concat output must be DDR");
+            return mlir::failure();
+        }
+        auto genReshapeOp = getSingleUserOfType<VPUIP::GenericReshapeOp>(concatOp);
+        if (genReshapeOp == nullptr) {
+            log.trace("No single GenericReshape user");
+            return mlir::failure();
+        }
+        auto permuteCastOp = getSingleUserOfType<VPUIP::PermuteCastOp>(genReshapeOp);
+        if (permuteCastOp == nullptr) {
+            log.trace("No single PermuteCast user after GenericReshape");
+            return mlir::failure();
+        }
+        return ConcatPrefixResult{genReshapeOp, permuteCastOp};
+    }
+
+    Logger _log;
+};
+
+/*
+    Multi-left unbalanced DDR Concat (N ≥ 2 left branches + 1 right CMX branch):
+
+    Left0[1,C,H0,W]@DDR ──Copy──┐
+    Left1[1,C,H1,W]@DDR ──Copy──┤
+    ...                          ├─▶ ConcatView[1,C,H_total,W]@DDR
+    LeftN[1,C,HN,W]@DDR ──Copy──┤      │
+    Right[1,C,1,W]@CMX  ──Copy──┘   GenericReshape[C*H_total, W, 1, 1]
+                                        │
+                                   PermuteCast (NHWC)
+                                     ┌──┤──┐
+                              SubView0   ...  SubViewM
+                                 │              │
+                          CMX SEGMENTED Copy  (same)
+
+    Transformed to – per consumer SubView [off, off+sz):
+
+      For each left[i] that overlaps the SubView's H range:
+        preparedLeft[i] (GenericReshape+PermuteCast of DDR block arg)
+          → SubView of [sz_i, W, 1, 1] rows at srcRowBase
+          → ExtractFlatSliceOp of CMX buffer at dstFlatBase → Copy directly into CMX
+      For right branch (if SubView extends past totalLeft):
+        ExtractFlatSlice(rightInput, viewMul)
+          → GenericReshape+PermuteCast
+          → ExtractFlatSliceOp of CMX buffer at dstFlatBase → Copy directly into CMX
+      ConcatViewOp(allCopies, cmxBuf) replaces the original SubView→CMXCopy chain.
+
+    Eliminates the large shared DDR concat buffer; all DMAs go directly DDR→CMX,
+    enabling DMA scheduling to interleave with NCE tasks.
+*/
+class SplitMultiLeftUnbalancedDDRConcatOnSameAxis : public SplitMultiUnbalancedDDRConcatBase {
+public:
+    using SplitMultiUnbalancedDDRConcatBase::SplitMultiUnbalancedDDRConcatBase;
+
+    mlir::LogicalResult matchAndRewrite(VPUIP::ConcatViewOp concatOp, mlir::PatternRewriter& rewriter) const override {
+        _log.trace("SplitMultiLeftUnbalancedDDRConcatOnSameAxis: Got Concat at '{0}'", concatOp.getLoc());
+        auto nestedLog = _log.nest();
+
+        // Match: numInputs ≥ 3, DDR output, GenericReshape → PermuteCast chain.
+        const size_t numInputs = concatOp.getInputs().size();
+        auto prefixResult = matchConcatReshapePermuteCastChain(concatOp, /*minInputs=*/3, nestedLog);
+        if (mlir::failed(prefixResult)) {
+            return mlir::failure();
+        }
+        auto [genReshapeOp, permuteCastOp] = prefixResult.value();
+
+        // Validate Concat→Reshape shapes: [1,C,H,W] → [C*H, W, 1, 1].
+        if (!checkSameAxisReshapeCompatibility(concatOp, genReshapeOp, nestedLog)) {
+            return mlir::failure();
+        }
+
+        // Determine concat axis: must be dim2 (H).
+        const auto concatAxes =
+                vpux::IE::getDiffInOutSizeDims(getShape(concatOp.getOperands()[0]), getShape(concatOp.getResult()));
+        if (concatAxes.size() != 1 || concatAxes.front() != Dim(2)) {
+            nestedLog.trace("Only concat on dim2 (H) is supported");
+            return mlir::failure();
+        }
+        const Dim origConcatDim = Dim(2);
+        // After [1,C,H,W]→[C*H,W,1,1] reshape, dim2 folds into dim0.
+        const Dim newConcatDim = Dim(0);
+
+        // Validate all left inputs and the right SEGMENTED branch.
+        auto branchesResult = validateInputBranches(concatOp, numInputs, nestedLog);
+        if (mlir::failed(branchesResult)) {
+            return mlir::failure();
+        }
+        auto [leftBlockArgs, rightBranchInput, rightCopiesToRemove] = branchesResult.value();
+
+        // Collect PermuteCast users: SubViewOp → CopyOp pairs going to CMX.
+        SmallVector<VPUIP::SubViewOp> subViews;
+        SmallVector<VPUIP::CopyOp> cmxCopies;
+        if (!collectSubViewCopyConsumers(permuteCastOp, subViews, cmxCopies, nestedLog)) {
+            return mlir::failure();
+        }
+
+        // Compute cumulative H sizes for left branches.
+        // leftCumSizes[i] = sum of H dimensions of left[0..i-1].
+        SmallVector<int64_t> leftCumSizes;
+        leftCumSizes.push_back(0);
+        for (auto blockArg : leftBlockArgs) {
+            auto argShape = mlir::cast<vpux::NDTypeInterface>(blockArg.getType()).getShape();
+            leftCumSizes.push_back(leftCumSizes.back() + argShape[origConcatDim]);
+        }
+        const int64_t totalLeft = leftCumSizes.back();
+        const int64_t rightInputSize =
+                mlir::cast<vpux::NDTypeInterface>(rightBranchInput.getType()).getShape()[origConcatDim];
+        const int64_t origConcatDimSize = getShape(concatOp.getResult())[origConcatDim];
+        VPUX_THROW_UNLESS(totalLeft + rightInputSize == origConcatDimSize, "Input sizes do not match concat dim size");
+
+        if (mlir::failed(validateSubViewConsumers(subViews, cmxCopies, permuteCastOp, newConcatDim, origConcatDimSize,
+                                                  totalLeft, nestedLog))) {
+            return mlir::failure();
+        }
+
+        // Pre-validate: compute cluster cumulative offsets for every consumer before any IR
+        // modifications. If any consumer's CMX buffer does not yield valid cluster boundaries, fail
+        // now while the IR is still intact rather than mid-rewrite.
+        SmallVector<SmallVector<int64_t>> allClusterCumOffsets;
+        for (size_t i = 0; i < cmxCopies.size(); ++i) {
+            auto maybe = buildClusterCumOffsets(cmxCopies[i].getOutputBuff(), nestedLog);
+            if (!maybe.has_value()) {
+                nestedLog.trace("Cannot build cluster offsets for consumer {0} - skipping pattern", i);
+                return mlir::failure();
+            }
+            allClusterCumOffsets.push_back(std::move(maybe.value()));
+        }
+
+        // Prepare each left branch: [1, C, Hi, W] → [C*Hi, W, 1, 1] → PermuteCast.
+        SmallVector<mlir::Value> preparedLeftBranches;
+        for (size_t i = 0; i < leftBlockArgs.size(); ++i) {
+            auto branchShape = mlir::cast<vpux::NDTypeInterface>(leftBlockArgs[i].getType()).getShape();
+            // [1, C, Hi, W] → [C*Hi, W, 1, 1]
+            Shape newShape{branchShape[Dim(1)] * branchShape[Dim(2)], branchShape[Dim(3)], 1, 1};
+            preparedLeftBranches.push_back(
+                    applyReshapeAndPermuteCast(rewriter, leftBlockArgs[i], newShape, permuteCastOp,
+                                               appendLoc(concatOp->getLoc(), "multi_left_reshape_{0}", i),
+                                               appendLoc(concatOp->getLoc(), "multi_left_permcast_{0}", i)));
+        }
+
+        // Rewrite each SubView→CMXCopy consumer, writing directly into CMX, eliminating DDR staging.
+        const SameAxisRewriteContext rewriteCtx{newConcatDim, origConcatDimSize,    totalLeft,        rightInputSize,
+                                                leftCumSizes, preparedLeftBranches, rightBranchInput, permuteCastOp};
+        for (size_t consumerIdx = 0; consumerIdx < subViews.size(); ++consumerIdx) {
+            rewriteOneConsumer(rewriter, concatOp->getLoc(), consumerIdx, subViews[consumerIdx], cmxCopies[consumerIdx],
+                               allClusterCumOffsets[consumerIdx], rewriteCtx);
+        }
+
+        // Collect left DDR-to-DDR CopyOps before erasing concatOp to avoid use-after-erase.
+        SmallVector<mlir::Operation*> leftCopiesToRemove;
+        for (size_t i = 0; i + 1 < numInputs; ++i) {
+            if (auto* defOp = concatOp.getInputs()[i].getDefiningOp()) {
+                leftCopiesToRemove.push_back(defOp);
+            }
+        }
+
+        // Erase all downstream ops and the concat/reshape/permute chain.
+        rewriter.eraseOp(permuteCastOp);
+        rewriter.eraseOp(genReshapeOp);
+        rewriter.eraseOp(concatOp);
+        eraseDeadOps(rewriter, rightCopiesToRemove);
+        // Erase left DDR-to-DDR CopyOps that wrote into the (now removed) concat buffer.
+        eraseDeadOps(rewriter, leftCopiesToRemove);
+
+        nestedLog.trace("Successfully rewrote multi-left DDR Concat at '{0}'", concatOp.getLoc());
+        return mlir::success();
+    }
+
+private:
+    // Holds the result of SameAxis input-branch validation.
+    struct InputBranchesResult {
+        SmallVector<mlir::Value> leftBlockArgs;
+        mlir::Value rightBranchInput;
+        SmallVector<mlir::Operation*> rightCopiesToRemove;
+    };
+
+    // Validates SameAxis input branches:
+    //   - left inputs [0..numInputs-2]: each must be a DDR CopyOp from a BlockArgument.
+    //   - right input [numInputs-1]: must resolve via a copy chain to a SEGMENTED DistributedBuffer.
+    mlir::FailureOr<InputBranchesResult> validateInputBranches(VPUIP::ConcatViewOp concatOp, size_t numInputs,
+                                                               Logger log) const {
+        SmallVector<mlir::Value> leftBlockArgs;
+        for (size_t i = 0; i + 1 < numInputs; ++i) {
+            auto copyOp = concatOp.getInputs()[i].getDefiningOp<VPUIP::CopyOp>();
+            if (copyOp == nullptr) {
+                log.trace("Left input {0} is not a CopyOp result", i);
+                return mlir::failure();
+            }
+            auto blockArg = copyOp.getInput();
+            if (!mlir::isa<mlir::BlockArgument>(blockArg)) {
+                log.trace("Left input {0} source is not a block argument", i);
+                return mlir::failure();
+            }
+            auto inputType = mlir::cast<vpux::NDTypeInterface>(blockArg.getType());
+            if (inputType.getMemoryKind() != VPU::MemoryKind::DDR) {
+                log.trace("Left input {0} block argument is not DDR", i);
+                return mlir::failure();
+            }
+            leftBlockArgs.push_back(blockArg);
+        }
+        // Traverse the copy chain on the last input to find a SEGMENTED DistributedBuffer.
+        mlir::Value rightBranchInput = nullptr;
+        SmallVector<mlir::Operation*> rightCopiesToRemove;
+        mlir::Value cur = concatOp.getInputs()[numInputs - 1];
+        int depth = 3;
+        while (cur != nullptr && !mlir::isa<VPUIP::DistributedBufferType>(cur.getType()) && depth > 0) {
+            if (mlir::isa<mlir::BlockArgument>(cur)) {
+                cur = nullptr;
+                break;
+            }
+            auto* defOp = cur.getDefiningOp();
+            if (defOp == nullptr) {
+                cur = nullptr;
+                break;
+            }
+            if (!mlir::isa<VPUIP::CopyOp, VPUIP::ConvertDMAOp>(defOp)) {
+                cur = nullptr;
+                break;
+            }
+            rightCopiesToRemove.push_back(defOp);
+            cur = defOp->getOperand(0);
+            --depth;
+        }
+        if (cur != nullptr && mlir::isa<VPUIP::DistributedBufferType>(cur.getType())) {
+            auto dist = mlir::cast<VPUIP::DistributedBufferType>(cur.getType()).getDistribution();
+            auto mode = dist ? dist.getMode() : nullptr;
+            if (mode != nullptr && mode.getValue() == VPU::DistributionMode::SEGMENTED) {
+                rightBranchInput = cur;
+            }
+        }
+        if (rightBranchInput == nullptr) {
+            log.trace("Cannot find SEGMENTED right branch input");
+            return mlir::failure();
+        }
+        return InputBranchesResult{std::move(leftBlockArgs), rightBranchInput, std::move(rightCopiesToRemove)};
+    }
+
+    // Verifies the SameAxis invariant:
+    //   - every SubView slices only on newConcatDim and fits within one concat cycle,
+    //   - every SubView starts within the left region (not the right branch),
+    //   - every CMX copy destination is a SEGMENTED-like distributed buffer tiled on newConcatDim.
+    mlir::LogicalResult validateSubViewConsumers(ArrayRef<VPUIP::SubViewOp> subViews, ArrayRef<VPUIP::CopyOp> cmxCopies,
+                                                 VPUIP::PermuteCastOp permuteCastOp, Dim newConcatDim,
+                                                 int64_t origConcatDimSize, int64_t totalLeft, Logger log) const {
+        auto permOutShape = getShape(permuteCastOp->getResult(0));
+        for (size_t i = 0; i < subViews.size(); ++i) {
+            VPUIP::SubViewOp viewOp = subViews[i];
+            auto viewShape = Shape(parseIntArrayAttr<int64_t>(viewOp.getStaticSizes()));
+            for (size_t d = 0; d < permOutShape.size(); ++d) {
+                if (Dim(d) != newConcatDim && viewShape[Dim(d)] != permOutShape[Dim(d)]) {
+                    log.trace("SubView {0} slices on dim {1} != newConcatDim {2} — not supported", i, d,
+                              newConcatDim.ind());
+                    return mlir::failure();
+                }
+            }
+            auto viewOffset = Shape(parseIntArrayAttr<int64_t>(viewOp.getStaticOffsets()));
+            const int64_t off = viewOffset[newConcatDim];
+            const int64_t sz = viewShape[newConcatDim];
+            const int64_t withinGroup = off % origConcatDimSize;
+            if ((off + sz - 1) / origConcatDimSize != off / origConcatDimSize) {
+                log.trace("SubView {0} spans two concat cycles - not supported", i);
+                return mlir::failure();
+            }
+            if (withinGroup >= totalLeft) {
+                log.trace("SubView {0} starts in the right branch - not supported", i);
+                return mlir::failure();
+            }
+        }
+        for (size_t i = 0; i < cmxCopies.size(); ++i) {
+            VPUIP::CopyOp copyOp = cmxCopies[i];
+            auto cmxBufType = mlir::dyn_cast<VPUIP::DistributedBufferType>(copyOp.getOutputBuff().getType());
+            if (cmxBufType == nullptr) {
+                log.trace("CMX copy {0} destination is not a DistributedBufferType", i);
+                return mlir::failure();
+            }
+            auto distInfo = VPU::DistributionInfo::getClassFromAttr(cmxBufType.getDistribution());
+            if (!VPU::isSegmentedLikeDistributionMode(mlir::cast<NDTypeInterface>(copyOp.getOutputBuff().getType()),
+                                                      distInfo)) {
+                log.trace("CMX copy {0} destination is not SEGMENTED-like", i);
+                return mlir::failure();
+            }
+            const int64_t tilingAxis = VPU::getDistributedTilingAxis(distInfo.getNumTiles());
+            if (tilingAxis != newConcatDim.ind()) {
+                log.trace("CMX copy {0} tiling axis {1} != newConcatDim {2} — not supported for SameAxis pattern", i,
+                          tilingAxis, newConcatDim.ind());
+                return mlir::failure();
+            }
+        }
+        return mlir::success();
+    }
+
+    // Holds the per-consumer invariants for the SameAxis (flat-slice) rewrite.
+    struct SameAxisRewriteContext {
+        Dim newConcatDim;
+        int64_t origConcatDimSize;
+        int64_t totalLeft;
+        int64_t rightInputSize;
+        ArrayRef<int64_t> leftCumSizes;
+        ArrayRef<mlir::Value> preparedLeftBranches;
+        mlir::Value rightBranchInput;
+        VPUIP::PermuteCastOp permuteCastOp;
+    };
+
+    // Rewrites one SubView→CMXCopy consumer: emits per-cluster-boundary copy operations
+    // directly into the CMX buffer via ExtractFlatSliceOp, then assembles via ConcatViewOp.
+    void rewriteOneConsumer(mlir::PatternRewriter& rewriter, mlir::Location baseLoc, size_t consumerIdx,
+                            VPUIP::SubViewOp subViewOp, VPUIP::CopyOp cmxCopyOp, ArrayRef<int64_t> clusterCumOffsets,
+                            const SameAxisRewriteContext& ctx) const {
+        rewriter.setInsertionPoint(cmxCopyOp);
+        const auto viewOffset = Shape(parseIntArrayAttr<int64_t>(subViewOp.getStaticOffsets()));
+        const auto viewShape = Shape(parseIntArrayAttr<int64_t>(subViewOp.getStaticSizes()));
+        const int64_t off = viewOffset[ctx.newConcatDim];
+        const int64_t sz = viewShape[ctx.newConcatDim];
+        const int64_t viewMul = off / ctx.origConcatDimSize;
+        const int64_t withinGroup = off % ctx.origConcatDimSize;
+        auto cmxBuf = cmxCopyOp.getOutputBuff();
+        SmallVector<mlir::Value> allCopies;
+
+        // Left branch pieces: overlapping rows split by cluster boundaries.
+        for (size_t i = 0; i < ctx.preparedLeftBranches.size(); ++i) {
+            const int64_t branchH = ctx.leftCumSizes[i + 1] - ctx.leftCumSizes[i];
+            const int64_t branchStart = ctx.leftCumSizes[i];
+            const int64_t branchEnd = ctx.leftCumSizes[i + 1];
+
+            const int64_t overlapStart = std::max(withinGroup, branchStart);
+            const int64_t overlapEnd = std::min(withinGroup + sz, branchEnd);
+            if (overlapStart >= overlapEnd) {
+                continue;
+            }
+            const int64_t overlapSize = overlapEnd - overlapStart;
+            // C-group viewMul row-block starts at viewMul*branchH, shifted by (overlapStart - branchStart).
+            const int64_t srcRowBase = viewMul * branchH + (overlapStart - branchStart);
+            const int64_t dstFlatBase = overlapStart - withinGroup;
+
+            for (auto [subFlatOff, subLen] : splitByCluster(clusterCumOffsets, dstFlatBase, overlapSize)) {
+                const int64_t subSrcOff = srcRowBase + (subFlatOff - dstFlatBase);
+                Shape srcSubShape(to_small_vector(viewShape.raw()));
+                srcSubShape[ctx.newConcatDim] = subLen;
+                Shape srcOff(SmallVector<int64_t>(viewShape.size(), 0));
+                srcOff[ctx.newConcatDim] = subSrcOff;
+                auto srcView = rewriter.createOrFold<VPUIP::SubViewOp>(
+                        appendLoc(baseLoc, "left_{0}_src_{1}_{2}", i, consumerIdx, subFlatOff),
+                        ctx.preparedLeftBranches[i], srcOff, srcSubShape);
+                auto dstView = rewriter.createOrFold<VPUIP::ExtractFlatSliceOp>(
+                        appendLoc(baseLoc, "left_{0}_dst_{1}_{2}", i, consumerIdx, subFlatOff), cmxBuf, subFlatOff,
+                        subLen);
+                allCopies.push_back(rewriter.create<VPUIP::CopyOp>(
+                        appendLoc(baseLoc, "left_{0}_copy_{1}_{2}", i, consumerIdx, subFlatOff), srcView, dstView));
+            }
+        }
+
+        // Right branch piece: only when the SubView extends past the totalLeft boundary.
+        if (withinGroup + sz > ctx.totalLeft) {
+            const int64_t dstFlatBase = ctx.totalLeft - withinGroup;
+            auto rightSlice = rewriter.createOrFold<VPUIP::ExtractFlatSliceOp>(
+                    appendLoc(baseLoc, "right_src_slice_{0}", consumerIdx), ctx.rightBranchInput, viewMul);
+            auto rightSliceShape = mlir::cast<vpux::NDTypeInterface>(rightSlice.getType()).getShape();
+            // [1, sliceC, 1, W] → [sliceC, W, 1, 1]
+            Shape rightReshapeShape{rightSliceShape[Dim(1)] * rightSliceShape[Dim(2)], rightSliceShape[Dim(3)], 1, 1};
+            auto rightPermCast = applyReshapeAndPermuteCast(rewriter, rightSlice, rightReshapeShape, ctx.permuteCastOp,
+                                                            appendLoc(baseLoc, "right_reshape_{0}", consumerIdx),
+                                                            appendLoc(baseLoc, "right_permcast_{0}", consumerIdx));
+            for (auto [subFlatOff, subLen] : splitByCluster(clusterCumOffsets, dstFlatBase, ctx.rightInputSize)) {
+                mlir::Value srcVal = rightPermCast;
+                if (subLen != ctx.rightInputSize) {
+                    Shape rightSrcSubShape(to_small_vector(viewShape.raw()));
+                    rightSrcSubShape[ctx.newConcatDim] = subLen;
+                    Shape rightSrcOff(SmallVector<int64_t>(viewShape.size(), 0));
+                    rightSrcOff[ctx.newConcatDim] = subFlatOff - dstFlatBase;
+                    srcVal = rewriter.createOrFold<VPUIP::SubViewOp>(
+                            appendLoc(baseLoc, "right_src_sub_{0}_{1}", consumerIdx, subFlatOff), rightPermCast,
+                            rightSrcOff, rightSrcSubShape);
+                }
+                auto dstView = rewriter.createOrFold<VPUIP::ExtractFlatSliceOp>(
+                        appendLoc(baseLoc, "right_dst_{0}_{1}", consumerIdx, subFlatOff), cmxBuf, subFlatOff, subLen);
+                allCopies.push_back(rewriter.create<VPUIP::CopyOp>(
+                        appendLoc(baseLoc, "right_copy_{0}_{1}", consumerIdx, subFlatOff), srcVal, dstView));
+            }
+        }
+
+        VPUX_THROW_UNLESS(!allCopies.empty(), "No copies generated for SubView consumer {0}", consumerIdx);
+        auto newConcatView = rewriter.create<VPUIP::ConcatViewOp>(appendLoc(baseLoc, "cmx_concat_{0}", consumerIdx),
+                                                                  allCopies, cmxBuf);
+        rewriter.replaceAllUsesWith(cmxCopyOp.getResult(), newConcatView.getResult());
+        rewriter.eraseOp(cmxCopyOp);
+        rewriter.eraseOp(subViewOp);
+    }
+
+    // Computes per-cluster cumulative offsets along the tiling axis for a SEGMENTED CMX buffer.
+    // Returns the offsets vector, or std::nullopt if the distribution cannot be computed.
+    std::optional<SmallVector<int64_t>> buildClusterCumOffsets(mlir::Value cmxBuf, Logger log) const {
+        auto cmxBufType = mlir::dyn_cast<VPUIP::DistributedBufferType>(cmxBuf.getType());
+        if (cmxBufType == nullptr) {
+            log.trace("CMX consumer buffer is not a DistributedBufferType");
+            return std::nullopt;
+        }
+        auto distInfo = VPU::DistributionInfo::getClassFromAttr(cmxBufType.getDistribution());
+        const Dim axis(VPU::getDistributedTilingAxis(distInfo.getNumTiles()));
+
+        const auto memOffsets = cmxBufType.getPerClusterMemoryShapeOffsets();
+        const auto memShapes = cmxBufType.getPerClusterMemoryShapes();
+        VPUX_THROW_UNLESS(memOffsets.size() == memShapes.size(),
+                          "Per-cluster memory shapes and offsets size mismatch: {0} vs {1}", memShapes.size(),
+                          memOffsets.size());
+
+        SmallVector<int64_t> boundaries;
+        boundaries.reserve(memShapes.size() + 1);
+        boundaries.push_back(0);
+        for (size_t c = 0; c < memShapes.size(); ++c) {
+            const int64_t end = memOffsets[c][axis] + memShapes[c][axis];
+            if (end <= boundaries.back()) {
+                log.trace("Per-cluster memory boundaries are not strictly increasing on axis {0}", axis.ind());
+                return std::nullopt;
+            }
+            boundaries.push_back(end);
+        }
+        return boundaries;
+    }
+
+    // Splits flat range [flatOff, flatOff+len) into sub-ranges each contained within a single cluster.
+    SmallVector<std::pair<int64_t, int64_t>> splitByCluster(ArrayRef<int64_t> clusterCumOffsets, int64_t flatOff,
+                                                            int64_t len) const {
+        SmallVector<std::pair<int64_t, int64_t>> subRanges;
+        int64_t pos = flatOff;
+        while (pos < flatOff + len) {
+            auto it = std::upper_bound(clusterCumOffsets.begin(), clusterCumOffsets.end(), pos);
+            VPUX_THROW_UNLESS(it != clusterCumOffsets.end(), "Flat offset {0} is out of CMX buffer bounds (total {1})",
+                              pos, clusterCumOffsets.back());
+            const int64_t clusterEnd = *it;
+            const int64_t subLen = std::min(flatOff + len - pos, clusterEnd - pos);
+            subRanges.push_back({pos, subLen});
+            pos += subLen;
+        }
+        return subRanges;
+    }
+
+    bool checkSameAxisReshapeCompatibility(VPUIP::ConcatViewOp concatOp, VPUIP::GenericReshapeOp genReshapeOp,
+                                           vpux::Logger log) const {
+        auto genReshapeType = vpux::getBufferType(genReshapeOp.getOutput());
+        auto concatType = vpux::getBufferType(concatOp.getOutput());
+        if (genReshapeType.getRank() != 4 || concatType.getRank() != 4) {
+            log.trace("Only 4D tensors are supported");
+            return false;
+        }
+        if (concatType.getShape()[Dim(0)] != 1) {
+            log.trace("Only batch size 1 is supported");
+            return false;
+        }
+        // [1, C, H, W] → [C*H, W, 1, 1]
+        auto rs = genReshapeType.getShape();
+        auto cs = concatType.getShape();
+        if (rs[Dim(0)] != cs[Dim(1)] * cs[Dim(2)] || rs[Dim(1)] != cs[Dim(3)] ||
+            genReshapeType.getNumElements() != concatType.getNumElements()) {
+            log.trace("Concat→Reshape shapes are not compatible: {0} vs {1}", cs, rs);
+            return false;
+        }
+        return true;
+    }
+};
+
+/*
+    Multi-left unbalanced DDR Concat on the W axis (dim3) or H axis (dim2) (N ≥ 3 DDR branches):
+
+    W-axis example:
+    Branch0[1,C,H,W0]@DDR ──Copy──┐
+    Branch1[1,C,H,W1]@DDR ──Copy──┤
+    ...                            ├─▶ ConcatView[1,C,H,W_total]@DDR
+    BranchN[1,C,H,WN]@DDR ──Copy──┘         │
+                                       GenericReshape (4D or 5D)
+                                       [C*H, W_total, 1, 1]  — 4D case
+                                       [C,   H, W_total, 1, 1] — 5D case
+                                             │
+                                        PermuteCast
+                                          ┌──┤──┐
+                                   SubView0   ...  SubViewM
+                                      │               │
+                               CMX SEGMENTED Copy   (same)
+
+    H-axis example:
+    Branch0[1,C,H0,W]@DDR ──Copy──┐
+    Branch1[1,C,H1,W]@DDR ──Copy──┤
+    ...                            ├─▶ ConcatView[1,C,H_total,W]@DDR
+    BranchN[1,C,HN,W]@DDR ──Copy──┘         │
+                                       GenericReshape (5D only)
+                                       [C, H_total, W, 1, 1]
+                                             │
+                                        PermuteCast
+                                          ┌──┤──┐
+                                   SubView0   ...  SubViewM
+                                      │               │
+                               CMX SEGMENTED Copy (segmented on dim0)
+
+    Supported reshape patterns (origConcatDim → newConcatDim, rowDim):
+      W-axis, 4D: [1,C,H,W] → [C*H, W_total, 1, 1]    newConcatDim=Dim(1), rowDim=Dim(0)
+      W-axis, 5D: [1,C,H,W] → [C,   H, W_total, 1, 1]  newConcatDim=Dim(2), rowDim=Dim(1)
+      H-axis, 5D: [1,C,H,W] → [C,   H_total, W, 1, 1]  newConcatDim=Dim(1), rowDim=Dim(0)
+    H-axis with 4D reshape folds H into dim0, making tiling and concat on the same axis;
+    that case is handled by SplitMultiLeftUnbalancedDDRConcatOnSameAxis.
+    In all supported cases rowDim ≠ newConcatDim, so tiling on rowDim is compatible with
+    slicing the SEGMENTED CMX buffer on newConcatDim.
+
+    Transformed to – per consumer SubView [row_off, col_off] × [row_sz, col_sz]:
+
+      For each branch[i] whose concat-dim range overlaps the SubView's concat-dim range:
+        preparedBranch[i] (GenericReshape+PermuteCast of the DDR source)
+          → SubView selecting [row_sz, overlapLen] at [rowOff, srcColOff]
+          → Copy directly into the SubView of the SEGMENTED CMX buffer on newConcatDim
+            (legal because tiling is on rowDim ≠ newConcatDim)
+
+      ConcatViewOp(allCopies, cmxBuf) replaces original SubView→CMXCopy chain.
+
+    Eliminates the large DDR concat buffer; all DMAs go directly DDR→CMX, enabling
+    interleaving with NCE tasks.
+*/
+class SplitMultiLeftUnbalancedDDRConcatOnOtherAxis : public SplitMultiUnbalancedDDRConcatBase {
+public:
+    using SplitMultiUnbalancedDDRConcatBase::SplitMultiUnbalancedDDRConcatBase;
+
+    mlir::LogicalResult matchAndRewrite(VPUIP::ConcatViewOp concatOp, mlir::PatternRewriter& rewriter) const override {
+        _log.trace("SplitMultiLeftUnbalancedDDRConcatOnOtherAxis: Got Concat at '{0}'", concatOp.getLoc());
+        auto nestedLog = _log.nest();
+
+        // Match: numInputs ≥ 3, DDR output, GenericReshape → PermuteCast chain.
+        // The 2-input case is already handled by SplitUnbalancedDDRConcatOnOtherAxis /
+        // SplitUnbalancedDDRConcatOnSameAxis.
+        const size_t numInputs = concatOp.getInputs().size();
+        auto prefixResult = matchConcatReshapePermuteCastChain(concatOp, /*minInputs=*/3, nestedLog);
+        if (mlir::failed(prefixResult)) {
+            return mlir::failure();
+        }
+        auto [genReshapeOp, permuteCastOp] = prefixResult.value();
+
+        // Validate Concat→Reshape shapes: [1,C,H,W] → [C*H,W,1,1] (4D) or [C,H,W,1,1] (5D).
+        if (!checkOtherAxisReshapeCompatibility(concatOp, genReshapeOp, nestedLog)) {
+            return mlir::failure();
+        }
+
+        // Determine concat axis: dim2 (H) or dim3 (W).
+        const auto concatAxes =
+                vpux::IE::getDiffInOutSizeDims(getShape(concatOp.getOperands()[0]), getShape(concatOp.getResult()));
+        if (concatAxes.size() != 1 || (concatAxes.front() != Dim(2) && concatAxes.front() != Dim(3))) {
+            nestedLog.trace("Only concat on dim2 (H) or dim3 (W) is supported");
+            return mlir::failure();
+        }
+        const Dim origConcatDim = concatAxes.front();
+        const int64_t reshapeRank = vpux::getBufferType(genReshapeOp.getOutput()).getRank();
+        // H-axis concat with 4D reshape folds H into dim0, yielding tiling and concat on the same axis.
+        // That case is handled by SplitMultiLeftUnbalancedDDRConcatOnSameAxis.
+        if (origConcatDim == Dim(2) && reshapeRank == 4) {
+            nestedLog.trace("H-axis concat with 4D reshape is handled by SplitMultiLeftUnbalancedDDRConcatOnSameAxis");
+            return mlir::failure();
+        }
+        // Derive newConcatDim (position of origConcatDim in the reshaped output) and
+        // rowDim (the SubView row dimension, orthogonal to newConcatDim) from origConcatDim and reshapeRank:
+        //   W-axis, 4D [1,C,H,W]→[C*H,W,1,1]:   W→dim1, rows on dim0
+        //   W-axis, 5D [1,C,H,W]→[C,H,W,1,1]:   W→dim2, rows on dim1
+        //   H-axis, 5D [1,C,H,W]→[C,H,W,1,1]:   H→dim1, rows on dim0
+        Dim newConcatDim;
+        Dim rowDim;
+        if (origConcatDim == Dim(3)) {
+            newConcatDim = (reshapeRank == 5) ? Dim(2) : Dim(1);
+            rowDim = (reshapeRank == 5) ? Dim(1) : Dim(0);
+        } else {
+            // origConcatDim == Dim(2), reshapeRank == 5 guaranteed by the check above
+            newConcatDim = Dim(1);
+            rowDim = Dim(0);
+        }
+
+        // Validate all inputs and collect DDR sources.
+        auto ddrSrcsResult = validateInputBranches(concatOp, numInputs, nestedLog);
+        if (mlir::failed(ddrSrcsResult)) {
+            return mlir::failure();
+        }
+        const auto& allDDRSrcs = ddrSrcsResult.value();
+
+        // Collect PermuteCast users: SubViewOp → CopyOp pairs going to CMX.
+        SmallVector<VPUIP::SubViewOp> subViews;
+        SmallVector<VPUIP::CopyOp> cmxCopies;
+        if (!collectSubViewCopyConsumers(permuteCastOp, subViews, cmxCopies, nestedLog)) {
+            return mlir::failure();
+        }
+
+        // Compute cumulative sizes along origConcatDim for all branches.
+        // colCumSizes[i] = sum of origConcatDim extents of allDDRSrcs[0..i-1].
+        SmallVector<int64_t> colCumSizes;
+        colCumSizes.push_back(0);
+        for (auto ddrSrc : allDDRSrcs) {
+            auto argShape = mlir::cast<vpux::NDTypeInterface>(ddrSrc.getType()).getShape();
+            colCumSizes.push_back(colCumSizes.back() + argShape[origConcatDim]);
+        }
+        const int64_t totalW = getShape(concatOp.getResult())[origConcatDim];
+        VPUX_THROW_UNLESS(colCumSizes.back() == totalW, "Total concat size {0} does not match sum of input sizes {1}",
+                          totalW, colCumSizes.back());
+
+        if (mlir::failed(validateConsumers(subViews, cmxCopies, newConcatDim, totalW, nestedLog))) {
+            return mlir::failure();
+        }
+
+        // Prepare each branch: GenericReshape → PermuteCast applied to the DDR source.
+        // W-axis: [1,C,H,Wi] → reshape [C*H,Wi,1,1] (4D) or [C,H,Wi,1,1] (5D) → permcast.
+        // H-axis: [1,C,Hi,W] → reshape [C,Hi,W,1,1] (5D) → permcast.
+        SmallVector<mlir::Value> preparedBranches;
+        for (size_t i = 0; i < allDDRSrcs.size(); ++i) {
+            auto branchShape = mlir::cast<vpux::NDTypeInterface>(allDDRSrcs[i].getType()).getShape();
+            // 4D (W-axis): [1,C,H,Wi]→[C*H,Wi,1,1]; 5D (W-axis): [1,C,H,Wi]→[C,H,Wi,1,1]; 5D (H-axis):
+            // [1,C,Hi,W]→[C,Hi,W,1,1]
+            Shape newShape = (reshapeRank == 5)
+                                     ? Shape{branchShape[Dim(1)], branchShape[Dim(2)], branchShape[Dim(3)], 1, 1}
+                                     : Shape{branchShape[Dim(1)] * branchShape[Dim(2)], branchShape[Dim(3)], 1, 1};
+            preparedBranches.push_back(
+                    applyReshapeAndPermuteCast(rewriter, allDDRSrcs[i], newShape, permuteCastOp,
+                                               appendLoc(concatOp->getLoc(), "multi_other_reshape_{0}", i),
+                                               appendLoc(concatOp->getLoc(), "multi_other_permcast_{0}", i)));
+        }
+
+        // Rewrite each SubView→CMXCopy consumer. Tiling is on rowDim (≠ newConcatDim), so slicing
+        // the SEGMENTED CMX buffer on newConcatDim is legal; the DMA distributes rows automatically.
+        const OtherAxisRewriteContext rewriteCtx{newConcatDim, rowDim, totalW, colCumSizes, preparedBranches};
+        for (size_t consumerIdx = 0; consumerIdx < subViews.size(); ++consumerIdx) {
+            rewriteOneConsumer(rewriter, concatOp->getLoc(), consumerIdx, subViews[consumerIdx], cmxCopies[consumerIdx],
+                               rewriteCtx);
+        }
+
+        // Collect input CopyOps before erasing concatOp to avoid use-after-erase.
+        SmallVector<mlir::Operation*> inputCopiesToRemove;
+        for (size_t i = 0; i < numInputs; ++i) {
+            if (auto* defOp = concatOp.getInputs()[i].getDefiningOp()) {
+                inputCopiesToRemove.push_back(defOp);
+            }
+        }
+
+        // Erase the concat/reshape/permute chain, then any now-dead input CopyOps.
+        rewriter.eraseOp(permuteCastOp);
+        rewriter.eraseOp(genReshapeOp);
+        rewriter.eraseOp(concatOp);
+        eraseDeadOps(rewriter, inputCopiesToRemove);
+
+        nestedLog.trace("Successfully rewrote multi-branch DDR Concat (origConcatDim={0}) at '{1}'",
+                        origConcatDim.ind(), concatOp.getLoc());
+        return mlir::success();
+    }
+
+private:
+    // Validates OtherAxis inputs: every concat input must be a DDR CopyOp whose source is in DDR.
+    // Returns the collected DDR source values on success.
+    mlir::FailureOr<SmallVector<mlir::Value>> validateInputBranches(VPUIP::ConcatViewOp concatOp, size_t numInputs,
+                                                                    Logger log) const {
+        SmallVector<mlir::Value> allDDRSrcs;
+        allDDRSrcs.reserve(numInputs);
+        for (size_t i = 0; i < numInputs; ++i) {
+            auto copyOp = concatOp.getInputs()[i].getDefiningOp<VPUIP::CopyOp>();
+            if (copyOp == nullptr) {
+                log.trace("Input {0} is not a CopyOp result", i);
+                return mlir::failure();
+            }
+            auto ddrSrc = copyOp.getInput();
+            if (mlir::cast<vpux::NDTypeInterface>(ddrSrc.getType()).getMemoryKind() != VPU::MemoryKind::DDR) {
+                log.trace("Input {0} source is not in DDR", i);
+                return mlir::failure();
+            }
+            allDDRSrcs.push_back(ddrSrc);
+        }
+        return allDDRSrcs;
+    }
+
+    // Verifies the OtherAxis invariant: every SubView's column slice fits within one totalW cycle,
+    // and every CMX copy is tiled on an axis distinct from newConcatDim (and all on the same axis).
+    // Unlike the SameAxis pattern, any SEGMENTED-like tiling mode is acceptable here because the
+    // CMX SubView on newConcatDim is independent of the row-tiling axis; the DMA engine handles
+    // row distribution automatically.
+    mlir::LogicalResult validateConsumers(ArrayRef<VPUIP::SubViewOp> subViews, ArrayRef<VPUIP::CopyOp> cmxCopies,
+                                          Dim newConcatDim, int64_t totalW, Logger log) const {
+        for (VPUIP::SubViewOp viewOp : subViews) {
+            auto viewOffset = Shape(parseIntArrayAttr<int64_t>(viewOp.getStaticOffsets()));
+            auto viewShape = Shape(parseIntArrayAttr<int64_t>(viewOp.getStaticSizes()));
+            const int64_t colOff = viewOffset[newConcatDim];
+            const int64_t colSz = viewShape[newConcatDim];
+            if ((colOff + colSz - 1) / totalW != colOff / totalW) {
+                log.trace("SubView range on newConcatDim spans two concat cycles — not supported");
+                return mlir::failure();
+            }
+        }
+        int64_t commonTilingAxis = -1;
+        for (size_t i = 0; i < cmxCopies.size(); ++i) {
+            VPUIP::CopyOp copyOp = cmxCopies[i];
+            auto cmxBufType = mlir::dyn_cast<VPUIP::DistributedBufferType>(copyOp.getOutputBuff().getType());
+            if (cmxBufType == nullptr) {
+                log.trace("Consumer {0}: destination is not a DistributedBufferType", i);
+                return mlir::failure();
+            }
+            const int64_t tilingAxis = VPU::getDistributedTilingAxis(
+                    VPU::DistributionInfo::getClassFromAttr(cmxBufType.getDistribution()).getNumTiles());
+            if (tilingAxis == newConcatDim.ind()) {
+                log.trace("Consumer {0}: tiling axis {1} matches newConcatDim {2} — not supported", i, tilingAxis,
+                          newConcatDim.ind());
+                return mlir::failure();
+            }
+            if (commonTilingAxis == -1) {
+                commonTilingAxis = tilingAxis;
+            } else if (tilingAxis != commonTilingAxis) {
+                log.trace("Consumer {0}: tiling axis {1} differs from previous consumers' axis {2} — not supported", i,
+                          tilingAxis, commonTilingAxis);
+                return mlir::failure();
+            }
+        }
+        return mlir::success();
+    }
+
+    // Holds the per-consumer invariants for the OtherAxis (column-SubView) rewrite.
+    struct OtherAxisRewriteContext {
+        Dim newConcatDim;
+        Dim rowDim;
+        int64_t totalW;
+        ArrayRef<int64_t> colCumSizes;
+        ArrayRef<mlir::Value> preparedBranches;
+    };
+
+    // Rewrites one SubView→CMXCopy consumer: for each overlapping DDR branch emits a DDR→CMX Copy
+    // via column SubViews of the SEGMENTED CMX buffer, then assembles via ConcatViewOp.
+    void rewriteOneConsumer(mlir::PatternRewriter& rewriter, mlir::Location baseLoc, size_t consumerIdx,
+                            VPUIP::SubViewOp subViewOp, VPUIP::CopyOp cmxCopyOp,
+                            const OtherAxisRewriteContext& ctx) const {
+        rewriter.setInsertionPoint(cmxCopyOp);
+        const auto viewOffset = Shape(parseIntArrayAttr<int64_t>(subViewOp.getStaticOffsets()));
+        const auto viewShape = Shape(parseIntArrayAttr<int64_t>(subViewOp.getStaticSizes()));
+        const int64_t rowOff = viewOffset[ctx.rowDim];
+        const int64_t rowSz = viewShape[ctx.rowDim];
+        const int64_t colOff = viewOffset[ctx.newConcatDim];
+        const int64_t colSz = viewShape[ctx.newConcatDim];
+        const int64_t colWithinCycle = colOff % ctx.totalW;
+        auto cmxBuf = cmxCopyOp.getOutputBuff();
+        SmallVector<mlir::Value> allCopies;
+
+        for (size_t i = 0; i < ctx.preparedBranches.size(); ++i) {
+            const int64_t branchColStart = ctx.colCumSizes[i];
+            const int64_t branchColEnd = ctx.colCumSizes[i + 1];
+
+            const int64_t overlapColStart = std::max(colWithinCycle, branchColStart);
+            const int64_t overlapColEnd = std::min(colWithinCycle + colSz, branchColEnd);
+            if (overlapColStart >= overlapColEnd) {
+                continue;
+            }
+            const int64_t overlapColLen = overlapColEnd - overlapColStart;
+            const int64_t srcColOff = overlapColStart - branchColStart;
+            const int64_t dstColOff = overlapColStart - colWithinCycle;
+
+            Shape srcShape(to_small_vector(viewShape.raw()));
+            srcShape[ctx.rowDim] = rowSz;
+            srcShape[ctx.newConcatDim] = overlapColLen;
+            Shape srcOff(to_small_vector(viewOffset.raw()));
+            srcOff[ctx.rowDim] = rowOff;
+            srcOff[ctx.newConcatDim] = srcColOff;
+            auto srcView =
+                    rewriter.createOrFold<VPUIP::SubViewOp>(appendLoc(baseLoc, "branch_{0}_src_{1}", i, consumerIdx),
+                                                            ctx.preparedBranches[i], srcOff, srcShape);
+            Shape dstOff(SmallVector<int64_t>(viewShape.size(), 0));
+            dstOff[ctx.newConcatDim] = dstColOff;
+            auto dstView = rewriter.createOrFold<VPUIP::SubViewOp>(
+                    appendLoc(baseLoc, "branch_{0}_dst_{1}", i, consumerIdx), cmxBuf, dstOff, srcShape);
+            allCopies.push_back(rewriter.create<VPUIP::CopyOp>(
+                    appendLoc(baseLoc, "branch_{0}_copy_{1}", i, consumerIdx), srcView, dstView));
+        }
+
+        VPUX_THROW_UNLESS(!allCopies.empty(), "No copies generated for SubView consumer {0}", consumerIdx);
+        auto newConcatView = rewriter.create<VPUIP::ConcatViewOp>(
+                appendLoc(baseLoc, "cmx_other_concat_{0}", consumerIdx), allCopies, cmxBuf);
+        rewriter.replaceAllUsesWith(cmxCopyOp.getResult(), newConcatView.getResult());
+        rewriter.eraseOp(cmxCopyOp);
+        rewriter.eraseOp(subViewOp);
+    }
+
+    bool checkOtherAxisReshapeCompatibility(VPUIP::ConcatViewOp concatOp, VPUIP::GenericReshapeOp genReshapeOp,
+                                            vpux::Logger log) const {
+        auto genReshapeType = vpux::getBufferType(genReshapeOp.getOutput());
+        auto concatType = vpux::getBufferType(concatOp.getOutput());
+        if (concatType.getRank() != 4) {
+            log.trace("Concat output must be 4D, got rank {0}", concatType.getRank());
+            return false;
+        }
+        if (concatType.getShape()[Dim(0)] != 1) {
+            log.trace("Only batch size 1 is supported");
+            return false;
+        }
+        auto rs = genReshapeType.getShape();
+        auto cs = concatType.getShape();
+        const int64_t reshapeRank = genReshapeType.getRank();
+        if (reshapeRank == 4) {
+            // Pattern: [1, C, H, W] → [C*H, W, 1, 1]
+            if (rs[Dim(0)] != cs[Dim(1)] * cs[Dim(2)] || rs[Dim(1)] != cs[Dim(3)] || rs[Dim(2)] != 1 ||
+                rs[Dim(3)] != 1 || genReshapeType.getNumElements() != concatType.getNumElements()) {
+                log.trace("Concat→Reshape shapes are not compatible for 4D pattern: {0} vs {1}", cs, rs);
+                return false;
+            }
+        } else if (reshapeRank == 5) {
+            // Pattern: [1, C, H, W] → [C, H, W, 1, 1]
+            if (rs[Dim(0)] != cs[Dim(1)] || rs[Dim(1)] != cs[Dim(2)] || rs[Dim(2)] != cs[Dim(3)] || rs[Dim(3)] != 1 ||
+                rs[Dim(4)] != 1 || genReshapeType.getNumElements() != concatType.getNumElements()) {
+                log.trace("Concat→Reshape shapes are not compatible for 5D pattern: {0} vs {1}", cs, rs);
+                return false;
+            }
+        } else {
+            log.trace("Unsupported reshape output rank {0}, expected 4 or 5", reshapeRank);
+            return false;
+        }
+        return true;
+    }
+};
+
 class SplitUnbalancedDDRConcatOnSameAxisDDR : public SplitUnbalancedDDRConcatBase {
 public:
     using SplitUnbalancedDDRConcatBase::SplitUnbalancedDDRConcatBase;
@@ -4137,6 +5090,8 @@ void OptimizeConcatViewCopiesPass::safeRunOnFunc() {
     patterns.add<SplitUnbalancedDDRConcatOnOtherAxis>(&ctx, _log);
     patterns.add<SplitUnbalancedDDRConcatOnSameAxis>(&ctx, _log);
     patterns.add<SplitUnbalancedDDRConcatOnSameAxisDDR>(&ctx, _log);
+    patterns.add<SplitMultiLeftUnbalancedDDRConcatOnSameAxis>(&ctx, _log);
+    patterns.add<SplitMultiLeftUnbalancedDDRConcatOnOtherAxis>(&ctx, _log);
     // SplitUnbalancedDDRConcatToNonDistributedCMX inherited from SplitUnbalancedDDRConcatOnOtherAxis, any changes to
     // SplitUnbalancedDDRConcatOnOtherAxis rewriter also need to consider here.
     patterns.add<SplitUnbalancedDDRConcatToNonDistributedCMX>(&ctx, _log);

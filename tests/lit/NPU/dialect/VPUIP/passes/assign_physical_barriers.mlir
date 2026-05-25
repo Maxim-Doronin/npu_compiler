@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% workload-management-enable=false" --assign-physical-barriers="num-barriers=4" %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% workload-management-enable=false" --assign-physical-barriers="num-barriers=4" %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL: @LinearDMA
 func.func @LinearDMA(%arg0: memref<10xf16>, %arg1: memref<10xf16>) -> memref<10xf16> {
@@ -128,7 +128,7 @@ func.func @MultipleExecutors(%arg0: memref<1x16x32x32xf16>, %arg1: memref<1x16x3
     // 1st tile
 
     VPURT.Task waits(%bar1: !VPURT.Barrier) updates(%bar2: !VPURT.Barrier) {
-        VPUIP.NCEClusterTask <{
+        VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
@@ -172,7 +172,7 @@ func.func @MultipleExecutors(%arg0: memref<1x16x32x32xf16>, %arg1: memref<1x16x3
     // 2nd tile
 
     VPURT.Task waits(%bar3: !VPURT.Barrier) updates(%bar5: !VPURT.Barrier) {
-        VPUIP.NCEClusterTask <{
+        VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
@@ -216,7 +216,7 @@ func.func @MultipleExecutors(%arg0: memref<1x16x32x32xf16>, %arg1: memref<1x16x3
     // 3rd tile
 
     VPURT.Task waits(%bar6: !VPURT.Barrier) updates(%bar7: !VPURT.Barrier) {
-        VPUIP.NCEClusterTask <{
+        VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
@@ -260,7 +260,7 @@ func.func @MultipleExecutors(%arg0: memref<1x16x32x32xf16>, %arg1: memref<1x16x3
     // 4th tile
 
     VPURT.Task waits(%bar8: !VPURT.Barrier) updates(%bar9: !VPURT.Barrier) {
-        VPUIP.NCEClusterTask <{
+        VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],

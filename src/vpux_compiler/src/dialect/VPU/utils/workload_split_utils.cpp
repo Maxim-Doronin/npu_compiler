@@ -6,6 +6,7 @@
 #include "vpux/compiler/dialect/VPU/utils/workload_split_utils.hpp"
 #include "vpux/compiler/core/cost_model_utils.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/dpu.hpp"
+#include "vpux/compiler/dialect/VPU/interfaces/strategies.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
 #include "vpux/compiler/dialect/VPU/utils/op_tiling_cache.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sparsity_utils.hpp"
@@ -31,8 +32,9 @@ void addSubTensorOffset(TileInfo& tileInfo, ShapeRef tensorOffset) {
     }
 }
 
-int64_t computeSplitCost(const VPUIP::WorkloadSplit& split, const VPUIP::WorkloadCostParams& params,
-                         VPUNN::VPUCostModel& costModel, bool isAutopadODUEnabled, LogCb logCb) {
+int64_t computeSplitCost(mlir::MLIRContext* ctx, const VPUIP::WorkloadSplit& split,
+                         const VPUIP::WorkloadCostParams& params, VPUNN::VPUCostModel& costModel,
+                         bool isAutopadODUEnabled, LogCb logCb) {
     VPUX_THROW_WHEN(params.arch < config::ArchKind::NPU37XX, "Unexpected architecture {0}", params.arch);
     std::vector<int64_t> workloadCost;
     workloadCost.reserve(split.size());
@@ -40,7 +42,8 @@ int64_t computeSplitCost(const VPUIP::WorkloadSplit& split, const VPUIP::Workloa
 
     // Correct invalid input channels for depthwise workload before passing to VPUNN
     // split to produce more small and valid workloads
-    const SmallVector<int64_t> supportedChannelsDW = {64, 32, 16};
+    const auto& strategyFactory = VPU::getVPUStrategyFactory(ctx);
+    const auto supportedChannelsDW = strategyFactory->getSupportedChannelsDW();
     auto correctDepthwiseWorkloadChannel = [=](const VPUIP::WorkloadTile& wl) -> std::vector<VPUIP::WorkloadTile> {
         auto wlChannel = std::get<0>(wl).shape[Dims4D::Act::C];
 
@@ -125,10 +128,9 @@ void generateWorkloads(mlir::OpBuilder& builder, VPU::NCEOpInterface origOp,
                        const VPUIP::WorkloadCostParams& costParams, VPU::MPEMode mpeMode,
                        ArrayRef<bool> isTileOverDimsSupported, VPUNN::VPUCostModel& costModel, Logger log,
                        mlir::IntegerAttr clusterId = nullptr, ShapeRef subTensorOffset = {}) {
+    auto ctx = origOp.getContext();
     VPUIP::DpuTiler dpuTiler(costParams.outputShape, mpeMode);
-
     VPUIP::WorkloadSplitPool splitPoolSet;
-
     dpuTiler.tileOverH(costParams.numDPU, splitPoolSet);
 
     if (costParams.outputShape.size() == 5) {
@@ -143,7 +145,7 @@ void generateWorkloads(mlir::OpBuilder& builder, VPU::NCEOpInterface origOp,
         const Shape offsets = subTensorOffset.empty() ? Shape{0, 0, 0, 0, 0} : Shape(subTensorOffset);
         auto tilePad = VPU::getPaddingAttr(builder.getContext(), 0, 0, 0, 0);
         origOp.addWorkload(builder, origOp.getLoc(), offsets, costParams.outputShape, tilePad,
-                           VPU::MPEMode::CUBOID_16x16, getIntAttr(origOp->getContext(), cluster));
+                           VPU::MPEMode::CUBOID_16x16, getIntAttr(ctx, cluster));
         return;
     } else {
         dpuTiler.tileOverH(costParams.numDPU, splitPoolSet);
@@ -186,7 +188,7 @@ void generateWorkloads(mlir::OpBuilder& builder, VPU::NCEOpInterface origOp,
         const auto logCb = [&](const formatv_object_base& msg) {
             log.trace("{0}", msg.str());
         };
-        splitPoolCosts[ind] = computeSplitCost(curSplit, costParams, costModel, isAutopadODUEnabled, logCb);
+        splitPoolCosts[ind] = computeSplitCost(ctx, curSplit, costParams, costModel, isAutopadODUEnabled, logCb);
     }
 
     const auto bestSplitInd = std::min_element(splitPoolCosts.begin(), splitPoolCosts.end()) - splitPoolCosts.begin();
@@ -198,6 +200,10 @@ void generateWorkloads(mlir::OpBuilder& builder, VPU::NCEOpInterface origOp,
     }
     const auto& bestSplit = splitPool[bestSplitInd];
 
+    if (mlir::dyn_cast<VPU::NCEConvolutionOp>(origOp.getOperation()) && bestSplit.size() > 1) {
+        VPUX_THROW("NCE Convolution best split can't contain multiple variants per invariant (cluster). Only one "
+                   "variant per invariant is allowed.");
+    }
     origOp->setAttr(DPUCost, getIntAttr(origOp->getContext(), splitPoolCosts[bestSplitInd]));
 
     const auto kernel = origOp.getKernelSizeVal();
@@ -365,6 +371,11 @@ void vpux::VPU::splitWorkloadsWithInfo(VPU::NCEOpInterface nceOp, mlir::OpBuilde
     for (auto clusterId : irange(splitInfo.size())) {
         auto clusterIdAttr = getIntAttr(ctx, clusterId);
         auto intraTileSplit = splitInfo[clusterId].best_intra_tile_split;
+
+        if (mlir::dyn_cast<VPU::NCEConvolutionOp>(nceOp.getOperation()) && intraTileSplit.second.size() > 1) {
+            VPUX_THROW("NCE Convolution best split can't contain multiple variants per invariant (cluster). Only one "
+                       "variant per invariant is allowed.");
+        }
 
         for (auto workload : intraTileSplit.second) {
             auto mpeMode = VPU::getMPEMode(workload.execution_order);

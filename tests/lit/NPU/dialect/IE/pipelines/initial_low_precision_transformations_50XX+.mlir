@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --initial-low-precision-transformations %s | FileCheck %s --strict-whitespace
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --initial-low-precision-transformations %s | FileCheck %s --strict-whitespace
+// REQUIRES: platform-NPU5010
 
 // CHECK-LABEL: @ScalarArgumentsWeightsDequantizeToFakeQuantize
 // CHECK-SAME:  [[INPUT:%.+]]: tensor<1x16x32x32xf32>

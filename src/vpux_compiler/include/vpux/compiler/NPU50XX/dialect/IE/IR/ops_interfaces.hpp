@@ -8,5 +8,6 @@
 namespace vpux::IE::arch50xx {
 
 void registerQuantizedLayerOpInterfaces(mlir::DialectRegistry& registry);
+void registerMPEEngineInfoOpInterfaces(mlir::DialectRegistry& registry);
 
 }  // namespace vpux::IE::arch50xx

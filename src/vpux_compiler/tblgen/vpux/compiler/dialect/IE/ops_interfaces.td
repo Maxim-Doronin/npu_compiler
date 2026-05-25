@@ -140,6 +140,11 @@ def IE_LayerWithPostOpInterface : OpInterface<"LayerWithPostOpInterface"> {
         >,
 
         InterfaceMethod<
+            "Checks if the properties of clamp are supported with type",
+            "bool", "isSupportedClampProperties", (ins "double":$minVal, "double":$maxVal, "mlir::Type":$type, "const FuncRef<void(const formatv_object_base&)>&":$logCb)
+        >,
+
+        InterfaceMethod<
             "Checks if the operation supports a secondary post-processing operation",
             "bool", "isSupportedClampOp", (ins "mlir::Operation*":$clampOp, "const FuncRef<void(const formatv_object_base&)>&":$logCb)
         >,
@@ -151,6 +156,23 @@ def IE_LayerWithPostOpInterface : OpInterface<"LayerWithPostOpInterface"> {
             [{
                 return false;
             }]
+        >
+    ];
+}
+
+//
+// LayerWithDmaInterface
+//
+
+def IE_LayerWithDmaInterface : OpInterface<"LayerWithDmaInterface"> {
+    let description = "Interface for SW operations that may use DMA";
+
+    let cppNamespace = "vpux::IE";
+
+    let methods = [
+        InterfaceMethod<
+            "Checks if the IE operation supports mapping to a DMA variant operation",
+            "bool", "isSupported", (ins)
         >
     ];
 }
@@ -203,6 +225,23 @@ def IE_QuantizedLayerOpInterface : OpInterface<"QuantizedLayerOpInterface"> {
 }
 
 //
+// MPEEngineInfoOpInterface
+//
+
+def IE_MPEEngineInfoOpInterface : OpInterface<"MPEEngineInfoOpInterface"> {
+    let description = "Interface for querying the MPE engine mode.";
+    let cppNamespace = "vpux::IE";
+
+    let methods = [
+    InterfaceMethod<
+        "Get the current MPE engine mode.",
+        "mlir::Attribute",
+        "getMPEEngineMode"
+    >
+];
+}
+
+//
 // LayoutInfoOpInterface
 //
 
@@ -215,7 +254,7 @@ def IE_LayoutInfoOpInterface : OpInterface<"LayoutInfoOpInterface"> {
         InterfaceMethod<
             "Infer supported Data Layouts from inputs to outputs or describe the supported combination",
             "void", "inferLayoutInfo",
-            (ins "vpux::IE::LayerLayoutInfo&":$info, "const bool":$seOpsEnabled, "const bool":$seExperimentalOpsEnabled)
+            (ins "vpux::IE::LayerLayoutInfo&":$info)
         >,
 
         InterfaceMethod<
@@ -295,6 +334,30 @@ def IE_SEOpInterface : OpInterface<"SEOpInterface"> {
     let description = "Interface for operations that can be executed using the Storage Element feature";
 
     let cppNamespace = "vpux::IE";
+
+    let methods = [
+        InterfaceMethod<
+            "Check if the operation can be executed using the Storage Element feature",
+            "bool", "isSupported", (ins
+                "const FuncRef<void(const formatv_object_base&)>&":$logCb,
+                "bool":$checkLayout,
+                "bool":$checkChannelAlignment,
+                "bool":$checkBatch
+            )
+        >,
+    ];
+
+    let extraClassDeclaration = [{
+        /// Overload that defaults checkLayout, checkChannelAlignment and checkBatch to false
+        bool isSupported(const FuncRef<void(const formatv_object_base&)>& logCb) {
+            return isSupported(logCb, /*checkLayout=*/false, /*checkChannelAlignment=*/false, /*checkBatch=*/false);
+        }
+        /// Overload that defaults checkBatch to false
+        bool isSupported(const FuncRef<void(const formatv_object_base&)>& logCb,
+                            bool checkLayout, bool checkChannelAlignment) {
+            return isSupported(logCb, checkLayout, checkChannelAlignment, /*checkBatch=*/false);
+        }
+    }];
 }
 
 //

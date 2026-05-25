@@ -4,8 +4,8 @@
 //
 
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW weights-table-reuse-mode=VF_ENABLED" --vertical-fusion-outlining="vf-outlining-tile-threshold=10 vf-outlining-instance-threshold=4" %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW weights-table-reuse-mode=VF_ENABLED" --vertical-fusion-outlining="vf-outlining-tile-threshold=10 vf-outlining-instance-threshold=4" %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module @VerticalFusionSimpleOutlining {

@@ -3,13 +3,13 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --vpu-arch=%arch% --split-enqueue-ops %s | FileCheck %s
-// REQUIRES: arch-NPU40XX
+// RUN: vpux-opt --split-input-file --platform=%platform% --split-enqueue-ops %s | FileCheck %s
+// REQUIRES: platform-NPU4000
 
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
-module @Convolution attributes {config.arch = #config.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+module @Convolution attributes {config.platform = #config.platform<NPU4000>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
   config.Resources 1 of @NCE at 1.700000e+03 MHz {
     builtin.module @ReservedMemory {
       module @DmaProfilingReservedMemory {
@@ -81,7 +81,7 @@ module @Convolution attributes {config.arch = #config.arch_kind<NPU40XX>, config
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
-module @Convolution attributes {config.arch = #config.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+module @Convolution attributes {config.platform = #config.platform<NPU4000>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
   config.Resources 1 of @NCE at 1.700000e+03 MHz {
     builtin.module @ReservedMemory {
       module @DmaProfilingReservedMemory {
@@ -160,7 +160,7 @@ module @Convolution attributes {config.arch = #config.arch_kind<NPU40XX>, config
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
-module @ConvolutionMulipleGroupsInSingleEnq attributes {config.arch = #config.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+module @ConvolutionMulipleGroupsInSingleEnq attributes {config.platform = #config.platform<NPU4000>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
   config.Resources 1 of @NCE at 1.700000e+03 MHz {
     builtin.module @ReservedMemory {
       module @DmaProfilingReservedMemory {

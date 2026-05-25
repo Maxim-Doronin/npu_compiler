@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --output-pipeline-tiling %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --output-pipeline-tiling %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 !qElemType0 = !quant.uniform<u8:f16, 0.14634351543351715>
 !qElemType1 = !quant.uniform<u8:f16, 1.000000e+00>

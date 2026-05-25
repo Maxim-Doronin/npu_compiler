@@ -59,7 +59,7 @@ TEST_F(MLIR_FeasibleMemorySchedulerSpilling, RemoveComputeOpRelocationSpillsForI
                 }
 
                 %t2, %r2 = async.execute [%t0, %t1] (%r0 as %arg2: !async.value<!Type_CMX>, %r1 as %arg3: !async.value<!Type_CMX>) -> !async.value<!Type_CMX> attributes {VPUIP.executor = @DPU, VPUIP.num_units = 1 : i64} {
-                    %1 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 21125 : i64} <{is_inplace = true, task_type = #VPUIP.nce_task_type<ELTWISE>}> input(%arg2 : !Type_CMX) weights(%arg3 : !Type_CMX) parent_input(%arg2 : !Type_CMX) parent_output(%buf_cmx_1 : !Type_CMX) outputs(%buf_cmx_1 : !Type_CMX) -> !Type_CMX  variants : {
+                    %1 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 21125 : i64, resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{is_inplace = true, task_type = #VPUIP.nce_task_type<ELTWISE>}> input(%arg2 : !Type_CMX) weights(%arg3 : !Type_CMX) parent_input(%arg2 : !Type_CMX) parent_output(%buf_cmx_1 : !Type_CMX) outputs(%buf_cmx_1 : !Type_CMX) -> !Type_CMX  variants : {
                             DPUTask {cluster_id = 0 : i64, mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, outEnd = [31, 31, 31], outStart = [0, 0, 0], pad = #VPU.Padding<bottom = 0 : i64, left = 0 : i64, right = 0 : i64, top = 0 : i64>}
                         } PPE : {
                             PPETask {ppe = #VPU.PPEStub<>}
@@ -223,7 +223,7 @@ TEST_F(MLIR_FeasibleMemorySchedulerSpilling, RemoveComputeOpRelocationSpillsForR
                 }
 
                 %t2, %r2 = async.execute [%t0] (%r0 as %arg8: !async.value<!Conv_In_CMX>) -> !async.value<!Conv_Out_CMX> attributes {VPUIP.executor = @DPU, VPUIP.num_units = 1 : i64} {
-                    %270 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 11735 : i64, constantsFused = true} <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<CONV>}>
+                    %270 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 11735 : i64, constantsFused = true, resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<CONV>}>
                         input(%arg8 : !Conv_In_CMX) weights(%arg1 : !Conv_Weights_CMX)  weight_table(%arg2 : !Conv_WT_CMX) parent_input(%arg8 : !Conv_In_CMX) parent_output(%conv1_out_cmx : !Conv_Out_CMX) outputs(%conv1_out_cmx : !Conv_Out_CMX) -> !Conv_Out_CMX  variants : {
                             DPUTask {cluster_id = 0 : i64, inEnd = [27, 27, 127], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, outEnd = [27, 27, 511], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
                         } PPE : {
@@ -233,7 +233,7 @@ TEST_F(MLIR_FeasibleMemorySchedulerSpilling, RemoveComputeOpRelocationSpillsForR
                 }
 
                 %t4, %r4 = async.execute [%t1, %t2] (%r1 as %arg8: !async.value<!EltWise_CMX>, %r2 as %arg9: !async.value<!Conv_Out_CMX>) -> !async.value<!EltWise_CMX> attributes {VPUIP.executor = @DPU, VPUIP.num_units = 1 : i64} {
-                    %270 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 21125 : i64} <{is_inplace = true, task_type = #VPUIP.nce_task_type<ELTWISE>}>
+                    %270 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 21125 : i64, resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{is_inplace = true, task_type = #VPUIP.nce_task_type<ELTWISE>}>
                         input(%arg9 : !Conv_Out_CMX) weights(%arg8 : !EltWise_CMX) parent_input(%arg9 : !Conv_Out_CMX) parent_output(%conv1_out_cmx : !Conv_Out_CMX) outputs(%conv1_out_cmx : !Conv_Out_CMX) -> !EltWise_CMX  variants : {
                             DPUTask {cluster_id = 0 : i64, inEnd = [27, 27, 511], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, outEnd = [27, 27, 511], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
                             } PPE : {
@@ -244,7 +244,7 @@ TEST_F(MLIR_FeasibleMemorySchedulerSpilling, RemoveComputeOpRelocationSpillsForR
                 }
 
                 %t5, %r5 = async.execute [%t4] (%r4 as %arg8: !async.value<!EltWise_CMX>) -> !async.value<!DWConv_OUT_CMX> attributes {VPUIP.executor = @DPU, VPUIP.num_units = 1 : i64} {
-                        %270 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 8240 : i64, constantsFused = true} <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<DWCONV>}>
+                        %270 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 8240 : i64, constantsFused = true, resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<DWCONV>}>
                         input(%arg8 : !EltWise_CMX) weights(%arg4 : !DWConv_Weights_CMX)  weight_table(%arg5 : !DWConv_WT_CMX) parent_input(%arg8 : !EltWise_CMX) parent_output(%dwconv_out_cmx : !DWConv_OUT_CMX) outputs(%dwconv_out_cmx : !DWConv_OUT_CMX) -> !DWConv_OUT_CMX  variants : {
                         DPUTask {cluster_id = 0 : i64, inEnd = [27, 9, 63], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [27, 9, 63], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
                         } PPE : {
@@ -440,7 +440,7 @@ TEST_F(MLIR_FeasibleMemorySchedulerSpilling, RemoveComputeOpRelocationSpillsForS
                 }
 
                 %t2, %r2 = async.execute [%t0, %t1] (%r0 as %arg2: !async.value<!Type_CMX>, %r1 as %arg3: !async.value<!Type_CMX>) -> !async.value<!Type_CMX> attributes {VPUIP.executor = @DPU, VPUIP.num_units = 1 : i64} {
-                    %270 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 21125 : i64} <{is_inplace = true, task_type = #VPUIP.nce_task_type<ELTWISE>}> input(%arg2 : !Type_CMX) weights(%arg3 : !Type_CMX) parent_input(%arg2 : !Type_CMX) parent_output(%buf_cmx_3 : !Type_CMX) outputs(%buf_cmx_3 : !Type_CMX) -> !Type_CMX  variants : {
+                    %270 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 21125 : i64, resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{is_inplace = true, task_type = #VPUIP.nce_task_type<ELTWISE>}> input(%arg2 : !Type_CMX) weights(%arg3 : !Type_CMX) parent_input(%arg2 : !Type_CMX) parent_output(%buf_cmx_3 : !Type_CMX) outputs(%buf_cmx_3 : !Type_CMX) -> !Type_CMX  variants : {
                             DPUTask {cluster_id = 0 : i64, mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, outEnd = [15, 71, 127], outStart = [0, 0, 0], pad = #VPU.Padding<bottom = 0 : i64, left = 0 : i64, right = 0 : i64, top = 0 : i64>}
                         } PPE : {
                             PPETask {ppe = #VPU.PPEStub<>}
@@ -648,7 +648,7 @@ TEST_F(MLIR_FeasibleMemorySchedulerSpilling, OptimizeDataOpsSpillsForReRead) {
 
                 %t2, %r2 = async.execute [%t0, %t1] (%r0 as %arg2: !async.value<!Type_CMX>, %r1 as %arg3: !async.value<!Type_CMX>)
                         -> !async.value<!Type_CMX> attributes {VPUIP.executor = @DPU, VPUIP.num_units = 1 : i64} {
-                    %1 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 21125 : i64} <{is_inplace = true, task_type = #VPUIP.nce_task_type<ELTWISE>}>
+                    %1 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 21125 : i64, resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{is_inplace = true, task_type = #VPUIP.nce_task_type<ELTWISE>}>
                     input(%arg2 : !Type_CMX) weights(%arg3 : !Type_CMX) parent_input(%arg2 : !Type_CMX) parent_output(%buf_cmx_1 : !Type_CMX) outputs(%buf_cmx_1 : !Type_CMX) -> !Type_CMX  variants : {
                             DPUTask {cluster_id = 0 : i64, mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, outEnd = [31, 31, 31], outStart = [0, 0, 0], pad = #VPU.Padding<bottom = 0 : i64, left = 0 : i64, right = 0 : i64, top = 0 : i64>}
                         } PPE : {
@@ -697,10 +697,13 @@ TEST_F(MLIR_FeasibleMemorySchedulerSpilling, OptimizeDataOpsSpillsForReRead) {
     auto dmaCount = dmaPorts.getCount();
 
     // init schedule
+    ComputeRegionsSchedule emptyComputeRegionsSchedule;
+    ComputeRegionVec emptyLoopRegions;
     FeasibleMemoryScheduler initSchedule(memKind, secondLvlMemKind, liveRange, depsInfo, log, scan, arch, vpuDev,
                                          costModel, tileCount, dmaCount, /*enableScheduleStatistics*/ false,
                                          /*optimizeFragmentation*/ true,
-                                         /*activelySpillForPrefetching*/ false);
+                                         /*activelySpillForPrefetching*/ false, std::move(emptyComputeRegionsSchedule),
+                                         std::move(emptyLoopRegions));
     auto scheduledOps = initSchedule.generateSchedule();
     // The initial scheduled ops
     // op = 0   cycles = 1 -> 2         inputs = <none>         outputs = [0 65536] size = 65536
@@ -738,6 +741,132 @@ TEST_F(MLIR_FeasibleMemorySchedulerSpilling, OptimizeDataOpsSpillsForReRead) {
     EXPECT_EQ(numOfDMA, 3);
 }
 
+TEST_F(MLIR_FeasibleMemorySchedulerSpilling, SkipReReadForSubViewWithSharedRootUsers) {
+    constexpr llvm::StringLiteral inputIR = R"(
+        #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+        !Type_DDR = memref<1x32x32x32xf16, #NCHW, @DDR>
+        !Type_CMX = memref<1x32x32x32xf16, #NCHW, [@CMX_NN, 0]>
+        !Type_Master_CMX = memref<1x64x32x32xf16, {order = #NCHW, strides = [65536, 1024, 32, 1]}, [@CMX_NN, 0]>
+        !Type_SubView_CMX = memref<1x32x32x32xf16, {order = #NCHW, strides = [65536, 1024, 32, 1]}, [@CMX_NN, 0]>
+
+        module @test {
+            func.func @main(%arg0: !Type_DDR, %arg1: !Type_DDR) -> !Type_CMX {
+                %buf_master = memref.alloc() : !Type_Master_CMX
+                %buf_cmx_3 = memref.alloc() : !Type_CMX
+
+                // Candidate data op with SubView from shared root.
+                %t0, %r0 = async.execute -> !async.value<!Type_Master_CMX> attributes {VPUIP.executor = @DMA_NN, VPUIP.num_units = 1 : i64} {
+                    %sv0 = VPUIP.SubView %buf_master [0, 0, 0, 0] [1, 32, 32, 32] : !Type_Master_CMX to !Type_SubView_CMX
+                    %1 = VPUIP.Copy inputs(%arg0 : !Type_DDR) outputs(%sv0 : !Type_SubView_CMX) -> !Type_SubView_CMX
+                    async.yield %buf_master : !Type_Master_CMX
+                }
+
+                // Another async.execute with SubView from the same root but different offsets.
+                %t1, %r1 = async.execute -> !async.value<!Type_Master_CMX> attributes {VPUIP.executor = @DMA_NN, VPUIP.num_units = 1 : i64} {
+                    %sv1 = VPUIP.SubView %buf_master [0, 32, 0, 0] [1, 32, 32, 32] : !Type_Master_CMX to !Type_SubView_CMX
+                    %1 = VPUIP.Copy inputs(%arg1 : !Type_DDR) outputs(%sv1 : !Type_SubView_CMX) -> !Type_SubView_CMX
+                    async.yield %buf_master : !Type_Master_CMX
+                }
+
+                // Consumer uses result of the candidate op so re-read would normally be considered.
+                %t2, %r2 = async.execute [%t0, %t1] (%r0 as %arg2: !async.value<!Type_Master_CMX>, %r1 as %arg3: !async.value<!Type_Master_CMX>) -> !async.value<!Type_CMX> attributes {VPUIP.executor = @DMA_NN, VPUIP.num_units = 1 : i64} {
+                    %sv2 = VPUIP.SubView %arg2 [0, 0, 0, 0] [1, 32, 32, 32] : !Type_Master_CMX to !Type_SubView_CMX
+                    %1 = VPUIP.Copy inputs(%sv2 : !Type_SubView_CMX) outputs(%buf_cmx_3 : !Type_CMX) -> !Type_CMX
+                    async.yield %1 : !Type_CMX
+                }
+
+                %r = async.await %r2 : !async.value<!Type_CMX>
+                return %r : !Type_CMX
+            }
+        }
+    )";
+
+    mlir::MLIRContext ctx(registry);
+    auto module = mlir::parseSourceString<mlir::ModuleOp>((inputIR).str(), &ctx);
+    ASSERT_TRUE(module.get() != nullptr);
+    auto func = module.get().lookupSymbol<mlir::func::FuncOp>("main");
+    ASSERT_TRUE(func != nullptr);
+
+    const auto memKind = VPU::MemoryKind::CMX_NN;
+    const auto secondLvlMemKind = VPU::MemoryKind::DDR;
+    auto aliasesInfo = AliasesInfoMemType<VPU::MemoryKind::CMX_NN>{func};
+    AsyncDepsInfo depsInfo{func};
+    auto log = vpux::Logger::global().nest("feasible-memory-scheduler-spilling");
+    uint64_t alignment = vpux::DEFAULT_CMX_ALIGNMENT;
+    LinearScan<mlir::Value, LinearScanHandler> scan(1024 * 1024, {}, alignment);
+
+    mlir::async::ExecuteOp execCandidate = nullptr;
+    mlir::async::ExecuteOp execOther = nullptr;
+    mlir::async::ExecuteOp execConsumer = nullptr;
+    func.walk([&](mlir::async::ExecuteOp execOp) {
+        auto depIndexAttr = execOp->getAttrOfType<mlir::IntegerAttr>("async-deps-index");
+        if (depIndexAttr == nullptr) {
+            return;
+        }
+        const auto depIndex = depIndexAttr.getInt();
+        if (depIndex == 0) {
+            execCandidate = execOp;
+        } else if (depIndex == 1) {
+            execOther = execOp;
+        } else if (depIndex == 2) {
+            execConsumer = execOp;
+        }
+    });
+
+    ASSERT_TRUE(execCandidate != nullptr);
+    ASSERT_TRUE(execOther != nullptr);
+    ASSERT_TRUE(execConsumer != nullptr);
+
+    mlir::Value candidateResult = nullptr;
+    mlir::Value otherResult = nullptr;
+    mlir::Value consumerResult = nullptr;
+
+    execCandidate.walk([&](VPUIP::CopyOp copyOp) {
+        candidateResult = aliasesInfo.getRoot(copyOp.getOutput());
+    });
+    execOther.walk([&](VPUIP::CopyOp copyOp) {
+        otherResult = aliasesInfo.getRoot(copyOp.getOutput());
+    });
+    execConsumer.walk([&](VPUIP::CopyOp copyOp) {
+        consumerResult = aliasesInfo.getRoot(copyOp.getOutput());
+    });
+
+    ASSERT_TRUE(candidateResult != nullptr);
+    ASSERT_TRUE(otherResult != nullptr);
+    ASSERT_TRUE(consumerResult != nullptr);
+
+    constexpr int64_t masterBufSize = 131072;
+    constexpr int64_t otherBufBegin = 0;
+    constexpr int64_t otherBufEnd = masterBufSize;
+    constexpr int64_t consumerBufBegin = 196608;
+    constexpr int64_t consumerBufEnd = 262144;
+
+    FeasibleMemoryScheduler::ScheduledOpInfoVec scheduledOps = {
+            {1, FeasibleMemoryScheduler::EOpType::ORIGINAL_OP, 0, 1, {}, {{otherBufBegin, otherBufEnd, otherResult}}},
+            {0, FeasibleMemoryScheduler::EOpType::ORIGINAL_OP, 1, 2, {}, {{0, masterBufSize, candidateResult}}},
+            {2,
+             FeasibleMemoryScheduler::EOpType::ORIGINAL_OP,
+             2,
+             3,
+             {{0, masterBufSize, candidateResult}, {otherBufBegin, otherBufEnd, otherResult}},
+             {{consumerBufBegin, consumerBufEnd, consumerResult}}}};
+
+    // Add spill pair as data-op spills (isDataOp=true), same setup style as OptimizeDataOpsSpillsForReRead.
+    scheduledOps.emplace_back(0, FeasibleMemoryScheduler::EOpType::IMPLICIT_SPILL_WRITE_OP, 3, 0, true);
+    scheduledOps.emplace_back(0, FeasibleMemoryScheduler::EOpType::IMPLICIT_SPILL_READ_OP, 4, 0, true);
+    scheduledOps[3].inputResourceInfo_ = {{0, masterBufSize, candidateResult}};
+    scheduledOps[4].outputResourceInfo_ = {{0, masterBufSize, candidateResult}};
+
+    FeasibleMemorySchedulerSpilling spilling(memKind, secondLvlMemKind, depsInfo, aliasesInfo, log, scan);
+    spilling.optimizeDataOpsSpills(scheduledOps);
+
+    // Re-read optimization must be skipped for shared-root SubView users.
+    ASSERT_EQ(scheduledOps.size(), 5);
+    EXPECT_EQ(scheduledOps[3].opType_, FeasibleMemoryScheduler::EOpType::IMPLICIT_SPILL_WRITE_OP);
+    EXPECT_EQ(scheduledOps[4].opType_, FeasibleMemoryScheduler::EOpType::IMPLICIT_SPILL_READ_OP);
+}
+
 TEST_F(MLIR_FeasibleMemorySchedulerSpilling, RemoveRedundantSpillWrite) {
     mlir::MLIRContext ctx(registry);
 
@@ -766,7 +895,7 @@ TEST_F(MLIR_FeasibleMemorySchedulerSpilling, RemoveRedundantSpillWrite) {
                 }
 
                 %t2, %r2 = async.execute [%t0, %t1] (%r0 as %arg2: !async.value<!Type_CMX>, %r1 as %arg3: !async.value<!Type_CMX>) -> !async.value<!Type_CMX> attributes {VPUIP.executor = @DPU, VPUIP.num_units = 1 : i64} {
-                    %1 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 21125 : i64} <{task_type = #VPUIP.nce_task_type<ELTWISE>}> input(%arg2 : !Type_CMX) weights(%arg3 : !Type_CMX) parent_input(%arg2 : !Type_CMX) parent_output(%buf_cmx_3 : !Type_CMX) outputs(%buf_cmx_3 : !Type_CMX) -> !Type_CMX  variants : {
+                    %1 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 21125 : i64, resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{task_type = #VPUIP.nce_task_type<ELTWISE>}> input(%arg2 : !Type_CMX) weights(%arg3 : !Type_CMX) parent_input(%arg2 : !Type_CMX) parent_output(%buf_cmx_3 : !Type_CMX) outputs(%buf_cmx_3 : !Type_CMX) -> !Type_CMX  variants : {
                             DPUTask {cluster_id = 0 : i64, mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, outEnd = [31, 31, 31], outStart = [0, 0, 0], pad = #VPU.Padding<bottom = 0 : i64, left = 0 : i64, right = 0 : i64, top = 0 : i64>}
                         } PPE : {
                             PPETask {ppe = #VPU.PPEStub<>}
@@ -891,7 +1020,7 @@ TEST_F(MLIR_FeasibleMemorySchedulerSpilling, SkipOptimizationForMultipleSpillRea
 
                 %t2, %r2 = async.execute [%t0, %t1] (%r0 as %arg2: !async.value<!Type_CMX>, %r1 as %arg3: !async.value<!Type_CMX>)
                         -> !async.value<!Type_CMX> attributes {VPUIP.executor = @DPU} {
-                    %1 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 21125 : i64}
+                    %1 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 21125 : i64, resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>}
                         <{is_inplace = true, task_type = #VPUIP.nce_task_type<ELTWISE>}>
                         input(%arg2 : !Type_CMX) weights(%arg3 : !Type_CMX)
                         parent_input(%arg2 : !Type_CMX) parent_output(%buf_cmx_1 : !Type_CMX)
