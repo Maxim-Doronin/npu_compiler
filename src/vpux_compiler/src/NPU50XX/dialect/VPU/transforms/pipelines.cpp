@@ -30,8 +30,8 @@ void vpux::VPU::arch50xx::buildIncrementalPipeline(mlir::OpPassManager& pm, cons
     }
     pm.addPass(VPU::createConvertNCEInterpolateToDWPass(log));
 
-    pm.addPass(VPU::createManualStrategyUtilsPass(options.writeStrategyToJson, writeStrategyFileLocation,
-                                                  options.readStrategyFromJson, readStrategyFileLocation,
+    pm.addPass(VPU::createManualStrategyUtilsPass(options.writeStrategyToJson, writeStrategyDefaultFileLocation,
+                                                  options.readStrategyFromJson, readStrategyDefaultFileLocation,
                                                   options.dumpStrategyToLog, false, log));
     pm.addPass(VPU::createSplitGRUSequencePass(log));
     pm.addPass(VPU::createApplyTilingMVN1SumPass(options.enablePrefetching, log));
@@ -39,7 +39,8 @@ void vpux::VPU::arch50xx::buildIncrementalPipeline(mlir::OpPassManager& pm, cons
 
     pm.addPass(VPU::createEnsureNCEOpsSizeRequirementsPass(/*enableOutputEnsurance=*/true,
                                                            /*enableDequantWeightEnsuranceBeforeStrategy=*/false,
-                                                           /*skipNonConvOC=*/false, log));
+                                                           /*skipConvOC=*/"SKIP_LARGE_SPATIAL",
+                                                           /*skipEltwiseOC=*/"SKIP_LARGE_SPATIAL", log));
     pm.addPass(VPU::createOptimizeConcatPass(/*optimizeOnlyOuterConcat*/ true,
                                              /*disablePassOnEntryFunctionForHostCompile=*/false, log));
 
@@ -47,7 +48,7 @@ void vpux::VPU::arch50xx::buildIncrementalPipeline(mlir::OpPassManager& pm, cons
 
     if (options.enableScfComputeOpsOutlining) {
         VPU::buildScfComputeOpsOutliningPipeline(pm, options.loopUnrollFactor, options.enableProfiling,
-                                                 options.enableCascadedUnrolling, log);
+                                                 options.enableCascadedUnrolling, options.enableAutoUnrolling, log);
     }
 
     auto& nestedPm = options.enableScfComputeOpsOutlining ? pm.nest<mlir::ModuleOp>() : pm;
@@ -111,12 +112,12 @@ void vpux::VPU::arch50xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
         pm.addPass(VPU::createLowerOpsToSENCEPass(log));
     }
 
-    pm.addPass(VPU::createFuseClampPass(log));
     pm.addPass(VPU::createFuseConvertPass(log));
 
     pm.addPass(VPU::createEnsureNCEOpsSizeRequirementsPass(options.enableOutputEnsurance,
                                                            options.enableDequantWeightEnsuranceBeforeStrategy,
-                                                           /*skipNonConvOC=*/true, log));
+                                                           /*skipConvOC=*/"SKIP_LARGE_SPATIAL",
+                                                           /*skipEltwiseOC=*/"SKIP_ALL", log));
     pm.addPass(VPU::createOptimizeConcatPass(/*optimizeOnlyOuterConcat*/ true,
                                              /*disablePassOnEntryFunctionForHostCompile=*/false, log));
 
@@ -131,9 +132,7 @@ void vpux::VPU::arch50xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     pm.addPass(VPU::arch50xx::createAutopadChannelsPass(log));
     pm.addPass(VPU::createAddExplicitPaddingBeforeNCEPermutePass(log));
 
-    if (options.enableInPlaceEltwise) {
-        pm.addPass(VPU::createDetectInPlaceEltwisePass(log));
-    }
+    pm.addPass(VPU::createDetectInPlaceEltwisePass(log));
 
     pm.addPass(VPU::createCostModelAnalysisConstructPass(log));
     if (options.enableSMPipeline) {

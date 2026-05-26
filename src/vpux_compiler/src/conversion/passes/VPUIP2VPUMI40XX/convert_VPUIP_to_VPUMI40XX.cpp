@@ -8,7 +8,6 @@
 #include "vpux/compiler/conversion.hpp"
 #include "vpux/compiler/core/profiling_metadata.hpp"
 #include "vpux/compiler/dialect/ELF/utils/utils.hpp"
-#include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPUMI40XX/ops.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
@@ -28,6 +27,7 @@
 #include <mlir/Transforms/DialectConversion.h>
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 
+#include <llvm/ADT/MapVector.h>
 #include <llvm/ADT/TypeSwitch.h>
 #include <llvm/Support/FileSystem.h>
 
@@ -44,11 +44,13 @@ using namespace vpux::vpuip2vpumi40xx;
 
 namespace {
 
-void enumerateOperations(mlir::func::FuncOp funcOp) {
-    // Note: it's not the 1st time type + tile & list part of index come up as key to distinguish a list
-    // of tasks, the same is used in VPUMI40XX::OpRanges. Consider reusing logic
-    // E#146741
+// Enumerate ops with sequential indices and chain TaskOpInterface ops in a single pass.
+// Merges the previously separate enumerateOperations and chainTasksInLists to avoid
+// two full block traversals. E#146741
+void enumerateAndChainOperations(mlir::func::FuncOp funcOp) {
     llvm::SmallDenseMap<std::tuple<mlir::OperationName, uint32_t, uint32_t>, uint32_t> counters;
+    llvm::SmallDenseMap<std::tuple<VPURegMapped::TaskType, uint32_t, uint32_t>, mlir::Value> lastTaskInList;
+
     // take op by l-value non-const reference as single "auto"
     // deduces mlir::Operation that calls deleted copy ctor
     for (auto& op : funcOp.getOps()) {
@@ -60,56 +62,46 @@ void enumerateOperations(mlir::func::FuncOp funcOp) {
         auto originalIndex = mlir::cast<VPURegMapped::IndexType>(result.getType());
         assert(originalIndex.getValue() == 0);
 
-        auto key = std::make_tuple(op.getName(), originalIndex.getTileIdx(), originalIndex.getListIdx());
+        auto enumKey = std::make_tuple(op.getName(), originalIndex.getTileIdx(), originalIndex.getListIdx());
         auto newIndex = VPURegMapped::IndexType::get(op.getContext(), originalIndex.getTileIdx(),
-                                                     originalIndex.getListIdx(), counters[key]++);
-
+                                                     originalIndex.getListIdx(), counters[enumKey]++);
         result.setType(newIndex);
-    }
-}
 
-void chainTasksInLists(mlir::func::FuncOp funcOp) {
-    // E#146741
-    llvm::SmallDenseMap<std::tuple<VPURegMapped::TaskType, uint32_t, uint32_t>, mlir::Value> lastTaskInListResult;
-    for (auto task : funcOp.getOps<VPURegMapped::TaskOpInterface>()) {
-        assert(!task.getPreviousTask());
-
-        auto index = task.getIndexType();
-        auto key = std::make_tuple(task.getTaskType(), index.getTileIdx(), index.getListIdx());
-        auto& previousTask = lastTaskInListResult[key];
-        if (previousTask) {
-            task.setPreviousTask(previousTask);
+        // Chain tasks in-place during enumeration
+        if (auto task = mlir::dyn_cast<VPURegMapped::TaskOpInterface>(&op)) {
+            assert(!task.getPreviousTask());
+            auto chainKey = std::make_tuple(task.getTaskType(), originalIndex.getTileIdx(), originalIndex.getListIdx());
+            auto& previousTask = lastTaskInList[chainKey];
+            if (previousTask) {
+                task.setPreviousTask(previousTask);
+            }
+            previousTask = result;
         }
-        previousTask = task.getResult();
     }
 }
 
 void finalizeBarriersLegalization(mlir::func::FuncOp funcOp) {
-    for (auto barrier : funcOp.getOps<VPUMI40XX::ConfigureBarrierOp>()) {
+    struct BarrierCounts {
         uint8_t producerCount = 0;
         uint8_t consumerCount = 0;
-        auto result = barrier.getResult();
-        for (auto user : result.getUsers()) {
-            auto executableTask = mlir::dyn_cast<VPUMI40XX::ExecutableTaskOpInterface>(user);
-            if (!executableTask) {
-                continue;
-            }
+    };
 
-            // Enqueue barrier can't be wait or update barrier otherwise we have a cycle
-            auto enqueueTarget = executableTask.getEnqueueBarrier();
-            if (enqueueTarget && enqueueTarget == result) {
-                continue;
-            }
+    mlir::DenseMap<mlir::Value, BarrierCounts> counts;
 
-            const auto increment = executableTask.getBarrierHitsCount();
-            if (llvm::is_contained(executableTask.waitBarriers(), result)) {
-                consumerCount += increment;
-            } else {
-                assert(llvm::is_contained(executableTask.updateBarriers(), result));
-                producerCount += increment;
-            }
+    // Iterate tasks directly; wait/update operand lists already classify barrier role,
+    // so no dyn_cast, enqueue filtering, or llvm::is_contained scans are needed
+    for (auto task : funcOp.getOps<VPUMI40XX::ExecutableTaskOpInterface>()) {
+        const auto increment = task.getBarrierHitsCount();
+        for (auto barrier : task.waitBarriers()) {
+            counts[barrier].consumerCount += increment;
         }
+        for (auto barrier : task.updateBarriers()) {
+            counts[barrier].producerCount += increment;
+        }
+    }
 
+    for (auto barrier : funcOp.getOps<VPUMI40XX::ConfigureBarrierOp>()) {
+        const auto& [producerCount, consumerCount] = counts[barrier.getResult()];
         assert(producerCount > 0 || consumerCount > 0);
         barrier.setProducerCount(producerCount);
         barrier.setConsumerCount(consumerCount);
@@ -117,65 +109,48 @@ void finalizeBarriersLegalization(mlir::func::FuncOp funcOp) {
 }
 
 void replaceReturnOpWithOpRanges(mlir::func::FuncOp funcOp) {
-    auto context = funcOp->getContext();
-    auto taskOps = funcOp.getOps<VPURegMapped::TaskOpInterface>();
+    auto* context = funcOp->getContext();
 
-    using Range = std::tuple<VPURegMapped::TaskType, uint32_t, uint32_t>;
-    const auto getRange = [](auto taskOp) {
+    struct RangeInfo {
+        mlir::Value begin;
+        mlir::Value end;
+        mlir::Attribute taskTypeAttr;
+    };
+
+    using RangeKey = std::tuple<VPURegMapped::TaskType, uint32_t, uint32_t>;
+    llvm::MapVector<RangeKey, RangeInfo> ranges;
+
+    for (auto taskOp : funcOp.getOps<VPURegMapped::TaskOpInterface>()) {
         const auto index = taskOp.getIndexType();
-        return std::make_tuple(taskOp.getTaskType(), index.getTileIdx(), index.getListIdx());
-    };
+        auto key = std::make_tuple(taskOp.getTaskType(), index.getTileIdx(), index.getListIdx());
+        auto result = taskOp.getResult();
 
-    mlir::DenseMap<Range, size_t> rangesSizes;
-    const auto getRangeSize = [&](auto taskOp) {
-        auto& rangeSize = rangesSizes[getRange(taskOp)];
-        if (rangeSize != 0) {
-            return rangeSize;
+        auto [it, inserted] = ranges.try_emplace(key, RangeInfo{});
+        auto& [begin, end, taskTypeAttr] = it->second;
+        if (inserted) {
+            begin = result;
+            taskTypeAttr = VPURegMapped::TaskTypeAttr::get(context, taskOp.getTaskType());
         }
-
-        const auto isOpFromTheSameRange = [taskOp, getRange](auto op) {
-            return getRange(taskOp) == getRange(op);
-        };
-
-        return rangeSize = std::count_if(std::begin(taskOps), std::end(taskOps), isOpFromTheSameRange);
-    };
-
-    const auto isFirst = [](auto taskOp) {
-        return taskOp.getIndexType().getValue() == 0;
-    };
-
-    const auto isLast = [getRangeSize](auto taskOp) {
-        return taskOp.getIndexType().getValue() == getRangeSize(taskOp) - 1;
-    };
-
-    mlir::DenseMap<Range, size_t> rangesIndexes;
-    mlir::SmallVector<mlir::Attribute> rangesTaskTypesAttrs;
-    mlir::SmallVector<mlir::Value> rangesBegins;
-    mlir::SmallVector<mlir::Value> rangesEnds;
-
-    for (auto taskOp : taskOps) {
-        const auto range = getRange(taskOp);
-        const auto result = taskOp.getResult();
-
-        if (isFirst(taskOp)) {
-            rangesTaskTypesAttrs.push_back(VPURegMapped::TaskTypeAttr::get(context, taskOp.getTaskType()));
-            rangesBegins.push_back(result);
-            rangesEnds.push_back({});
-            rangesIndexes[range] = rangesBegins.size() - 1;
-        }
-
-        if (isLast(taskOp)) {
-            rangesEnds[rangesIndexes[range]] = result;
-        }
+        // Always update end; iteration order matches index order after enumerateOperations,
+        // so the last task seen per range has the highest index
+        end = result;
     }
 
-    assert(rangesSizes.size() == rangesIndexes.size());
-    assert(rangesIndexes.size() == rangesTaskTypesAttrs.size());
-    assert(rangesTaskTypesAttrs.size() == rangesBegins.size());
-    assert(rangesBegins.size() == rangesEnds.size());
+    SmallVector<mlir::Attribute> rangesTaskTypesAttrs;
+    SmallVector<mlir::Value> rangesBegins;
+    SmallVector<mlir::Value> rangesEnds;
+    rangesTaskTypesAttrs.reserve(ranges.size());
+    rangesBegins.reserve(ranges.size());
+    rangesEnds.reserve(ranges.size());
+
+    for (const auto& [_, info] : ranges) {
+        rangesTaskTypesAttrs.push_back(info.taskTypeAttr);
+        rangesBegins.push_back(info.begin);
+        rangesEnds.push_back(info.end);
+    }
 
     assert(funcOp.getBlocks().size() == 1);
-    auto returnOp = funcOp.getBlocks().front().getTerminator();
+    auto* returnOp = funcOp.getBlocks().front().getTerminator();
     assert(returnOp);
 
     mlir::OpBuilder builder(returnOp);
@@ -237,72 +212,70 @@ MappedInferenceTaskInfo collectMappedInferenceTaskInfo(mlir::func::FuncOp funcOp
     info.rangeCount.assign(tileCount, mlir::SmallVector<int64_t>(shavesPerTileCount, 0));
     info.invocationCount.assign(tileCount, mlir::SmallVector<int64_t>(shavesPerTileCount, 0));
 
-    auto extractIndex = [](mlir::Operation* op, [[maybe_unused]] size_t maxTile, [[maybe_unused]] size_t maxList) {
-        auto taskOp = mlir::dyn_cast<VPURegMapped::TaskOpInterface>(op);
-        assert(taskOp);
-
+    // Use getOps instead of walk to avoid recursing into nested regions (e.g. DPUInvariantOp).
+    // Dispatch via TaskType enum switch instead of TypeSwitch dyn_cast chain.
+    for (auto taskOp : funcOp.getOps<VPURegMapped::TaskOpInterface>()) {
         const auto indexType = taskOp.getIndexType();
         const auto tileIdx = indexType.getTileIdx();
         const auto listIdx = indexType.getListIdx();
+        auto result = taskOp.getResult();
 
-        assert(tileIdx < maxTile);
-        assert(listIdx < maxList);
-        return std::tuple<uint32_t, uint32_t>{tileIdx, listIdx};
-    };
+        switch (taskOp.getTaskType()) {
+        case VPURegMapped::TaskType::DMA:
+            assert(tileIdx < dmaTileCount && listIdx < dmaDirectionRank);
+            info.dmaCount[tileIdx][listIdx]++;
+            if (!info.dmaHeads[tileIdx][listIdx]) {
+                info.dmaHeads[tileIdx][listIdx] = result;
+            }
+            break;
+        case VPURegMapped::TaskType::DPUInvariant:
+            assert(tileIdx < tileCount);
+            info.invariantCount[tileIdx]++;
+            if (!info.invariantHeads[tileIdx]) {
+                info.invariantHeads[tileIdx] = result;
+            }
+            break;
+        case VPURegMapped::TaskType::DPUVariant:
+            assert(tileIdx < tileCount);
+            info.variantCount[tileIdx]++;
+            if (!info.variantHeads[tileIdx]) {
+                info.variantHeads[tileIdx] = result;
+            }
+            break;
+        case VPURegMapped::TaskType::ActKernelRange:
+            assert(tileIdx < tileCount && listIdx < shavesPerTileCount);
+            info.rangeCount[tileIdx][listIdx]++;
+            if (!info.actKernelRangeHeads[tileIdx][listIdx]) {
+                info.actKernelRangeHeads[tileIdx][listIdx] = result;
+            }
+            break;
+        case VPURegMapped::TaskType::ActKernelInvocation:
+            assert(tileIdx < tileCount && listIdx < shavesPerTileCount);
+            info.invocationCount[tileIdx][listIdx]++;
+            info.hasInvocations = true;
+            if (!info.actKernelInvocationHeads[tileIdx][listIdx]) {
+                info.actKernelInvocationHeads[tileIdx][listIdx] = result;
+            }
+            break;
+        default:
+            break;
+        }
+    }
 
-    funcOp.walk([&](mlir::Operation* op) {
-        llvm::TypeSwitch<mlir::Operation*, void>(op)
-                .Case<VPUMI40XX::NNDMAOp>([&](auto dma) {
-                    auto [tileIdx, listIdx] = extractIndex(op, dmaTileCount, dmaDirectionRank);
-                    info.dmaCount[tileIdx][listIdx]++;
-                    if (!info.dmaHeads[tileIdx][listIdx]) {
-                        info.dmaHeads[tileIdx][listIdx] = dma.getResult();
-                    }
-                })
-                .Case<VPUMI40XX::DPUInvariantOp>([&](auto inv) {
-                    auto [tileIdx, _] = extractIndex(op, tileCount, 1);
-                    info.invariantCount[tileIdx]++;
-                    if (!info.invariantHeads[tileIdx]) {
-                        info.invariantHeads[tileIdx] = inv.getResult();
-                    }
-                })
-                .Case<VPUMI40XX::DPUVariantOp>([&](auto var) {
-                    auto [tileIdx, _] = extractIndex(op, tileCount, 1);
-                    info.variantCount[tileIdx]++;
-                    if (!info.variantHeads[tileIdx]) {
-                        info.variantHeads[tileIdx] = var.getResult();
-                    }
-                })
-                .Case<VPUMI40XX::ActKernelRangeOp>([&](auto range) {
-                    auto [tileIdx, shaveIdx] = extractIndex(op, tileCount, shavesPerTileCount);
-                    info.rangeCount[tileIdx][shaveIdx]++;
-                    if (!info.actKernelRangeHeads[tileIdx][shaveIdx]) {
-                        info.actKernelRangeHeads[tileIdx][shaveIdx] = range.getResult();
-                    }
-                })
-                .Case<VPUMI40XX::ActKernelInvocationOp>([&](auto invo) {
-                    auto [tileIdx, shaveIdx] = extractIndex(op, tileCount, shavesPerTileCount);
-                    info.invocationCount[tileIdx][shaveIdx]++;
-                    info.hasInvocations = true;
-                    if (!info.actKernelInvocationHeads[tileIdx][shaveIdx]) {
-                        info.actKernelInvocationHeads[tileIdx][shaveIdx] = invo.getResult();
-                    }
-                })
-                .Case<VPUMI40XX::ConfigureBarrierOp>([&](auto barrier) {
-                    if (!info.barrierTasks) {
-                        info.barrierTasks = barrier.getResult();
-                    }
-                    info.barrierCount++;
-                })
-                .Default([](mlir::Operation*) {});
-    });
+    // ConfigureBarrierOp does not implement TaskOpInterface, count separately
+    for (auto barrier : funcOp.getOps<VPUMI40XX::ConfigureBarrierOp>()) {
+        if (!info.barrierTasks) {
+            info.barrierTasks = barrier.getResult();
+        }
+        info.barrierCount++;
+    }
 
     return info;
 }
 
 std::pair<mlir::Value, SmallVector<mlir::Value>> setupActKernelRt(
         mlir::MLIRContext* ctx, mlir::ModuleOp& moduleOp, mlir::OpBuilder& builderFunc,
-        AllocateShaveStackFrames createStacks = AllocateShaveStackFrames::DISABLED) {
+        AllocateDDRStackFrames createDDRStacks = AllocateDDRStackFrames::DISABLED) {
     constexpr auto ACT_RT_CODE_BUFFER_SIZE = (1_MB).to<vpux::Byte>().count();
 
     // check for actShaveRt info
@@ -314,14 +287,15 @@ std::pair<mlir::Value, SmallVector<mlir::Value>> setupActKernelRt(
     // check for actShave stacks info
     auto swRtOpRange = moduleOp.getOps<VPURT::SWRunTimeOp>();
     SmallVector<mlir::Value> shaveStacks;
-    if (!swRtOpRange.empty() && createStacks == AllocateShaveStackFrames::ENABLED) {
+    if (!swRtOpRange.empty() && createDDRStacks == AllocateDDRStackFrames::ENABLED) {
         VPUX_THROW_WHEN(std::distance(swRtOpRange.begin(), swRtOpRange.end()) > 1,
                         "More than 1 instance of VPURT.SW.Runtime");
         auto swRtOp = *(swRtOpRange.begin());
 
         auto stackSizes = mlir::extractFromIntegerArrayAttr<int64_t>(swRtOp.getStacks());
-        VPUX_THROW_UNLESS(std::adjacent_find(stackSizes.begin(), stackSizes.end()) != stackSizes.end(),
-                          "Were expecting all stacks to be equal!");
+        VPUX_THROW_UNLESS(!stackSizes.empty(), "VPURT.SW.Runtime op should have non-empty 'stacks' attribute");
+        VPUX_THROW_UNLESS(std::equal(stackSizes.begin() + 1, stackSizes.end(), stackSizes.begin()),
+                          "Expected all stacks to be equal!");
 
         shaveStacks.reserve(stackSizes.size());
         for (auto idx : irange(stackSizes.size())) {
@@ -331,21 +305,21 @@ std::pair<mlir::Value, SmallVector<mlir::Value>> setupActKernelRt(
             // and to be able to correctly test E2E functionality.
             static constexpr size_t countSize = 16;
             static constexpr size_t overrideDefaultStackSize = countSize * Byte(1_KB).count();
-            auto stack = builderFunc.create<VPUMI40XX::ShaveStackFrameOp>(builderFunc.getUnknownLoc(), indexType,
-                                                                          overrideDefaultStackSize);
+            auto stack = builderFunc.create<VPUMI40XX::ShaveStackFrameBuffOp>(builderFunc.getUnknownLoc(), indexType,
+                                                                              overrideDefaultStackSize);
 
             shaveStacks.push_back(stack.getResult());
         }
     }
 
     if (runtimeKernelFunction) {
-        const auto kernelElf =
-                std::string(runtimeKernelFunction->getAttrOfType<mlir::StringAttr>("VPU.kernel_code").getValue());
+        auto kernelElf = runtimeKernelFunction->getAttrOfType<mlir::StringAttr>("VPU.kernel_code");
+        VPUX_THROW_UNLESS(kernelElf, "Expected 'VPU.kernel_code' attribute in runtime kernel function");
 
         auto trivialIndexType = VPURegMapped::IndexType::get(ctx, 0);
 
-        auto actShvRtOp = builderFunc.create<VPUMI40XX::ActShaveRtOp>(builderFunc.getUnknownLoc(), trivialIndexType,
-                                                                      mlir::StringAttr::get(ctx, kernelElf));
+        auto actShvRtOp =
+                builderFunc.create<VPUMI40XX::ActShaveRtOp>(builderFunc.getUnknownLoc(), trivialIndexType, kernelElf);
 
         actShvRt = actShvRtOp.getResult();
     } else {
@@ -363,7 +337,7 @@ std::pair<mlir::Value, SmallVector<mlir::Value>> setupActKernelRt(
     return std::make_pair(actShvRt, shaveStacks);
 }
 
-void createMappedInferenceOp(mlir::func::FuncOp funcOp, AllocateShaveStackFrames allocateShaveStackFrames) {
+void createMappedInferenceOp(mlir::func::FuncOp funcOp, AllocateDDRStackFrames allocateDDRStackFrames) {
     // hardcoded, to be replaced with proper HW capabilities
     constexpr auto dmaDirectionRank = size_t{2};
 
@@ -441,7 +415,7 @@ void createMappedInferenceOp(mlir::func::FuncOp funcOp, AllocateShaveStackFrames
 
     // create ActShaveRtOp
     if (hasInvocations) {
-        std::tie(actShvRt, actShaveStacks) = setupActKernelRt(ctx, moduleOp, builderFunc, allocateShaveStackFrames);
+        std::tie(actShvRt, actShaveStacks) = setupActKernelRt(ctx, moduleOp, builderFunc, allocateDDRStackFrames);
     }
 
     auto trivialIndexType = VPURegMapped::IndexType::get(ctx, 0);
@@ -485,33 +459,30 @@ void foldActKernelTextAndEntry(mlir::func::FuncOp funcOp) {
     using TextAndEntry = std::pair<VPUMI40XX::DeclareKernelTextOp, VPUMI40XX::DeclareKernelEntryOp>;
     mlir::DenseMap<mlir::StringRef, TextAndEntry> visited;
 
-    funcOp.walk([&visited](VPUMI40XX::DeclareKernelTextOp text) {
-        auto kernel = text.getKernelPath();
-        auto& [visitedText, _] = visited[kernel];
-        if (!visitedText) {
-            visitedText = text;
+    const auto replaceUses = [](auto op, auto& visitedOp) {
+        if (!visitedOp) {
+            visitedOp = op;
             return;
         }
-        text.replaceAllUsesWith(visitedText.getResult());
-        text.erase();
-    });
+        op.replaceAllUsesWith(visitedOp.getResult());
+        op.erase();
+    };
 
-    funcOp.walk([&visited](VPUMI40XX::DeclareKernelEntryOp entry) {
-        auto kernel = entry.getKernelPath();
-        auto& [_, visitedEntry] = visited[kernel];
-        if (!visitedEntry) {
-            visitedEntry = entry;
-            return;
-        }
-        entry.replaceAllUsesWith(visitedEntry.getResult());
-        entry.erase();
+    funcOp.walk([&](mlir::Operation* op) {
+        llvm::TypeSwitch<mlir::Operation*>(op)
+                .Case<VPUMI40XX::DeclareKernelTextOp>([&](auto text) {
+                    replaceUses(text, visited[text.getKernelPath()].first);
+                })
+                .Case<VPUMI40XX::DeclareKernelEntryOp>([&](auto entry) {
+                    replaceUses(entry, visited[entry.getKernelPath()].second);
+                });
     });
 }
 
 class ConvertVPUIP2VPUMI40XXPass final : public impl::ConvertVPUIP2VPUMI40XXBase<ConvertVPUIP2VPUMI40XXPass> {
 public:
-    ConvertVPUIP2VPUMI40XXPass(Logger log, bool enableMemorySideCache, AllocateShaveStackFrames allocateShaveStack)
-            : _enableMemorySideCacheOption(enableMemorySideCache), _allocateShaveStackFrames(allocateShaveStack) {
+    ConvertVPUIP2VPUMI40XXPass(Logger log, bool enableMemorySideCache, AllocateDDRStackFrames allocateDDRStackFrames)
+            : _enableMemorySideCacheOption(enableMemorySideCache), _allocateDDRStackFrames(allocateDDRStackFrames) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
@@ -520,11 +491,11 @@ public:
             return mlir::failure();
         }
 
-        if (allocateShaveStackFrames.hasValue()) {
-            _log.trace("Allocate stack shave has velue of {0}",
-                       allocateShaveStackFrames.getValue() ? "ENABLED" : "DISABLED");
-            _allocateShaveStackFrames = allocateShaveStackFrames.getValue() ? AllocateShaveStackFrames::ENABLED
-                                                                            : AllocateShaveStackFrames::DISABLED;
+        if (allocateDDRStackFrames.hasValue()) {
+            _log.trace("Allocate DDR shave stack frames has value of {0}",
+                       allocateDDRStackFrames.getValue() ? "ENABLED" : "DISABLED");
+            _allocateDDRStackFrames = allocateDDRStackFrames.getValue() ? AllocateDDRStackFrames::ENABLED
+                                                                        : AllocateDDRStackFrames::DISABLED;
         }
 
         return mlir::success();
@@ -532,7 +503,7 @@ public:
 
 private:
     bool _enableMemorySideCacheOption;
-    AllocateShaveStackFrames _allocateShaveStackFrames;
+    AllocateDDRStackFrames _allocateDDRStackFrames;
 
     void safeRunOnFunc() final {
         auto& ctx = getContext();
@@ -685,14 +656,13 @@ private:
 
         // finalize IR outside of DialectConversion when IR traversal is required
         finalizeBarriersLegalization(funcOp);
-        chainTasksInLists(funcOp);
 
-        enumerateOperations(funcOp);
-        // requires enumerateOperations to happen first
+        enumerateAndChainOperations(funcOp);
+        // requires enumerateAndChainOperations to happen first
         // as it relies on indexes to be valid
         replaceReturnOpWithOpRanges(funcOp);
 
-        createMappedInferenceOp(funcOp, _allocateShaveStackFrames);
+        createMappedInferenceOp(funcOp, _allocateDDRStackFrames);
 
         foldActKernelTextAndEntry(funcOp);
     }
@@ -701,6 +671,6 @@ private:
 }  // namespace
 
 std::unique_ptr<mlir::Pass> vpux::createConvertVPUIP2VPUMI40XXPass(Logger log, bool enableMemorySideCache,
-                                                                   AllocateShaveStackFrames allocateShaveStackFrames) {
-    return std::make_unique<ConvertVPUIP2VPUMI40XXPass>(log, enableMemorySideCache, allocateShaveStackFrames);
+                                                                   AllocateDDRStackFrames allocateDDRStackFrames) {
+    return std::make_unique<ConvertVPUIP2VPUMI40XXPass>(log, enableMemorySideCache, allocateDDRStackFrames);
 }

@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-translate --vpu-arch=%arch% --import-IE --set-upper-bounds="3 5" ./IR/shape-of-gather-strided-slice-test.xml -o %t
+// RUN: vpux-translate --platform=%platform% --import-IE --set-upper-bounds="3 5" ./IR/shape-of-gather-strided-slice-test.xml -o %t
 // RUN: FileCheck %s --input-file %t
-// REQUIRES: arch-NPU37XX
+// REQUIRES: platform-NPU3720
 
 // CHECK:  #C = affine_map<(d0) -> (d0)>
 // CHECK:  #NC = affine_map<(d0, d1) -> (d0, d1)>

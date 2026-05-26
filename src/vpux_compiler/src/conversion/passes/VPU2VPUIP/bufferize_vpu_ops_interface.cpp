@@ -24,6 +24,8 @@
 #include "vpux/utils/core/error.hpp"
 #include "vpux/utils/logger/logger.hpp"
 
+#include <mlir/Dialect/MemRef/IR/MemRef.h>
+
 using namespace vpux;
 
 namespace {
@@ -535,7 +537,7 @@ mlir::LogicalResult vpux::bufferizeOp(mlir::MLIRContext*, VPU::ZeroPointTableOp 
     auto zeroPointsDataAttr = origOp.getZeroPointTableDataAttr();
     VPUX_THROW_UNLESS(zeroPointsDataAttr, "ZeroPointTableOp at '{0}' has no zeroPointTableData", origOp->getLoc());
 
-    auto zeroPointsData = parseIntArrayAttr<int64_t>(zeroPointsDataAttr);
+    auto zeroPointsData = parseIntArrayAttr<int32_t>(zeroPointsDataAttr);
 
     auto weightsQuantPerAxisType = mlir::cast<mlir::quant::UniformQuantizedPerAxisType>(origOp.getWeightsElemType());
     auto isSigned = weightsQuantPerAxisType.isSigned();
@@ -544,18 +546,18 @@ mlir::LogicalResult vpux::bufferizeOp(mlir::MLIRContext*, VPU::ZeroPointTableOp 
     const auto outputShape = outputType.getShape();
 
     // Create constant with the zero-point table data
-    // Note: Template parameter (int8_t or uint8_t) controls how data is converted from int64_t,
+    // Note: Template parameter (int8_t or uint8_t) controls how data is converted from int32_t,
     // but the constant type is always i8 regardless of signedness. Unsigned values like uint8_t(255)
     // are stored as int8_t(-1) with the same bit pattern (0xFF).
     mlir::Value constOp;
     if (isSigned) {
-        auto zeroPointsDataI8 = to_small_vector(llvm::map_range(zeroPointsData, [](int64_t val) {
+        auto zeroPointsDataI8 = to_small_vector(llvm::map_range(zeroPointsData, [](int32_t val) {
             return static_cast<int8_t>(val);
         }));
         constOp = VPU::createNewWeightsTableTensor<int8_t>(rewriter, origOp->getLoc(), zeroPointsDataI8, outputShape,
                                                            rewriter.getI8Type());
     } else {
-        auto zeroPointsDataU8 = to_small_vector(llvm::map_range(zeroPointsData, [](int64_t val) {
+        auto zeroPointsDataU8 = to_small_vector(llvm::map_range(zeroPointsData, [](int32_t val) {
             return static_cast<uint8_t>(val);
         }));
         constOp = VPU::createNewWeightsTableTensor<uint8_t>(rewriter, origOp->getLoc(), zeroPointsDataU8, outputShape,
@@ -563,6 +565,32 @@ mlir::LogicalResult vpux::bufferizeOp(mlir::MLIRContext*, VPU::ZeroPointTableOp 
     }
 
     VPUX_THROW_WHEN(constOp == nullptr, "Failed to create constant for ZeroPointTableOp at '{0}'", origOp->getLoc());
+
+    rewriter.replaceOp(origOp, constOp);
+    return mlir::success();
+}
+
+//
+// bufferize VPU::DataPointerTableOp
+//
+
+mlir::LogicalResult vpux::bufferizeOp(mlir::MLIRContext*, VPU::DataPointerTableOp origOp,
+                                      VPU::DataPointerTableOp::Adaptor&, mlir::RewriterBase& rewriter) {
+    auto log = Logger::global().nest("one-shot-bufferize-VPUDataPointerTableOp", 0);
+    log.trace("Got '{0}' at '{1}'", origOp->getName(), origOp->getLoc());
+
+    auto dataPointerTableDataAttr = origOp.getDataPointerTableDataAttr();
+    VPUX_THROW_UNLESS(dataPointerTableDataAttr, "DataPointerTableOp at '{0}' has no dataPointerTableData",
+                      origOp->getLoc());
+
+    auto dataPointerTableData = parseIntArrayAttr<int32_t>(dataPointerTableDataAttr);
+
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
+    const auto outputShape = outputType.getShape();
+
+    // Create constant with the data-pointer table data
+    mlir::Value constOp = VPU::createNewWeightsTableTensor<int32_t>(rewriter, origOp->getLoc(), dataPointerTableData,
+                                                                    outputShape, getSInt32Type(rewriter.getContext()));
 
     rewriter.replaceOp(origOp, constOp);
     return mlir::success();
@@ -738,15 +766,148 @@ mlir::LogicalResult vpux::bufferizeOp(mlir::MLIRContext*, Core::ReinterpretCastO
     log.trace("Got '{0}' at '{1}'", origOp->getName(), origOp->getLoc());
 
     const auto newOutType = vpux::getBufferType(origOp.getResult().getType());
+
+    // Case: output is BoundedBuffer (e.g. memref<?x...> -> BoundedBuffer<data=memref<N...>, shape=...>).
+    // In host compile, at this boundary, dynamic-shape bufferization needs to materialize a VPUIP::BoundedBuffer.
+    // We do not want to model that as a single ReinterpretCast from one memref into both data and
+    // shape, so emit an explicit data cast, shape alloc, and GroupBoundedBuffer.
+    if (auto outBounded = mlir::dyn_cast<VPUIP::BoundedBufferType>(newOutType)) {
+        const auto dataType = mlir::dyn_cast<mlir::MemRefType>(outBounded.getData());
+        const auto shapeType = mlir::dyn_cast<mlir::MemRefType>(outBounded.getDynamicShape());
+        if (dataType == nullptr || shapeType == nullptr) {
+            return mlir::failure();
+        }
+        auto dataCast = rewriter.create<Core::ReinterpretCastOp>(appendLoc(origOp->getLoc(), "_data"), dataType,
+                                                                 newArgs.getInput());
+        auto shapeAlloc = rewriter.create<mlir::memref::AllocOp>(appendLoc(origOp->getLoc(), "_shape"), shapeType);
+        auto grouped = rewriter.create<VPUIP::GroupBoundedBufferOp>(appendLoc(origOp->getLoc(), "_grouped"),
+                                                                    dataCast.getResult(), shapeAlloc);
+        mlir::bufferization::replaceOpWithBufferizedValues(rewriter, origOp, grouped->getResults());
+        return mlir::success();
+    }
+
+    // Case: input is BoundedBuffer (e.g. BoundedBuffer<...> -> memref<?x...>)
+    if (mlir::isa<VPUIP::BoundedBufferType>(newArgs.getInput().getType())) {
+        auto ungroup = rewriter.create<VPUIP::UngroupBoundedBufferOp>(appendLoc(origOp->getLoc(), "_ungroup"),
+                                                                      newArgs.getInput());
+        auto dataCast = rewriter.create<Core::ReinterpretCastOp>(appendLoc(origOp->getLoc(), "_data"), newOutType,
+                                                                 ungroup.getData());
+        mlir::bufferization::replaceOpWithBufferizedValues(rewriter, origOp, dataCast->getResults());
+        return mlir::success();
+    }
+
+    // Default: straightforward memref-to-memref reinterpret cast.
     auto newOp = rewriter.create<Core::ReinterpretCastOp>(origOp->getLoc(), newOutType, newArgs.getInput());
     mlir::bufferization::replaceOpWithBufferizedValues(rewriter, origOp, newOp->getResults());
+    return mlir::success();
+}
+
+bool vpux::NestedCallOpBufferizeModel::bufferizesToMemoryReadImpl(
+        Core::NestedCallOp op, mlir::OpOperand& opOperand, const mlir::bufferization::AnalysisState& state) const {
+    auto funcOp = vpux::getCalledFunction(op);
+
+    if (getFuncOpAnalysisState(state, funcOp) != mlir::bufferization::func_ext::FuncOpAnalysisState::Analyzed) {
+        return true;
+    }
+
+    const auto& funcState = getFuncOneShotAnalysisState(state);
+    return funcState.readBbArgs.lookup(funcOp).contains(opOperand.getOperandNumber());
+}
+
+bool vpux::NestedCallOpBufferizeModel::bufferizesToMemoryWriteImpl(
+        Core::NestedCallOp op, mlir::OpOperand& opOperand, const mlir::bufferization::AnalysisState& state) const {
+    auto funcOp = vpux::getCalledFunction(op);
+
+    if (getFuncOpAnalysisState(state, funcOp) != mlir::bufferization::func_ext::FuncOpAnalysisState::Analyzed) {
+        // FuncOp not analyzed yet. Assume that OpOperand is written.
+        return true;
+    }
+
+    const auto& funcState = getFuncOneShotAnalysisState(state);
+    return funcState.writtenBbArgs.lookup(funcOp).contains(opOperand.getOperandNumber());
+}
+
+mlir::bufferization::AliasingValueList vpux::NestedCallOpBufferizeModel::getAliasingValuesImpl(
+        Core::NestedCallOp op, mlir::OpOperand& opOperand, const mlir::bufferization::AnalysisState& state) const {
+    auto funcOp = vpux::getCalledFunction(op);
+
+    if (getFuncOpAnalysisState(state, funcOp) != mlir::bufferization::func_ext::FuncOpAnalysisState::Analyzed) {
+        // FuncOp not analyzed yet. Any OpResult may be aliasing.
+        return mlir::bufferization::detail::unknownGetAliasingValues(opOperand);  // Note: using 'detail' namespace!
+    }
+
+    const auto& funcState = getFuncOneShotAnalysisState(state);
+    auto aliasingReturnVals = funcState.aliasingReturnVals.lookup(funcOp).lookup(opOperand.getOperandNumber());
+
+    std::optional<int64_t> equivalent = {};
+    if (aliasingReturnVals.size() == 1) {
+        equivalent = getEquivalentFuncArgIdx(funcOp, funcState, aliasingReturnVals.front());
+        VPUX_THROW_WHEN((equivalent.has_value() && *equivalent != opOperand.getOperandNumber()),
+                        "inconsistent analysis state");
+    }
+
+    mlir::bufferization::AliasingValueList result;
+    for (auto resultIdx : aliasingReturnVals) {
+        result.addAlias({op->getOpResult(resultIdx),
+                         equivalent.has_value() ? mlir::bufferization::BufferRelation::Equivalent
+                                                : mlir::bufferization::BufferRelation::Unknown,
+                         /*isDefinite=*/equivalent.has_value()});
+    }
+    return result;
+}
+
+mlir::LogicalResult vpux::NestedCallOpBufferizeModel::bufferizeImpl(
+        Core::NestedCallOp op, mlir::RewriterBase& rewriter, const mlir::bufferization::BufferizationOptions& options,
+        mlir::bufferization::BufferizationState& state, Core::NestedCallOp::Adaptor&) const {
+    auto log = vpux::Logger::global().nest("one-shot-bufferize-CallOp", 0);
+    log.trace("Got '{0}' at '{1}'", op->getName(), op->getLoc());
+
+    auto funcOp = getCalledFunction(op);
+    auto funcType = funcOp.getFunctionType();
+
+    SmallVector<mlir::Type> resultTypes;
+    resultTypes.reserve(op.getNumResults());
+    for (auto result : op.getResults()) {
+        auto returnType = result.getType();
+        if (!mlir::isa<mlir::TensorType>(returnType)) {
+            resultTypes.push_back(returnType);
+            continue;
+        }
+        resultTypes.push_back(funcType.getResult(result.getResultNumber()));
+    }
+
+    SmallVector<mlir::Value> newOperands;
+    newOperands.reserve(op->getOperands().size());
+    for (auto& opOperand : op->getOpOperands()) {
+        auto maybeBuffer = mlir::bufferization::getBuffer(rewriter, opOperand.get(), options, state);
+        VPUX_THROW_WHEN(mlir::failed(maybeBuffer), "Bufferization process failed for operand '{0}'", opOperand.get());
+
+        auto buffer = *maybeBuffer;
+        auto memRefType = mlir::cast<mlir::MemRefType>(funcType.getInput(opOperand.getOperandNumber()));
+        if (buffer.getType() != memRefType) {
+            auto memrefDstType = mlir::cast<mlir::MemRefType>(memRefType);
+            mlir::FailureOr<mlir::Value> replacement =
+                    mlir::bufferization::castOrReallocMemRefValue(rewriter, buffer, memrefDstType, options);
+            if (mlir::failed(replacement)) {
+                return mlir::failure();
+            }
+            buffer = *replacement;
+        }
+        newOperands.push_back(buffer);
+    }
+
+    auto newCallOp = rewriter.create<Core::NestedCallOp>(op.getLoc(), op.getCallee(), resultTypes, newOperands);
+    newCallOp->setAttrs(op->getAttrs());
+
+    mlir::bufferization::replaceOpWithBufferizedValues(rewriter, op, newCallOp->getResults());
+
     return mlir::success();
 }
 
 void vpux::registerCoreBufferizableOpInterfaces(mlir::DialectRegistry& registry) {
     registry.addExtension(+[](mlir::MLIRContext* ctx, vpux::Core::CoreDialect*) {
         Core::ReinterpretCastOp::attachInterface<VpuGenericOneShotBufferizeModel<Core::ReinterpretCastOp>>(*ctx);
-        Core::NestedCallOp::attachInterface<CallOpBufferizeModel<Core::NestedCallOp>>(*ctx);
+        Core::NestedCallOp::attachInterface<NestedCallOpBufferizeModel>(*ctx);
     });
 }
 
@@ -794,6 +955,7 @@ void vpux::registerVPUBufferizableOpInterfaces(mlir::DialectRegistry& registry) 
         VPU::GroupSparseTensorOp::attachInterface<VpuGenericOneShotBufferizeModel<VPU::GroupSparseTensorOp>>(*ctx);
         VPU::UngroupSparseTensorOp::attachInterface<VpuGenericOneShotBufferizeModel<VPU::UngroupSparseTensorOp>>(*ctx);
         VPU::StorageElementTableOp::attachInterface<VpuGenericOneShotBufferizeModel<VPU::StorageElementTableOp>>(*ctx);
+        VPU::DataPointerTableOp::attachInterface<VpuGenericOneShotBufferizeModel<VPU::DataPointerTableOp>>(*ctx);
         VPU::ZeroPointTableOp::attachInterface<VpuGenericOneShotBufferizeModel<VPU::ZeroPointTableOp>>(*ctx);
         VPU::ShapeCastOp::attachInterface<VpuGenericOneShotBufferizeModel<VPU::ShapeCastOp>>(*ctx);
         VPU::LayoutCastOp::attachInterface<VpuGenericOneShotBufferizeModel<VPU::LayoutCastOp>>(*ctx);

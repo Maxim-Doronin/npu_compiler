@@ -26,8 +26,6 @@
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/utils/logger/logger.hpp"
 
-#include "mlir/Dialect/SCF/Utils/Utils.h"
-
 namespace vpux::VPU {
 #define GEN_PASS_DECL_UNROLLSCFLOOP
 #define GEN_PASS_DEF_UNROLLSCFLOOP
@@ -129,26 +127,76 @@ mlir::scf::ForOp findParentForOpFromOffset(mlir::OpFoldResult offset) {
     return nullptr;
 }
 
-void mapUnrollFactorToLoop(mlir::func::FuncOp funcOp, const SmallVector<int64_t>& unrollFactor,
-                           SmallVector<LoopInfo>& loops) {
+// Computes an automatic unroll factor from the max trip count of the given scf.for loop.
+std::optional<int64_t> computeAutoUnrollFactor(mlir::scf::ForOp forOp, Logger log) {
+    OpChainAnalysis opChainAnalysis;
+    auto [low, high, step] = opChainAnalysis.getForOpParams(forOp);
+    int64_t factor = (high - low) / step;
+    if (factor < 2) {
+        return std::nullopt;
+    }
+    log.trace("Auto-unroll: low={0}, high={1}, step={2}, factor={3}", low, high, step, factor);
+    return factor;
+}
+
+// Maps manually specified unroll factors to loops by matching insert_slice offset dimensions.
+// Processes all dimensions without early return, preserving multi-dimension unrolling (e.g. [1,1,30,4]).
+void mapManualUnrollFactors(mlir::func::FuncOp funcOp, ArrayRef<int64_t> unrollFactor, SmallVector<LoopInfo>& loops,
+                            Logger log) {
     funcOp.walk([&](mlir::scf::ForOp forOp) {
-        auto insertSliceOps = forOp.getOps<mlir::tensor::InsertSliceOp>();
-        for (auto insertSliceOp : insertSliceOps) {
+        for (auto insertSliceOp : forOp.getOps<mlir::tensor::InsertSliceOp>()) {
             for (auto [idx, offset] : llvm::enumerate(insertSliceOp.getMixedOffsets())) {
-                if (unrollFactor[idx] > 1) {
-                    mlir::scf::ForOp parentLoop = findParentForOpFromOffset(offset);
-                    if (parentLoop != nullptr) {
-                        for (auto& loop : loops) {
-                            if (loop.loopOp == parentLoop.getOperation()) {
-                                loop.unrollFactor = unrollFactor[idx];
-                                loop.dim = vpux::Dim(idx);
-                                break;
-                            }
+                if (idx >= unrollFactor.size() || unrollFactor[idx] <= 1) {
+                    continue;
+                }
+                mlir::scf::ForOp parentLoop = findParentForOpFromOffset(offset);
+                if (parentLoop == nullptr) {
+                    continue;
+                }
+                for (auto& loop : loops) {
+                    if (loop.loopOp == parentLoop.getOperation()) {
+                        if (loop.unrollFactor > 1 &&
+                            (loop.unrollFactor != unrollFactor[idx] || loop.dim != vpux::Dim(idx))) {
+                            log.warning("Loop already assigned factor {0} at dim {1}, overwriting with {2} at dim {3}",
+                                        loop.unrollFactor, loop.dim.ind(), unrollFactor[idx], idx);
                         }
+                        loop.unrollFactor = unrollFactor[idx];
+                        loop.dim = vpux::Dim(idx);
+                        break;
                     }
                 }
             }
         }
+    });
+}
+
+// Computes and maps automatic unroll factors based on loop trip counts.
+// Uses DenseSet to track already-assigned loops across the entire function,
+// preventing auto-unrolling of multiple dimensions per loop (which causes IR blow-up).
+void mapAutoUnrollFactors(mlir::func::FuncOp funcOp, SmallVector<LoopInfo>& loops, Logger log) {
+    llvm::DenseSet<mlir::Operation*> assignedLoops;
+    funcOp.walk([&](mlir::scf::ForOp forOp) -> mlir::WalkResult {
+        for (auto insertSliceOp : forOp.getOps<mlir::tensor::InsertSliceOp>()) {
+            for (auto [idx, offset] : llvm::enumerate(insertSliceOp.getMixedOffsets())) {
+                mlir::scf::ForOp parentLoop = findParentForOpFromOffset(offset);
+                if (parentLoop == nullptr || assignedLoops.contains(parentLoop.getOperation())) {
+                    continue;
+                }
+                auto factor = computeAutoUnrollFactor(parentLoop, log);
+                if (!factor.has_value()) {
+                    continue;
+                }
+                for (auto& loop : loops) {
+                    if (loop.loopOp == parentLoop.getOperation()) {
+                        loop.unrollFactor = factor.value();
+                        loop.dim = vpux::Dim(idx);
+                        assignedLoops.insert(parentLoop.getOperation());
+                        return mlir::WalkResult::advance();
+                    }
+                }
+            }
+        }
+        return mlir::WalkResult::advance();
     });
 }
 
@@ -245,11 +293,13 @@ mlir::LogicalResult fuseSiblingUnrolledLoops(mlir::func::FuncOp funcOp) {
  * - Merges unrolled operations using the collected tile dimension information
  *
  * @param funcOp The MLIR function operation to process for loop unrolling
- * @param unrollFactor List of unroll factors to apply to different loop dimensions
+ * @param unrollFactor List of unroll factors per dimension, used as fallback when loop lacks
+ *        the "unrolled-factor" attribute. May be empty in auto-unrolling mode, in which case
+ *        the fallback is 1 (unrolled loops always carry the attribute from unrollLoopsAndSetAttributes).
  * @return mlir::LogicalResult Success if all loops were processed successfully,
  *         failure if any merge operation failed or was interrupted
  */
-mlir::LogicalResult processUnrolledLoops(mlir::func::FuncOp funcOp, const SmallVector<int64_t>& unrollFactor) {
+mlir::LogicalResult processUnrolledLoops(mlir::func::FuncOp funcOp, ArrayRef<int64_t> unrollFactor) {
     auto walkResult = funcOp.walk([&](mlir::scf::ForOp forOp) {
         SmallVector<TileDimensionInfo> tileDimensionsInfo;
         auto insertSliceOps = forOp.getOps<mlir::tensor::InsertSliceOp>();
@@ -269,7 +319,7 @@ mlir::LogicalResult processUnrolledLoops(mlir::func::FuncOp funcOp, const SmallV
             if (parentLoop != nullptr) {
                 auto unrolledFactor = parentLoop->hasAttr("unrolled-factor")
                                               ? parentLoop->getAttrOfType<mlir::IntegerAttr>("unrolled-factor").getInt()
-                                              : unrollFactor[idx];
+                                              : (idx < unrollFactor.size() ? unrollFactor[idx] : 1);
                 auto dimUnrollFactor = parentLoop->hasAttr("residual") ? 1 : unrolledFactor;
                 auto loopId = parentLoop->getAttrOfType<mlir::IntegerAttr>("id");
                 TileDimensionInfo dimInfo;
@@ -277,6 +327,7 @@ mlir::LogicalResult processUnrolledLoops(mlir::func::FuncOp funcOp, const SmallV
                 dimInfo.dimension = vpux::Dim(idx);
                 dimInfo.numBlocks = dimUnrollFactor;
                 dimInfo.isUnrolled = (dimUnrollFactor > 1);
+                dimInfo.forOp = parentLoop;
                 tileDimensionsInfo.emplace_back(dimInfo);
             }
         }
@@ -385,7 +436,7 @@ mlir::LogicalResult postProcessUnrolledLoop(mlir::UnrolledLoopInfo& result, mlir
     // Calculate base safe upper bound as min(mainLoop.upperBound, runtime-calculated originalDimSize)
     auto baseSafeUpperbound = builder.create<mlir::arith::MinUIOp>(loc, mainLoop.getUpperBound(), originalDimSize);
     // If there is not enough data to execute even a single iteration, set safe upperbound to current low. It prevents
-    // any iterations at all. we just got to the next loop
+    // any iterations at all. Execution proceeds to the next loop.
     auto safeUpperbound = builder.create<mlir::arith::SelectOp>(loc, canExecute, baseSafeUpperbound, currentLow);
 
     // Update bounds. Next for loop starts from the place where current main loop ends
@@ -539,32 +590,42 @@ void UnrollSCFLoopPass::safeRunOnModule() {
     auto mainFuncOp = net::getMainFunc(moduleOp);
     mlir::OpBuilder builder(mainFuncOp);
 
-    if (_loopUnrollFactor.empty()) {
-        _log.trace("Unroll factor not specified or invalid. Skipping unroll scf pass");
-        signalPassFailure();
+    if (_loopUnrollFactor.empty() && !enableAutoUnrolling.getValue()) {
+        _log.trace("Unroll factor not specified and auto-unrolling disabled. Skipping unroll scf pass");
         return;
     }
 
-    SmallVector<int64_t> initialUnrollFactors{parseUnrollFactorsStr(_loopUnrollFactor)};
-    if (initialUnrollFactors.empty()) {
-        _log.trace("Unroll factor not specified or invalid. Skipping unroll scf pass");
-        return;
+    const bool hasManualFactors = !_loopUnrollFactor.empty();
+
+    SmallVector<int64_t> initialUnrollFactors;
+    if (hasManualFactors) {
+        initialUnrollFactors = parseUnrollFactorsStr(_loopUnrollFactor);
+        if (initialUnrollFactors.empty()) {
+            _log.error("Failed to parse unroll factors. Skipping unroll scf pass");
+            signalPassFailure();
+            return;
+        }
     }
 
-    // Check unroll factor constraints using LLVM utilities
-    auto numDimsToUnroll = llvm::count_if(initialUnrollFactors, [](auto factor) {
-        return factor > 1;
-    });
+    // Early validation: skip if all manual factors are <= 1
+    if (hasManualFactors) {
+        auto numDimsToUnroll = llvm::count_if(initialUnrollFactors, [](auto factor) {
+            return factor > 1;
+        });
 
-    if (numDimsToUnroll == 0) {
-        _log.trace("No unroll factors greater than 1 specified. Skipping unroll scf pass");
-        return;
-    }
+        if (numDimsToUnroll == 0) {
+            _log.trace("No unroll factors greater than 1 specified. Skipping unroll scf pass");
+            return;
+        }
 
-    if (numDimsToUnroll > 2) {
-        _log.error("Unsupported unroll config. Unroll scf pass failed");
-        signalPassFailure();
-        return;
+        // Manual multi-dimension unrolling combined with cascaded unrolling is not supported.
+        // Cascaded unrolling generates multi-stage epilogue chains per loop, and combining that
+        // with nD manual factors produces untested and potentially incorrect results.
+        VPUX_THROW_WHEN(numDimsToUnroll > 1 && enableCascadedUnrolling.getValue(),
+                        "Manual multi-dimension loop unrolling ({0} dims) with cascaded unrolling "
+                        "enabled is not supported. Specify enable-cascaded-unrolling=false or "
+                        "use a single-dimension unroll factor",
+                        numDimsToUnroll);
     }
 
     /* Collect all loops in the function from innermost to outermost
@@ -578,7 +639,20 @@ void UnrollSCFLoopPass::safeRunOnModule() {
         return;
     }
 
-    mapUnrollFactorToLoop(mainFuncOp, initialUnrollFactors, loopInfoVector);
+    // Manual factors take priority over auto-unrolling. The two modes are mutually exclusive.
+    if (hasManualFactors) {
+        mapManualUnrollFactors(mainFuncOp, initialUnrollFactors, loopInfoVector, _log);
+    } else {
+        mapAutoUnrollFactors(mainFuncOp, loopInfoVector, _log);
+    }
+
+    auto numLoopsToUnroll = llvm::count_if(loopInfoVector, [](const LoopInfo& info) {
+        return info.unrollFactor > 1;
+    });
+    if (numLoopsToUnroll == 0) {
+        _log.trace("No loops with unroll factor > 1 found after mapping. Skipping unroll scf pass");
+        return;
+    }
 
     if (mlir::failed(unrollLoopsAndSetAttributes(builder, loopInfoVector, enableCascadedUnrolling.getValue(), _log))) {
         signalPassFailure();
@@ -606,9 +680,10 @@ void UnrollSCFLoopPass::safeRunOnModule() {
 //
 
 std::unique_ptr<mlir::Pass> vpux::VPU::createUnrollSCFLoopPass(StringRef loopUnrollFactor, bool enableCascadedUnrolling,
-                                                               Logger log) {
+                                                               bool enableAutoUnrolling, Logger log) {
     UnrollSCFLoopOptions options;
     options.loopUnrollFactor = loopUnrollFactor.str();
     options.enableCascadedUnrolling = enableCascadedUnrolling;
+    options.enableAutoUnrolling = enableAutoUnrolling;
     return std::make_unique<UnrollSCFLoopPass>(options, log);
 }

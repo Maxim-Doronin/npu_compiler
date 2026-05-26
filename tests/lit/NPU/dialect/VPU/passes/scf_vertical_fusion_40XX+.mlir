@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --scf-vertical-fusion --resolve-shaped-type-result-dims --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --scf-vertical-fusion --resolve-shaped-type-result-dims --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 config.Resources 3 of @NCE at 1.700000e+03 MHz {
     config.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
@@ -14,16 +14,19 @@ config.Resources 3 of @NCE at 1.700000e+03 MHz {
 }
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-//CHECK: #[[$MAP0:.+]] = affine_map<(d0) -> ((d0 floordiv 26) * 25 + 35)>
-//CHECK: #[[$MAP1:.+]] = affine_map<(d0) -> (0, d0 - 1)>
-//CHECK: #[[$MAP2:.+]] = affine_map<(d0) -> (-d0 + 1, 0)>
-//CHECK: #[[$MAP3:.+]] = affine_map<()[s0] -> (1, s0)>
-//CHECK: #[[$MAP4:.+]] = affine_map<(d0, d1) -> (0, d0 + d1 - 958)>
-//CHECK: #[[$MAP5:.+]] = affine_map<(d0, d1, d2, d3) -> (0, d0 + d1 - d2 - d3 - 956)>
-//CHECK: #[[$MAP6:.+]] = affine_map<(d0, d1, d2, d3, d4, d5) -> (0, d0 - d1 - d2 + d3 - d4 - d5 - 954)>
-//CHECK: #[[$MAP7:.+]] = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7) -> (0, d0 - d1 - d2 - d3 - d4 + d5 - d6 - d7 - 952)>
-//CHECK: #[[$MAP8:.+]] = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8, d9) -> (0, d0 - d1 - d2 - d3 - d4 - d5 - d6 + d7 - d8 - d9 - 950)>
-//CHECK: #[[$MAP9:.+]] = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11) -> (0, d0 - d1 - d2 - d3 - d4 - d5 - d6 - d7 - d8 + d9 - d10 - d11 - 948)>
+//CHECK: #[[$OUT_OFFSET_AND_SIZE_MAP:.+]] = affine_map<(d0) -> ((d0 floordiv 26) * 26, (d0 floordiv 26) * 25 + 35)>
+//CHECK: #[[$TILE_INDEX_CAP_AND_REMAINDER_MAP:.+]] = affine_map<(d0) -> (d0 floordiv 26, 35)>
+//CHECK: #[[$OUT_SIZE_BY_CAPPED_TILE_INDEX_MAP:.+]] = affine_map<(d0) -> (-d0 + 60, 26)>
+//CHECK: #[[$TO_SLICE_OFFSET_MAP:.+]] = affine_map<(d0) -> (0, d0 - 1)>
+//CHECK: #[[$TO_PAD_CANDIDATE_MAP:.+]] = affine_map<(d0) -> (-d0 + 1, 0)>
+//CHECK: #[[$PAD_CLAMP_MAP:.+]] = affine_map<()[s0] -> (1, s0)>
+//CHECK: #[[$PAD_HIGH_STAGE5_CANDIDATE_MAP:.+]] = affine_map<(d0, d1) -> (0, d0 + d1 - 958)>
+//CHECK: #[[$PAD_HIGH_STAGE4_CANDIDATE_MAP:.+]] = affine_map<(d0, d1, d2, d3) -> (0, d0 + d1 - d2 - d3 - 956)>
+//CHECK: #[[$PAD_HIGH_STAGE3_CANDIDATE_MAP:.+]] = affine_map<(d0, d1, d2, d3, d4, d5) -> (0, d0 - d1 - d2 + d3 - d4 - d5 - 954)>
+//CHECK: #[[$PAD_HIGH_STAGE2_CANDIDATE_MAP:.+]] = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7) -> (0, d0 - d1 - d2 - d3 - d4 + d5 - d6 - d7 - 952)>
+//CHECK: #[[$PAD_HIGH_STAGE1_CANDIDATE_MAP:.+]] = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8, d9) -> (0, d0 - d1 - d2 - d3 - d4 - d5 - d6 + d7 - d8 - d9 - 950)>
+//CHECK: #[[$PAD_HIGH_STAGE0_CANDIDATE_MAP:.+]] = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11) -> (0, d0 - d1 - d2 - d3 - d4 - d5 - d6 - d7 - d8 + d9 - d10 - d11 - 948)>
+//CHECK: #[[$SLICE_SIZE_BY_OUT_AND_PAD_MAP:.+]] = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12) -> (-d0 - d1 - d2 - d3 - d4 - d5 - d6 - d7 - d8 - d9 + d10 - d11 - d12 + 12)>
 
 // CHECK-LABEL: @MergeVFChain3Tiles
 // CHECK-SAME:  [[INPUT:%arg[0-9]]]: tensor<1x256x540x120xf16, {order = #NHWC}>)
@@ -52,9 +55,7 @@ func.func @MergeVFChain3Tiles(%arg0: tensor<1x256x540x120xf16, {order = #NHWC}>)
 
     //CHECK-DAG: [[PAD_VALUE:%.+]] = arith.constant 0.000000e+00 : f16
     //CHECK-DAG: [[LOOP_STEP:%.+]] = arith.constant 26 : index
-    //CHECK-DAG: [[LOOP_STEP_REMAINDER:%.+]] = arith.constant 25 : index
     //CHECK-DAG: [[LOOP_END:%.+]] = arith.constant 960 : index
-    //CHECK-DAG: [[REAINDER_BOUND:%.+]] = arith.constant 910 : index
     //CHECK-DAG: [[LOOP_BEGIN:%.+]] = arith.constant 0 : index
 
     //CHECK: [[CAST_INPUT:%.+]] = VPU.ShapeCast {shape = [1, 32, 540, 960]} inputs([[INPUT]] : tensor<1x256x540x120xf16, {order = #NHWC}>) -> tensor<1x32x540x960xf16, {order = #NHWC}>
@@ -63,45 +64,41 @@ func.func @MergeVFChain3Tiles(%arg0: tensor<1x256x540x120xf16, {order = #NHWC}>)
     //CHECK-SAME:           [[LOOP_ITER:%arg[0-9]]] = [[LOOP_BEGIN]] to [[LOOP_END]] step [[LOOP_STEP]]
     //CHECK-SAME:           iter_args([[LOOP_OUT:%arg[0-9]]] = [[LOOP_OUTPUT]]) -> (tensor<1x32x540x960xf16, {order = #NHWC}>) {
 
-    //CHECK:        [[CMPI:%.+]] = arith.cmpi ult, [[LOOP_ITER]], [[REAINDER_BOUND]] : index
-    //CHECK:        [[OUT_SIZE:%.+]] = arith.select [[CMPI]], [[LOOP_STEP]], [[LOOP_STEP_REMAINDER]] : index
-    //CHECK:        [[IF:%.+]] = scf.if [[CMPI]]
-    //CHECK:           scf.yield [[LOOP_ITER]] : index
-    //CHECK:        else
-    //CHECK:           [[OFFSET_REMAINDER:%.+]] = affine.apply #[[$MAP0]]([[LOOP_ITER]])
-    //CHECK:        scf.yield [[OFFSET_REMAINDER]] : index
+    //CHECK:        [[OUT_OFFSET:%.+]] = affine.min #[[$OUT_OFFSET_AND_SIZE_MAP]]([[LOOP_ITER]])
+    //CHECK:        [[OUT_TILE_INDEX_CAP:%.+]] = affine.min #[[$TILE_INDEX_CAP_AND_REMAINDER_MAP]]([[LOOP_ITER]])
+    //CHECK:        [[OUT_SIZE:%.+]] = affine.min #[[$OUT_SIZE_BY_CAPPED_TILE_INDEX_MAP]]([[OUT_TILE_INDEX_CAP]])
 
-    //CHECK:        [[TEMP_VALUE0:%.+]] = affine.max #[[$MAP1]]([[IF]])
-    //CHECK:        [[TEMP_VALUE1:%.+]] = affine.max #[[$MAP2]]([[IF]])
-    //CHECK:        [[PAD_LOW5:%.+]] = affine.min #[[$MAP3]]()[[[TEMP_VALUE1]]]
-    //CHECK:        [[TEMP_VALUE2:%.+]] = affine.max #[[$MAP4]]([[OUT_SIZE]], [[TEMP_VALUE0]])
-    //CHECK:        [[PAD_HIGH5:%.+]] = affine.min #[[$MAP3]]()[[[TEMP_VALUE2]]]
-    //CHECK:        [[TEMP_VALUE3:%.+]] = affine.max #[[$MAP1]]([[TEMP_VALUE0]])
-    //CHECK:        [[TEMP_VALUE4:%.+]] = affine.max #[[$MAP2]]([[TEMP_VALUE0]])
-    //CHECK:        [[PAD_LOW4:%.+]] = affine.min #[[$MAP3]]()[[[TEMP_VALUE4]]]
-    //CHECK:        [[IN_SIZE0:%.+]] = affine.max #[[$MAP5]]([[TEMP_VALUE3]], [[OUT_SIZE]], [[PAD_LOW5]], [[PAD_HIGH5]])
-    //CHECK:        [[PAD_HIGH4:%.+]] = affine.min #[[$MAP3]]()[[[IN_SIZE0]]]
-    //CHECK:        [[TEMP_VALUE5:%.+]] = affine.max #[[$MAP1]]([[TEMP_VALUE3]])
-    //CHECK:        [[TEMP_VALUE6:%.+]] = affine.max #[[$MAP2]]([[TEMP_VALUE3]])
-    //CHECK:        [[PAD_LOW3:%.+]] = affine.min #[[$MAP3]]()[[[TEMP_VALUE6]]]
-    //CHECK:        [[TEMP_VALUE7:%.+]] = affine.max #[[$MAP6]]([[TEMP_VALUE5]], [[PAD_LOW4]], [[PAD_HIGH4]], [[OUT_SIZE]], [[PAD_LOW5]], [[PAD_HIGH5]])
-    //CHECK:        [[PAD_HIGH3:%.+]] = affine.min #[[$MAP3]]()[[[TEMP_VALUE7]]]
-    //CHECK:        [[TEMP_VALUE8:%.+]] = affine.max #[[$MAP1]]([[TEMP_VALUE5]])
-    //CHECK:        [[TEMP_VALUE9:%.+]] = affine.max #[[$MAP2]]([[TEMP_VALUE5]])
-    //CHECK:        [[PAD_LOW2:%.+]] = affine.min #[[$MAP3]]()[[[TEMP_VALUE9]]]
-    //CHECK:        [[TEMP_VALUE10:%.+]] = affine.max #[[$MAP7]]([[TEMP_VALUE8]], [[PAD_LOW3]], [[PAD_HIGH3]], [[PAD_LOW4]], [[PAD_HIGH4]], [[OUT_SIZE]], [[PAD_LOW5]], [[PAD_HIGH5]])
-    //CHECK:        [[PAD_HIGH2:%.+]] = affine.min #[[$MAP3]]()[[[TEMP_VALUE10]]]
-    //CHECK:        [[TEMP_VALUE11:%.+]] = affine.max #[[$MAP1]]([[TEMP_VALUE8]])
-    //CHECK:        [[TEMP_VALUE12:%.+]] = affine.max #[[$MAP2]]([[TEMP_VALUE8]])
-    //CHECK:        [[PAD_LOW1:%.+]] = affine.min #[[$MAP3]]()[[[TEMP_VALUE12]]]
-    //CHECK:        [[TEMP_VALUE13:%.+]] = affine.max #[[$MAP8]]([[TEMP_VALUE11]], [[PAD_LOW2]], [[PAD_HIGH2]], [[PAD_LOW3]], [[PAD_HIGH3]], [[PAD_LOW4]], [[PAD_HIGH4]], [[OUT_SIZE]], [[PAD_LOW5]], [[PAD_HIGH5]])
-    //CHECK:        [[PAD_HIGH1:%.+]] = affine.min #[[$MAP3]]()[[[TEMP_VALUE13]]]
-    //CHECK:        [[SLICE_OFFSET:%.+]] = affine.max #[[$MAP1]]([[TEMP_VALUE11]])
-    //CHECK:        [[TEMP_VALUE14:%.+]] = affine.max #[[$MAP2]]([[TEMP_VALUE11]])
-    //CHECK:        [[PAD_LOW0:%.+]] = affine.min #[[$MAP3]]()[[[TEMP_VALUE14]]]
-    //CHECK:        [[TEMP_VALUE15:%.+]] = affine.max #[[$MAP9]]([[SLICE_OFFSET]], [[PAD_LOW1]], [[PAD_HIGH1]], [[PAD_LOW2]], [[PAD_HIGH2]], [[PAD_LOW3]], [[PAD_HIGH3]], [[PAD_LOW4]], [[PAD_HIGH4]], [[OUT_SIZE]], [[PAD_LOW5]], [[PAD_HIGH5]])
-    //CHECK:        [[PAD_HIGH0:%.+]] = affine.min #[[$MAP3]]()[[[TEMP_VALUE15]]]
-    //CHECK:        [[SIZE_H:%.+]] = affine.apply #map10([[PAD_LOW0]], [[PAD_HIGH0]], [[PAD_LOW1]], [[PAD_HIGH1]], [[PAD_LOW2]], [[PAD_HIGH2]], [[PAD_LOW3]], [[PAD_HIGH3]], [[PAD_LOW4]], [[PAD_HIGH4]], [[OUT_SIZE]], [[PAD_LOW5]], [[PAD_HIGH5]])
+    //CHECK:        [[TEMP_VALUE0:%.+]] = affine.max #[[$TO_SLICE_OFFSET_MAP]]([[OUT_OFFSET]])
+    //CHECK:        [[TEMP_VALUE1:%.+]] = affine.max #[[$TO_PAD_CANDIDATE_MAP]]([[OUT_OFFSET]])
+    //CHECK:        [[PAD_LOW5:%.+]] = affine.min #[[$PAD_CLAMP_MAP]]()[[[TEMP_VALUE1]]]
+    //CHECK:        [[TEMP_VALUE2:%.+]] = affine.max #[[$PAD_HIGH_STAGE5_CANDIDATE_MAP]]([[OUT_SIZE]], [[TEMP_VALUE0]])
+    //CHECK:        [[PAD_HIGH5:%.+]] = affine.min #[[$PAD_CLAMP_MAP]]()[[[TEMP_VALUE2]]]
+    //CHECK:        [[TEMP_VALUE3:%.+]] = affine.max #[[$TO_SLICE_OFFSET_MAP]]([[TEMP_VALUE0]])
+    //CHECK:        [[TEMP_VALUE4:%.+]] = affine.max #[[$TO_PAD_CANDIDATE_MAP]]([[TEMP_VALUE0]])
+    //CHECK:        [[PAD_LOW4:%.+]] = affine.min #[[$PAD_CLAMP_MAP]]()[[[TEMP_VALUE4]]]
+    //CHECK:        [[IN_SIZE0:%.+]] = affine.max #[[$PAD_HIGH_STAGE4_CANDIDATE_MAP]]([[TEMP_VALUE3]], [[OUT_SIZE]], [[PAD_LOW5]], [[PAD_HIGH5]])
+    //CHECK:        [[PAD_HIGH4:%.+]] = affine.min #[[$PAD_CLAMP_MAP]]()[[[IN_SIZE0]]]
+    //CHECK:        [[TEMP_VALUE5:%.+]] = affine.max #[[$TO_SLICE_OFFSET_MAP]]([[TEMP_VALUE3]])
+    //CHECK:        [[TEMP_VALUE6:%.+]] = affine.max #[[$TO_PAD_CANDIDATE_MAP]]([[TEMP_VALUE3]])
+    //CHECK:        [[PAD_LOW3:%.+]] = affine.min #[[$PAD_CLAMP_MAP]]()[[[TEMP_VALUE6]]]
+    //CHECK:        [[TEMP_VALUE7:%.+]] = affine.max #[[$PAD_HIGH_STAGE3_CANDIDATE_MAP]]([[TEMP_VALUE5]], [[PAD_LOW4]], [[PAD_HIGH4]], [[OUT_SIZE]], [[PAD_LOW5]], [[PAD_HIGH5]])
+    //CHECK:        [[PAD_HIGH3:%.+]] = affine.min #[[$PAD_CLAMP_MAP]]()[[[TEMP_VALUE7]]]
+    //CHECK:        [[TEMP_VALUE8:%.+]] = affine.max #[[$TO_SLICE_OFFSET_MAP]]([[TEMP_VALUE5]])
+    //CHECK:        [[TEMP_VALUE9:%.+]] = affine.max #[[$TO_PAD_CANDIDATE_MAP]]([[TEMP_VALUE5]])
+    //CHECK:        [[PAD_LOW2:%.+]] = affine.min #[[$PAD_CLAMP_MAP]]()[[[TEMP_VALUE9]]]
+    //CHECK:        [[TEMP_VALUE10:%.+]] = affine.max #[[$PAD_HIGH_STAGE2_CANDIDATE_MAP]]([[TEMP_VALUE8]], [[PAD_LOW3]], [[PAD_HIGH3]], [[PAD_LOW4]], [[PAD_HIGH4]], [[OUT_SIZE]], [[PAD_LOW5]], [[PAD_HIGH5]])
+    //CHECK:        [[PAD_HIGH2:%.+]] = affine.min #[[$PAD_CLAMP_MAP]]()[[[TEMP_VALUE10]]]
+    //CHECK:        [[TEMP_VALUE11:%.+]] = affine.max #[[$TO_SLICE_OFFSET_MAP]]([[TEMP_VALUE8]])
+    //CHECK:        [[TEMP_VALUE12:%.+]] = affine.max #[[$TO_PAD_CANDIDATE_MAP]]([[TEMP_VALUE8]])
+    //CHECK:        [[PAD_LOW1:%.+]] = affine.min #[[$PAD_CLAMP_MAP]]()[[[TEMP_VALUE12]]]
+    //CHECK:        [[TEMP_VALUE13:%.+]] = affine.max #[[$PAD_HIGH_STAGE1_CANDIDATE_MAP]]([[TEMP_VALUE11]], [[PAD_LOW2]], [[PAD_HIGH2]], [[PAD_LOW3]], [[PAD_HIGH3]], [[PAD_LOW4]], [[PAD_HIGH4]], [[OUT_SIZE]], [[PAD_LOW5]], [[PAD_HIGH5]])
+    //CHECK:        [[PAD_HIGH1:%.+]] = affine.min #[[$PAD_CLAMP_MAP]]()[[[TEMP_VALUE13]]]
+    //CHECK:        [[SLICE_OFFSET:%.+]] = affine.max #[[$TO_SLICE_OFFSET_MAP]]([[TEMP_VALUE11]])
+    //CHECK:        [[TEMP_VALUE14:%.+]] = affine.max #[[$TO_PAD_CANDIDATE_MAP]]([[TEMP_VALUE11]])
+    //CHECK:        [[PAD_LOW0:%.+]] = affine.min #[[$PAD_CLAMP_MAP]]()[[[TEMP_VALUE14]]]
+    //CHECK:        [[TEMP_VALUE15:%.+]] = affine.max #[[$PAD_HIGH_STAGE0_CANDIDATE_MAP]]([[SLICE_OFFSET]], [[PAD_LOW1]], [[PAD_HIGH1]], [[PAD_LOW2]], [[PAD_HIGH2]], [[PAD_LOW3]], [[PAD_HIGH3]], [[PAD_LOW4]], [[PAD_HIGH4]], [[OUT_SIZE]], [[PAD_LOW5]], [[PAD_HIGH5]])
+    //CHECK:        [[PAD_HIGH0:%.+]] = affine.min #[[$PAD_CLAMP_MAP]]()[[[TEMP_VALUE15]]]
+    //CHECK:        [[SIZE_H:%.+]] = affine.apply #[[$SLICE_SIZE_BY_OUT_AND_PAD_MAP]]([[PAD_LOW0]], [[PAD_HIGH0]], [[PAD_LOW1]], [[PAD_HIGH1]], [[PAD_LOW2]], [[PAD_HIGH2]], [[PAD_LOW3]], [[PAD_HIGH3]], [[PAD_LOW4]], [[PAD_HIGH4]], [[OUT_SIZE]], [[PAD_LOW5]], [[PAD_HIGH5]])
     //CHECK:        [[SLICE:%.+]] = tensor.extract_slice [[CAST_INPUT]][0, 0, 0, [[SLICE_OFFSET]]] [1, 32, 540, [[SIZE_H]]] [1, 1, 1, 1] : tensor<1x32x540x960xf16, {order = #NHWC}> to tensor<1x32x540x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 540, 960]> : tensor<4xsi64>, order = #NHWC}>
 
     //CHECK:        [[PAD0:%.+]] = tensor.pad [[SLICE]] low[0, 0, 1, [[PAD_LOW0]]] high[0, 0, 1, [[PAD_HIGH0]]] {
@@ -143,7 +140,7 @@ func.func @MergeVFChain3Tiles(%arg0: tensor<1x256x540x120xf16, {order = #NHWC}>)
     //CHECK-SAME:       pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>
     //CHECK:        [[DWCONV1:%.+]] = VPU.NCE.DepthConvolution([[CONV5]]
     //CHECK-SAME:       pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>
-    //CHECK:        [[INSERT:%.+]] = tensor.insert_slice [[DWCONV1]] into [[LOOP_OUT]][0, 0, 0, [[IF]]] [1, 32, 540, [[OUT_SIZE]]] [1, 1, 1, 1] : tensor<1x32x540x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 540, 960]> : tensor<4xsi64>, order = #NHWC}> into tensor<1x32x540x960xf16, {order = #NHWC}>
+    //CHECK:        [[INSERT:%.+]] = tensor.insert_slice [[DWCONV1]] into [[LOOP_OUT]][0, 0, 0, [[OUT_OFFSET]]] [1, 32, 540, [[OUT_SIZE]]] [1, 1, 1, 1] : tensor<1x32x540x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 540, 960]> : tensor<4xsi64>, order = #NHWC}> into tensor<1x32x540x960xf16, {order = #NHWC}>
     //CHECK:    scf.yield [[INSERT]] : tensor<1x32x540x960xf16, {order = #NHWC}>
     //CHECK:    [[CAST:%.+]] = VPU.ShapeCast {shape = [1, 128, 540, 240]} inputs([[LOOP]]
     //CHECK:    return [[CAST]] : tensor<1x128x540x240xf16, {order = #NHWC}>
@@ -159,17 +156,19 @@ config.Resources 6 of @NCE at 1.850000e+03 MHz {
 }
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-//CHECK: #[[$MAP0:.+]] = affine_map<(d0) -> ((d0 floordiv 44) * 43 + 14)>
-//CHECK: #[[$MAP1:.+]] = affine_map<(d0) -> (0, d0 - 1)>
-//CHECK: #[[$MAP2:.+]] = affine_map<(d0) -> (-d0 + 1, 0)>
-//CHECK: #[[$MAP3:.+]] = affine_map<()[s0] -> (1, s0)>
-//CHECK: #[[$MAP4:.+]] = affine_map<(d0, d1) -> (0, d0 + d1 - 958)>
-//CHECK: #[[$MAP5:.+]] = affine_map<(d0, d1, d2, d3) -> (0, d0 + d1 - d2 - d3 - 956)>
-//CHECK: #[[$MAP6:.+]] = affine_map<(d0, d1, d2, d3, d4, d5) -> (0, d0 - d1 - d2 + d3 - d4 - d5 - 954)>
-//CHECK: #[[$MAP7:.+]] = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7) -> (0, d0 - d1 - d2 - d3 - d4 + d5 - d6 - d7 - 952)>
-//CHECK: #[[$MAP8:.+]] = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8, d9) -> (0, d0 - d1 - d2 - d3 - d4 - d5 - d6 + d7 - d8 - d9 - 950)>
-//CHECK: #[[$MAP9:.+]] = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11) -> (0, d0 - d1 - d2 - d3 - d4 - d5 - d6 - d7 - d8 + d9 - d10 - d11 - 948)>
-//CHECK: #[[$MAP10:.+]] = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12) -> (-d0 - d1 - d2 - d3 - d4 - d5 - d6 - d7 - d8 - d9 + d10 - d11 - d12 + 12)>
+//CHECK: #[[$OUT_OFFSET_AND_SIZE_MAP:.+]] = affine_map<(d0) -> ((d0 floordiv 44) * 44, (d0 floordiv 44) * 43 + 14)>
+//CHECK: #[[$TILE_INDEX_CAP_AND_REMAINDER_MAP:.+]] = affine_map<(d0) -> (d0 floordiv 44, 14)>
+//CHECK: #[[$OUT_SIZE_BY_CAPPED_TILE_INDEX_MAP:.+]] = affine_map<(d0) -> (-d0 + 57, 44)>
+//CHECK: #[[$TO_SLICE_OFFSET_MAP:.+]] = affine_map<(d0) -> (0, d0 - 1)>
+//CHECK: #[[$TO_PAD_CANDIDATE_MAP:.+]] = affine_map<(d0) -> (-d0 + 1, 0)>
+//CHECK: #[[$PAD_CLAMP_MAP:.+]] = affine_map<()[s0] -> (1, s0)>
+//CHECK: #[[$PAD_HIGH_STAGE5_CANDIDATE_MAP:.+]] = affine_map<(d0, d1) -> (0, d0 + d1 - 958)>
+//CHECK: #[[$PAD_HIGH_STAGE4_CANDIDATE_MAP:.+]] = affine_map<(d0, d1, d2, d3) -> (0, d0 + d1 - d2 - d3 - 956)>
+//CHECK: #[[$PAD_HIGH_STAGE3_CANDIDATE_MAP:.+]] = affine_map<(d0, d1, d2, d3, d4, d5) -> (0, d0 - d1 - d2 + d3 - d4 - d5 - 954)>
+//CHECK: #[[$PAD_HIGH_STAGE2_CANDIDATE_MAP:.+]] = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7) -> (0, d0 - d1 - d2 - d3 - d4 + d5 - d6 - d7 - 952)>
+//CHECK: #[[$PAD_HIGH_STAGE1_CANDIDATE_MAP:.+]] = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8, d9) -> (0, d0 - d1 - d2 - d3 - d4 - d5 - d6 + d7 - d8 - d9 - 950)>
+//CHECK: #[[$PAD_HIGH_STAGE0_CANDIDATE_MAP:.+]] = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11) -> (0, d0 - d1 - d2 - d3 - d4 - d5 - d6 - d7 - d8 + d9 - d10 - d11 - 948)>
+//CHECK: #[[$SLICE_SIZE_BY_OUT_AND_PAD_MAP:.+]] = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12) -> (-d0 - d1 - d2 - d3 - d4 - d5 - d6 - d7 - d8 - d9 + d10 - d11 - d12 + 12)>
 
 // CHECK-LABEL: @MergeVFChain6Tiles
 // CHECK-SAME:  [[INPUT:%arg[0-9]]]: tensor<1x256x540x120xf16, {order = #NHWC}>)
@@ -198,10 +197,8 @@ func.func @MergeVFChain6Tiles(%arg0: tensor<1x256x540x120xf16, {order = #NHWC}>)
 
     //CHECK-DAG: [[PAD_VALUE:%.+]] = arith.constant 0.000000e+00 : f16
     //CHECK-DAG: [[LOOP_STEP:%.+]] = arith.constant 44 : index
-    //CHECK-DAG: [[LOOP_STEP_REMAINDER:%.+]] = arith.constant 43 : index
     //CHECK-DAG: [[LOOP_END:%.+]] = arith.constant 960 : index
     //CHECK-DAG: [[LOOP_BEGIN:%.+]] = arith.constant 0 : index
-    //CHECK-DAG: [[LOOP_END_REMAINDER:%.+]] = arith.constant 616 : index
 
     //CHECK: [[CAST_INPUT:%.+]] = VPU.ShapeCast {shape = [1, 32, 540, 960]} inputs([[INPUT]] : tensor<1x256x540x120xf16, {order = #NHWC}>) -> tensor<1x32x540x960xf16, {order = #NHWC}>
     //CHECK: [[LOOP_OUTPUT:%.+]] = tensor.empty() : tensor<1x32x540x960xf16, {order = #NHWC}>
@@ -209,45 +206,41 @@ func.func @MergeVFChain6Tiles(%arg0: tensor<1x256x540x120xf16, {order = #NHWC}>)
     //CHECK-SAME:           [[LOOP_ITER:%arg[0-9]]] = [[LOOP_BEGIN]] to [[LOOP_END]] step [[LOOP_STEP]]
     //CHECK-SAME:           iter_args([[LOOP_OUT:%arg[0-9]]] = [[LOOP_OUTPUT]]) -> (tensor<1x32x540x960xf16, {order = #NHWC}>) {
 
-    //CHECK:        [[CMPI:%.+]] = arith.cmpi ult, [[LOOP_ITER]], [[LOOP_END_REMAINDER]] : index
-    //CHECK:        [[OUTPUT_SIZE:%.+]] = arith.select [[CMPI]], [[LOOP_STEP]], [[LOOP_STEP_REMAINDER]] : index
-    //CHECK:        [[OUTPUT_OFFSET:%.+]] = scf.if [[CMPI]] -> (index) {
-    //CHECK:            scf.yield [[LOOP_ITER]] : index
-    //CHECK:          else
-    //CHECK:        [[OFFSET_REMAINDER:%.+]] = affine.apply #[[$MAP0]]([[LOOP_ITER]])
-    //CHECK:           scf.yield [[OFFSET_REMAINDER]] : index
+    //CHECK:        [[OUTPUT_OFFSET:%.+]] = affine.min #[[$OUT_OFFSET_AND_SIZE_MAP]]([[LOOP_ITER]])
+    //CHECK:        [[OUTPUT_TILE_INDEX_CAP:%.+]] = affine.min #[[$TILE_INDEX_CAP_AND_REMAINDER_MAP]]([[LOOP_ITER]])
+    //CHECK:        [[OUTPUT_SIZE:%.+]] = affine.min #[[$OUT_SIZE_BY_CAPPED_TILE_INDEX_MAP]]([[OUTPUT_TILE_INDEX_CAP]])
 
-    //CHECK:        [[TEMP_VALUE0:%.+]] = affine.max #[[$MAP1]]([[OUTPUT_OFFSET]])
-    //CHECK:        [[TEMP_VALUE1:%.+]] = affine.max #[[$MAP2]]([[OUTPUT_OFFSET]])
-    //CHECK:        [[PAD_LOW5:%.+]] = affine.min #[[$MAP3]]()[[[TEMP_VALUE1]]]
-    //CHECK:        [[TEMP_VALUE2:%.+]] = affine.max #[[$MAP4]]([[OUTPUT_SIZE]], [[TEMP_VALUE0]])
-    //CHECK:        [[PAD_HIGH5:%.+]] = affine.min #[[$MAP3]]()[[[TEMP_VALUE2]]]
-    //CHECK:        [[TEMP_VALUE3:%.+]] = affine.max #[[$MAP1]]([[TEMP_VALUE0]])
-    //CHECK:        [[TEMP_VALUE4:%.+]] = affine.max #[[$MAP2]]([[TEMP_VALUE0]])
-    //CHECK:        [[PAD_LOW4:%.+]] = affine.min #[[$MAP3]]()[[[TEMP_VALUE4]]]
-    //CHECK:        [[TEMP_VALUE5:%.+]] = affine.max #[[$MAP5]]([[TEMP_VALUE3]], [[OUTPUT_SIZE]], [[PAD_LOW5]], [[PAD_HIGH5]])
-    //CHECK:        [[PAD_HIGH4:%.+]] = affine.min #[[$MAP3]]()[[[TEMP_VALUE5]]]
-    //CHECK:        [[TEMP_VALUE6:%.+]] = affine.max #[[$MAP1]]([[TEMP_VALUE3]])
-    //CHECK:        [[TEMP_VALUE7:%.+]] = affine.max #[[$MAP2]]([[TEMP_VALUE3]])
-    //CHECK:        [[PAD_LOW3:%.+]] = affine.min #[[$MAP3]]()[[[TEMP_VALUE7]]]
-    //CHECK:        [[TEMP_VALUE8:%.+]] = affine.max #[[$MAP6]]([[TEMP_VALUE6]], [[PAD_LOW4]], [[PAD_HIGH4]], [[OUTPUT_SIZE]], [[PAD_LOW5]], [[PAD_HIGH5]])
-    //CHECK:        [[PAD_HIGH3:%.+]] = affine.min #[[$MAP3]]()[[[TEMP_VALUE8]]]
-    //CHECK:        [[TEMP_VALUE9:%.+]] = affine.max #[[$MAP1]]([[TEMP_VALUE6]])
-    //CHECK:        [[TEMP_VALUE10:%.+]] = affine.max #[[$MAP2]]([[TEMP_VALUE6]])
-    //CHECK:        [[PAD_LOW2:%.+]] = affine.min #[[$MAP3]]()[[[TEMP_VALUE10]]]
-    //CHECK:        [[TEMP_VALUE11:%.+]] = affine.max #[[$MAP7]]([[TEMP_VALUE9]], [[PAD_LOW3]], [[PAD_HIGH3]], [[PAD_LOW4]], [[PAD_HIGH4]], [[OUTPUT_SIZE]], [[PAD_LOW5]], [[PAD_HIGH5]])
-    //CHECK:        [[PAD_HIGH2:%.+]] = affine.min #[[$MAP3]]()[[[TEMP_VALUE11]]]
-    //CHECK:        [[TEMP_VALUE12:%.+]] = affine.max #[[$MAP1]]([[TEMP_VALUE9]])
-    //CHECK:        [[TEMP_VALUE13:%.+]] = affine.max #[[$MAP2]]([[TEMP_VALUE9]])
-    //CHECK:        [[PAD_LOW1:%.+]] = affine.min #[[$MAP3]]()[[[TEMP_VALUE13]]]
-    //CHECK:        [[TEMP_VALUE14:%.+]] = affine.max #[[$MAP8]]([[TEMP_VALUE12]], [[PAD_LOW2]], [[PAD_HIGH2]], [[PAD_LOW3]], [[PAD_HIGH3]], [[PAD_LOW4]], [[PAD_HIGH4]], [[OUTPUT_SIZE]], [[PAD_LOW5]], [[PAD_HIGH5]])
-    //CHECK:        [[PAD_HIGH1:%.+]] = affine.min #[[$MAP3]]()[[[TEMP_VALUE14]]]
-    //CHECK:        [[SLICE_OFFSET:%.+]] = affine.max #[[$MAP1]]([[TEMP_VALUE12]])
-    //CHECK:        [[TEMP_VALUE15:%.+]] = affine.max #[[$MAP2]]([[TEMP_VALUE12]])
-    //CHECK:        [[PAD_LOW0:%.+]] = affine.min #[[$MAP3]]()[[[TEMP_VALUE15]]]
-    //CHECK:        [[SLICE_SIZE:%.+]] = affine.max #[[$MAP9]]([[SLICE_OFFSET]], [[PAD_LOW1]], [[PAD_HIGH1]], [[PAD_LOW2]], [[PAD_HIGH2]], [[PAD_LOW3]], [[PAD_HIGH3]], [[PAD_LOW4]], [[PAD_HIGH4]], [[OUTPUT_SIZE]], [[PAD_LOW5]], [[PAD_HIGH5]])
-    //CHECK:        [[PAD_HIGH0:%.+]] = affine.min #[[$MAP3]]()[[[SLICE_SIZE]]]
-    //CHECK:        [[SLICE_SIZE:%.+]] = affine.apply #map10([[PAD_LOW0]], [[PAD_HIGH0]], [[PAD_LOW1]], [[PAD_HIGH1]], [[PAD_LOW2]], [[PAD_HIGH2]], [[PAD_LOW3]], [[PAD_HIGH3]], [[PAD_LOW4]], [[PAD_HIGH4]], [[OUTPUT_SIZE]], [[PAD_LOW5]], [[PAD_HIGH5]])
+    //CHECK:        [[TEMP_VALUE0:%.+]] = affine.max #[[$TO_SLICE_OFFSET_MAP]]([[OUTPUT_OFFSET]])
+    //CHECK:        [[TEMP_VALUE1:%.+]] = affine.max #[[$TO_PAD_CANDIDATE_MAP]]([[OUTPUT_OFFSET]])
+    //CHECK:        [[PAD_LOW5:%.+]] = affine.min #[[$PAD_CLAMP_MAP]]()[[[TEMP_VALUE1]]]
+    //CHECK:        [[TEMP_VALUE2:%.+]] = affine.max #[[$PAD_HIGH_STAGE5_CANDIDATE_MAP]]([[OUTPUT_SIZE]], [[TEMP_VALUE0]])
+    //CHECK:        [[PAD_HIGH5:%.+]] = affine.min #[[$PAD_CLAMP_MAP]]()[[[TEMP_VALUE2]]]
+    //CHECK:        [[TEMP_VALUE3:%.+]] = affine.max #[[$TO_SLICE_OFFSET_MAP]]([[TEMP_VALUE0]])
+    //CHECK:        [[TEMP_VALUE4:%.+]] = affine.max #[[$TO_PAD_CANDIDATE_MAP]]([[TEMP_VALUE0]])
+    //CHECK:        [[PAD_LOW4:%.+]] = affine.min #[[$PAD_CLAMP_MAP]]()[[[TEMP_VALUE4]]]
+    //CHECK:        [[TEMP_VALUE5:%.+]] = affine.max #[[$PAD_HIGH_STAGE4_CANDIDATE_MAP]]([[TEMP_VALUE3]], [[OUTPUT_SIZE]], [[PAD_LOW5]], [[PAD_HIGH5]])
+    //CHECK:        [[PAD_HIGH4:%.+]] = affine.min #[[$PAD_CLAMP_MAP]]()[[[TEMP_VALUE5]]]
+    //CHECK:        [[TEMP_VALUE6:%.+]] = affine.max #[[$TO_SLICE_OFFSET_MAP]]([[TEMP_VALUE3]])
+    //CHECK:        [[TEMP_VALUE7:%.+]] = affine.max #[[$TO_PAD_CANDIDATE_MAP]]([[TEMP_VALUE3]])
+    //CHECK:        [[PAD_LOW3:%.+]] = affine.min #[[$PAD_CLAMP_MAP]]()[[[TEMP_VALUE7]]]
+    //CHECK:        [[TEMP_VALUE8:%.+]] = affine.max #[[$PAD_HIGH_STAGE3_CANDIDATE_MAP]]([[TEMP_VALUE6]], [[PAD_LOW4]], [[PAD_HIGH4]], [[OUTPUT_SIZE]], [[PAD_LOW5]], [[PAD_HIGH5]])
+    //CHECK:        [[PAD_HIGH3:%.+]] = affine.min #[[$PAD_CLAMP_MAP]]()[[[TEMP_VALUE8]]]
+    //CHECK:        [[TEMP_VALUE9:%.+]] = affine.max #[[$TO_SLICE_OFFSET_MAP]]([[TEMP_VALUE6]])
+    //CHECK:        [[TEMP_VALUE10:%.+]] = affine.max #[[$TO_PAD_CANDIDATE_MAP]]([[TEMP_VALUE6]])
+    //CHECK:        [[PAD_LOW2:%.+]] = affine.min #[[$PAD_CLAMP_MAP]]()[[[TEMP_VALUE10]]]
+    //CHECK:        [[TEMP_VALUE11:%.+]] = affine.max #[[$PAD_HIGH_STAGE2_CANDIDATE_MAP]]([[TEMP_VALUE9]], [[PAD_LOW3]], [[PAD_HIGH3]], [[PAD_LOW4]], [[PAD_HIGH4]], [[OUTPUT_SIZE]], [[PAD_LOW5]], [[PAD_HIGH5]])
+    //CHECK:        [[PAD_HIGH2:%.+]] = affine.min #[[$PAD_CLAMP_MAP]]()[[[TEMP_VALUE11]]]
+    //CHECK:        [[TEMP_VALUE12:%.+]] = affine.max #[[$TO_SLICE_OFFSET_MAP]]([[TEMP_VALUE9]])
+    //CHECK:        [[TEMP_VALUE13:%.+]] = affine.max #[[$TO_PAD_CANDIDATE_MAP]]([[TEMP_VALUE9]])
+    //CHECK:        [[PAD_LOW1:%.+]] = affine.min #[[$PAD_CLAMP_MAP]]()[[[TEMP_VALUE13]]]
+    //CHECK:        [[TEMP_VALUE14:%.+]] = affine.max #[[$PAD_HIGH_STAGE1_CANDIDATE_MAP]]([[TEMP_VALUE12]], [[PAD_LOW2]], [[PAD_HIGH2]], [[PAD_LOW3]], [[PAD_HIGH3]], [[PAD_LOW4]], [[PAD_HIGH4]], [[OUTPUT_SIZE]], [[PAD_LOW5]], [[PAD_HIGH5]])
+    //CHECK:        [[PAD_HIGH1:%.+]] = affine.min #[[$PAD_CLAMP_MAP]]()[[[TEMP_VALUE14]]]
+    //CHECK:        [[SLICE_OFFSET:%.+]] = affine.max #[[$TO_SLICE_OFFSET_MAP]]([[TEMP_VALUE12]])
+    //CHECK:        [[TEMP_VALUE15:%.+]] = affine.max #[[$TO_PAD_CANDIDATE_MAP]]([[TEMP_VALUE12]])
+    //CHECK:        [[PAD_LOW0:%.+]] = affine.min #[[$PAD_CLAMP_MAP]]()[[[TEMP_VALUE15]]]
+    //CHECK:        [[SLICE_SIZE:%.+]] = affine.max #[[$PAD_HIGH_STAGE0_CANDIDATE_MAP]]([[SLICE_OFFSET]], [[PAD_LOW1]], [[PAD_HIGH1]], [[PAD_LOW2]], [[PAD_HIGH2]], [[PAD_LOW3]], [[PAD_HIGH3]], [[PAD_LOW4]], [[PAD_HIGH4]], [[OUTPUT_SIZE]], [[PAD_LOW5]], [[PAD_HIGH5]])
+    //CHECK:        [[PAD_HIGH0:%.+]] = affine.min #[[$PAD_CLAMP_MAP]]()[[[SLICE_SIZE]]]
+    //CHECK:        [[SLICE_SIZE:%.+]] = affine.apply #[[$SLICE_SIZE_BY_OUT_AND_PAD_MAP]]([[PAD_LOW0]], [[PAD_HIGH0]], [[PAD_LOW1]], [[PAD_HIGH1]], [[PAD_LOW2]], [[PAD_HIGH2]], [[PAD_LOW3]], [[PAD_HIGH3]], [[PAD_LOW4]], [[PAD_HIGH4]], [[OUTPUT_SIZE]], [[PAD_LOW5]], [[PAD_HIGH5]])
     //CHECK:        [[SLICE:%.+]] = tensor.extract_slice [[CAST_INPUT]][0, 0, 0, [[SLICE_OFFSET]]] [1, 32, 540, [[SLICE_SIZE]]] [1, 1, 1, 1] : tensor<1x32x540x960xf16, {order = #NHWC}> to tensor<1x32x540x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 540, 960]> : tensor<4xsi64>, order = #NHWC}>
 
     //CHECK:        [[PAD0:%.+]] = tensor.pad [[SLICE]] low[0, 0, 1, [[PAD_LOW0]]] high[0, 0, 1, [[PAD_HIGH0]]] {
@@ -380,15 +373,19 @@ config.Resources 3 of @NCE at 1.700000e+03 MHz {
 }
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-//CHECK: #[[$MAP0:.+]] = affine_map<(d0) -> ((d0 floordiv 13) * 12 + 72)>
-//CHECK: #[[$MAP1:.+]] = affine_map<(d0) -> (0, d0 - 1)>
-//CHECK: #[[$MAP2:.+]] = affine_map<(d0) -> (-d0 + 1, 0)>
-//CHECK: #[[$MAP3:.+]] = affine_map<()[s0] -> (1, s0)>
-//CHECK: #[[$MAP4:.+]] = affine_map<(d0, d1) -> (0, d0 + d1 - 958)>
-//CHECK: #[[$MAP5:.+]] = affine_map<(d0, d1, d2) -> (d0 - d1 - d2 + 2)>
-//CHECK: #[[$MAP6:.+]] = affine_map<(d0) -> ((d0 floordiv 27) * 26 + 24)>
-//CHECK: #[[$MAP7:.+]] = affine_map<(d0, d1, d2, d3) -> (0, d0 + d1 - d2 - d3 - 956)>
-//CHECK: #[[$MAP8:.+]] = affine_map<(d0, d1, d2, d3, d4) -> (-d0 - d1 + d2 - d3 - d4 + 4)>
+//CHECK: #[[$CHAIN0_OFFSET_AND_SIZE_MAP:.+]] = affine_map<(d0) -> ((d0 floordiv 13) * 13, (d0 floordiv 13) * 12 + 72)>
+//CHECK: #[[$CHAIN0_TILE_INDEX_CAP_AND_REMAINDER_MAP:.+]] = affine_map<(d0) -> (d0 floordiv 13, 72)>
+//CHECK: #[[$CHAIN0_SIZE_BY_CAPPED_TILE_INDEX_MAP:.+]] = affine_map<(d0) -> (-d0 + 84, 13)>
+//CHECK: #[[$TO_SLICE_OFFSET_MAP:.+]] = affine_map<(d0) -> (0, d0 - 1)>
+//CHECK: #[[$TO_PAD_CANDIDATE_MAP:.+]] = affine_map<(d0) -> (-d0 + 1, 0)>
+//CHECK: #[[$PAD_CLAMP_MAP:.+]] = affine_map<()[s0] -> (1, s0)>
+//CHECK: #[[$PAD_HIGH_CHAIN0_CANDIDATE_MAP:.+]] = affine_map<(d0, d1) -> (0, d0 + d1 - 958)>
+//CHECK: #[[$CHAIN0_SLICE_SIZE_MAP:.+]] = affine_map<(d0, d1, d2) -> (d0 - d1 - d2 + 2)>
+//CHECK: #[[$CHAIN1_OFFSET_AND_SIZE_MAP:.+]] = affine_map<(d0) -> ((d0 floordiv 27) * 27, (d0 floordiv 27) * 26 + 24)>
+//CHECK: #[[$CHAIN1_TILE_INDEX_CAP_AND_REMAINDER_MAP:.+]] = affine_map<(d0) -> (d0 floordiv 27, 24)>
+//CHECK: #[[$CHAIN1_SIZE_BY_CAPPED_TILE_INDEX_MAP:.+]] = affine_map<(d0) -> (-d0 + 50, 27)>
+//CHECK: #[[$PAD_HIGH_CHAIN1_STAGE1_CANDIDATE_MAP:.+]] = affine_map<(d0, d1, d2, d3) -> (0, d0 + d1 - d2 - d3 - 956)>
+//CHECK: #[[$CHAIN1_SLICE_SIZE_MAP:.+]] = affine_map<(d0, d1, d2, d3, d4) -> (-d0 - d1 + d2 - d3 - d4 + 4)>
 
 // CHECK-LABEL: @MergeVF2Chains
 // CHECK-SAME:  [[INPUT:%arg[0-9]]]: tensor<1x32x540x960xf16, {order = #NHWC}>)
@@ -408,13 +405,9 @@ func.func @MergeVF2Chains(%arg0: tensor<1x32x540x960xf16, {order = #NHWC}>) -> t
     return %4: tensor<1x32x540x960xf16, {order = #NHWC}>
 
     //CHECK-DAG: [[LOOP_STEP1:%.+]] = arith.constant 27 : index
-    //CHECK-DAG: [[LOOP_STEP_REMAINDER1:%.+]] = arith.constant 26 : index
-    //CHECK-DAG: [[LOOP_REMAINDER1:%.+]] = arith.constant 648 : index
     //CHECK-DAG: [[PAD_VALUE:%.+]] = arith.constant 0.000000e+00 : f16
     //CHECK-DAG: [[LOOP_STEP0:%.+]] = arith.constant 13 : index
-    //CHECK-DAG: [[LOOP_STEP0_REMAINDER:%.+]] = arith.constant 12 : index
     //CHECK-DAG: [[LOOP_END:%.+]] = arith.constant 960 : index
-    //CHECK-DAG: [[LOOP_REMAINDER0:%.+]] = arith.constant 936 : index
     //CHECK-DAG: [[LOOP_BEGIN:%.+]] = arith.constant 0 : index
 
     //CHECK: [[LOOP_OUTPUT0:%.+]] = tensor.empty() : tensor<1x32x540x960xf16, {order = #NHWC}>
@@ -422,21 +415,17 @@ func.func @MergeVF2Chains(%arg0: tensor<1x32x540x960xf16, {order = #NHWC}>) -> t
     //CHECK-SAME:           [[LOOP_ITER0:%arg[0-9]]] = [[LOOP_BEGIN]] to [[LOOP_END]] step [[LOOP_STEP0]]
     //CHECK-SAME:           iter_args([[LOOP_OUT0:%arg[0-9]]] = [[LOOP_OUTPUT0]]) -> (tensor<1x32x540x960xf16, {order = #NHWC}>)
 
-    //CHECK:                [[CMPI0:%.+]] = arith.cmpi ult, [[LOOP_ITER0]], [[LOOP_REMAINDER0]] : index
-    //CHECK:                [[INSERT_SIZE0:%.+]] = arith.select [[CMPI0]], [[LOOP_STEP0]], [[LOOP_STEP0_REMAINDER]] : index
-    //CHECK:                [[INSERT_OFFSET0:%.+]] = scf.if [[CMPI0]] -> (index) {
-    //CHECK:                    scf.yield [[LOOP_ITER0]] : index
-    //CHECK:                    else
-    //CHECK:                [[OFFSET_REMAINDER:%.+]] = affine.apply #[[$MAP0]]([[LOOP_ITER0]])
-    //CHECK:                       scf.yield [[OFFSET_REMAINDER]] : index
+    //CHECK:                [[INSERT_OFFSET0:%.+]] = affine.min #[[$CHAIN0_OFFSET_AND_SIZE_MAP]]([[LOOP_ITER0]])
+    //CHECK:                [[INSERT_TILE_INDEX0_CAP:%.+]] = affine.min #[[$CHAIN0_TILE_INDEX_CAP_AND_REMAINDER_MAP]]([[LOOP_ITER0]])
+    //CHECK:                [[INSERT_SIZE0:%.+]] = affine.min #[[$CHAIN0_SIZE_BY_CAPPED_TILE_INDEX_MAP]]([[INSERT_TILE_INDEX0_CAP]])
 
 
-    //CHECK:                [[SLICE_OFFSET0:%.+]] = affine.max #[[$MAP1]]([[INSERT_OFFSET0]])
-    //CHECK:                [[TEMP_VALUE0:%.+]] = affine.max #[[$MAP2]]([[INSERT_OFFSET0]])
-    //CHECK:                [[PAD_LOW0:%.+]] = affine.min #[[$MAP3]]()[[[TEMP_VALUE0]]]
-    //CHECK:                [[TEMP_VALUE1:%.+]] = affine.max #[[$MAP4]]([[INSERT_SIZE0]], [[SLICE_OFFSET0]])
-    //CHECK:                [[PAD_HIGH0:%.+]] = affine.min #[[$MAP3]]()[[[TEMP_VALUE1]]]
-    //CHECK:                [[SLICE_SIZE0:%.+]] = affine.apply #[[$MAP5]]([[INSERT_SIZE0]], [[PAD_LOW0]], [[PAD_HIGH0]])
+    //CHECK:                [[SLICE_OFFSET0:%.+]] = affine.max #[[$TO_SLICE_OFFSET_MAP]]([[INSERT_OFFSET0]])
+    //CHECK:                [[TEMP_VALUE0:%.+]] = affine.max #[[$TO_PAD_CANDIDATE_MAP]]([[INSERT_OFFSET0]])
+    //CHECK:                [[PAD_LOW0:%.+]] = affine.min #[[$PAD_CLAMP_MAP]]()[[[TEMP_VALUE0]]]
+    //CHECK:                [[TEMP_VALUE1:%.+]] = affine.max #[[$PAD_HIGH_CHAIN0_CANDIDATE_MAP]]([[INSERT_SIZE0]], [[SLICE_OFFSET0]])
+    //CHECK:                [[PAD_HIGH0:%.+]] = affine.min #[[$PAD_CLAMP_MAP]]()[[[TEMP_VALUE1]]]
+    //CHECK:                [[SLICE_SIZE0:%.+]] = affine.apply #[[$CHAIN0_SLICE_SIZE_MAP]]([[INSERT_SIZE0]], [[PAD_LOW0]], [[PAD_HIGH0]])
 
     //CHECK:                [[SLICE0:%.+]] = tensor.extract_slice [[INPUT]][0, 0, 0, [[SLICE_OFFSET0]]] [1, 32, 540, [[SLICE_SIZE0]]] [1, 1, 1, 1] : tensor<1x32x540x960xf16, {order = #NHWC}> to tensor<1x32x540x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 540, 960]> : tensor<4xsi64>, order = #NHWC}>
     //CHECK:                [[DWCONV0:%.+]] = VPU.NCE.DepthConvolution([[SLICE0]]
@@ -455,25 +444,21 @@ func.func @MergeVF2Chains(%arg0: tensor<1x32x540x960xf16, {order = #NHWC}>) -> t
     //CHECK-SAME:           [[LOOP_ITER1:%arg[0-9]]] = [[LOOP_BEGIN]] to [[LOOP_END]] step [[LOOP_STEP1]]
     //CHECK-SAME:           iter_args([[LOOP_OUT1:%arg[0-9]]] = [[LOOP_OUTPUT1]]) -> (tensor<1x32x540x960xf16, {order = #NHWC}>)
 
-    //CHECK:                [[CMPI1:%.+]] = arith.cmpi ult, [[LOOP_ITER1]], [[LOOP_REMAINDER1]] : index
-    //CHECK:                [[INSERT_SIZE1:%.+]] = arith.select [[CMPI1]], [[LOOP_STEP1]], [[LOOP_STEP_REMAINDER1]] : index
-    //CHECK:                [[INSERT_OFFSET1:%.+]] = scf.if [[CMPI1]]
-    //CHECK:                    scf.yield [[LOOP_ITER1]] : index
-    //CHECK:                  else
-    //CHECK:                [[OFFSET_REMAINDER1:%.+]] = affine.apply #[[$MAP6]]([[LOOP_ITER1]])
-    //CHECK:                scf.yield [[OFFSET_REMAINDER1]] : index
+    //CHECK:                [[INSERT_OFFSET1:%.+]] = affine.min #[[$CHAIN1_OFFSET_AND_SIZE_MAP]]([[LOOP_ITER1]])
+    //CHECK:                [[INSERT_TILE_INDEX1_CAP:%.+]] = affine.min #[[$CHAIN1_TILE_INDEX_CAP_AND_REMAINDER_MAP]]([[LOOP_ITER1]])
+    //CHECK:                [[INSERT_SIZE1:%.+]] = affine.min #[[$CHAIN1_SIZE_BY_CAPPED_TILE_INDEX_MAP]]([[INSERT_TILE_INDEX1_CAP]])
 
-    //CHECK:                [[TEMP_VALUE2:%.+]] = affine.max #[[$MAP1]]([[INSERT_OFFSET1]])
-    //CHECK:                [[TEMP_VALUE3:%.+]] = affine.max #[[$MAP2]]([[INSERT_OFFSET1]])
-    //CHECK:                [[PAD_LOW2:%.+]] = affine.min #[[$MAP3]]()[[[TEMP_VALUE3]]]
-    //CHECK:                [[TEMP_VALUE4:%.+]] = affine.max #[[$MAP4]]([[INSERT_SIZE1]], [[TEMP_VALUE2]])
-    //CHECK:                [[PAD_HIGH2:%.+]] = affine.min #[[$MAP3]]()[[[TEMP_VALUE4]]]
-    //CHECK:                [[SLICE_OFFSET1:%.+]]  = affine.max #[[$MAP1]]([[TEMP_VALUE2]])
-    //CHECK:                [[TEMP_VALUE5:%.+]] = affine.max #[[$MAP2]]([[TEMP_VALUE2]])
-    //CHECK:                [[PAD_LOW1:%.+]] = affine.min #[[$MAP3]]()[[[TEMP_VALUE5]]]
-    //CHECK:                [[TEMP_VALUE6:%.+]] = affine.max #[[$MAP7]]([[SLICE_OFFSET1]], [[INSERT_SIZE1]], [[PAD_LOW2]], [[PAD_HIGH2]])
-    //CHECK:                [[PAD_HIGH1:%.+]] = affine.min #[[$MAP3]]()[[[TEMP_VALUE6]]]
-    //CHECK:                [[SLICE_SIZE1:%.+]] = affine.apply #[[$MAP8]]([[PAD_LOW1]], [[PAD_HIGH1]], [[INSERT_SIZE1]], [[PAD_LOW2]], [[PAD_HIGH2]])
+    //CHECK:                [[TEMP_VALUE2:%.+]] = affine.max #[[$TO_SLICE_OFFSET_MAP]]([[INSERT_OFFSET1]])
+    //CHECK:                [[TEMP_VALUE3:%.+]] = affine.max #[[$TO_PAD_CANDIDATE_MAP]]([[INSERT_OFFSET1]])
+    //CHECK:                [[PAD_LOW2:%.+]] = affine.min #[[$PAD_CLAMP_MAP]]()[[[TEMP_VALUE3]]]
+    //CHECK:                [[TEMP_VALUE4:%.+]] = affine.max #[[$PAD_HIGH_CHAIN0_CANDIDATE_MAP]]([[INSERT_SIZE1]], [[TEMP_VALUE2]])
+    //CHECK:                [[PAD_HIGH2:%.+]] = affine.min #[[$PAD_CLAMP_MAP]]()[[[TEMP_VALUE4]]]
+    //CHECK:                [[SLICE_OFFSET1:%.+]]  = affine.max #[[$TO_SLICE_OFFSET_MAP]]([[TEMP_VALUE2]])
+    //CHECK:                [[TEMP_VALUE5:%.+]] = affine.max #[[$TO_PAD_CANDIDATE_MAP]]([[TEMP_VALUE2]])
+    //CHECK:                [[PAD_LOW1:%.+]] = affine.min #[[$PAD_CLAMP_MAP]]()[[[TEMP_VALUE5]]]
+    //CHECK:                [[TEMP_VALUE6:%.+]] = affine.max #[[$PAD_HIGH_CHAIN1_STAGE1_CANDIDATE_MAP]]([[SLICE_OFFSET1]], [[INSERT_SIZE1]], [[PAD_LOW2]], [[PAD_HIGH2]])
+    //CHECK:                [[PAD_HIGH1:%.+]] = affine.min #[[$PAD_CLAMP_MAP]]()[[[TEMP_VALUE6]]]
+    //CHECK:                [[SLICE_SIZE1:%.+]] = affine.apply #[[$CHAIN1_SLICE_SIZE_MAP]]([[PAD_LOW1]], [[PAD_HIGH1]], [[INSERT_SIZE1]], [[PAD_LOW2]], [[PAD_HIGH2]])
 
     //CHECK:                [[SLICE1:%.+]] = tensor.extract_slice [[SIGN]][0, 0, 0, [[SLICE_OFFSET1]]] [1, 32, 540, [[SLICE_SIZE1]]] [1, 1, 1, 1] : tensor<1x32x540x960xf16, {order = #NHWC}> to tensor<1x32x540x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 540, 960]> : tensor<4xsi64>, order = #NHWC}>
 
@@ -2352,4 +2337,232 @@ module {
 
     // CHECK:       return [[RESULT]] : tensor<1x32x?x?xf32
     }
+}
+
+// -----
+
+config.Resources 3 of @NCE at 1.700000e+03 MHz {
+  config.MemoryResource 1327104 bytes of @CMX_NN_FragmentationAware
+  config.MemoryResource 1474560 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
+  config.ExecutorResource 2 of @SHAVE_ACT
+  config.ExecutorResource 1 of @DPU
+}
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+!outputDynamicType = tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 540, 960]> : tensor<4xsi64>, order = #NHWC}>
+
+// CHECK-LABEL: @MergeSlice
+//CHECK-SAME:  [[ARG0:%.+]]: tensor<1x16x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 1080, 1920]> : tensor<4xsi64>, order = #NHWC}>
+func.func @MergeSlice(
+    %arg0: tensor<1x16x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 1080, 1920]> : tensor<4xsi64>, order = #NHWC}>
+  ) -> !outputDynamicType  {
+
+    %weights = const.Declare tensor<16x16x1x1xf16, {order = #NHWC}>
+      = dense<1.0> : tensor<16x16x1x1xf32>,
+        [#const.CastElemType<f16>, #const.Reorder<#NHWC>]
+
+    %cst_0 = const.Declare tensor<32x32x3x3x!quant.uniform<u8:f16, 0.0091306873396331187:128>, {order = #NHWC}>
+      = dense<1> : tensor<32x32x3x3xsi8>,
+        [#const.CastElemType<f16>,
+         #const.CastElemType<!quant.uniform<i8:f16, 0.0091306873396331187>>,
+         #const.ConvertElemType<!quant.uniform<u8:f16, 0.0091306873396331187:128>>,
+         #const.Reorder<#NHWC>]
+    %cst_1 = const.Declare tensor<32x1x1x4xsi32> = dense<1> : tensor<32x1x1x4xsi32>
+    %cst_2 = const.Declare tensor<32x1x1x32x!quant.uniform<u8:f16, 0.034925088695451328:128>, {order = #NHWC}>
+      = dense<1> : tensor<32x3x3x3xsi8>,
+        [#const.CastElemType<f16>,
+         #const.CastElemType<!quant.uniform<i8:f16, 0.034925088695451328>>,
+         #const.ConvertElemType<!quant.uniform<u8:f16, 0.034925088695451328:128>>,
+         #const.Reorder<#NHWC>,
+         #const.Reshape<[32, 1, 1, 27]>,
+         #const.PadWithZero<[0, 0, 0, 0], [0, 0, 0, 5]>]
+
+    %depth = VPU.NCE.DepthConvolution(%arg0, %weights) {
+      multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
+      pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+      ppe = #VPU.PPEInt<
+        mode = <NOOP>,
+        clamp_low = 0 : i64,
+        clamp_high = 255 : i64,
+        lrelu_mult = 1 : i64,
+        lrelu_shift = 0 : i64,
+        fp_prelu_alpha = 507.68865966796875 : f64>,
+      rawFilterShape = [16, 1, 1, 1],
+      strides = [1, 1],
+      tilingStrategy = [1, 1, 2, 1]
+    } -> tensor<1x16x?x?x!quant.uniform<u8:f16, 0.0019697112195632038>, {bounds = #const.OpaqueI64Elements<[1, 16, 1080, 1920]> : tensor<4xsi64>, order = #NHWC}>
+
+    %slice = VPU.Slice %depth [0, 0, 0, 0] [1, 4, -9223372036854775808, -9223372036854775808]
+      : tensor<1x16x?x?x!quant.uniform<u8:f16, 0.0019697112195632038>, {bounds = #const.OpaqueI64Elements<[1, 16, 1080, 1920]> : tensor<4xsi64>, order = #NHWC}>
+      to tensor<1x4x?x?x!quant.uniform<u8:f16, 0.0019697112195632038>, {bounds = #const.OpaqueI64Elements<[1, 4, 1080, 1920]> : tensor<4xsi64>, order = #NHWC}>
+
+    %compress = VPU.NCE.CompressConvolution(%slice, %cst_2, %cst_1) {
+      cm_sp_pattern = 7 : i64,
+      multiClusterStrategy = #VPU.multi_cluster_strategy<Clustering>,
+      pad = #VPU.Padding<left = 1 : i64, right = 0 : i64, top = 1 : i64, bottom = 0 : i64>,
+      ppe = #VPU.PPEInt<mode = <NOOP>, clamp_low = 0 : i64, clamp_high = 255 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>,
+      rawFilterShape = [32, 3, 3, 3],
+      strides = [2, 2],
+      tilingStrategy = [1, 1, 7, 3]
+    } -> tensor<1x32x?x?x!quant.uniform<u8:f16, 0.030033121856988646:110>, {bounds = #const.OpaqueI64Elements<[1, 32, 540, 960]> : tensor<4xsi64>, order = #NHWC}>
+
+    %conv = VPU.NCE.Convolution(%compress, %cst_0) {
+      mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>,
+      multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
+      pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
+      ppe = #VPU.PPEInt<mode = <LRELU>, clamp_low = -2147483648 : i64, clamp_high = 2147483647 : i64, lrelu_mult = 1 : i64, lrelu_shift = 0 : i64, fp_prelu_alpha = 1.000000e+00 : f64>,
+      rawFilterShape = [32, 32, 3, 3],
+      strides = [1, 1],
+      tilingStrategy = [1, 1, 7, 3]
+    } : tensor<1x32x?x?x!quant.uniform<u8:f16, 0.030033121856988646:110>, {bounds = #const.OpaqueI64Elements<[1, 32, 540, 960]> : tensor<4xsi64>, order = #NHWC}>,
+        tensor<32x32x3x3x!quant.uniform<u8:f16, 0.0091306873396331187:128>, {order = #NHWC}>
+      -> !outputDynamicType
+
+    return %conv : !outputDynamicType
+}
+
+// CHECK:       [[C3:%.+]] = arith.constant 3 : index
+// CHECK:       [[C110:%.+]] = arith.constant 110 : i8
+// CHECK:       [[C0_I8:%.+]] = arith.constant 0 : i8
+// CHECK:       [[C160:%.+]] = arith.constant 160 : index
+// CHECK:       [[C45:%.+]] = arith.constant 45 : index
+// CHECK:       [[C0:%.+]] = arith.constant 0 : index
+// CHECK-DAG:   [[CST:%.+]] = const.Declare tensor<16x16x1x1xf16, {order = #NHWC}> = dense<1.000000e+00>
+// CHECK-DAG:   [[CST_0:%.+]] = const.Declare tensor<32x32x3x3x!qElemType{{.*}}, {order = #NHWC}> = dense<1>
+// CHECK-DAG:   [[CST_1:%.+]] = const.Declare tensor<32x1x1x4xsi32> = dense<1>
+// CHECK-DAG:   [[CST_2:%.+]] = const.Declare tensor<32x1x1x32x!qElemType{{.*}}, {order = #NHWC}> = dense<1>
+// CHECK:       [[C2:%.+]] = arith.constant 2 : index
+// CHECK:       [[DIM:%.+]] = tensor.dim [[ARG0]], [[C2]]
+// CHECK:       [[DIV0:%.+]] = arith.divsi [[DIM]], [[C2]]
+// CHECK:       [[DIM_0:%.+]] = tensor.dim [[ARG0]], [[C3]]
+// CHECK:       [[DIV1:%.+]] = arith.divsi [[DIM_0]], [[C2]]
+// CHECK:       [[EMPTY:%.+]] = tensor.empty([[DIV0]], [[DIV1]])
+// CHECK:       [[DIM_1:%.+]] = tensor.dim [[ARG0]], [[C2]]
+// CHECK:       [[DIV2:%.+]] = arith.divsi [[DIM_1]], [[C2]]
+// CHECK:       [[DIM_2:%.+]] = tensor.dim [[ARG0]], [[C3]]
+// CHECK:       [[DIV3:%.+]] = arith.divsi [[DIM_2]], [[C2]]
+// CHECK:       [[LOOP_OUTER:%.+]] = scf.for [[IV0:%.+]] = [[C0]] to [[DIV2]] step [[C45]] iter_args([[ARG_OUTER:%.+]] = [[EMPTY]])
+// CHECK:         [[LOOP_INNER:%.+]] = scf.for [[IV1:%.+]] = [[C0]] to [[DIV3]] step [[C160]] iter_args([[ARG_INNER:%.+]] = [[ARG_OUTER]])
+// CHECK:           [[MIN0:%.+]] = affine.min
+// CHECK:           [[MIN1:%.+]] = affine.min
+// CHECK:           [[DIM_3:%.+]] = tensor.dim [[ARG0]], [[C2]]
+// CHECK:           [[DIV4:%.+]] = arith.divsi [[DIM_3]], [[C2]]
+// CHECK:           [[DIM_4:%.+]] = tensor.dim [[ARG0]], [[C3]]
+// CHECK:           [[DIV5:%.+]] = arith.divsi [[DIM_4]], [[C2]]
+// CHECK:           [[MAX0:%.+]] = affine.max
+// CHECK:           [[MAX1:%.+]] = affine.max
+// CHECK:           [[MIN2:%.+]] = affine.min
+// CHECK:           [[MAX2:%.+]] = affine.max
+// CHECK:           [[MIN3:%.+]] = affine.min
+// CHECK:           [[MAX3:%.+]] = affine.max
+// CHECK:           [[MAX4:%.+]] = affine.max
+// CHECK:           [[MIN4:%.+]] = affine.min
+// CHECK:           [[MAX5:%.+]] = affine.max
+// CHECK:           [[MIN5:%.+]] = affine.min
+// CHECK:           [[MAX6:%.+]] = affine.max
+// CHECK:           [[MAX7:%.+]] = affine.max
+// CHECK:           [[MIN6:%.+]] = affine.min
+// CHECK:           [[MAX8:%.+]] = affine.max
+// CHECK:           [[MAX9:%.+]] = affine.max
+// CHECK:           [[MIN7:%.+]] = affine.min
+// CHECK:           [[APPLY0:%.+]] = affine.apply
+// CHECK:           [[APPLY1:%.+]] = affine.apply
+// CHECK:           [[EXTRACT:%.+]] = tensor.extract_slice [[ARG0]][0, 0, [[MAX6]], [[MAX8]]] [1, 16, [[APPLY0]], [[APPLY1]]]
+// CHECK:           [[DEPTH:%.+]] = VPU.NCE.DepthConvolution([[EXTRACT]], [[CST]])
+// CHECK-SAME:        multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>
+// CHECK-SAME:        pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>
+// CHECK-SAME:        rawFilterShape = [16, 1, 1, 1]
+// CHECK-SAME:        strides = [1, 1]
+// CHECK:           [[SLICE:%.+]] = VPU.Slice [[DEPTH]] [0, 0, 0, 0] [1, 4, -9223372036854775808, -9223372036854775808]
+// CHECK:           [[CAST0:%.+]] = builtin.unrealized_conversion_cast [[C0_I8]]
+// CHECK:           [[PAD0:%.+]] = tensor.pad [[SLICE]] low[0, 0, [[MIN6]], [[MIN7]]] high[0, 0, 0, 0]
+// CHECK:           [[COMPRESS:%.+]] = VPU.NCE.CompressConvolution([[PAD0]], [[CST_2]], [[CST_1]])
+// CHECK-SAME:        cm_sp_pattern = 7
+// CHECK-SAME:        multiClusterStrategy = #VPU.multi_cluster_strategy<Clustering>
+// CHECK-SAME:        pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>
+// CHECK-SAME:        rawFilterShape = [32, 3, 3, 3]
+// CHECK-SAME:        strides = [2, 2]
+// CHECK:           [[CAST1:%.+]] = builtin.unrealized_conversion_cast [[C110]]
+// CHECK:           [[PAD1:%.+]] = tensor.pad [[COMPRESS]] low[0, 0, [[MIN2]], [[MIN4]]] high[0, 0, [[MIN3]], [[MIN5]]]
+// CHECK:           [[CONV:%.+]] = VPU.NCE.Convolution([[PAD1]], [[CST_0]])
+// CHECK-SAME:        mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>
+// CHECK-SAME:        multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>
+// CHECK-SAME:        pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>
+// CHECK-SAME:        rawFilterShape = [32, 32, 3, 3]
+// CHECK-SAME:        strides = [1, 1]
+// CHECK:           [[INSERT:%.+]] = tensor.insert_slice [[CONV]] into [[ARG_INNER]][0, 0, [[IV0]], [[IV1]]] [1, 32, [[MIN0]], [[MIN1]]]
+// CHECK:           scf.yield [[INSERT]] : tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 540, 960]> : tensor<4xsi64>, order = #NHWC}>
+// CHECK:         scf.yield [[LOOP_INNER]] : tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 540, 960]> : tensor<4xsi64>, order = #NHWC}>
+// CHECK:       return [[LOOP_OUTER]] : tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 540, 960]> : tensor<4xsi64>, order = #NHWC}>
+
+// -----
+
+config.Resources 3 of @NCE at 1.700000e+03 MHz {
+    config.MemoryResource 1326182 bytes of @CMX_NN_FragmentationAware
+    config.MemoryResource 1473536 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
+    config.ExecutorResource 2 of @SHAVE_ACT
+    config.ExecutorResource 1 of @DPU
+}
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @MergeConvertWithInterpolate
+// CHECK-SAME:  [[INPUT:%arg[0-9]]]: tensor<1x32x?x64xf32, {bounds = #const.OpaqueI64Elements<[1, 32, 64, 64]> : tensor<4xsi64>, order = #NHWC}>
+func.func @MergeConvertWithInterpolate(%arg0: tensor<1x32x?x64xf32, {bounds = #const.OpaqueI64Elements<[1, 32, 64, 64]> : tensor<4xsi64>, order = #NHWC}>) -> tensor<1x32x?x128xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 128, 128]> : tensor<4xsi64>, order = #NHWC}> {
+    %0 = VPU.Convert(%arg0) {
+            dstElemType = f16,
+            tilingStrategy = [1, 1, 2, 1]
+        } : tensor<1x32x?x64xf32, {bounds = #const.OpaqueI64Elements<[1, 32, 64, 64]> : tensor<4xsi64>, order = #NHWC}> -> tensor<1x32x?x64xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 64, 64]> : tensor<4xsi64>, order = #NHWC}>
+
+    %1 = VPU.Interpolate(%0) {
+            attr = #IE.Interpolate<antialias = false, coord_mode = <ASYMMETRIC>, cube_coeff = -7.500000e-01 : f64, mode = <NEAREST>, nearest_mode = <ROUND_PREFER_FLOOR>, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], shape_calc_mode = <SCALES>>,
+            axes_attr = [2, 3],
+            operandSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>,
+            scales_attr = [2.000000e+00, 2.000000e+00],
+            tilingStrategy = [1, 1, 2, 1]
+        } : tensor<1x32x?x64xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 64, 64]> : tensor<4xsi64>, order = #NHWC}> -> tensor<1x32x?x128xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 128, 128]> : tensor<4xsi64>, order = #NHWC}>
+
+    return %1 : tensor<1x32x?x128xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 128, 128]> : tensor<4xsi64>, order = #NHWC}>
+
+    //CHECK-DAG: [[LOOP_STEP:%.+]] = arith.constant 43 : index
+    //CHECK-DAG: [[LOOP_BEGIN:%.+]] = arith.constant 0 : index
+    //CHECK-DAG: [[DIM_INDEX:%.+]] = arith.constant 2 : index
+    //CHECK-DAG: [[SCALE:%.+]] = arith.constant 2.000000e+00 : f64
+
+    //CHECK: [[DIM:%.+]] = tensor.dim [[INPUT]], [[DIM_INDEX]]
+    //CHECK: [[DIM_I64:%.+]] = arith.index_cast [[DIM]] : index to i64
+    //CHECK: [[DIM_F64:%.+]] = arith.sitofp [[DIM_I64]] : i64 to f64
+    //CHECK: [[OUT_DIM_F64:%.+]] = arith.mulf [[DIM_F64]], [[SCALE]] : f64
+    //CHECK: [[OUT_DIM_I64:%.+]] = arith.fptosi [[OUT_DIM_F64]] : f64 to i64
+    //CHECK: [[OUT_DIM:%.+]] = arith.index_cast [[OUT_DIM_I64]] : i64 to index
+
+    //CHECK: [[LOOP_OUTPUT:%.+]] = tensor.empty([[OUT_DIM]]) : tensor<1x32x?x128xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 128, 128]> : tensor<4xsi64>, order = #NHWC}>
+
+    //CHECK: [[DIM2:%.+]] = tensor.dim [[INPUT]], [[DIM_INDEX]]
+    //CHECK: [[DIM2_I64:%.+]] = arith.index_cast [[DIM2]] : index to i64
+    //CHECK: [[DIM2_F64:%.+]] = arith.sitofp [[DIM2_I64]] : i64 to f64
+    //CHECK: [[OUT_DIM2_F64:%.+]] = arith.mulf [[DIM2_F64]], [[SCALE]] : f64
+    //CHECK: [[OUT_DIM2_I64:%.+]] = arith.fptosi [[OUT_DIM2_F64]] : f64 to i64
+    //CHECK: [[LOOP_BOUND:%.+]] = arith.index_cast [[OUT_DIM2_I64]] : i64 to index
+
+    //CHECK: [[LOOP:%.+]] = scf.for
+    //CHECK-SAME:           [[LOOP_ITER:%arg[0-9]]] = [[LOOP_BEGIN]] to [[LOOP_BOUND]] step [[LOOP_STEP]]
+    //CHECK-SAME:           iter_args([[LOOP_OUT:%arg[0-9]]] = [[LOOP_OUTPUT]]) -> (tensor<1x32x?x128xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 128, 128]> : tensor<4xsi64>, order = #NHWC}>) {
+
+    //CHECK:                [[OUT_TILE:%.+]] = affine.min {{.+}}([[LOOP_ITER]]){{\[}}[[LOOP_BOUND]]{{\]}}
+    //CHECK:                [[IN_START_RAW:%.+]] = affine.max {{.+}}([[LOOP_ITER]])
+    //CHECK:                [[IN_START:%.+]] = affine.min {{.+}}(){{\[}}[[IN_START_RAW]]{{\]}}
+    //CHECK:                [[IN_END_RAW:%.+]] = affine.max {{.+}}([[LOOP_ITER]], [[OUT_TILE]])
+    //CHECK:                [[IN_END:%.+]] = affine.min {{.+}}(){{\[}}[[IN_END_RAW]]{{\]}}
+    //CHECK:                [[IN_SIZE:%.+]] = affine.apply {{.+}}([[IN_START]], [[IN_END]])
+    //CHECK:                [[SLICE:%.+]] = tensor.extract_slice [[INPUT]]{{\[}}0, 0, [[IN_START]], 0] [1, 32, [[IN_SIZE]], 64]
+    //CHECK:                [[CONVERT:%.+]] = VPU.Convert([[SLICE]]) {dstElemType = f16}
+    //CHECK:                [[INTERP:%.+]] = VPU.Interpolate([[CONVERT]])
+    //CHECK-SAME:           attr = #IE.Interpolate<{{.*}}mode = <NEAREST>{{.*}}>
+    //CHECK:                [[INSERT:%.+]] = tensor.insert_slice [[INTERP]] into [[LOOP_OUT]][0, 0, [[LOOP_ITER]], 0] [1, 32, [[OUT_TILE]], 128]
+    //CHECK:                scf.yield [[INSERT]]
+
+    //CHECK: return [[LOOP]] : tensor<1x32x?x128xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 128, 128]> : tensor<4xsi64>, order = #NHWC}>
 }

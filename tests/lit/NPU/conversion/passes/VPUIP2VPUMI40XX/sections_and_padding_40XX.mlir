@@ -3,11 +3,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --vpu-arch=%arch% %s
-// REQUIRES: arch-NPU40XX
+// RUN: vpux-opt --platform=%platform% %s
+// REQUIRES: platform-NPU4000
 // this test can only be (correctly) run manually until E#48620 is solved
 
-module @Test attributes {config.arch = #config.arch_kind<NPU40XX>} {
+module @Test {
 
   config.ExecutorResource 1 of @DMA_NN
   config.Resources 1 of @NCE at 6.000000e+02 MHz

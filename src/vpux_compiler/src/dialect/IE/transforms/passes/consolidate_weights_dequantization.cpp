@@ -31,17 +31,17 @@ namespace vpux {
 mlir::quant::QuantizedType createWeightsQuantizedType(mlir::Type weightsElemType, mlir::Type expressedType,
                                                       double scale, int64_t zeroPoint) {
     const auto [storageMin, storageMax, storageType] = getStorageParams(weightsElemType);
-    if (const auto quantileFloatType = mlir::dyn_cast<vpux::type::QuantileFloatType>(weightsElemType)) {
-        // The quantile type represents how the quantiles are stored by HW after the mapping, so it only makes sense to
-        // be FP16 or lower. The expressed type maintains the normal precision type of the network (FP16/FP32).
-        return mlir::quant::QuantileQuantizedType::get(
-                storageType.isUnsignedInteger() ? 0 : mlir::quant::QuantizationFlags::Signed, storageType,
-                quantileFloatType.getQuantileType(), expressedType, quantileFloatType.getQuantiles(), scale, zeroPoint,
-                storageMin, storageMax);
+    if (const auto quantileType = mlir::dyn_cast<vpux::type::QuantileType>(weightsElemType)) {
+        // Use QuantileType directly as storage type
+        // This represents quantile-backed quantization as quant.uniform with QuantileType storage
+
+        const auto flags = quantileType.shouldDefaultToSigned() ? mlir::quant::QuantizationFlags::Signed : 0;
+        return mlir::quant::UniformQuantizedType::get(flags, quantileType, expressedType, scale, zeroPoint, storageMin,
+                                                      storageMax);
 
     } else {
         return mlir::quant::UniformQuantizedType::get(
-                weightsElemType.isUnsignedInteger() ? 0 : mlir::quant::QuantizationFlags::Signed, storageType,
+                storageType.isUnsignedInteger() ? 0 : mlir::quant::QuantizationFlags::Signed, storageType,
                 expressedType, scale, zeroPoint, storageMin, storageMax);
     }
 }
@@ -50,16 +50,16 @@ mlir::quant::QuantizedType createWeightsQuantizedPerAxisType(mlir::Type weightsE
                                                              ArrayRef<double> scales, int64_t zeroPoint,
                                                              Dim quantizedDimension) {
     const auto [storageMin, storageMax, storageType] = getStorageParams(weightsElemType);
-    if (const auto quantileFloatType = mlir::dyn_cast<vpux::type::QuantileFloatType>(weightsElemType)) {
-        // The quantile type represents how the quantiles are stored by HW after the mapping, so it only makes sense to
-        // be FP16 or lower. The expressed type maintains the normal precision type of the network (FP16/FP32).
-        return mlir::quant::QuantileQuantizedPerAxisType::get(
-                storageType.isUnsignedInteger() ? 0 : mlir::quant::QuantizationFlags::Signed, storageType,
-                quantileFloatType.getQuantileType(), expressedType, quantileFloatType.getQuantiles(), scales,
-                SmallVector<int64_t>(scales.size(), zeroPoint), quantizedDimension.ind(), storageMin, storageMax);
+    if (const auto quantileType = mlir::dyn_cast<vpux::type::QuantileType>(weightsElemType)) {
+        // Use QuantileType directly as storage type.
+        // This represents quantile-backed quantization as quant.uniform with QuantileType storage
+        const auto flags = quantileType.shouldDefaultToSigned() ? mlir::quant::QuantizationFlags::Signed : 0;
+        return mlir::quant::UniformQuantizedPerAxisType::get(flags, quantileType, expressedType, scales,
+                                                             SmallVector<int64_t>(scales.size(), zeroPoint),
+                                                             quantizedDimension.ind(), storageMin, storageMax);
     } else {
         return mlir::quant::UniformQuantizedPerAxisType::get(
-                weightsElemType.isUnsignedInteger() ? 0 : mlir::quant::QuantizationFlags::Signed, storageType,
+                storageType.isUnsignedInteger() ? 0 : mlir::quant::QuantizationFlags::Signed, storageType,
                 expressedType, scales, SmallVector(scales.size(), zeroPoint), quantizedDimension.ind(), storageMin,
                 storageMax);
     }
@@ -122,7 +122,7 @@ bool WeightsDequantizeRewriter<ConcreteOp>::isSupportedInputElemType(mlir::Type 
     return elemType.isSignedInteger(2) || elemType.isUnsignedInteger(2) || elemType.isSignedInteger(4) ||
            elemType.isUnsignedInteger(4) || elemType.isSignedInteger(8) || elemType.isUnsignedInteger(8) ||
            elemType.isSignedInteger(16) || elemType.isUnsignedInteger(16) || elemType.isSignlessInteger(16) ||
-           isLowFpType(elemType) || mlir::isa_and_nonnull<vpux::type::QuantileFloatType>(elemType);
+           isLowFpType(elemType) || mlir::isa_and_nonnull<vpux::type::QuantileType>(elemType);
 }
 
 template <typename ConcreteOp>
@@ -188,8 +188,8 @@ mlir::LogicalResult WeightsDequantizeRewriter<ConcreteOp>::staticMatchAndRewrite
     if (!canUseDequantize && shiftValue != nullptr) {
         auto shiftElemType = IE::getTrueElemType(shiftValue.getDefiningOp<Const::DeclareOp>());
         auto expectedShiftElemType = inputElemType;
-        if (auto quantileFloatType = mlir::dyn_cast_or_null<vpux::type::QuantileFloatType>(inputElemType)) {
-            expectedShiftElemType = quantileFloatType.getQuantileType();
+        if (auto quantileType = mlir::dyn_cast_or_null<vpux::type::QuantileType>(inputElemType)) {
+            expectedShiftElemType = quantileType.getQuantileType();
         }
         if (!isSupportedShiftElemType(shiftElemType) || shiftElemType != expectedShiftElemType) {
             _log.trace("Match failed: The supported shift data type is U2, and must be consistent with the weights "
@@ -255,8 +255,8 @@ mlir::LogicalResult WeightsDequantizeRewriter<ConcreteOp>::dynamicMatchAndRewrit
     if (auto dynamicShift = wdInfo.getDynamicShift()) {
         auto shiftElemType = IE::getTrueElemType(*dynamicShift.user_begin());
         auto expectedShiftElemType = inputElemType;
-        if (auto quantileFloatType = mlir::dyn_cast_or_null<vpux::type::QuantileFloatType>(inputElemType)) {
-            expectedShiftElemType = quantileFloatType.getQuantileType();
+        if (auto quantileType = mlir::dyn_cast_or_null<vpux::type::QuantileType>(inputElemType)) {
+            expectedShiftElemType = quantileType.getQuantileType();
         }
         if (!isSupportedShiftElemType(shiftElemType) || shiftElemType != expectedShiftElemType) {
             _log.trace("Match failed: The supported shift data type is U2, and must be consistent with the weights "
@@ -282,6 +282,11 @@ mlir::LogicalResult WeightsDequantizeRewriter<ConcreteOp>::dynamicMatchAndRewrit
         } else if (auto gatherOp = mlir::dyn_cast_or_null<IE::GatherOp>(scale.getDefiningOp())) {
             rewriter.setInsertionPointAfter(gatherOp);
         }
+    } else {
+        // Static embedding table pattern: scale is a constant; use it as a value input so that
+        // a unit-scale QuantizeCastOp is produced. This allows swap-operation-with-gather to
+        // hoist Gather before QuantizeCast without breaking the per-axis type dimension constraint.
+        scale = wdInfo.getStaticScale();
     }
 
     auto inputValue = rewriter.create<IE::QuantizeCastOp>(loc, IE::getTrueInputValue(origOp, rewriter), quantElemType)
@@ -328,21 +333,29 @@ mlir::LogicalResult WeightsDequantizeRewriter<ConcreteOp>::matchAndRewrite(Concr
     }
 
     auto quantParamsAsInput = wdInfo.getDynamicScale() != nullptr || wdInfo.getDynamicShift() != nullptr;
-    // ...then split depending on dynamic/static quantization.
-    if (quantParamsAsInput) {
+
+    // Static constants with a per-row embedding pattern are routed through dynamicMatchAndRewrite
+    // to avoid baking per-row scales into a per-axis QuantizeCastOp type that
+    // swap-operation-with-gather would later invalidate.
+    const bool feedsGather =
+            !quantParamsAsInput && mlir::isa<Const::DeclareOp>(origOp) && wdInfo.isI4ConsumedByGather();
+
+    if (!quantParamsAsInput && !feedsGather) {
+        return staticMatchAndRewrite(wdInfo, origOp, rewriter);
+    }
+
+    // Dynamic scale path — reject static constants unless the WD chain feeds a Gather.
+    if (!feedsGather) {
         if (mlir::isa<Const::DeclareOp>(origOp)) {
             _log.trace("Match failed: Got dynamic scale but weights is a constant.");
             return mlir::failure();
         }
-
         if (!_enableWeightsDynamicDequantization) {
             _log.trace("Match failed: Got dynamic scale but dynamic dequantization is disabled.");
             return mlir::failure();
         }
-        return dynamicMatchAndRewrite(wdInfo, origOp, rewriter);
-    } else {
-        return staticMatchAndRewrite(wdInfo, origOp, rewriter);
     }
+    return dynamicMatchAndRewrite(wdInfo, origOp, rewriter);
 }
 
 }  // namespace vpux

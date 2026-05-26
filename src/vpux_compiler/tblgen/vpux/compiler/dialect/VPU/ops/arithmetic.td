@@ -148,6 +148,41 @@ def VPU_AtanOp :
     );
 }
 
+def VPU_AtanDmaOp :
+        VPU_LayerOp<
+            "AtanDma",
+            [
+                VPU_SwIoDmaOpInterface,
+                DeclareOpInterfaceMethods<VPU_SWOpInterface>,
+                DeclareOpInterfaceMethods<VPU_AuxiliaryBufferOpInterface>,
+                DeclareOpInterfaceMethods<VPU_ClusteredOpInterface, ["getDistributedTypeForOpOperand",
+                                                                     "getDistributedTypeForOpResult"]>
+            ]
+        > {
+    let summary = "Atan VPU layer with DMA support";
+
+    let arguments = (ins
+        RankedTensorOf<[F16, F32]>:$input,
+        AnyTypeOf<[AnyRankedTensor, VPU_DistributedTensor]>:$aux_buffer,
+        OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy
+    );
+
+    let results = (outs
+        RankedTensorOf<[F16, F32]>:$output
+    );
+
+    let extraClassDeclaration = [{
+        bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers, Byte reservedMem);
+        bool fitIntoCMX(::llvm::ArrayRef<vpux::NDTypeInterface> buffers);
+    }] # baseExtraClassDeclaration;
+
+    let builders = [
+        OpBuilder<(ins
+            "::mlir::Value":$input
+        )>
+    ];
+}
+
 def VPU_AtanhOp :
         VPU_LayerOp<
             "Atanh",
@@ -304,7 +339,7 @@ def VPU_CumSumOp :
         VPU_LayerOp<
             "CumSum",
             [
-                DeclareOpInterfaceMethods<VPU_TilingBuilderOpInterface>,
+                DeclareOpInterfaceMethods<VPU_TilingBuilderOpInterface, ["getMaxNumTiles"]>,
                 DeclareOpInterfaceMethods<VPU_SWOpInterface>,
                 DeclareOpInterfaceMethods<VPU_ClusteredOpInterface>
             ]

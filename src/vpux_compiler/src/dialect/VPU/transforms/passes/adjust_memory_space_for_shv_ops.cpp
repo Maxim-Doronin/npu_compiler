@@ -143,10 +143,18 @@ private:
                                   operand.getOperandNumber());
             }
 
+            if (mlir::isa<VPU::SwIoDmaOpInterface>(op)) {
+                continue;
+            }
+
             _log.nest().trace("Moving operand {0} to CMX", operand.getOperandNumber());
             const auto copiedInput = copyIntoMemSpace(
                     builder, appendLoc(op->getLoc(), "input-{0}-CMX", operand.getOperandNumber()), input, memSpaceCMX);
             operand.set(copiedInput);
+        }
+
+        if (mlir::isa<VPU::SwIoDmaOpInterface>(op)) {
+            return;
         }
 
         for (auto result : llvm::make_early_inc_range(op->getOpResults())) {
@@ -161,6 +169,7 @@ private:
                 _log.nest().trace("Result {0} is already in CMX", result.getResultNumber());
                 continue;
             }
+
             _log.nest().trace("Moving result {0} to CMX", result.getResultNumber());
             builder.setInsertionPointAfter(op);
             const auto newOutType = origOutType.changeMemSpace(memSpaceCMX);

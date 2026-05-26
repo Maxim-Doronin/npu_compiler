@@ -7,6 +7,7 @@
 #include "vpux/compiler/NPU50XX/dialect/VPUIPDPU/ops.hpp"
 #include "vpux/compiler/NPU50XX/dialect/VPUIPDPU/transforms/passes/expand_dpu_config/expand_dpu_config_invariant.hpp"
 #include "vpux/compiler/NPU50XX/dialect/VPUIPDPU/transforms/passes/expand_dpu_config/expand_dpu_config_invariant_idu.hpp"
+#include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/compiler/dialect/VPUASM/ops.hpp"
 #include "vpux/compiler/dialect/VPUIPDPU/rewriters/utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
@@ -179,8 +180,16 @@ mlir::LogicalResult configureWeights(const Logger& log, VPUIPDPU::arch50xx::IDU:
             log.error("Missing weights data for DPU task {0}", VPUIP::stringifyNCETaskType(taskType));
             return mlir::failure();
         }
-        const bool isPalletModeEnabled = llvm::isa_and_nonnull<mlir::quant::QuantileQuantizedType>(weightsType) ||
-                                         llvm::isa_and_nonnull<mlir::quant::QuantileQuantizedPerAxisType>(weightsType);
+        auto isPalletModeEnabled = [weightsType]() -> bool {
+            if (mlir::isa_and_present<mlir::quant::UniformQuantizedType, mlir::quant::UniformQuantizedPerAxisType>(
+                        weightsType)) {
+                auto quantized = mlir::cast<mlir::quant::QuantizedType>(weightsType);
+                if (mlir::isa_and_present<vpux::type::QuantileType>(quantized.getStorageType())) {
+                    return true;
+                }
+            }
+            return false;
+        }();
         config.wMode = getBaseType(weightsType, isPalletModeEnabled);
     }
 

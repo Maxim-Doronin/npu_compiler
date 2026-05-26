@@ -374,8 +374,7 @@ private:
 /**
  * @brief generate a dense data-pointer table
  *
- * @param inElemType - input tensor type
- * @param outElemType - output tensor type
+ * @param context - MLIR context
  * @param workloadSizes - specifies the size of each workload - this size is equivalent to the number of weight sets in
  * that particular workload
  * @param weightsPtrs - the addresses at which the data-pointers will be stored
@@ -387,14 +386,13 @@ private:
  * @return constructed and formatted data-pointer table.
  */
 template <typename T>
-std::vector<int32_t> getDataPointerTable(mlir::Type inElemType, mlir::Type outElemType, ArrayRef<int32_t> workloadSizes,
+std::vector<int32_t> getDataPointerTable(mlir::MLIRContext* context, ArrayRef<int32_t> workloadSizes,
                                          ArrayRef<int32_t> weightsPtrs, int64_t OC,
                                          ArrayRef<T> zeroPoints = ArrayRef<T>()) {
     static_assert(std::is_same_v<T, int8_t> || std::is_same_v<T, uint8_t>,
                   "Invalid zero-point type, expected int8_t or uint8_t");
 
-    VPUX_THROW_WHEN(inElemType == nullptr || outElemType == nullptr,
-                    "Can't create data pointer table without operation input/output types");
+    VPUX_THROW_WHEN(context == nullptr, "Can't create data pointer table without MLIR context");
     VPUX_THROW_WHEN(static_cast<int64_t>(weightsPtrs.size()) != OC,
                     "Data pointers size {0} different than output channels {1}", weightsPtrs.size(), OC);
     VPUX_THROW_WHEN(
@@ -409,7 +407,7 @@ std::vector<int32_t> getDataPointerTable(mlir::Type inElemType, mlir::Type outEl
 
     std::vector<std::int32_t> dataPointerTableVals(OC, 0);
 
-    loop_1d(LoopExecPolicy::Parallel, inElemType.getContext(), checked_cast<size_t>(OC), [&](const size_t oc) {
+    loop_1d(LoopExecPolicy::Parallel, context, checked_cast<size_t>(OC), [&](const size_t oc) {
         VPUX_THROW_UNLESS(weightsPtrs[oc] % ALIGNMENT_REQUIREMENT_IN_ELEMENTS == 0,
                           "weightsPtrs[{0}] must be multiple of {1}, got {2}", oc, ALIGNMENT_REQUIREMENT_IN_ELEMENTS,
                           weightsPtrs[oc]);
@@ -423,30 +421,42 @@ std::vector<int32_t> getDataPointerTable(mlir::Type inElemType, mlir::Type outEl
 /**
  * @brief generate a dense data-pointer table
  *
- * @param inElemType - input tensor type
- * @param outElemType - output tensor type
+ * @param context - MLIR context
  * @param workloadSizes - specifies the size of each workload - this size is equivalent to the number of weight sets in
  * that particular workload
  * @param weightsPtrOffset - the address at which the first data-pointer is stored (defaults to 0)
  * @param weightsPtrStep - distance between two consecutive data-pointer addresses
  * @param OC - number of output channels
+ * @param numClusters - number of clusters
  * @param zeroPoints - array containing per-channel zero-points (can be empty if not needed)
  *
  * @return constructed and formatted data-pointer table.
  */
 template <typename T>
-std::vector<int32_t> getDataPointerTable(mlir::Type inElemType, mlir::Type outElemType, ArrayRef<int32_t> workloadSizes,
+std::vector<int32_t> getDataPointerTable(mlir::MLIRContext* context, ArrayRef<int32_t> workloadSizes,
                                          std::optional<int32_t> weightsPtrOffset, int32_t weightsPtrStep, int64_t OC,
-                                         ArrayRef<T> zeroPoints = ArrayRef<T>()) {
-    auto weightsPtrOffsetValue = weightsPtrOffset.value_or(0);
-
+                                         int64_t numClusters, ArrayRef<T> zeroPoints = ArrayRef<T>()) {
+    const auto initialWeightsPtrOffset = weightsPtrOffset.value_or(0);
+    auto weightsPtrOffsetValue = initialWeightsPtrOffset;
     SmallVector<int32_t> weightsPtrs(OC, 0);
+
+    const bool resetPerCluster = numClusters != 1 && !workloadSizes.empty();
+    int64_t nextWorkloadStart = resetPerCluster ? workloadSizes.front() : OC;
+    size_t workloadIndex = 1;
+
     for (auto oc : irange(OC)) {
+        if (resetPerCluster && oc == nextWorkloadStart) {
+            weightsPtrOffsetValue = initialWeightsPtrOffset;
+            if (workloadIndex < workloadSizes.size()) {
+                nextWorkloadStart += workloadSizes[workloadIndex++];
+            }
+        }
+
         weightsPtrs[oc] = weightsPtrOffsetValue;
         weightsPtrOffsetValue += weightsPtrStep;
     }
 
-    return getDataPointerTable<T>(inElemType, outElemType, workloadSizes, weightsPtrs, OC, zeroPoints);
+    return getDataPointerTable<T>(context, workloadSizes, weightsPtrs, OC, zeroPoints);
 }
 
 /**
@@ -526,6 +536,7 @@ std::pair<std::vector<int32_t>, std::vector<int32_t>> getSparseDataPointerTableP
  * weight != 0)
  * @param OC - number of output channels
  * @param weightsElemType - weights tensor type
+ * @param numClusters - number of clusters
  * @param zeroPoints - array containing per-channel zero-points (can be empty if not needed)
  *
  * @return constructed and formatted data-pointer and sparsity-pointer tables.
@@ -537,7 +548,8 @@ template <typename T>
 std::pair<std::vector<int32_t>, std::vector<int32_t>> getSparseDataPointerTablePair(
         mlir::Type inElemType, mlir::Type outElemType, ArrayRef<int32_t> workloadSizes,
         std::optional<int32_t> weightsPtrOffset, ShapeRef weightsShape, int32_t sparsityPtrOffset,
-        ArrayRef<uint8_t> sparsityMap, int64_t OC, mlir::Type weightsElemType, ArrayRef<T> zeroPoints = ArrayRef<T>()) {
+        ArrayRef<uint8_t> sparsityMap, int64_t OC, mlir::Type weightsElemType, int64_t numClusters,
+        ArrayRef<T> zeroPoints = ArrayRef<T>()) {
     VPUX_THROW_WHEN(weightsElemType == nullptr,
                     "Can't create sparse data pointer tables without operation weights type");
 
@@ -547,14 +559,28 @@ std::pair<std::vector<int32_t>, std::vector<int32_t>> getSparseDataPointerTableP
     VPUX_THROW_WHEN(static_cast<size_t>(weightSetsCounter * weightsShape[Dims4D::Filter::OC]) != sparsityMap.size(),
                     "There has to be one sparse value for each weight");
 
-    auto weightsPtrOffsetValue = weightsPtrOffset.value_or(0);
+    const auto initialWeightsPtrOffset = weightsPtrOffset.value_or(0);
+    auto weightsPtrOffsetValue = initialWeightsPtrOffset;
+    const auto initialSparsityPtrOffset = sparsityPtrOffset;
     auto sparsityPtrStep = vpux::alignValUp(weightSetsCounter / 8, ALIGNMENT_REQUIREMENT_IN_ELEMENTS);
 
     SmallVector<int32_t> weightsPtrs(OC, 0);
     SmallVector<int32_t> sparsityPtrs(OC, 0);
     int32_t sparsityTableOffset = 0;
 
+    const bool resetPerCluster = numClusters != 1 && !workloadSizes.empty();
+    int64_t nextWorkloadStart = workloadSizes.empty() ? OC : workloadSizes.front();
+    size_t workloadIndex = 1;
+
     for (auto oc : irange(OC)) {
+        if (resetPerCluster && oc == nextWorkloadStart) {
+            weightsPtrOffsetValue = initialWeightsPtrOffset;
+            sparsityPtrOffset = initialSparsityPtrOffset;
+            if (workloadIndex < workloadSizes.size()) {
+                nextWorkloadStart += workloadSizes[workloadIndex++];
+            }
+        }
+
         weightsPtrs[oc] = weightsPtrOffsetValue;
 
         int32_t nonZeroWeightsCounter =
@@ -614,6 +640,9 @@ std::vector<float> getBiasTable(mlir::Type inElemType, mlir::Type outElemType,
                                 VPU::NCESparsity::BiasConverterCb biasConverter, int64_t OC,
                                 mlir::Type weightsElemType = nullptr, const Const::ContentAttr& bias = {});
 
+// Returns the innermost integer/float storage type of weightsElemType, unwrapping QuantizedType and QuantileType.
+mlir::Type getQuantizedWeightsStorageType(mlir::Type weightsElemType);
+
 // typename T should be one of uint8_t (for U4 and U8) and int8_t (for I4 and I8)
 // set isZeroPoint4Bit = true only if the zero-points should be stored on 4 bits each
 // so, for U4 zero-points set: T=uint8_t and isZeroPoint4Bit=true
@@ -626,7 +655,7 @@ std::vector<T> getZeroPointTable(ArrayRef<int32_t> workloadSizes, int64_t OC, ml
     VPUX_THROW_WHEN(weightsElemType == nullptr || !mlir::isa<mlir::quant::QuantizedType>(weightsElemType),
                     "weightsElemType has to be a quantized type, not {0}", weightsElemType);
 
-    mlir::Type storageType = mlir::cast<mlir::quant::QuantizedType>(weightsElemType).getStorageType();
+    mlir::Type storageType = getQuantizedWeightsStorageType(weightsElemType);
 
     if (std::is_same_v<T, uint8_t>) {
         VPUX_THROW_UNLESS(storageType.isUnsignedInteger(8) || (storageType.isUnsignedInteger(4) && isZeroPoint4Bit),

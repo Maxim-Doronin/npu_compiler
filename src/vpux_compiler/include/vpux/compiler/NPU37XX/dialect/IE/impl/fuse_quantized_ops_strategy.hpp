@@ -11,15 +11,13 @@ namespace vpux::IE::arch37xx {
 
 class FuseQuantizedOpsStrategy : public IGreedilyPassStrategy {
 public:
-    FuseQuantizedOpsStrategy(const bool seOpsEnabled, const bool seExperimentalOpsEnabled)
-            : _seOpsEnabled(seOpsEnabled), _seExperimentalOpsEnabled(seExperimentalOpsEnabled) {
+    FuseQuantizedOpsStrategy(const bool seOpsEnabled): _seOpsEnabled(seOpsEnabled) {
     }
 
     void addPatterns(mlir::RewritePatternSet& patterns, Logger& log) const override final;
 
 private:
     bool _seOpsEnabled;
-    bool _seExperimentalOpsEnabled;
 };
 
 }  // namespace vpux::IE::arch37xx

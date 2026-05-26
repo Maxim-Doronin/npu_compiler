@@ -8,14 +8,16 @@
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/activation.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops/control_flow.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/dpu.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops/internal.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/normalization.hpp"
 #include "vpux/compiler/dialect/VPU/IR/types.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
-#include "vpux/compiler/init.hpp"
+#include "vpux/compiler/init/dialects_registry.hpp"
 
 #include "common/utils.hpp"
 
@@ -826,4 +828,181 @@ TEST_F(MLIR_GetDistributedTypeFromDepthwiseOpTest, MaxPoolOpWithODUPermuteToNCXX
         testDType(&ctx, clusteredOp, expectedDistribution, numClusters, true);   // test activation distributed type
         testDType(&ctx, clusteredOp, expectedDistribution, numClusters, false);  // test output distributed type
     });
+}
+
+using MLIR_SegmentedInputCompatibleVFSiblingTest = vpux::VPU::arch37xx::UnitTest;
+
+// Test: VF sibling with SOK first consumer should be compatible with segmented input.
+//
+// The IR pattern:
+//   MVN (SOK) → shared output
+//     ├── DWConv (SOK)    ← the op being checked
+//     └── VF { DWConv(SOK) → Conv(SOH) }  ← sibling VF where first inner op is SOK
+//
+TEST_F(MLIR_SegmentedInputCompatibleVFSiblingTest, VFSiblingWithSOKFirstConsumerIsCompatible) {
+    constexpr llvm::StringLiteral inputIR = R"(
+        #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+        module @test {
+            config.Resources 3 of @NCE at 6.000000e+02 MHz
+            config.PipelineOptions @Options {
+                config.Option @config.EnableODULocalRegion : true
+            }
+            func.func @main(%arg0: tensor<1x144x16x16xf16, {order = #NHWC}>) -> (tensor<1x144x16x16xf16, {order = #NHWC}>, tensor<1x144x16x16xf16>) {
+                %cst_wt = const.Declare tensor<144x16x1x1xf16, {order = #NHWC}>
+                    = dense<1.0> : tensor<144x16x1x1xf16, {order = #NHWC}>
+                %cst_wtable = const.Declare tensor<144x1x1x4xsi32> = dense<1> : tensor<144x1x1x4xsi32>
+                %cst_conv_wt = const.Declare tensor<144x144x1x1xf16, {order = #NHWC}>
+                    = dense<1.0> : tensor<144x144x1x1xf16, {order = #NHWC}>
+
+                // MVN with SOK produces segmented output over C
+                %mvn = VPU.MVN(%arg0) {
+                    across_channels = false, eps = 9.9999997473787516E-6 : f64,
+                    multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>,
+                    normalize_variance = true}
+                        : tensor<1x144x16x16xf16, {order = #NHWC}>
+                        -> tensor<1x144x16x16xf16, {order = #NHWC}>
+
+                // Direct sibling: DWConv with SOK (the op under test)
+                %dwconv = VPU.NCE.DepthConvolution(%mvn, %cst_wt, %cst_wtable) {
+                    multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>,
+                    ppe = #VPU.PPEStub<>,
+                    pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+                    rawFilterShape = [144, 1, 1, 1],
+                    strides = [1, 1]}
+                        -> tensor<1x144x16x16xf16, {order = #NHWC}>
+
+                // VF sibling: first op is SOK DWConv (compatible), followed by SOH Conv
+                %vf = VPU.VerticalFusion (
+                    %mvn as %arg1: tensor<1x144x16x16xf16, {order = #NHWC}>,
+                    %cst_wt as %arg2: tensor<144x16x1x1xf16, {order = #NHWC}>,
+                    %cst_wtable as %arg3: tensor<144x1x1x4xsi32>,
+                    %cst_conv_wt as %arg4: tensor<144x144x1x1xf16, {order = #NHWC}>
+                ) attributes {tilingStrategy = [1, 1, 2, 1]}
+                    -> tensor<1x144x16x16xf16> {
+                    // First consumer of the shared input: SOK DWConv
+                    %inner_dw = VPU.NCE.DepthConvolution(%arg1, %arg2, %arg3) {
+                        multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>,
+                        ppe = #VPU.PPEStub<>,
+                        pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+                        rawFilterShape = [144, 1, 1, 1],
+                        strides = [1, 1]}
+                            -> tensor<1x144x16x16xf16, {order = #NHWC}>
+                    // Last op: SOH Conv (different strategy)
+                    %inner_conv = VPU.NCE.Convolution(%inner_dw, %arg4, %arg3) {
+                        multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
+                        ppe = #VPU.PPEStub<>,
+                        pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+                        rawFilterShape = [144, 144, 1, 1],
+                        strides = [1, 1]}
+                            : tensor<1x144x16x16xf16, {order = #NHWC}>, tensor<144x144x1x1xf16, {order = #NHWC}>, tensor<144x1x1x4xsi32>
+                            -> tensor<1x144x16x16xf16>
+                    VPU.Yield %inner_conv
+                }
+
+                return %dwconv, %vf : tensor<1x144x16x16xf16, {order = #NHWC}>, tensor<1x144x16x16xf16>
+            }
+        }
+    )";
+
+    auto module = mlir::parseSourceString<mlir::ModuleOp>(inputIR, &ctx);
+    ASSERT_TRUE(module.get() != nullptr);
+
+    auto func = module.get().lookupSymbol<mlir::func::FuncOp>("main");
+    ASSERT_TRUE(func != nullptr);
+
+    // Find the DWConv op that directly consumes MVN output
+    VPU::NCEDepthConvolutionOp targetDWConv = nullptr;
+    func.walk([&](VPU::NCEDepthConvolutionOp op) {
+        // The direct sibling DWConv is not inside a VF block
+        if (!op->getParentOfType<VPU::VerticalFusionOp>()) {
+            targetDWConv = op;
+        }
+    });
+    ASSERT_TRUE(targetDWConv != nullptr);
+
+    // The fix: isSegmentedInputCompatible should return true because the VF
+    // sibling's first consumer of the shared input is a SOK DWConv
+    EXPECT_TRUE(VPU::isSegmentedInputCompatible(targetDWConv.getOperation()));
+}
+
+// Test: VF sibling with incompatible first consumer should NOT be compatible.
+//
+// The IR pattern:
+//   MVN (SOK) → shared output
+//     ├── DWConv (SOK)    ← the op being checked
+//     └── VF { Conv(SOH) }  ← sibling VF where first inner op is Conv (needs full input)
+//
+TEST_F(MLIR_SegmentedInputCompatibleVFSiblingTest, VFSiblingWithIncompatibleFirstConsumerIsNotCompatible) {
+    constexpr llvm::StringLiteral inputIR = R"(
+        #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+        module @test {
+            config.Resources 3 of @NCE at 6.000000e+02 MHz
+            config.PipelineOptions @Options {
+                config.Option @config.EnableODULocalRegion : true
+            }
+            func.func @main(%arg0: tensor<1x144x16x16xf16, {order = #NHWC}>) -> (tensor<1x144x16x16xf16, {order = #NHWC}>, tensor<1x144x16x16xf16>) {
+                %cst_wt = const.Declare tensor<144x16x1x1xf16, {order = #NHWC}>
+                    = dense<1.0> : tensor<144x16x1x1xf16, {order = #NHWC}>
+                %cst_wtable = const.Declare tensor<144x1x1x4xsi32> = dense<1> : tensor<144x1x1x4xsi32>
+                %cst_conv_wt = const.Declare tensor<144x144x1x1xf16, {order = #NHWC}>
+                    = dense<1.0> : tensor<144x144x1x1xf16, {order = #NHWC}>
+
+                // MVN with SOK produces segmented output over C
+                %mvn = VPU.MVN(%arg0) {
+                    across_channels = false, eps = 9.9999997473787516E-6 : f64,
+                    multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>,
+                    normalize_variance = true}
+                        : tensor<1x144x16x16xf16, {order = #NHWC}>
+                        -> tensor<1x144x16x16xf16, {order = #NHWC}>
+
+                // Direct sibling: DWConv with SOK (the op under test)
+                %dwconv = VPU.NCE.DepthConvolution(%mvn, %cst_wt, %cst_wtable) {
+                    multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>,
+                    ppe = #VPU.PPEStub<>,
+                    pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+                    rawFilterShape = [144, 1, 1, 1],
+                    strides = [1, 1]}
+                        -> tensor<1x144x16x16xf16, {order = #NHWC}>
+
+                // VF sibling: the only inner op is Conv(SOH) which needs full input channels
+                %vf = VPU.VerticalFusion (
+                    %mvn as %arg1: tensor<1x144x16x16xf16, {order = #NHWC}>,
+                    %cst_conv_wt as %arg2: tensor<144x144x1x1xf16, {order = #NHWC}>,
+                    %cst_wtable as %arg3: tensor<144x1x1x4xsi32>
+                ) attributes {tilingStrategy = [1, 1, 2, 1]}
+                    -> tensor<1x144x16x16xf16> {
+                    // Conv requires full input channels — NOT compatible with segmented input
+                    %inner_conv = VPU.NCE.Convolution(%arg1, %arg2, %arg3) {
+                        multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
+                        ppe = #VPU.PPEStub<>,
+                        pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+                        rawFilterShape = [144, 144, 1, 1],
+                        strides = [1, 1]}
+                            : tensor<1x144x16x16xf16, {order = #NHWC}>, tensor<144x144x1x1xf16, {order = #NHWC}>, tensor<144x1x1x4xsi32>
+                            -> tensor<1x144x16x16xf16>
+                    VPU.Yield %inner_conv
+                }
+
+                return %dwconv, %vf : tensor<1x144x16x16xf16, {order = #NHWC}>, tensor<1x144x16x16xf16>
+            }
+        }
+    )";
+
+    auto module = mlir::parseSourceString<mlir::ModuleOp>(inputIR, &ctx);
+    ASSERT_TRUE(module.get() != nullptr);
+
+    auto func = module.get().lookupSymbol<mlir::func::FuncOp>("main");
+    ASSERT_TRUE(func != nullptr);
+
+    // Find the DWConv op that directly consumes MVN output
+    VPU::NCEDepthConvolutionOp targetDWConv = nullptr;
+    func.walk([&](VPU::NCEDepthConvolutionOp op) {
+        if (!op->getParentOfType<VPU::VerticalFusionOp>()) {
+            targetDWConv = op;
+        }
+    });
+    ASSERT_TRUE(targetDWConv != nullptr);
+
+    // Should return false because VF sibling's first consumer is Conv (needs full input)
+    EXPECT_FALSE(VPU::isSegmentedInputCompatible(targetDWConv.getOperation()));
 }

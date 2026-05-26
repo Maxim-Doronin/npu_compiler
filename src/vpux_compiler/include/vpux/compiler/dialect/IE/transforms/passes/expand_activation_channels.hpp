@@ -237,17 +237,16 @@ private:
 };
 
 //
-// SDPAExtendedRewriter
+// AttentionRewriter
 //
 
-class SDPAExtendedRewriter final : public mlir::OpRewritePattern<IE::SDPAExtendedOp> {
+class AttentionRewriter final : public mlir::OpRewritePattern<IE::AttentionOp> {
 public:
-    SDPAExtendedRewriter(mlir::MLIRContext* ctx, Logger log)
-            : mlir::OpRewritePattern<IE::SDPAExtendedOp>(ctx), _log(log) {
-        setDebugName("SDPAExtendedRewriter");
+    AttentionRewriter(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<IE::AttentionOp>(ctx), _log(log) {
+        setDebugName("AttentionRewriter");
     }
 
-    mlir::LogicalResult matchAndRewrite(IE::SDPAExtendedOp origOp, mlir::PatternRewriter& rewriter) const final;
+    mlir::LogicalResult matchAndRewrite(IE::AttentionOp origOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
     Logger _log;

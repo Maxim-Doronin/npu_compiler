@@ -3,10 +3,57 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --outliner="function-outlining=\"batching=''\"" --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --outliner="function-outlining=\"batching=''\"" --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
-module @OneInputOneOutput {
+module @BypassOutline_NoDebatchAttribute attributes {config.no_debatch_attribute} {
+
+    net.NetworkInfo entryPoint : @main
+    inputsInfo : {
+        DataInfo "input" : tensor<3x3x62x62xf16>
+    } outputsInfo : {
+        DataInfo "output" : tensor<3x48x60x60xf16>
+    }
+
+    func.func @main(%arg0: tensor<3x3x62x62xf32>) -> tensor<3x48x60x60xf32> {
+        %0 = builtin.unrealized_conversion_cast %arg0 : tensor<3x3x62x62xf32> to tensor<1x3x62x62xf32>
+        %cst = const.Declare tensor<48x3x3x3xf32> = dense<1.0> : tensor<48x3x3x3xf32>
+        %1 = IE.Convolution(%0, %cst) {
+            dilations = [1, 1],
+            pads_begin = [0, 0],
+            pads_end = [0, 0],
+            strides = [1, 1]
+        } : tensor<1x3x62x62xf32>, tensor<48x3x3x3xf32> -> tensor<1x48x60x60xf32>
+        %2 = IE.SoftMax(%1) {axisInd = 1} : tensor<1x48x60x60xf32> -> tensor<1x48x60x60xf32>
+
+        %3 = IE.Add(%2, %2) { auto_broadcast = #IE.auto_broadcast_type<NUMPY> } : tensor<1x48x60x60xf32>, tensor<1x48x60x60xf32> -> tensor<1x48x60x60xf32>
+        %4 = IE.SoftMax(%3) {axisInd = 1} : tensor<1x48x60x60xf32> -> tensor<1x48x60x60xf32>
+        %5 = builtin.unrealized_conversion_cast %4: tensor<1x48x60x60xf32> to tensor<3x48x60x60xf32>
+        return %5: tensor<3x48x60x60xf32>
+    }
+}
+
+// CHECK-LABEL: @BypassOutline_NoDebatchAttribute
+
+// CHECK: DataInfo "input" : tensor<3x3x62x62xf16>
+
+// CHECK: DataInfo "output" : tensor<3x48x60x60xf16>
+
+// CHECK-NOT: func.func private @main_batching1
+
+// CHECK: func.func @main([[ARG0:%.+]]: tensor<3x3x62x62xf32>) -> tensor<3x48x60x60xf32> {
+// CHECK:   [[NOT_OUTLINED_BEGIN:%.+]] = const.Declare tensor<48x3x3x3xf32>
+// CHECK:   [[ADD_RESULT:%.+]] = IE.Add([[ANY_MATCH:.*]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x48x60x60xf32>, tensor<1x48x60x60xf32> -> tensor<1x48x60x60xf32>
+// CHECK:   [[NOT_OUTLINED_END:%.+]] = IE.SoftMax([[ADD_RESULT]]) {axisInd = 1 : i64} : tensor<1x48x60x60xf32> -> tensor<1x48x60x60xf32>
+// CHECK:   [[VAL1:%.+]] = builtin.unrealized_conversion_cast [[NOT_OUTLINED_END]] : tensor<1x48x60x60xf32> to tensor<3x48x60x60xf32>
+// CHECK:   return [[VAL1]] : tensor<3x48x60x60xf32>
+// CHECK: }
+
+//
+// -----
+//
+
+module @OneInputOneOutput attributes {config.debatch} {
 
     net.NetworkInfo entryPoint : @main
     inputsInfo : {
@@ -59,7 +106,7 @@ module @OneInputOneOutput {
 // -----
 //
 
-module @MultipleInputsOneOutput {
+module @MultipleInputsOneOutput attributes {config.debatch} {
 
     net.NetworkInfo entryPoint : @main
     inputsInfo : {
@@ -116,7 +163,7 @@ module @MultipleInputsOneOutput {
 // -----
 //
 
-module @OneInputMultipleOutputsFirstSlice {
+module @OneInputMultipleOutputsFirstSlice attributes {config.debatch} {
 
     net.NetworkInfo entryPoint : @main
     inputsInfo : {
@@ -171,7 +218,7 @@ module @OneInputMultipleOutputsFirstSlice {
 // -----
 //
 
-module @OneInputMultipleOutputsLastSlice {
+module @OneInputMultipleOutputsLastSlice attributes {config.debatch} {
 
     net.NetworkInfo entryPoint : @main
     inputsInfo : {
@@ -228,7 +275,7 @@ module @OneInputMultipleOutputsLastSlice {
 // -----
 //
 
-module @MultipleInputsMultipleOutputs {
+module @MultipleInputsMultipleOutputs attributes {config.debatch} {
 
     net.NetworkInfo entryPoint : @main
     inputsInfo : {
@@ -303,7 +350,7 @@ module @MultipleInputsMultipleOutputs {
 // -----
 //
 
-module @MultipleInputsMultipleOutputsWithDebatchedConstants {
+module @MultipleInputsMultipleOutputsWithDebatchedConstants attributes {config.debatch} {
 
     net.NetworkInfo entryPoint : @main
     inputsInfo : {

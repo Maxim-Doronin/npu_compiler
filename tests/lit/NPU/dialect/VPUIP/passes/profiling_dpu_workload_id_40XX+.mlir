@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --dpu-profiling %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW" --dpu-profiling %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -28,7 +28,7 @@ module @DpuProfiling  {
   func.func @main(%arg0: !Input_CMX, %arg1: !Weights_CMX, %arg3: !Output_DDR) -> !Output_DDR {
 
     %0 = memref.alloc() : !Output_CMX
-    %1 = VPUIP.NCEClusterTask <{
+    %1 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [3, 3],
             kernel_strides = [1, 1],
@@ -89,7 +89,7 @@ module @DpuProfilingWithMulticlustering  {
   func.func @main(%arg0: !Input_CMX, %arg1: !Weights_CMX, %arg3: !Output_DDR) -> !Output_DDR {
 
     %0 = VPURT.AllocDistributed -> !OutputDistributed
-    %1 = VPUIP.NCEClusterTask <{
+    %1 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
           kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
           kernel_size = [3, 3],
           kernel_strides = [1, 1],
@@ -165,7 +165,7 @@ module @DpuProfilingMultipleOps {
     %0 = memref.alloc() : !Input0_CMX
     %1 = memref.alloc() : !Output0_CMX
     %2 = memref.alloc() : !Weights0_CMX
-    %4 = VPUIP.NCEClusterTask <{
+    %4 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
           kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
           kernel_size = [3, 3],
           kernel_strides = [1, 1],
@@ -198,7 +198,7 @@ module @DpuProfilingMultipleOps {
     //CHECK-SAME:   workload_id = 3 : i64
 
     %15 = VPURT.AllocDistributed -> !OutputDistributed
-    %16 = VPUIP.NCEClusterTask <{
+    %16 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
         task_type = #VPUIP.nce_task_type<ELTWISE>
         }>
         input(%4 : !Output0_CMX)

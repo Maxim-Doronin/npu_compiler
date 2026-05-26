@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK: #NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
 
@@ -296,6 +296,20 @@ func.func @ConvertTrivialTransposeToReshape(%arg0: tensor<1x160x1x55xf16>) -> te
     // CHECK:       IE.AffineReshape
     // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [1], [1], [2, 3]], shape_value = [1, 160, 55, 1]}
     // CHECK-SAME:              tensor<1x160x1x55xf16> -> tensor<1x160x55x1xf16>
+}
+
+// -----
+
+#CNHW = affine_map<(d0, d1, d2, d3) -> (d1, d0, d2, d3)>
+#NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
+
+// E#70418: this is most likely a bug in IE.Reshape
+func.func @FailedConvertTrivialTransposeToReshapeWhenInputHasLayout(%arg0: tensor<1x160x1x55xf16, {order = #CNHW}>) -> tensor<1x160x55x1xf16, {order = #CNHW}> {
+    %0 = IE.Transpose(%arg0) {order_value = #NCWH} : tensor<1x160x1x55xf16, {order = #CNHW}> -> tensor<1x160x55x1xf16, {order = #CNHW}>
+
+    return %0 : tensor<1x160x55x1xf16, {order = #CNHW}>
+
+    // CHECK:   IE.Transpose
 }
 
 // -----

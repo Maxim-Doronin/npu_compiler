@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true enable-sw-kernel-fifo-per-shave-engine=false" --add-sw-kernel-instruction-prefetch="minimum-shave-start-time-for-prefetch=5000" %s | FileCheck %s
-// REQUIRES: arch-NPU40XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true enable-sw-kernel-fifo-per-shave-engine=false" --add-sw-kernel-instruction-prefetch="minimum-shave-start-time-for-prefetch=5000" %s | FileCheck %s
+// REQUIRES: platform-NPU4000
 
 !DummyDDRT = memref<16000x1x1x1xf16, @DDR>
 !DummyCMX0T = memref<16000x1x1x1xf16, [@CMX_NN, 0]>
@@ -18,7 +18,7 @@
 //  Other    : [ SyncDMA ] |
 //
 
-module @subgraph attributes {config.arch = #config.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+module @subgraph attributes {config.compilationMode = #config.compilation_mode<DefaultHW>} {
   VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 4096, 4096, 4096, 4096, 4096]
   module @VPU.SW {
     func.func private @builtin_SoftMax(memref<*xf16, @CMX_NN>, memref<*xf16, @CMX_NN>, i64, i64) attributes {VPU.kernel_code = "softmax.cpp", VPU.kernel_entry = "softmax", VPU.task_type = @COMPUTE}

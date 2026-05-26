@@ -36,7 +36,7 @@ ov_dependent_option(ENABLE_CPPLINT "Enable cpplint checks during the build" ${EN
 
 ov_option(ENABLE_EXPORT_SYMBOLS "Enable compiler -fvisibility=default and linker -export-dynamic options" OFF)
 
-ov_option(BUILD_COMPILER_FOR_DRIVER "Build npu_driver_compiler for CiD driver integration instead of openvino_intel_npu_compiler for CiP OpenVINO integrations" OFF)
+ov_option(BUILD_COMPILER_FOR_DRIVER "Configure compiler libraries (openvino_intel_npu_compiler and openvino_intel_npu_compiler_loader) for CiD driver integration instead of CiP OpenVINO plugin integration" OFF)
 
 ov_option(ENABLE_PRODUCTION_BUILD "Enable production build with extra control" OFF)
 
@@ -54,6 +54,7 @@ endif()
 
 ov_option(ENABLE_NPU_LOADER "Enable npu-loader" OFF)
 ov_option(ENABLE_NPU_LSP_SERVER "Enable npu-lsp-server" OFF)
+ov_option(ENABLE_BYTECODE_INTERPRETER "Enable Bytecode interpreter" ON)
 
 get_target_property(ov_linked_libs openvino::runtime IMPORTED_LINK_DEPENDENT_LIBRARIES_RELEASE)
 if(THREADING STREQUAL "TBB" OR THREADING STREQUAL "TBB_AUTO" OR "TBB::tbb" IN_LIST ov_linked_libs)
@@ -84,6 +85,8 @@ ov_option(ENABLE_CCACHE_FOR_VISUAL_STUDIO "Enable ccache for CMake-generated Vis
 # Enable NPU Execution Engine only for developer build as it is an experimental feature
 ov_dependent_option(ENABLE_NPU_EXECUTION_ENGINE "Enable NPU Execution Engine" ON "ENABLE_DEVELOPER_BUILD" OFF)
 
+ov_dependent_option(ENABLE_DEP_CHECK "Enable dependency check for source files" OFF "ENABLE_DEVELOPER_BUILD" OFF)
+
 if(ENABLE_VPUX_DOCS)
     find_package(Doxygen)
     if(DOXYGEN_FOUND)
@@ -111,3 +114,5 @@ function (print_enabled_npu_features)
     endforeach()
     message(STATUS "")
 endfunction()
+
+ov_option(FORCE_CCACHE_FOR_NPU_THIRDPARTY "Force ccache for NPU thirdparty dependencies (could be used for precise build time measurement, when we do not want to track 3rd party build times)" OFF)

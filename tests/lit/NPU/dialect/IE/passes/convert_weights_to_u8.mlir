@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-weights-to-u8 --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --convert-weights-to-u8 --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 !qElemType = !quant.uniform<u8<0:254>:f16:0, {0.010680671751968504:127,0.0081200787401574797:127,0.010596087598425197:127}>
 !qElemType1 = !quant.uniform<i8<-127:127>:f16:0, {0.010680671751968504,0.0081200787401574797,0.010596087598425197}>
@@ -605,4 +605,40 @@ func.func @SkipFullQuantizedAndConvertToI8MixedPrecisionFusedDequantize(%arg0: t
   // CHECK:  [[CONV_0:%.+]] = IE.Convolution([[AF_RESHAPE]], [[CST]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x256x1x1xf16>, tensor<4x256x1x1x!qElemType> -> tensor<1x4x1x1xf16>
 
   // CHECK:  return [[CONV]], [[CONV_0]] : tensor<1x4x1x1xf16>, tensor<1x4x1x1xf16>
+}
+
+// -----
+
+// CHECK:     !qElemType = !quant.uniform<u8:f16, 1.000000e+00>
+// CHECK:     !qElemType1 = !quant.uniform<u8:f16, 5.000000e-01>
+// CHECK:     !qElemType2 = !quant.uniform<u8:f16, 1.800000e-02:141>
+
+!qElemType_u8 = !quant.uniform<u8:f16, 1.000000e+00>
+!qElemType_i8_b = !quant.uniform<i8:f16, 2.000000e+00>
+!qElemType_i8_c = !quant.uniform<i8:f16, 1.800000e-02:13>
+!qElemType_act = !quant.uniform<u8:f16, 0.500000e+00>
+
+// CHECK-LABEL: @ChainedQuantizeCastI8ToU8
+// CHECK-SAME:      [[ARG0:%.+]]: tensor<256x768x1x1x!qElemType>
+// CHECK-SAME:      [[ARG1:%.+]]: tensor<1x768x1x1x!qElemType1>
+func.func @ChainedQuantizeCastI8ToU8(%arg0: tensor<256x768x1x1x!qElemType_u8>, %arg1: tensor<1x768x1x1x!qElemType_act>) -> tensor<1x256x1x1xf16> {
+  %0 = IE.QuantizeCast(%arg0) {dstElemType = !qElemType_i8_b} : tensor<256x768x1x1x!qElemType_u8> -> tensor<256x768x1x1x!qElemType_i8_b>
+  %1 = IE.QuantizeCast(%0) {dstElemType = !qElemType_i8_c} : tensor<256x768x1x1x!qElemType_i8_b> -> tensor<256x768x1x1x!qElemType_i8_c>
+  %2 = IE.Dequantize(%1) {dstElemType = f16} : tensor<256x768x1x1x!qElemType_i8_c> -> tensor<256x768x1x1xf16>
+  %3 = IE.Dequantize(%arg1) {dstElemType = f16} : tensor<1x768x1x1x!qElemType_act> -> tensor<1x768x1x1xf16>
+  %4 = IE.Convolution(%3, %2) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x768x1x1xf16>, tensor<256x768x1x1xf16> -> tensor<1x256x1x1xf16>
+  return %4 : tensor<1x256x1x1xf16>
+
+  // CHECK-NOT:   unrealized_conversion_cast
+
+  // CHECK:       [[QUANT:%.+]] = IE.QuantizeCast([[ARG0]]) {dstElemType = !qElemType2}
+  // CHECK-SAME:      : tensor<256x768x1x1x!qElemType> -> tensor<256x768x1x1x!qElemType2>
+  // CHECK:       [[DEQUANT_WTS:%.+]] = IE.Dequantize([[QUANT]]) {dstElemType = f16}
+  // CHECK-SAME:      : tensor<256x768x1x1x!qElemType2> -> tensor<256x768x1x1xf16>
+  // CHECK:       [[DEQUANT_ACT:%.+]] = IE.Dequantize([[ARG1]]) {dstElemType = f16}
+  // CHECK-SAME:      : tensor<1x768x1x1x!qElemType1> -> tensor<1x768x1x1xf16>
+  // CHECK:       [[CONV:%.+]] = IE.Convolution([[DEQUANT_ACT]], [[DEQUANT_WTS]])
+  // CHECK-SAME:      {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]}
+  // CHECK-SAME:      : tensor<1x768x1x1xf16>, tensor<256x768x1x1xf16> -> tensor<1x256x1x1xf16>
+  // CHECK:       return [[CONV]] : tensor<1x256x1x1xf16>
 }

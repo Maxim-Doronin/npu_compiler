@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -21,7 +21,7 @@ class PermuteQuantizeTestCommon :
         ov::ParameterVector params{std::make_shared<ov::op::v0::Parameter>(inType, inputDynamicShapes.front())};
 
         const auto nceTask = NCETasksHelpers::buildNCETask(params.at(0), NCETasksHelpers::NCEOpType::GroupConv2d);
-        const auto quantRange = std::array<float, 4>{0.f, 255.f, 0.f, 255.f};
+        const auto quantRange = std::array<float, 4>{0.f, 1200.f, 0.f, 1200.f};
         const auto quantOp = NCETasksHelpers::quantize(nceTask, quantRange);
         const ov::ResultVector results{std::make_shared<ov::op::v0::Result>(quantOp)};
 

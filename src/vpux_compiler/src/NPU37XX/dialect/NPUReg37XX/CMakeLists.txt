@@ -4,12 +4,15 @@
 #
 
 file(GLOB_RECURSE SRC_FILES *.cpp)
-add_npu_library(npu_compiler_dialect_npu37xx
+add_npu_library(npu_compiler_dialect_npureg37xx
     ${SRC_FILES}
     DIALECT_LIB
-    LINK_LIBS PRIVATE
-        npu_llvm_utils
-        npu_ov_utils
+    LINK_LIBS
+      PUBLIC
+        npu_compiler_dialect_vpureg
+        npu_core_utils
+        MLIRFuncDialect
+      PRIVATE
         npu_elf
         MLIRIR
-        MLIRFuncDialect)
+)

@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops/bitwise.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/comparison.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/control_flow.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/logical.hpp"
@@ -206,6 +207,7 @@ void ConvertPrecisionToFP16Pass::safeRunOnModule() {
     target.addLegalOp<IE::GreaterOp>();
     target.addLegalOp<IE::NotEqualOp>();
     target.addLegalOp<IE::IsInfOp>();
+    target.addLegalOp<IE::IsFiniteOp>();
     // AssignOp & ReadValueOp represent inputs/outputs. Cannot convert their type internally.
     target.addLegalOp<IE::AssignOp>();
     target.addLegalOp<IE::ReadValueOp>();
@@ -213,6 +215,8 @@ void ConvertPrecisionToFP16Pass::safeRunOnModule() {
     target.addLegalOp<IE::BitwiseOrOp>();
     target.addLegalOp<IE::BitwiseXorOp>();
     target.addLegalOp<IE::BitwiseNotOp>();
+    target.addLegalOp<IE::BitwiseRightShiftOp>();
+    target.addLegalOp<IE::BitwiseLeftShiftOp>();
     target.addLegalOp<IE::RangeOp>();
     target.addLegalOp<IE::ReduceL2Op>();
     target.addLegalOp<IE::InverseOp>();
@@ -226,9 +230,10 @@ void ConvertPrecisionToFP16Pass::safeRunOnModule() {
     if (!_computeLayersWithHigherPrecision.empty()) {
         std::istringstream optionsStream(_computeLayersWithHigherPrecision);
         std::string dialectNamespace = IE::IEDialect::getDialectNamespace().str() + ".";
+        const std::string addRMSNormOption = "Add_RMSNorm";
         std::string option;
         while (std::getline(optionsStream, option, ',')) {
-            bool isAddRMSNorm = option == std::string("Add_RMSNorm");
+            bool isAddRMSNorm = option == addRMSNormOption;
             if (isAddRMSNorm) {
                 option = std::string("Add");
             }
@@ -340,10 +345,39 @@ void ConvertPrecisionToFP16Pass::safeRunOnModule() {
         }
     });
 
+    mlir::Operation* consumerOp = nullptr;
+    auto walkThroughViewLikeOps = [&consumerOp](mlir::Operation* currentOp) -> mlir::FailureOr<mlir::Operation*> {
+        while (mlir::isa_and_nonnull<IE::ViewLikeOpInterface>(currentOp)) {
+            if (!currentOp->hasOneUse()) {
+                return mlir::failure();
+            }
+            consumerOp = currentOp;
+            currentOp = *currentOp->getUsers().begin();
+        }
+        return currentOp;
+    };
+
     const auto isLegalAdditionalOp = [&](mlir::Operation* op) {
         if (rtPrecision.isPrecisionSensitiveOp(op)) {
             return true;
         }
+
+        if (mlir::isa_and_nonnull<IE::ClampOp>(op) && op->hasOneUse()) {
+            // Not convert I64 ClampOp to FP16 if it is used as indices of GatherOp
+            // TODO: E#208331 Remove check for pattern "ClampOp + GatherOp" once isPrecisionSensitiveOp supported
+            consumerOp = op;
+            auto implicitOpOrFailure = walkThroughViewLikeOps(*op->getUsers().begin());
+            if (mlir::succeeded(implicitOpOrFailure)) {
+                if (auto gatherOp = mlir::dyn_cast<IE::GatherOp>(*implicitOpOrFailure.value())) {
+                    auto indicesOp = gatherOp.getIndices().getDefiningOp();
+                    auto outputElemType = mlir::cast<NDTypeInterface>(op->getResult(0).getType()).getElementType();
+                    if (indicesOp == consumerOp && outputElemType.isSignedInteger(64)) {
+                        return true;
+                    }
+                }
+            }
+        }
+
         return additionalTypeConverter.isLegal(op);
     };
 
@@ -360,8 +394,7 @@ void ConvertPrecisionToFP16Pass::safeRunOnModule() {
     // SelectOp
     mlir::TypeConverter selectOpConverter;
     setupConvertPrecision(selectOpConverter, [](mlir::Type elemType) -> mlir::Type {
-        if (elemType.isF32() || elemType.isF64() || elemType.isSignlessInteger(8) || elemType.isSignedInteger(16) ||
-            elemType.isSignedInteger(64)) {
+        if (elemType.isF32() || elemType.isF64() || elemType.isSignlessInteger(8) || elemType.isSignedInteger(16)) {
             return mlir::Float16Type::get(elemType.getContext());
         } else {
             return elemType;

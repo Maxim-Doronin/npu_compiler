@@ -34,14 +34,18 @@ void vpux::VPUIP::arch37xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
                                                    const VPUIP::arch37xx::DefaultHWOptions& options, Logger log) {
     const auto grc = getDefaultGreedyRewriteConfig();
 
-    if (options.enableShaveKernelTiling) {
-        pm.addPass(VPUIP::createTileActShaveKernelTaskPass(log));
-    }
-    if (options.enableOptimizeCopies || options.enableOpsAsDMA) {
-        // This pass is a part of "copy optimization pipeline", but need to be done before because
-        // WrapWithPermuteAsNNDMA depends on it.
-        pm.addPass(VPUIP::createMovePureViewOpBeforeCopyPass(log));
-    }
+    // Ensure the cost model analysis is constructed
+    // The analysis is constructed if it does not exist yet and reused otherwise,
+    // so it does not really affect the Default pipeline where the cache is created in VPU dialect,
+    // but it helps specifically for the WS where VPUIP pipeline can be run separately by dedicated PassManager
+    pm.addPass(VPU::createCostModelAnalysisConstructPass(log));
+
+    pm.addPass(VPUIP::createTileActShaveKernelTaskPass(log));
+
+    // This pass is a part of "copy optimization pipeline", but need to be done before because
+    // WrapWithPermuteAsNNDMA depends on it.
+    pm.addPass(VPUIP::createMovePureViewOpBeforeCopyPass(log));
+
     if (options.enableOpsAsDMA) {
         pm.addPass(VPUIP::createWrapWithPermuteAsNNDMAPass(log));
     }
@@ -91,9 +95,7 @@ void vpux::VPUIP::arch37xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
         pm.addPass(VPUIP::createComputeSESizesPass(/*onlyInputsConcatOverC=*/true, log));
     }
 
-    if (options.enableConstantFusion) {
-        pm.addPass(VPUIP::createFuseConstantsPass(log));
-    }
+    pm.addPass(VPUIP::createFuseConstantsPass(log));
 
     pm.addPass(VPUIP::createSwizzlingPass(options.enableWeightsSwizzling, options.enableActivationSwizzling, log));
 
@@ -153,9 +155,7 @@ void vpux::VPUIP::arch37xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
     // TODO: E#118869 For now put the pass before barrier scheduling
     pm.addPass(VPUIP::createDispatchedInlinerPass(log));
 
-    if (options.enableControlGraphSplit) {
-        pm.addPass(VPURT::createSplitControlGraphPass(options.controlGraphSplitBlockSize, log));
-    }
+    pm.addPass(VPURT::createSplitControlGraphPass(options.controlGraphSplitBlockSize, log));
 
     if (!options.linearizeSchedule) {
         pm.addPass(VPUIP::createBarrierOptimizationPass(std::nullopt, log));
@@ -163,11 +163,9 @@ void vpux::VPUIP::arch37xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
 
     pm.addPass(VPURT::createSimplifySchedulePass(options.reduceParallelControlFlows, std::nullopt, log));
 
-    pm.addPass(VPURT::createInsertBarrierToMarkTheEndOfDescriptorGroupPass(std::nullopt, std::nullopt, log));
-
     pm.addPass(VPURT::createAddFinalBarrierPass(options.workloadManagementMode, log));
 
-    VPURT::buildBarrierLegalizationPipeline(pm, /* workloadManagementMode */ std::nullopt, std::nullopt,
+    VPURT::buildBarrierLegalizationPipeline(pm, /* workloadManagementEnabled */ std::nullopt,
                                             /* unevenVariantSplitFlag */ false, log);
 
     pm.addPass(Const::createApplySwizzlingPass());

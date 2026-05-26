@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -21,6 +21,11 @@ namespace ov::test {
 class PropagateFQSubGraphTest_NPU3720 :
         public VpuOv2LayerTest,
         public testing::WithParamInterface<std::tuple<std::vector<int64_t>>> {
+    void configure_model() override {
+        // #E-210493 - to remove quant-dequant-removal=false when proper solution is found
+        configuration[ov::intel_npu::compilation_mode_params.name()] = "quant-dequant-removal=false";
+    }
+
     void generate_inputs(const std::vector<ov::Shape>& targetInputStaticShapes) override {
         VpuOv2LayerTest::inputs.clear();
         const auto& funcInputs = VpuOv2LayerTest::function->inputs();

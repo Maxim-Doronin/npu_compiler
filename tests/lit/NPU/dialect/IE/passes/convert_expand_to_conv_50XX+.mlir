@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-expand-to-conv %s | FileCheck %s
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --convert-expand-to-conv %s | FileCheck %s
+// REQUIRES: platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -24,12 +24,7 @@ func.func @ConvertExpandToConv16ChannelsF8E4M3FN(%arg0: tensor<1x3x64x224x!qElem
     return %EXPAND : tensor<1x16x64x224x!qElemType, {order = #NHWC}>
 
 
-    // CHECK:   [[RESHAPE_INPUT:%.+]] = IE.AffineReshape([[INPUT]]) {
-    // CHECK-SAME:      dim_mapping = [
-    // CHECK-SAME:          [0], [1], [2], [3]
-    // CHECK-SAME:      ],
-    // CHECK-SAME:      shape_value = [1, 48, 64, 14]
-    // CHECK-SAME:  } : tensor<1x3x64x224x!qElemType, {order = #NHWC}> -> tensor<1x48x64x14x!qElemType, {order = #NHWC}>
+    // CHECK:   [[RESHAPE_INPUT:%.+]] = IE.ShapeCast {shape = [1, 48, 64, 14]} inputs([[INPUT]] : tensor<1x3x64x224x!qElemType, {order = #NHWC}>) -> tensor<1x48x64x14x!qElemType, {order = #NHWC}>
     // CHECK:   [[EXPAND_WEIGHTS:%.+]] = const.Declare tensor<256x48x1x1x!qElemType1, {order = #NHWC}> = dense<"0x
     // CHECK-SAME:      003C00000000{{([0]{180})}}
     // CHECK-SAME:      0000003C0000{{([0]{180})}}
@@ -45,12 +40,7 @@ func.func @ConvertExpandToConv16ChannelsF8E4M3FN(%arg0: tensor<1x3x64x224x!qElem
     // CHECK-SAME:      tensor<256x48x1x1x!qElemType1, {order = #NHWC}>
     // CHECK-SAME:          -> tensor<1x256x64x14x!qElemType, {order = #NHWC}>
 
-    // CHECK:   [[RESHAPE_OUTPUT:%.+]] = IE.AffineReshape([[CONV]]) {
-    // CHECK-SAME:      dim_mapping = [
-    // CHECK-SAME:          [0], [1], [2], [3]
-    // CHECK-SAME:      ],
-    // CHECK-SAME:      shape_value = [1, 16, 64, 224]
-    // CHECK-SAME:  } : tensor<1x256x64x14x!qElemType, {order = #NHWC}> -> tensor<1x16x64x224x!qElemType, {order = #NHWC}>
+    // CHECK:   [[RESHAPE_OUTPUT:%.+]] = IE.ShapeCast {shape = [1, 16, 64, 224]} inputs([[CONV]] : tensor<1x256x64x14x!qElemType, {order = #NHWC}>) -> tensor<1x16x64x224x!qElemType, {order = #NHWC}>
 
     // CHECK:   return [[RESHAPE_OUTPUT]] : tensor<1x16x64x224x!qElemType, {order = #NHWC}>
 }

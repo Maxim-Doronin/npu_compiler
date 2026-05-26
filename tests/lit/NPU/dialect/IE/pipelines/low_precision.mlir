@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --low-precision %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --low-precision %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 !qElemType = !quant.uniform<u8<0:254>:f32:0, {0.0078740157480314959:127,0.0086614175105658095:127,0.0094488192731001247:127,0.010236220096978615:127}>
 !qElemType1 = !quant.uniform<u8:f32, 1.000000e+00>
@@ -57,13 +57,9 @@ func.func @QuantizedConv(%input: tensor<1x3x62x62xui8>) -> tensor<1x4x60x60xf32>
 
     // CHECK:     [[CONV:%.+]] = IE.Convolution([[INPUT_QUANT]], [[WEIGHTS]])
 
-    // CHECK:     [[OUTPUT_QUANT:%.+]] = IE.QuantizeCast([[CONV]]) {dstElemType = !qElemType2} :
-    // CHECK-SAME:     tensor<1x4x60x60x!qElemType1> -> tensor<1x4x60x60x!qElemType2>
+    // CHECK:     [[RELU:%.+]] = IE.ReLU([[CONV]])
 
-    // CHECK:     [[OUT_DEQ:%.+]] = IE.Add([[OUTPUT_QUANT]], [[OUTPUT_QUANT]]) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>}
-    // CHECK-SAME:     -> tensor<1x4x60x60xf32>
-
-    // CHECK:     return [[OUT_DEQ]]
+    // CHECK:     return [[RELU]]
 }
 
 // -----

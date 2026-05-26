@@ -43,7 +43,7 @@ void CheckWlmPageSplitConstraintsPass::safeRunOnFunc() {
     auto func = getOperation();
 
     VPUX_THROW_UNLESS(_workloadManagementMode.has_value() &&
-                              (_workloadManagementMode.value() >= WorkloadManagementMode::PWLM_V2_PAGES ||
+                              (_workloadManagementMode.value() == WorkloadManagementMode::FWLM_V1_PAGES ||
                                _workloadManagementMode.value() == WorkloadManagementMode::PWLM_V0_1_PAGES),
                       "Unsupported WLM mode");
 

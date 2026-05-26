@@ -27,7 +27,7 @@ std::unique_ptr<mlir::Pass> createSetOpOffsetsPass(Logger log = Logger::global()
 std::unique_ptr<mlir::Pass> createSetEntryPointPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createAddNetworkMetadataPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createUpdateELFSectionFlagsPass(Logger log = Logger::global(),
-                                                            std::string isShaveDDRAccessEnabled = "true");
+                                                            const std::string& isShaveDDRAccessEnabled = "true");
 std::unique_ptr<mlir::Pass> createRemoveEmptyELFSectionsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createHandleAlignmentRequirementsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createAddABIVersionPass(Logger log = Logger::global());
@@ -36,6 +36,7 @@ std::unique_ptr<mlir::Pass> createSetCMXSymbolValuePass(Logger log = Logger::glo
                                                         std::optional<uint32_t> workspaceSize = std::nullopt,
                                                         std::optional<uint32_t> metadataAddr = std::nullopt,
                                                         std::optional<uint32_t> metadataSize = std::nullopt);
+std::unique_ptr<mlir::Pass> createFinalizeSkipDmaChainsPass(Logger log = Logger::global());
 
 //
 // Registration

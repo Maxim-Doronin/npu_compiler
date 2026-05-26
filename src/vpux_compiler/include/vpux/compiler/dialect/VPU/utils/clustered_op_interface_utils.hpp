@@ -26,6 +26,11 @@ constexpr size_t RANK_REQUIRED_FOR_TILING = 4;
 // For example for 4 cluster compilation the output height must be a minimum of 4.
 bool isOperationSplitOverHeightCompatible(mlir::Operation* op, const vpux::TileInfo& outputTile);
 
+// Checks SOH compatibility for NCE ops by back-inferring an input tile and validating DPU support.
+// Uses the default output shape from defaultOutputShape, and checkAlignment controls ISA alignment check.
+bool isNCEOpSplitOverHeightCompatible(mlir::Operation* op, mlir::Value input, ShapeRef defaultOutputShape,
+                                      const vpux::TileInfo& oriOutputTile, bool checkAlignment);
+
 // Each cluster should compute at least one output line. Therefore in order for a layer to be SOW
 // compatible it must have an output width of at least the number of clusters
 // specified for compilation.

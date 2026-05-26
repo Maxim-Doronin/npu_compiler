@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW allow-custom-values=true" --make-ops-with-distributed-tensor="enable-explicit-distributed-attr=true" %s | FileCheck %s
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW allow-custom-values=true" --make-ops-with-distributed-tensor="enable-explicit-distributed-attr=true" %s | FileCheck %s
+// REQUIRES: platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -595,14 +595,14 @@ func.func @FlashSDPA_SoH(%arg0: tensor<1x8x64x64xf16>, %arg1: tensor<1x8x32x64xf
     %cst = const.Declare tensor<1x1x128x4xsi32> = dense<0> : tensor<1x1x128x4xsi32>
     %cst_0 = const.Declare tensor<1x1x32x4xsi32> = dense<0> : tensor<1x1x32x4xsi32>
     %cst_1 = const.Declare tensor<1x1x2x256xsi32> = dense<0> : tensor<1x1x2x256xsi32>
-    %cst_2 = const.Declare tensor<1x4x64x32xf16> = dense<0.000000e+00> : tensor<1x4x64x32xf16>
+    %cst_2 = const.Declare tensor<1x2x64x32xf16> = dense<0.000000e+00> : tensor<1x2x64x32xf16>
     %cst_3 = const.Declare tensor<1x8x64x1xf32> = dense<0.000000e+00> : tensor<1x8x64x1xf32>
     %cst_4 = const.Declare tensor<1x8x64x1xf16> = dense<0xFC00> : tensor<1x8x64x1xf16>
     %cst_5 = const.Declare tensor<1x8x64x128xf16> = dense<0.000000e+00> : tensor<1x8x64x128xf16>
 
     %value_reordered = IE.Reorder(%arg2) {dstOrder = #NCWH} : tensor<1x8x32x128xf16> -> tensor<1x8x32x128xf16, {order = #NCWH}>
 
-    %result_running_output, %result_running_max, %result_running_sum, %result_query =
+    %result_running_output, %result_running_max, %result_running_sum =
         VPU.FlashSDPA(%arg0, %arg1, %value_reordered, %cst_2, %cst_1, %cst_0, %cst, %cst_5, %cst_4, %cst_3, %arg3) {
             is_head = true,
             is_tail = true,
@@ -610,17 +610,17 @@ func.func @FlashSDPA_SoH(%arg0: tensor<1x8x64x64xf16>, %arg1: tensor<1x8x32x64xf
             operandSegmentSizes = array<i32: 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1>,
             source_seq_len_pad_size = 0 : i64
         } : tensor<1x8x64x64xf16>, tensor<1x8x32x64xf16>, tensor<1x8x32x128xf16, {order = #NCWH}>,
-            tensor<1x4x64x32xf16>, tensor<1x1x2x256xsi32>, tensor<1x1x32x4xsi32>,
+            tensor<1x2x64x32xf16>, tensor<1x1x2x256xsi32>, tensor<1x1x32x4xsi32>,
             tensor<1x1x128x4xsi32>, tensor<1x8x64x128xf16>, tensor<1x8x64x1xf16>,
             tensor<1x8x64x1xf32>, tensor<1x8x64x32xf16>
-        -> tensor<1x8x64x128xf16>, tensor<1x8x64x1xf16>, tensor<1x8x64x1xf32>, tensor<1x8x64x64xf16>
+        -> tensor<1x8x64x128xf16>, tensor<1x8x64x1xf16>, tensor<1x8x64x1xf32>
 
     return %result_running_output : tensor<1x8x64x128xf16>
 
     // CHECK-DAG:       [[DPU_DESCRIPTORS_BUF:%.+]] = const.Declare tensor<1x1x2x256xsi32> = dense<0> : tensor<1x1x2x256xsi32>
     // CHECK-DAG:       [[WEIGHTS_TABLE0:%.+]] = const.Declare tensor<1x1x32x4xsi32> = dense
     // CHECK-DAG:       [[WEIGHTS_TABLE1:%.+]] = const.Declare tensor<1x1x128x4xsi32> = dense
-    // CHECK-DAG:       [[IN_AUX:%.+]] = const.Declare tensor<1x4x64x32xf16> = dense<0.000000e+00> : tensor<1x4x64x32xf16>
+    // CHECK-DAG:       [[IN_AUX:%.+]] = const.Declare tensor<1x2x64x32xf16> = dense<0.000000e+00> : tensor<1x2x64x32xf16>
     // CHECK-DAG:       [[IN_SUM:%.+]] = const.Declare tensor<1x8x64x1xf32> = dense<0.000000e+00> : tensor<1x8x64x1xf32>
     // CHECK-DAG:       [[IN_MAX:%.+]] = const.Declare tensor<1x8x64x1xf16> = dense<0xFC00> : tensor<1x8x64x1xf16>
     // CHECK-DAG:       [[IN_OUT:%.+]] = const.Declare tensor<1x8x64x128xf16> = dense<0.000000e+00> : tensor<1x8x64x128xf16>
@@ -630,7 +630,7 @@ func.func @FlashSDPA_SoH(%arg0: tensor<1x8x64x64xf16>, %arg1: tensor<1x8x32x64xf
     // CHECK:           [[IN0:%.+]] = VPU.UnrolledType([[QUERY]] : tensor<1x8x64x64xf16>) -> !VPU.DistributedTensor<1x8x64x64xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED"
     // CHECK:           [[IN1:%.+]] = VPU.UnrolledType([[KEY]] : tensor<1x8x32x64xf16>) -> !VPU.DistributedTensor<1x8x32x64xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED"
     // CHECK:           [[IN2:%.+]] = VPU.UnrolledType([[VALUE_REORDERED]] : tensor<1x8x32x128xf16, {order = #NCWH}>) -> !VPU.DistributedTensor<1x8x32x128xf16, #NCWH, @CMX_NN, {mode = "DUPLICATED"
-    // CHECK:           [[IN3:%.+]] = VPU.UnrolledType([[IN_AUX]] : tensor<1x4x64x32xf16>) -> !VPU.DistributedTensor<1x4x64x32xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED"
+    // CHECK:           [[IN3:%.+]] = VPU.UnrolledType([[IN_AUX]] : tensor<1x2x64x32xf16>) -> !VPU.DistributedTensor<1x2x64x32xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED"
     // CHECK:           [[IN4:%.+]] = VPU.UnrolledType([[DPU_DESCRIPTORS_BUF]] : tensor<1x1x2x256xsi32>) -> !VPU.DistributedTensor<1x1x2x256xsi32, #NCHW, @CMX_NN, {mode = "DUPLICATED"
     // CHECK:           [[IN5:%.+]] = VPU.UnrolledType([[WEIGHTS_TABLE0]] : tensor<1x1x32x4xsi32>) -> !VPU.DistributedTensor<1x1x32x4xsi32, #NCHW, @CMX_NN, {mode = "DUPLICATED"
     // CHECK:           [[IN6:%.+]] = VPU.UnrolledType([[WEIGHTS_TABLE1]] : tensor<1x1x128x4xsi32>) -> !VPU.DistributedTensor<1x1x128x4xsi32, #NCHW, @CMX_NN, {mode = "DUPLICATED"
@@ -639,7 +639,7 @@ func.func @FlashSDPA_SoH(%arg0: tensor<1x8x64x64xf16>, %arg1: tensor<1x8x32x64xf
     // CHECK:           [[IN9:%.+]] = VPU.UnrolledType([[IN_SUM]] : tensor<1x8x64x1xf32>) -> !VPU.DistributedTensor<1x8x64x1xf32, #NCHW, @CMX_NN, {mode = "SEGMENTED"
     // CHECK:           [[IN10:%.+]] = VPU.UnrolledType([[ATTENTION_MASK]] : tensor<1x8x64x32xf16>) -> !VPU.DistributedTensor<1x8x64x32xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED"
 
-    // CHECK:           [[RES_OUT_DIST:%[^, ]+]], [[RES_MAX_DIST:%[^, ]+]], [[RES_SUM_DIST:%[^, ]+]], [[RES_QUERY_DIST:%[^, ]+]] =
+    // CHECK:           [[RES_OUT_DIST:%[^, ]+]], [[RES_MAX_DIST:%[^, ]+]], [[RES_SUM_DIST:%[^, ]+]] =
     // CHECK-SAME:          VPU.FlashSDPA([[IN0]], [[IN1]], [[IN2]], [[IN3]], [[IN4]], [[IN5]], [[IN6]], [[IN7]], [[IN8]], [[IN9]], [[IN10]]) {
     // CHECK-SAME:              is_head = true,
     // CHECK-SAME:              is_tail = true,
@@ -649,7 +649,6 @@ func.func @FlashSDPA_SoH(%arg0: tensor<1x8x64x64xf16>, %arg1: tensor<1x8x32x64xf
     // CHECK-SAME:          -> !VPU.DistributedTensor<1x8x64x128xf16
     // CHECK-SAME:             !VPU.DistributedTensor<1x8x64x1xf16
     // CHECK-SAME:             !VPU.DistributedTensor<1x8x64x1xf32
-    // CHECK-SAME:             !VPU.DistributedTensor<1x8x64x64xf16
 
     // CHECK:           [[RES_OUT:%.+]] = VPU.UnrolledType([[RES_OUT_DIST]]
     // CHECK-SAME:          : !VPU.DistributedTensor<1x8x64x128xf16
@@ -657,8 +656,6 @@ func.func @FlashSDPA_SoH(%arg0: tensor<1x8x64x64xf16>, %arg1: tensor<1x8x32x64xf
     // CHECK-SAME:          : !VPU.DistributedTensor<1x8x64x1xf16
     // CHECK:           [[RES_SUM:%.+]] = VPU.UnrolledType([[RES_SUM_DIST]]
     // CHECK-SAME:          : !VPU.DistributedTensor<1x8x64x1xf32
-    // CHECK:           [[RES_QUERY:%.+]] = VPU.UnrolledType([[RES_QUERY_DIST]]
-    // CHECK-SAME:          : !VPU.DistributedTensor<1x8x64x64xf16
 
     //CHECK:            return [[RES_OUT]] : tensor<1x8x64x128xf16>
 }
@@ -684,14 +681,14 @@ func.func @FlashSDPA_SoK(%arg0: tensor<1x8x1x64xf16>, %arg1: tensor<1x8x32x64xf1
     %cst = const.Declare tensor<1x1x128x4xsi32> = dense<0> : tensor<1x1x128x4xsi32>
     %cst_0 = const.Declare tensor<1x1x32x4xsi32> = dense<0> : tensor<1x1x32x4xsi32>
     %cst_1 = const.Declare tensor<1x1x2x256xsi32> = dense<0> : tensor<1x1x2x256xsi32>
-    %cst_2 = const.Declare tensor<1x4x1x32xf16> = dense<0.000000e+00> : tensor<1x4x1x32xf16>
+    %cst_2 = const.Declare tensor<1x2x1x32xf16> = dense<0.000000e+00> : tensor<1x2x1x32xf16>
     %cst_3 = const.Declare tensor<1x8x1x1xf32> = dense<0.000000e+00> : tensor<1x8x1x1xf32>
     %cst_4 = const.Declare tensor<1x8x1x1xf16> = dense<0xFC00> : tensor<1x8x1x1xf16>
     %cst_5 = const.Declare tensor<1x8x1x128xf16> = dense<0.000000e+00> : tensor<1x8x1x128xf16>
 
     %value_reordered = IE.Reorder(%arg2) {dstOrder = #NCWH} : tensor<1x8x32x128xf16> -> tensor<1x8x32x128xf16, {order = #NCWH}>
 
-    %result_running_output, %result_running_max, %result_running_sum, %result_query =
+    %result_running_output, %result_running_max, %result_running_sum =
         VPU.FlashSDPA(%arg0, %arg1, %value_reordered, %cst_2, %cst_1, %cst_0, %cst, %cst_5, %cst_4, %cst_3, %arg3) {
             is_head = true,
             is_tail = true,
@@ -699,17 +696,17 @@ func.func @FlashSDPA_SoK(%arg0: tensor<1x8x1x64xf16>, %arg1: tensor<1x8x32x64xf1
             operandSegmentSizes = array<i32: 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1>,
             source_seq_len_pad_size = 0 : i64
         } : tensor<1x8x1x64xf16>, tensor<1x8x32x64xf16>, tensor<1x8x32x128xf16, {order = #NCWH}>,
-            tensor<1x4x1x32xf16>, tensor<1x1x2x256xsi32>, tensor<1x1x32x4xsi32>,
+            tensor<1x2x1x32xf16>, tensor<1x1x2x256xsi32>, tensor<1x1x32x4xsi32>,
             tensor<1x1x128x4xsi32>, tensor<1x8x1x128xf16>, tensor<1x8x1x1xf16>,
             tensor<1x8x1x1xf32>, tensor<1x8x1x32xf16>
-        -> tensor<1x8x1x128xf16>, tensor<1x8x1x1xf16>, tensor<1x8x1x1xf32>, tensor<1x8x1x64xf16>
+        -> tensor<1x8x1x128xf16>, tensor<1x8x1x1xf16>, tensor<1x8x1x1xf32>
 
     return %result_running_output : tensor<1x8x1x128xf16>
 
     // CHECK-DAG:       [[DPU_DESCRIPTORS_BUF:%.+]] = const.Declare tensor<1x1x2x256xsi32> = dense<0> : tensor<1x1x2x256xsi32>
     // CHECK-DAG:       [[WEIGHTS_TABLE0:%.+]] = const.Declare tensor<1x1x32x4xsi32> = dense
     // CHECK-DAG:       [[WEIGHTS_TABLE1:%.+]] = const.Declare tensor<1x1x128x4xsi32> = dense
-    // CHECK-DAG:       [[IN_AUX:%.+]] = const.Declare tensor<1x4x1x32xf16> = dense<0.000000e+00> : tensor<1x4x1x32xf16>
+    // CHECK-DAG:       [[IN_AUX:%.+]] = const.Declare tensor<1x2x1x32xf16> = dense<0.000000e+00> : tensor<1x2x1x32xf16>
     // CHECK-DAG:       [[IN_SUM:%.+]] = const.Declare tensor<1x8x1x1xf32> = dense<0.000000e+00> : tensor<1x8x1x1xf32>
     // CHECK-DAG:       [[IN_MAX:%.+]] = const.Declare tensor<1x8x1x1xf16> = dense<0xFC00> : tensor<1x8x1x1xf16>
     // CHECK-DAG:       [[IN_OUT:%.+]] = const.Declare tensor<1x8x1x128xf16> = dense<0.000000e+00> : tensor<1x8x1x128xf16>
@@ -719,7 +716,7 @@ func.func @FlashSDPA_SoK(%arg0: tensor<1x8x1x64xf16>, %arg1: tensor<1x8x32x64xf1
     // CHECK:           [[IN0:%.+]] = VPU.UnrolledType([[QUERY]] : tensor<1x8x1x64xf16>) -> !VPU.DistributedTensor<1x8x1x64xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED"
     // CHECK:           [[IN1:%.+]] = VPU.UnrolledType([[KEY]] : tensor<1x8x32x64xf16>) -> !VPU.DistributedTensor<1x8x32x64xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED"
     // CHECK:           [[IN2:%.+]] = VPU.UnrolledType([[VALUE_REORDERED]] : tensor<1x8x32x128xf16, {order = #NCWH}>) -> !VPU.DistributedTensor<1x8x32x128xf16, #NCWH, @CMX_NN, {mode = "SEGMENTED"
-    // CHECK:           [[IN3:%.+]] = VPU.UnrolledType([[IN_AUX]] : tensor<1x4x1x32xf16>) -> !VPU.DistributedTensor<1x4x1x32xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED"
+    // CHECK:           [[IN3:%.+]] = VPU.UnrolledType([[IN_AUX]] : tensor<1x2x1x32xf16>) -> !VPU.DistributedTensor<1x2x1x32xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED"
     // CHECK:           [[IN4:%.+]] = VPU.UnrolledType([[DPU_DESCRIPTORS_BUF]] : tensor<1x1x2x256xsi32>) -> !VPU.DistributedTensor<1x1x2x256xsi32, #NCHW, @CMX_NN, {mode = "DUPLICATED"
     // CHECK:           [[IN5:%.+]] = VPU.UnrolledType([[WEIGHTS_TABLE0]] : tensor<1x1x32x4xsi32>) -> !VPU.DistributedTensor<1x1x32x4xsi32, #NCHW, @CMX_NN, {mode = "DUPLICATED"
     // CHECK:           [[IN6:%.+]] = VPU.UnrolledType([[WEIGHTS_TABLE1]] : tensor<1x1x128x4xsi32>) -> !VPU.DistributedTensor<1x1x128x4xsi32, #NCHW, @CMX_NN, {mode = "DUPLICATED"
@@ -728,7 +725,7 @@ func.func @FlashSDPA_SoK(%arg0: tensor<1x8x1x64xf16>, %arg1: tensor<1x8x32x64xf1
     // CHECK:           [[IN9:%.+]] = VPU.UnrolledType([[IN_SUM]] : tensor<1x8x1x1xf32>) -> !VPU.DistributedTensor<1x8x1x1xf32, #NCHW, @CMX_NN, {mode = "SEGMENTED"
     // CHECK:           [[IN10:%.+]] = VPU.UnrolledType([[ATTENTION_MASK]] : tensor<1x8x1x32xf16>) -> !VPU.DistributedTensor<1x8x1x32xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED"
 
-    // CHECK:           [[RES_OUT_DIST:%[^, ]+]], [[RES_MAX_DIST:%[^, ]+]], [[RES_SUM_DIST:%[^, ]+]], [[RES_QUERY_DIST:%[^, ]+]] =
+    // CHECK:           [[RES_OUT_DIST:%[^, ]+]], [[RES_MAX_DIST:%[^, ]+]], [[RES_SUM_DIST:%[^, ]+]] =
     // CHECK-SAME:          VPU.FlashSDPA([[IN0]], [[IN1]], [[IN2]], [[IN3]], [[IN4]], [[IN5]], [[IN6]], [[IN7]], [[IN8]], [[IN9]], [[IN10]]) {
     // CHECK-SAME:              is_head = true,
     // CHECK-SAME:              is_tail = true,
@@ -738,7 +735,6 @@ func.func @FlashSDPA_SoK(%arg0: tensor<1x8x1x64xf16>, %arg1: tensor<1x8x32x64xf1
     // CHECK-SAME:          -> !VPU.DistributedTensor<1x8x1x128xf16
     // CHECK-SAME:             !VPU.DistributedTensor<1x8x1x1xf16
     // CHECK-SAME:             !VPU.DistributedTensor<1x8x1x1xf32
-    // CHECK-SAME:             !VPU.DistributedTensor<1x8x1x64xf16
 
     // CHECK:           [[RES_OUT:%.+]] = VPU.UnrolledType([[RES_OUT_DIST]]
     // CHECK-SAME:          : !VPU.DistributedTensor<1x8x1x128xf16
@@ -746,8 +742,6 @@ func.func @FlashSDPA_SoK(%arg0: tensor<1x8x1x64xf16>, %arg1: tensor<1x8x32x64xf1
     // CHECK-SAME:          : !VPU.DistributedTensor<1x8x1x1xf16
     // CHECK:           [[RES_SUM:%.+]] = VPU.UnrolledType([[RES_SUM_DIST]]
     // CHECK-SAME:          : !VPU.DistributedTensor<1x8x1x1xf32
-    // CHECK:           [[RES_QUERY:%.+]] = VPU.UnrolledType([[RES_QUERY_DIST]]
-    // CHECK-SAME:          : !VPU.DistributedTensor<1x8x1x64xf16
 
     //CHECK:            return [[RES_OUT]] : tensor<1x8x1x128xf16>
 }

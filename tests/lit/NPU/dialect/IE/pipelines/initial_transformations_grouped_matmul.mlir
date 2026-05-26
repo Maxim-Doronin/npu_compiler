@@ -3,12 +3,13 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --initial-transformations="enable-grouped-matmul=true" %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --initial-transformations="enable-grouped-matmul=true" %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 #NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
 
 // CHECK-LABEL: @UnrollMatMulSoftMaxMatMul
+// CHECK-SAME:  ([[ARG0:%[^:]+]]: tensor<1x12x577x64xf32>, [[ARG1:%[^:]+]]: tensor<1x12x577x64xf32>, [[ARG2:%[^:]+]]: tensor<1x12x577x64xf32>)
 func.func @UnrollMatMulSoftMaxMatMul(%arg0: tensor<1x12x577x64xf32>, %arg1: tensor<1x12x577x64xf32>, %arg2: tensor<1x12x577x64xf32>) -> tensor<1x12x577x64xf32> {
     %0 = IE.MatMul(%arg0, %arg1) {transpose_b} : tensor<1x12x577x64xf32>, tensor<1x12x577x64xf32> -> tensor<1x12x577x577xf32>
     %1 = IE.SoftMax(%0) {axisInd = 3 : i64} : tensor<1x12x577x577xf32> -> tensor<1x12x577x577xf32>
@@ -16,53 +17,53 @@ func.func @UnrollMatMulSoftMaxMatMul(%arg0: tensor<1x12x577x64xf32>, %arg1: tens
     %3 = IE.MatMul(%1, %2) {transpose_b} : tensor<1x12x577x577xf32>, tensor<1x12x64x577xf32> -> tensor<1x12x577x64xf32>
     return %3 : tensor<1x12x577x64xf32>
 
-    // CHECK: [[SLICE0:%.+]] = IE.Slice %arg0 [0, 0, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
+    // CHECK: [[SLICE0:%.+]] = IE.Slice [[ARG0]] [0, 0, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
     // CHECK: [[RESHAPE0:%.+]] = IE.AffineReshape([[SLICE0]])
-    // CHECK: [[SLICE1:%.+]] = IE.Slice %arg0 [0, 1, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
+    // CHECK: [[SLICE1:%.+]] = IE.Slice [[ARG0]] [0, 1, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
     // CHECK: [[RESHAPE1:%.+]] = IE.AffineReshape([[SLICE1]])
-    // CHECK: [[SLICE2:%.+]] = IE.Slice %arg0 [0, 2, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
+    // CHECK: [[SLICE2:%.+]] = IE.Slice [[ARG0]] [0, 2, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
     // CHECK: [[RESHAPE2:%.+]] = IE.AffineReshape([[SLICE2]])
-    // CHECK: [[SLICE3:%.+]] = IE.Slice %arg0 [0, 3, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
+    // CHECK: [[SLICE3:%.+]] = IE.Slice [[ARG0]] [0, 3, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
     // CHECK: [[RESHAPE3:%.+]] = IE.AffineReshape([[SLICE3]])
-    // CHECK: [[SLICE4:%.+]] = IE.Slice %arg0 [0, 4, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
+    // CHECK: [[SLICE4:%.+]] = IE.Slice [[ARG0]] [0, 4, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
     // CHECK: [[RESHAPE4:%.+]] = IE.AffineReshape([[SLICE4]])
-    // CHECK: [[SLICE5:%.+]] = IE.Slice %arg0 [0, 5, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
+    // CHECK: [[SLICE5:%.+]] = IE.Slice [[ARG0]] [0, 5, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
     // CHECK: [[RESHAPE5:%.+]] = IE.AffineReshape([[SLICE5]])
-    // CHECK: [[SLICE6:%.+]] = IE.Slice %arg0 [0, 6, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
+    // CHECK: [[SLICE6:%.+]] = IE.Slice [[ARG0]] [0, 6, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
     // CHECK: [[RESHAPE6:%.+]] = IE.AffineReshape([[SLICE6]])
-    // CHECK: [[SLICE7:%.+]] = IE.Slice %arg0 [0, 7, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
+    // CHECK: [[SLICE7:%.+]] = IE.Slice [[ARG0]] [0, 7, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
     // CHECK: [[RESHAPE7:%.+]] = IE.AffineReshape([[SLICE7]])
-    // CHECK: [[SLICE8:%.+]] = IE.Slice %arg0 [0, 8, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
+    // CHECK: [[SLICE8:%.+]] = IE.Slice [[ARG0]] [0, 8, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
     // CHECK: [[RESHAPE8:%.+]] = IE.AffineReshape([[SLICE8]])
-    // CHECK: [[SLICE9:%.+]] = IE.Slice %arg0 [0, 9, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
+    // CHECK: [[SLICE9:%.+]] = IE.Slice [[ARG0]] [0, 9, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
     // CHECK: [[RESHAPE9:%.+]] = IE.AffineReshape([[SLICE9]])
-    // CHECK: [[SLICE10:%.+]] = IE.Slice %arg0 [0, 10, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
+    // CHECK: [[SLICE10:%.+]] = IE.Slice [[ARG0]] [0, 10, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
     // CHECK: [[RESHAPE10:%.+]] = IE.AffineReshape([[SLICE10]])
-    // CHECK: [[SLICE11:%.+]] = IE.Slice %arg0 [0, 11, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
+    // CHECK: [[SLICE11:%.+]] = IE.Slice [[ARG0]] [0, 11, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
     // CHECK: [[RESHAPE11:%.+]] = IE.AffineReshape([[SLICE11]])
-    // CHECK: [[SLICE12:%.+]] = IE.Slice %arg1 [0, 0, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
+    // CHECK: [[SLICE12:%.+]] = IE.Slice [[ARG1]] [0, 0, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
     // CHECK: [[RESHAPE12:%.+]] = IE.AffineReshape([[SLICE12]])
-    // CHECK: [[SLICE13:%.+]] = IE.Slice %arg1 [0, 1, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
+    // CHECK: [[SLICE13:%.+]] = IE.Slice [[ARG1]] [0, 1, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
     // CHECK: [[RESHAPE13:%.+]] = IE.AffineReshape([[SLICE13]])
-    // CHECK: [[SLICE14:%.+]] = IE.Slice %arg1 [0, 2, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
+    // CHECK: [[SLICE14:%.+]] = IE.Slice [[ARG1]] [0, 2, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
     // CHECK: [[RESHAPE14:%.+]] = IE.AffineReshape([[SLICE14]])
-    // CHECK: [[SLICE15:%.+]] = IE.Slice %arg1 [0, 3, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
+    // CHECK: [[SLICE15:%.+]] = IE.Slice [[ARG1]] [0, 3, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
     // CHECK: [[RESHAPE15:%.+]] = IE.AffineReshape([[SLICE15]])
-    // CHECK: [[SLICE16:%.+]] = IE.Slice %arg1 [0, 4, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
+    // CHECK: [[SLICE16:%.+]] = IE.Slice [[ARG1]] [0, 4, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
     // CHECK: [[RESHAPE16:%.+]] = IE.AffineReshape([[SLICE16]])
-    // CHECK: [[SLICE17:%.+]] = IE.Slice %arg1 [0, 5, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
+    // CHECK: [[SLICE17:%.+]] = IE.Slice [[ARG1]] [0, 5, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
     // CHECK: [[RESHAPE17:%.+]] = IE.AffineReshape([[SLICE17]])
-    // CHECK: [[SLICE18:%.+]] = IE.Slice %arg1 [0, 6, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
+    // CHECK: [[SLICE18:%.+]] = IE.Slice [[ARG1]] [0, 6, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
     // CHECK: [[RESHAPE18:%.+]] = IE.AffineReshape([[SLICE18]])
-    // CHECK: [[SLICE19:%.+]] = IE.Slice %arg1 [0, 7, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
+    // CHECK: [[SLICE19:%.+]] = IE.Slice [[ARG1]] [0, 7, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
     // CHECK: [[RESHAPE19:%.+]] = IE.AffineReshape([[SLICE19]])
-    // CHECK: [[SLICE20:%.+]] = IE.Slice %arg1 [0, 8, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
+    // CHECK: [[SLICE20:%.+]] = IE.Slice [[ARG1]] [0, 8, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
     // CHECK: [[RESHAPE20:%.+]] = IE.AffineReshape([[SLICE20]])
-    // CHECK: [[SLICE21:%.+]] = IE.Slice %arg1 [0, 9, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
+    // CHECK: [[SLICE21:%.+]] = IE.Slice [[ARG1]] [0, 9, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
     // CHECK: [[RESHAPE21:%.+]] = IE.AffineReshape([[SLICE21]])
-    // CHECK: [[SLICE22:%.+]] = IE.Slice %arg1 [0, 10, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
+    // CHECK: [[SLICE22:%.+]] = IE.Slice [[ARG1]] [0, 10, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
     // CHECK: [[RESHAPE22:%.+]] = IE.AffineReshape([[SLICE22]])
-    // CHECK: [[SLICE23:%.+]] = IE.Slice %arg1 [0, 11, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
+    // CHECK: [[SLICE23:%.+]] = IE.Slice [[ARG1]] [0, 11, 0, 0] [1, 1, 577, 64] : tensor<1x12x577x64xf32> to tensor<1x1x577x64xf32>
     // CHECK: [[RESHAPE23:%.+]] = IE.AffineReshape([[SLICE23]])
     // CHECK: [[FC0:%.+]] = IE.FullyConnected([[RESHAPE0]], [[RESHAPE12]]) : tensor<577x64xf32>, tensor<577x64xf32> -> tensor<577x577xf32>
     // CHECK: [[FC1:%.+]] = IE.FullyConnected([[RESHAPE1]], [[RESHAPE13]]) : tensor<577x64xf32>, tensor<577x64xf32> -> tensor<577x577xf32>
@@ -102,7 +103,7 @@ func.func @UnrollMatMulSoftMaxMatMul(%arg0: tensor<1x12x577x64xf32>, %arg1: tens
     // CHECK: [[SOFTMAX10:%.+]] = IE.SoftMax([[RESHAPE34]]) {axisInd = 3 : i64} : tensor<1x1x577x577xf32> -> tensor<1x1x577x577xf32>
     // CHECK: [[SOFTMAX11:%.+]] = IE.SoftMax([[RESHAPE35]]) {axisInd = 3 : i64} : tensor<1x1x577x577xf32> -> tensor<1x1x577x577xf32>
 
-    // CHECK: [[TRANSPOSE:%.+]] = IE.Transpose(%arg2) {order_value = #NCWH} : tensor<1x12x577x64xf32> -> tensor<1x12x64x577xf32>
+    // CHECK: [[TRANSPOSE:%.+]] = IE.Transpose([[ARG2]]) {order_value = #NCWH} : tensor<1x12x577x64xf32> -> tensor<1x12x64x577xf32>
     // CHECK: [[SLICE24:%.+]] = IE.Slice [[TRANSPOSE]] [0, 0, 0, 0] [1, 1, 64, 577] : tensor<1x12x64x577xf32> to tensor<1x1x64x577xf32>
     // CHECK: [[RESHAPE36:%.+]] = IE.AffineReshape([[SOFTMAX0]])
     // CHECK: [[RESHAPE37:%.+]] = IE.AffineReshape([[SLICE24]])

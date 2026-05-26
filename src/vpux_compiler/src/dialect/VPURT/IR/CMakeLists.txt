@@ -7,11 +7,20 @@ file(GLOB_RECURSE SRC_FILES *.cpp)
 add_npu_library(npu_compiler_dialect_vpurt
     ${SRC_FILES}
     DIALECT_LIB
-    LINK_LIBS PRIVATE
-        npu_compiler_core
-        npu_llvm_utils
-        npu_ov_utils
-        npu_profiling_utils
+    LINK_LIBS
+      PUBLIC
+        npu_compiler_dialect_core
+        npu_compiler_dialect_elfnpu37xx
+        npu_compiler_dialect_vpuip
+        npu_compiler_utils
+        npu_core_utils
+        npu_costmodel
+      PRIVATE
         npu_compiler_dialect_elf_utils
+        npu_compiler_dialect_config
+        npu_compiler_dialect_vpu
+        npu_compiler_dialect_vpu_utils
+        npu_compiler_dialect_vpuip_utils
+        npu_compiler_dialect_vpureg
         npu_elf
-        npu_costmodel)
+)

@@ -13,7 +13,15 @@ include "mlir/Pass/PassBase.td"
 //
 
 def MoveDeclarationsToTop : PassBase<"move-declarations-to-top", "vpux::FunctionPass"> {
-    let summary = "Move all declaration ops to top of parent block";
+    let summary = "Reorder declaration operations to the beginning of their parent block";
+
+    let description = [{
+        AI-generated summary
+
+        Reorders memory allocation and buffer declaration operations to the beginning of
+        their parent block. Downstream passes (e.g., StaticAllocation, FeasibleAllocation)
+        expect declarations to precede their uses within the same block.
+    }];
 
     let constructor = "vpux::Core::createMoveDeclarationsToTopPass()";
 }
@@ -26,7 +34,12 @@ def PrintDot : PassBase<"print-dot", "vpux::ModulePass"> {
     let summary = "Convert current MLIR graph to Dot graph";
 
     let description = [{
-        Convert current MLIR graph to Dot graph.
+        AI-generated summary
+
+        Generates a Graphviz DOT representation of the IR operation graph and writes it to a
+        file. Renders operations as nodes, def-use chains as edges, and region nesting as
+        subgraphs, producing a visual graph that can be rendered with Graphviz dot for debugging
+        and documentation.
     }];
 
     let options = [
@@ -86,7 +99,16 @@ def PrintDot : PassBase<"print-dot", "vpux::ModulePass"> {
 //
 
 def DumpIntermediateValues : PassBase<"dump-intermediate-values", "vpux::ModulePass"> {
-    let summary = "Dump intermediate operation results";
+    let summary = "Extract and dump intermediate operation values for debugging";
+
+    let description = [{
+        AI-generated summary
+
+        Filters and dumps intermediate values from operations based on configurable filters
+        specified via YAML configuration. Dumps selected operation results to files for
+        offline comparison against reference values, typically used to locate the pass that
+        introduces a numerical divergence.
+    }];
 
     let options = [
         Option<
@@ -110,9 +132,9 @@ def PackNestedModules : PassBase<"pack-nested-modules", "vpux::ModulePass"> {
         This pass collects all functions that sit in the module on which the pass is executed. It then performs an
         analysis to determine which functions can be nested inside sub modules. The pass has 2 modes: `default` and `entry-point`.
         When the `default` mode is on a function is nested in a submodule if
-          1. It does not contain a unit attribute named "do_not_nest"
-          2. It is not the network entry point
-          3. All its callees can be nested in the *same* submodule
+          - It does not contain a unit attribute named "do_not_nest"
+          - It is not the network entry point
+          - All its callees can be nested in the *same* submodule
 
         The third rule ensures that no nested function calls another function outside its own submodule as this is prohibited by
         `ModuleOp`'s `IsolatedFromAbove` property.

@@ -10,7 +10,7 @@
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
 
-#include "vpux/utils/IE/config.hpp"
+#include "vpux/utils/ov/config.hpp"
 
 namespace vpux {
 

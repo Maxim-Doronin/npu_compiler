@@ -4,8 +4,8 @@
 //
 
 
-// RUN: vpux-opt --init-compiler="vpu-arch=%arch%" --convert-VPUASM-to-NPUReg40XX --create-elf-relocations %s | FileCheck %s
-// REQUIRES: dev-build && (arch-NPU40XX || arch-NPU50XX)
+// RUN: vpux-opt --init-compiler="platform=%platform%" --convert-VPUASM-to-NPUReg40XX --create-elf-relocations %s | FileCheck %s
+// REQUIRES: dev-build && (platform-NPU4000 || platform-NPU5010)
 
 module @Model20 {
   net.NetworkInfo entryPoint : @main inputsInfo : {
@@ -15,7 +15,7 @@ module @Model20 {
   }
 
   func.func @main() {
-    ELF.Main @ELFMain {
+    ELF.Main {
       ELF.CreateLogicalSection @program.metadata.cmx aligned(64) secType(VPU_SHT_CMX_METADATA) secFlags("SHF_NONE") secLocation(<DDR>) {
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_ActKernelRange_0_0_0 idx(!VPURegMapped.Index<0:0:0>) <ActKernelRange> {elfMemOffsetAttrKey = 51200 : ui64}
         VPUASM.DeclareTaskBuffer @DeclareTaskBuffer_ActKernelInvocation_0_0_0 idx(!VPURegMapped.Index<0:0:0>) <ActKernelInvocation> {elfMemOffsetAttrKey = 53760 : ui64}

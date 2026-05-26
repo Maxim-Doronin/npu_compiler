@@ -354,7 +354,7 @@ std::tuple<int64_t, int64_t, int64_t> OpChainAnalysis::getForOpParams(mlir::scf:
     auto low = lowerBoundOpt.value();
     auto high = upperBoundOpt.value();
     auto st = stepOpt.value();
-    if (st <= 0 || low >= high || low < 0 || high < 0) {
+    if (st <= 0 || low > high || low < 0 || high < 0) {
         VPUX_THROW("Received values for scf.for operation are invalid: low={0}, high={1}, step={2}", low, high, st);
     }
 

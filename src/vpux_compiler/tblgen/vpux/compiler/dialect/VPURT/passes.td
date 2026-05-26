@@ -16,7 +16,12 @@ def AssignPhysicalBarriers : PassBase<"assign-physical-barriers", "vpux::Functio
     let summary = "Assign physical barriers";
 
     let description = [{
-        This pass replaces virtual barriers with physical barriers and assign IDs to them.
+        AI-generated summary
+
+        Maps virtual barriers to physical hardware barrier slots on the NPU. Uses a
+        graph-coloring algorithm to assign physical barrier IDs to virtual barriers such that no
+        two concurrently active barriers share the same physical slot, respecting the hardware
+        limit on available physical barriers.
     }];
 
     let constructor = "vpux::VPURT::createAssignPhysicalBarriersPass()";
@@ -32,10 +37,7 @@ def AssignPhysicalBarriers : PassBase<"assign-physical-barriers", "vpux::Functio
             "vpux::WorkloadManagementMode", "",
             "Setting which controls mode of WLM",
             [{::llvm::cl::values(
-                clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA", "WLM enqueue barriers search algorithm at VPURT ENABLED"),
                 clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_1_PAGES, "PWLM_V0_1_PAGES", "PWLM with split into subgraphs (pages)"),
-                clEnumValN(vpux::WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO", "WLM enqueue barriers search algorithm at VPURT DISABLED"),
-                clEnumValN(vpux::WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES", "WLM with split into subgraphs(pages)"),
                 clEnumValN(vpux::WorkloadManagementMode::FWLM_V1_PAGES, "FWLM_V1_PAGES", "FWLM with split into subgraphs(pages)")
             )}]
         >
@@ -50,8 +52,14 @@ def SplitControlGraph : PassBase<"split-control-graph", "vpux::FunctionPass"> {
     let summary = "Split control graph";
 
     let description = [{
-        This optional pass will split control graph for large models
-        to reduce overhead of barrier processing and optimizations
+        AI-generated summary
+
+        Splits the barrier control graph into smaller blocks of tasks to reduce memory
+        usage and compilation time for barrier scheduling passes. If the total number of
+        tasks is smaller than the configured block size, no split is performed. After
+        splitting, execution tasks and barriers are reordered and the split is verified
+        for correctness. Memory usage of scheduling passes is proportional to
+        blockSize^2 / 8.
     }];
 
     let constructor = "vpux::VPURT::createSplitControlGraphPass()";
@@ -73,9 +81,17 @@ def SimplifySchedule : PassBase<"simplify-schedule", "vpux::FunctionPass"> {
     let summary = "Simplify schedule for runtime";
 
     let description = [{
-        This pass will simplify schedule by:
-            1. sharing wait / update barriers for DMAs
-            2. removing cycled dependencies where possible
+        AI-generated summary
+
+        Simplifies the barrier-based execution schedule through three optimizations:
+            1. Resolves out-of-order dependencies for DMA tasks in the same FIFO by
+               linking update barriers of earlier tasks to next tasks with earlier
+               update barriers
+            2. Shares wait and update barriers between tasks on the same FIFO so
+               execution is fully controlled by barriers (WLM-dependent)
+            3. Reduces parallel overlapping control flows per DMA FIFO by using cycle
+               cost simulation to link tasks to intermediate barriers when performance
+               is not affected
     }];
 
     let constructor = "vpux::VPURT::createSimplifySchedulePass()";
@@ -127,12 +143,17 @@ def SatisfyOneWaitBarrierPerTask : PassBase<"satisfy-one-wait-barrier-per-task",
     let summary = "Satisfy each task has one wait barrier";
 
     let description = [{
-        This pass will satisfy barrier safety constraint
-        -- single barrier drives each task
-        Handling multi barrier input can be wasteful and considerably more difficult to manage
-        barrier safety. Pass is manipulating tasks with parallel wait barriers by two modes:
+        AI-generated summary
+
+        This pass is only active when WLM is enabled; it is skipped entirely for non-WLM
+        configurations. It enforces the barrier safety constraint that a single barrier
+        drives each task. Handling multi-barrier input can be wasteful and considerably
+        more difficult to manage for barrier safety. The pass manipulates tasks with
+        parallel wait barriers by two modes:
         1. Merge parallel wait barriers with legal barrier variant count
         2. Linearize parallel wait barrier producers with exceeding variant count
+        After merging, execution tasks and barriers are reordered and correctness is
+        verified.
     }];
 
     let constructor = "vpux::VPURT::createSatisfyOneWaitBarrierPerTaskPass()";
@@ -193,11 +214,6 @@ def ReduceExceedingActiveCountBarriers : PassBase<"reduce-exceeding-active-count
             "unevenVariantSplit", "enable-uneven-variant-split",
             "bool", "",
             "Enable uneven variant split"
-        >,
-        Option<
-            "shareWaitAndUpdateBarriersOpt", "share-wait-and-update-barriers",
-            "bool", "",
-            "Enforce sharing wait and update barriers between tasks on the same FIFO"
         >
     ];
 }
@@ -210,7 +226,12 @@ def BarrierSimulation : PassBase<"barrier-simulation", "vpux::FunctionPass"> {
     let summary = "Simulate barriers";
 
     let description = [{
-        Simulates the physical barrier execution and stops compilation on fail.
+        AI-generated summary
+
+        Simulates barrier-based execution scheduling to verify correctness of the barrier
+        assignment. Walks the execution graph and simulates producer/consumer barrier signaling,
+        checking for deadlocks, barrier overflow, and ordering violations before generating
+        final firmware descriptors.
     }];
 
     let constructor = "vpux::VPURT::createBarrierSimulationPass()";
@@ -224,7 +245,12 @@ def InferenceExecutionAnalysis : PassBase<"inference-execution-analysis", "vpux:
     let summary = "Perform inference execution simulation to visualize schedule";
 
     let description = [{
-        Simulate the schedule generated by the compiler and using the cost model visualize inference execution.
+        AI-generated summary
+
+        Runs cycle-accurate inference simulation (InferenceExecutionSimulator) over the
+        barrier-resolved schedule. Computes total inference latency in cycles, DPU/SHAVE
+        energy consumption, and activity factor. Stores the activity factor and timing
+        in module attributes for downstream power estimation and schedule visualization.
     }];
 
     let constructor = "vpux::VPURT::createInferenceExecutionAnalysisPass()";
@@ -273,13 +299,16 @@ def InsertBarrierToMarkTheEndOfDescriptorGroup : PassBase<"insert-barrier-to-mar
     let summary = "Pass inserts barriers to mark end of descriptor/execution group";
 
     let description = [{
-        Pass inserts barrier dependencies for passes like insert-fetch-ops, group-exec-ops
-        Group Exec ops pass creates ExecutionGroups of DPU/SW tasks, for group of 32 tasks it chooses wait barrier
-        of first task as wait barrier for execution group and update barrier of last task as update barrier for execution group
+        AI-generated summary
 
-        insert-fetch-ops looks at these wait and update barriers for the group to determine the latest point the descriptors for
-        the group must be fetched and earliest point when they can be evicted from metadata thus having a update and wait barrier
-        is a must. This pass inserts these barriers if not present already due to other compiler optimizations
+        Inserts barrier dependencies required for WLM descriptor group management.
+        The pass is skipped for FWLM_V1_PAGES mode. If the number of virtual barriers
+        exceeds a configurable threshold, the pass signals failure and disables WLM.
+        It processes both DPU and SHV (ActShave) execution groups obtained from
+        ExecutionGroupAnalysis, ensuring each group has a wait barrier on its first
+        task and an update barrier on its last task. These barriers are required by
+        subsequent passes (insert-fetch-ops, group-exec-ops) to determine descriptor
+        fetch and eviction points for WLM scheduling.
     }];
 
     let constructor = "vpux::VPURT::createInsertBarrierToMarkTheEndOfDescriptorGroupPass()";
@@ -334,8 +363,20 @@ def OptimizeSyncTasks : PassBase<"optimize-sync-tasks", "vpux::FunctionPass"> {
     let summary = "Remove unnecessary sync tasks";
 
     let description = [{
-        Remove unnecessary sync task that were injected previously by InsertSyncTasks pass.
-        Example:
+        AI-generated summary
+
+        Removes unnecessary sync tasks injected by InsertSyncTasks. The pass applies
+        multiple optimization patterns:
+        - MergeSyncTasks: merges consecutive sync tasks connected by a single barrier
+           with no other users, removing the intermediate barrier and redundant task.
+        - Redundant sync task removal: identifies sync tasks in regions
+           "sync -> ... -> sync" whose synchronization responsibility can be taken
+           over by a neighboring (parent or child) task, provided barrier variant
+           count limits are not exceeded.
+        - First/last sync task removal: unconditionally removes the very first and
+           last sync tasks in the schedule, cleaning up associated barriers when safe.
+
+        Example (MergeSyncTasks):
 
                  /-> op -> .. -> op -\                       /-> op -> .. -> op -\
         SyncTask --> op -> .. -> op --> SyncTask -> SyncTask --> op -> .. -> op --> SyncTask
@@ -352,44 +393,6 @@ def OptimizeSyncTasks : PassBase<"optimize-sync-tasks", "vpux::FunctionPass"> {
 }
 
 //
-// FindWlmEnqueueBarrier
-//
-
-def FindWlmEnqueueBarrier : PassBase<"find-wlm-enqueue-barrier", "vpux::FunctionPass"> {
-    let summary = "For WLM for each task find enqueue barrier";
-
-    let description = [{
-        For WLM each task needs to be enqueued at some point. This pass analyzes schedule
-        and for each task finds a barrier at which it can be enqueued. Later this information
-        will be lowered to dedicated enqueue ops (WorkItem task)
-    }];
-
-    let constructor = "vpux::VPURT::createFindWlmEnqueueBarrierPass()";
-
-    let options = [
-        Option<
-            "enqDmaAtBootstrapOpt", "enq-dma-at-bootstrap",
-            "bool", "",
-            "Enforce enqueuing DMA at bootstrap"
-        >
-    ];
-}
-
-//
-// OrderBarriersForWlm
-//
-
-def OrderBarriersForWlm : PassBase<"order-barriers-for-wlm", "vpux::FunctionPass"> {
-    let summary = "Order barriers for WLM";
-
-    let description = [{
-        For WLM barriers are epxected to be ordered following consumption order
-    }];
-
-    let constructor = "vpux::VPURT::createOrderBarriersForWlmPass()";
-}
-
-//
 // WlmSplitGraphToPages
 //
 
@@ -397,8 +400,15 @@ def WlmSplitGraphToPages : PassBase<"wlm-split-graph-to-pages", "vpux::FunctionP
     let summary = "For WLM split model into subgraphs (pages)";
 
     let description = [{
-        This pass is intended for WLM mode where model is split into subgraphs called pages,
-        limited by number of barriers, to allow later seamless enabling of WLM related features.
+        AI-generated summary
+
+        Splits the WLM execution graph into subgraphs (pages) limited by the number of
+        physical barriers, using BarrierPagesSplitHandler for assignment. Before splitting,
+        the pass legalizes SHV-with-DPU scheduling by inserting dummy DMAs before sync DPU
+        tasks that consume barriers produced by SHV-with-DPU on the same tile. After page
+        assignment, dummy tasks are created for pages that end up with no tasks. When
+        dedicated SHV FIFOs are not supported, the pass corrects SHV task page assignments
+        to ensure consecutive tasks on the same cluster never have decreasing page numbers.
     }];
 
     let constructor = "vpux::VPURT::createWlmSplitGraphToPagesPass()";
@@ -420,7 +430,14 @@ def WlmLegalizeSplitGraphToPages : PassBase<"wlm-legalize-split-graph-to-pages",
     let summary = "For WLM legalize split model into subgraphs (pages)";
 
     let description = [{
-        This pass is intended to legalize split into subgraphs for WLM
+        AI-generated summary
+
+        Legalizes an existing Workload Manager barrier-page split so that the schedule
+        conforms to firmware paging constraints:
+        - Resolves dependencies that span beyond neighbor pages
+        - Adds update barriers for last tasks on each page's FIFO when missing
+        - Ensures boundary tasks between adjacent pages have proper dependencies
+        - Verifies the final split is valid with no cyclic dependencies
     }];
 
     let constructor = "vpux::VPURT::createWlmLegalizeSplitGraphToPagesPass()";
@@ -473,11 +490,17 @@ def WlmInsertDummyDmasInPages : PassBase<"wlm-insert-dummy-dmas-in-pages", "vpux
     let summary = "For WLM pages split insert dummy DMAs if given page doesn't have this DMA type";
 
     let description = [{
-        This pass checks if in each page there is at least 1 DMA of each type to enable possibility
-        of enqueuing all DMAs at bootstrap as single link-list of tasks. If there is no DMAx in PageN
-        that guarantees that barriers from PageN-1 have been consumed and there are DMAs of this type
-        in some later pages, then we need to insert task of DMAx in PageN and this DMAx
-        needs to depend on all boundary tasks on PageN-1/PageN border.
+        AI-generated summary
+
+        Ensures each WLM page has at least one DMA of each required type to enable
+        bootstrap enqueuing of all DMAs as a single linked list. Before inserting
+        type-specific dummy DMAs, pages with only one barrier are first legalized by
+        inserting a dummy DMA and barrier to guarantee at least two barriers per page.
+        Dummy DMAs are created with channel-type-aware buffers (DDR vs CMX) matching
+        the target DMA queue type. After insertion, a post-legalization step verifies
+        and adds update barriers for last tasks on each FIFO per page that lack them.
+        Final verification ensures page splits, barrier page constraints, absence of
+        cyclic dependencies, and control graph correctness.
     }];
 
     let constructor = "vpux::VPURT::createWlmInsertDummyDmasInPagesPass()";
@@ -542,7 +565,15 @@ def FindWlmEnqueueDmasBarrier : PassBase<"find-wlm-enqueue-dmas-barrier", "vpux:
     let summary = "For Full WLM with WLM pages split find barriers for enqueuing DMAs";
 
     let description = [{
-        This pass for each tasks finds a barrier at which it can have an enqueue DMA
+        AI-generated summary
+
+        Creates enqueue DMA operations for Full WLM scheduling. The pass is skipped
+        when WLM is disabled or when the model contains only DMA tasks. For each
+        execution group (DPU and ActShave), uses BarrierPagesSplitHandler and
+        ExecutionGroupAnalysis to determine which barrier triggers the enqueue. Inserts
+        NNDMA operations with EnqueueDMAAttr into the IR, optimizes redundant barrier
+        dependencies introduced by the insertions, and legalizes page splits for any
+        enqueue DMAs that end up as the last task on a FIFO.
     }];
 
     let constructor = "vpux::VPURT::createFindWlmEnqueueDmasBarrierPass()";
@@ -564,7 +595,13 @@ def FindWlmEnqueueBarrierWithPages : PassBase<"find-wlm-enqueue-barrier-with-pag
     let summary = "For Partial WLM with WLM pages split find barriers for task enqueue";
 
     let description = [{
-        This pass for each task finds a barrier at which its safe to enqueue the task
+        AI-generated summary
+
+        Determines and assigns enqueue barriers for Partial WLM scheduling with page
+        splits. Uses BarrierPagesSplitHandler to compute and legalize which barrier
+        safely triggers enqueue for each task. Sets the enqueueBarrier attribute on
+        task operations so the runtime knows when to schedule each task. Tasks with
+        no assigned barrier are enqueued at bootstrap.
     }];
 
     let constructor = "vpux::VPURT::createFindWlmEnqueueBarrierWithPagesPass()";
@@ -586,8 +623,15 @@ def CheckWlmPageSplitConstraints : PassBase<"check-wlm-page-split-constraints", 
     let summary = "For WLM verify pages split constraints are satisfied and schedule is valid";
 
     let description = [{
-        This pass checks if the page splits are valid and adhere to the constraints set by the WLM page split
-        and Full WLM features - enqueue, fetch and barrier reprogramming through compiler created DMAs.
+        AI-generated summary
+
+        Verifies WLM page split constraints and schedule validity. Checks include:
+        barrier page assignment validity, non-decreasing task page order on each queue,
+        absence of cyclic dependencies, correct control graph split, and physical
+        barrier dependencies. For Full WLM (FWLM_V1_PAGES), additionally verifies
+        barrier reprogramming DMA dependencies, enqueue DMA correctness, and DMA
+        enqueue ordering. For both Partial and Full WLM, verifies fetch DMA
+        dependencies around DPU and SHV execution groups.
     }];
 
     let constructor = "vpux::VPURT::createCheckWlmPageSplitConstraintsPass()";

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --optimize-slice-expand %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --optimize-slice-expand %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL: @OptimizeSliceExpand
 module @OptimizeSliceExpand {
@@ -1503,6 +1503,26 @@ func.func @OptimizeSlicePermuteCastExpandPatternSliceSizeIsOneNCHW(%arg0: tensor
    // CHECK:        [[PERMUTECAST:%.+]] = IE.PermuteCast([[INPUT]]) {dst_order = #NCHW, mem_perm = #NCHW} : tensor<1x1504x20x4xf16, {order = #NHWC}> -> tensor<1x20x4x1504xf16>
 
    // CHECK:        return [[PERMUTECAST]] : tensor<1x20x4x1504xf16>
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+#CNHW = affine_map<(d0, d1, d2, d3) -> (d1, d0, d2, d3)>
+
+// CHECK-LABEL: @OptimizeSlicePermuteCastExpandPatternSameDstOrder
+// CHECK-SAME:        [[INPUT:%arg[0-9]]]: tensor<1x512x5x1xf16, {order = #NHWC}>
+func.func @OptimizeSlicePermuteCastExpandPatternSameDstOrder(%arg0: tensor<1x512x5x1xf16, {order = #NHWC}>) -> tensor<5x512x1x1xf16, {order = #NHWC}> {
+   %0 = IE.Slice %arg0 [0, 0, 0, 0] [1, 500, 5, 1] : tensor<1x512x5x1xf16, {order = #NHWC}> to tensor<1x500x5x1xf16, {order = #NHWC}>
+   %1 = IE.PermuteCast(%0) {dst_order = #NHWC, mem_perm = #CNHW} : tensor<1x500x5x1xf16, {order = #NHWC}> -> tensor<5x500x1x1xf16, {order = #NHWC}>
+   %2 = IE.Expand(%1) {pads_begin = [0, 0, 0, 0], pads_end = [0, 12, 0, 0]} : tensor<5x500x1x1xf16, {order = #NHWC}> -> tensor<5x512x1x1xf16, {order = #NHWC}>
+   return %2 : tensor<5x512x1x1xf16, {order = #NHWC}>
+
+   // CHECK-NOT:    IE.Slice
+   // CHECK-NOT:    IE.Expand
+   // CHECK:        [[PERMUTECAST:%.+]] = IE.PermuteCast([[INPUT]]) {dst_order = #NHWC, mem_perm = #map} : tensor<1x512x5x1xf16, {order = #NHWC}> -> tensor<5x512x1x1xf16, {order = #NHWC}>
+
+   // CHECK:        return [[PERMUTECAST]] : tensor<5x512x1x1xf16, {order = #NHWC}>
 }
 
 // -----

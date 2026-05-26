@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --patch-populate-weight-table-with-shave --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --patch-populate-weight-table-with-shave --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
@@ -77,7 +77,8 @@ func.func @PatchSWKernelSingleCluster(%arg0: memref<1x1x2048xf32, @DDR>, %scale:
       %22 = VPUIP.PermuteCast {dst_order = #NHWC, mem_perm = #NHWC} inputs(%21 : memref<1x2048x1x1xf16, [@CMX_NN, 0]>) -> memref<1x2048x1x1xf16, #NHWC, [@CMX_NN, 0]>
       %23 = VPUIP.ConcatView inputs(%arg3, %arg4 : memref<208x1x1x4xsi32, [@CMX_NN, 0]>, memref<208x1x1x4xsi32, [@CMX_NN, 0]>)
         outputs(%2 : memref<416x1x1x4xsi32, [@CMX_NN, 0]>) -> memref<416x1x1x4xsi32, [@CMX_NN, 0]>
-      %24 = VPUIP.NCEClusterTask {populateWeightTable = true, minimumHardwareExecutionCost = 4294967295 : i64} <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
+      %24 = VPUIP.NCEClusterTask {populateWeightTable = true, minimumHardwareExecutionCost = 4294967295 : i64, resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>}
+           <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
             input(%22 : memref<1x2048x1x1xf16, #NHWC, [@CMX_NN, 0]>)
             weights(%arg5 : memref<416x2048x1x1x!qElemType, #NHWC, [@CMX_NN, 0]>)
             weight_table(%23 : memref<416x1x1x4xsi32, [@CMX_NN, 0]>)
@@ -217,7 +218,8 @@ func.func @PatchSWKernelSingleClusterWithDMASpill(%arg0: memref<1x1x2048xf32, @D
       %22 = VPUIP.PermuteCast {dst_order = #NHWC, mem_perm = #NHWC} inputs(%21 : memref<1x2048x1x1xf16, [@CMX_NN, 0]>) -> memref<1x2048x1x1xf16, #NHWC, [@CMX_NN, 0]>
       %23 = VPUIP.ConcatView inputs(%arg3, %arg4 : memref<208x1x1x4xsi32, [@CMX_NN, 0]>, memref<208x1x1x4xsi32, [@CMX_NN, 0]>)
         outputs(%2 : memref<416x1x1x4xsi32, [@CMX_NN, 0]>) -> memref<416x1x1x4xsi32, [@CMX_NN, 0]>
-      %24 = VPUIP.NCEClusterTask {populateWeightTable = true, minimumHardwareExecutionCost = 4294967295 : i64} <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
+      %24 = VPUIP.NCEClusterTask {populateWeightTable = true, minimumHardwareExecutionCost = 4294967295 : i64, resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>}
+           <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
             input(%22 : memref<1x2048x1x1xf16, #NHWC, [@CMX_NN, 0]>)
             weights(%arg5 : memref<416x2048x1x1x!qElemType, #NHWC, [@CMX_NN, 0]>)
             weight_table(%23 : memref<416x1x1x4xsi32, [@CMX_NN, 0]>)
@@ -324,10 +326,10 @@ func.func @PatchSWKernelModeSegmented(%arg0: memref<1x1x4096xf32, @DDR>, %scale:
         (!async.value<!PopulateWeightTableDistributed>, !async.value<!PopulateWeightTableDistributed>)
         attributes {VPUIP.executor = @SHAVE_ACT, "async-deps-index" = 0 : i64, cycleBegin = 0 : i64, cycleCost = 1 : i64, cycleEnd = 1 : i64} {
 
-      %sub_view0 = VPUIP.SubView %3 [0, 0, 0, 0] [512, 1, 1, 4] {explicit_output_shapes = [[128, 1, 1, 4], [128, 1, 1, 4], [128, 1, 1, 4], [128, 1, 1, 4]]} :
+      %sub_view0 = VPUIP.SubView %3 [0, 0, 0, 0] [512, 1, 1, 4] {explicit_output_offsets = [[0, 0, 0, 0], [128, 0, 0, 0], [256, 0, 0, 0], [384, 0, 0, 0]], explicit_output_shapes = [[128, 1, 1, 4], [128, 1, 1, 4], [128, 1, 1, 4], [128, 1, 1, 4]]} :
             !WTDistributed to !PopulateWeightTableDistributed
 
-      %sub_view1 = VPUIP.SubView %3 [512, 0, 0, 0] [512, 1, 1, 4] {explicit_output_shapes = [[128, 1, 1, 4], [128, 1, 1, 4], [128, 1, 1, 4], [128, 1, 1, 4]]} :
+      %sub_view1 = VPUIP.SubView %3 [512, 0, 0, 0] [512, 1, 1, 4] {explicit_output_offsets = [[0, 0, 0, 0], [128, 0, 0, 0], [256, 0, 0, 0], [384, 0, 0, 0]], explicit_output_shapes = [[128, 1, 1, 4], [128, 1, 1, 4], [128, 1, 1, 4], [128, 1, 1, 4]]} :
             !WTDistributed to !PopulateWeightTableDistributed
 
       %results:2 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 2, 0, 0>, weightsPtrsPerClusterAttr = [0, 0, 0, 0]}
@@ -386,7 +388,8 @@ func.func @PatchSWKernelModeSegmented(%arg0: memref<1x1x4096xf32, @DDR>, %scale:
           -> !ConvInputDistributed
       %21 = VPUIP.ConcatView inputs(%arg4, %arg5 : !PopulateWeightTableDistributed, !PopulateWeightTableDistributed)
         outputs(%3 : !WTDistributed) -> !WTDistributed
-      %22 = VPUIP.NCEClusterTask {populateWeightTable = true, minimumHardwareExecutionCost = 4294967295 : i64} <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1],
+      %22 = VPUIP.NCEClusterTask {populateWeightTable = true, minimumHardwareExecutionCost = 4294967295 : i64, resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>}
+           <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1],
                 kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
         input(%20 : !ConvInputDistributed)
         weights(%arg3 : !WeightsDistributed)
@@ -423,12 +426,12 @@ func.func @PatchSWKernelModeSegmented(%arg0: memref<1x1x4096xf32, @DDR>, %scale:
     // CHECK-SAME:          {mode = "SEGMENTED", num_tiles = [4, 1, 1, 1], num_clusters = 4 : i64}>>)
     // CHECK-SAME:      attributes {VPUIP.executor = @SHAVE_ACT, "async-deps-index" = 0 : i64, cycleBegin = 0 : i64, cycleCost = 1 : i64, cycleEnd = 1 : i64} {
 
-    // CHECK:              [[SUBVIEW0:%.+]] = VPUIP.SubView %3 [0, 0, 0, 0] [512, 1, 1, 4]
-    // CHECK-SAME{LITERAL}:   {explicit_output_shapes = [[128, 1, 1, 4], [128, 1, 1, 4], [128, 1, 1, 4], [128, 1, 1, 4]]} :
+    // CHECK:              [[SUBVIEW0:%.+]] = VPUIP.SubView [[IN_BUF]] [0, 0, 0, 0] [512, 1, 1, 4]
+    // CHECK-SAME{LITERAL}:   {explicit_output_offsets = [[0, 0, 0, 0], [128, 0, 0, 0], [256, 0, 0, 0], [384, 0, 0, 0]], explicit_output_shapes = [[128, 1, 1, 4], [128, 1, 1, 4], [128, 1, 1, 4], [128, 1, 1, 4]]} :
     // CHECK-SAME:            !VPUIP.DistributedBuffer<1024x1x1x4xsi32, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [4, 1, 1, 1], num_clusters = 4 : i64, alignment = [16, 1, 1, 1]}>
     // CHECK-SAME:            to !VPUIP.DistributedBuffer<512x1x1x4xsi32, {order = #NCHW, strides = [4, 4, 4, 1]}, @CMX_NN, {mode = "SEGMENTED", num_tiles = [4, 1, 1, 1], num_clusters = 4 : i64}>
-    // CHECK:              [[SUBVIEW1:%.+]] = VPUIP.SubView %3 [512, 0, 0, 0] [512, 1, 1, 4]
-    // CHECK-SAME{LITERAL}:   {explicit_output_shapes = [[128, 1, 1, 4], [128, 1, 1, 4], [128, 1, 1, 4], [128, 1, 1, 4]]} :
+    // CHECK:              [[SUBVIEW1:%.+]] = VPUIP.SubView [[IN_BUF]] [512, 0, 0, 0] [512, 1, 1, 4]
+    // CHECK-SAME{LITERAL}:   {explicit_output_offsets = [[0, 0, 0, 0], [128, 0, 0, 0], [256, 0, 0, 0], [384, 0, 0, 0]], explicit_output_shapes = [[128, 1, 1, 4], [128, 1, 1, 4], [128, 1, 1, 4], [128, 1, 1, 4]]} :
     // CHECK-SAME:            !VPUIP.DistributedBuffer<1024x1x1x4xsi32, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [4, 1, 1, 1], num_clusters = 4 : i64, alignment = [16, 1, 1, 1]}>
     // CHECK-SAME:            to !VPUIP.DistributedBuffer<512x1x1x4xsi32, {order = #NCHW, strides = [4, 4, 4, 1]}, @CMX_NN, {mode = "SEGMENTED", num_tiles = [4, 1, 1, 1], num_clusters = 4 : i64}>
     // CHECK:              [[RESULTS:%.+]]:2 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 2, 0, 0>,
@@ -522,7 +525,8 @@ func.func @DoNotPatchSWKernelWhenZeroOffset(%arg0: memref<1x1x2048xf32, @DDR>, %
       %22 = VPUIP.PermuteCast {dst_order = #NHWC, mem_perm = #NHWC} inputs(%21 : memref<1x2048x1x1xf16, [@CMX_NN, 0]>) -> memref<1x2048x1x1xf16, #NHWC, [@CMX_NN, 0]>
       %23 = VPUIP.ConcatView inputs(%arg3, %arg4 : memref<208x1x1x4xsi32, [@CMX_NN, 0]>, memref<208x1x1x4xsi32, [@CMX_NN, 0]>)
         outputs(%2 : memref<416x1x1x4xsi32, [@CMX_NN, 0]>) -> memref<416x1x1x4xsi32, [@CMX_NN, 0]>
-      %24 = VPUIP.NCEClusterTask {populateWeightTable = true, minimumHardwareExecutionCost = 4294967295 : i64} <{is_zero_offset_weights_table, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
+      %24 = VPUIP.NCEClusterTask {populateWeightTable = true, minimumHardwareExecutionCost = 4294967295 : i64, resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>}
+           <{is_zero_offset_weights_table, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
             input(%22 : memref<1x2048x1x1xf16, #NHWC, [@CMX_NN, 0]>)
             weights(%arg5 : memref<416x2048x1x1x!qElemType, #NHWC, [@CMX_NN, 0]>)
             weight_table(%23 : memref<416x1x1x4xsi32, [@CMX_NN, 0]>)

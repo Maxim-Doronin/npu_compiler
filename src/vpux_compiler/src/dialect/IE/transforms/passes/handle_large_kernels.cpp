@@ -79,7 +79,8 @@ SmallVector<mlir::Value> sliceFilter(const mlir::Value filterToSplit, const int6
     return slicedFilters;
 }
 
-mlir::Value getExtendedActivation(IE::ConvolutionOp origOp, mlir::PatternRewriter& rewriter) {
+template <class ConcreteOp>
+mlir::Value getExtendedActivation(ConcreteOp origOp, mlir::PatternRewriter& rewriter) {
     SmallVector<mlir::Value> extendedActivation;
 
     auto activation = origOp->getOperand(0);
@@ -233,7 +234,8 @@ void rewriteSubGraph(IE::ConvolutionOp origOp, ArrayRef<mlir::Value> slicedFilte
 template <class ConcreteOp>
 class GeneralPoolingBaseRewriter : public mlir::OpRewritePattern<ConcreteOp> {
 public:
-    GeneralPoolingBaseRewriter(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<ConcreteOp>(ctx), _log(log) {
+    GeneralPoolingBaseRewriter(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit, Logger log)
+            : mlir::OpRewritePattern<ConcreteOp>(ctx, benefit), _log(log) {
         this->setDebugName("GeneralPoolingBaseRewriter");
     }
 
@@ -474,7 +476,8 @@ mlir::LogicalResult GeneralPoolingBaseRewriter<ConcreteOp>::matchAndRewrite(Conc
 
 class GeneralAvgPoolRewriter final : public GeneralPoolingBaseRewriter<IE::AvgPoolOp> {
 public:
-    GeneralAvgPoolRewriter(mlir::MLIRContext* ctx, Logger log): GeneralPoolingBaseRewriter<IE::AvgPoolOp>(ctx, log) {
+    GeneralAvgPoolRewriter(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit, Logger log)
+            : GeneralPoolingBaseRewriter<IE::AvgPoolOp>(ctx, benefit, log) {
         setDebugName("AvgPoolRewriter");
     }
 
@@ -552,7 +555,8 @@ mlir::Value GeneralAvgPoolRewriter::handlePoolWithPadding(IE::AvgPoolOp origOp, 
 
 class GeneralMaxPoolRewriter final : public GeneralPoolingBaseRewriter<IE::MaxPoolOp> {
 public:
-    GeneralMaxPoolRewriter(mlir::MLIRContext* ctx, Logger log): GeneralPoolingBaseRewriter<IE::MaxPoolOp>(ctx, log) {
+    GeneralMaxPoolRewriter(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit, Logger log)
+            : GeneralPoolingBaseRewriter<IE::MaxPoolOp>(ctx, benefit, log) {
         setDebugName("GeneralMaxPoolRewriter");
     }
 
@@ -616,8 +620,8 @@ mlir::Value GeneralMaxPoolRewriter::handlePoolWithPadding(IE::MaxPoolOp origOp, 
 
 class OverlappedMaxPoolRewriter final : public mlir::OpRewritePattern<IE::MaxPoolOp> {
 public:
-    OverlappedMaxPoolRewriter(mlir::MLIRContext* ctx, Logger log)
-            : mlir::OpRewritePattern<IE::MaxPoolOp>(ctx), _log(log) {
+    OverlappedMaxPoolRewriter(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit, Logger log)
+            : mlir::OpRewritePattern<IE::MaxPoolOp>(ctx, benefit), _log(log) {
         setDebugName("OverlappedMaxPoolRewriter");
     }
 
@@ -1072,13 +1076,205 @@ mlir::LogicalResult SliceLargeConvRewriter::matchAndRewrite(IE::ConvolutionOp or
                slicedFilters, origOp->getLoc());
 
     // Pad activation
-    auto extendedActivation = getExtendedActivation(origOp, rewriter);
+    auto extendedActivation = getExtendedActivation<IE::ConvolutionOp>(origOp, rewriter);
     _log.trace("[{0}] Pad on activation, new shape {1}, new activation {2} at {3}", getDebugName(),
                getShape(extendedActivation), extendedActivation, origOp->getLoc());
 
     // Create new sub graph and replace origOp
     rewriteSubGraph(origOp, slicedFilters, extendedActivation, numXSlices, numYSlices, targetKernelSize, rewriter,
                     _log);
+    return mlir::success();
+}
+
+//
+// SliceLargeKernelAvgPoolRewriter
+//
+
+// For AvgPool ops where the kernel exceeds maxKernelSize and cannot be handled by the cascade split approach
+// (GeneralAvgPoolRewriter), this rewriter converts the large-kernel AvgPool into multiple sub-AvgPools
+// with smaller kernels and accumulates results via element-wise Add.
+//
+// The kernel is spatially partitioned into non-overlapping sub-regions, each <= maxKernelSize.
+// For each sub-region, the padded input is sliced and processed by an AvgPool with corrected static_scale.
+//
+// Key insight: sub-AvgPool computes sum/(subKY*subKX)*sub_static_scale.
+// To produce sum/(KY*KX)*origScale, we set: sub_static_scale = (subKY*subKX)/(KY*KX)*origScale.
+//
+// Example:
+//   IE.AvgPool {kernel_size = [17, 17], strides = [8, 8], pads_begin = [8, 8], pads_end = [1, 7],
+//              static_scale = 0.135376} : tensor<1x512x8x10xf16> -> tensor<1x512x1x2xf16>
+//
+//   -> Pad input to 1x512x17x25, split 17x17 kernel into 2x2 sub-AvgPools (maxKernelSize=11):
+//      Sub(0,0) kernel=[11,11], sub_scale = 121/289*0.135376
+//      Sub(0,1) kernel=[11,6],  sub_scale = 66/289*0.135376
+//      Sub(1,0) kernel=[6,11],  sub_scale = 66/289*0.135376
+//      Sub(1,1) kernel=[6,6],   sub_scale = 36/289*0.135376
+//      output = Sub(0,0) + Sub(0,1) + Sub(1,0) + Sub(1,1)
+class SliceLargeKernelAvgPoolRewriter final : public mlir::OpRewritePattern<IE::AvgPoolOp> {
+public:
+    SliceLargeKernelAvgPoolRewriter(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit, Logger log)
+            : mlir::OpRewritePattern<IE::AvgPoolOp>(ctx, benefit), _log(log) {
+        setDebugName("SliceLargeKernelAvgPoolRewriter");
+    }
+
+    mlir::LogicalResult matchAndRewrite(IE::AvgPoolOp origOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+mlir::LogicalResult SliceLargeKernelAvgPoolRewriter::matchAndRewrite(IE::AvgPoolOp origOp,
+                                                                     mlir::PatternRewriter& rewriter) const {
+    _log.trace("[{0}] Got '{1}' layer at '{2}'", getDebugName(), origOp.getOperationName(), origOp->getLoc());
+
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(origOp.getInput().getType());
+    const auto inShape = inType.getShape();
+    const auto outShape = vpux::getShape(origOp.getOutput());
+    if (inType.getRank() != 4) {
+        return mlir::failure();
+    }
+
+    // Only handle exclude_pads = false (padding zeros count towards the average)
+    if (origOp.getExcludePads()) {
+        _log.trace("Cannot handle AvgPool with exclude_pads=true in sub-AvgPool approach");
+        return mlir::failure();
+    }
+
+    const auto kernelSize = parseIntArrayAttr<int64_t>(origOp.getKernelSize());
+    const auto maxKernelSize = config::getMaxKernelSize(origOp);
+    VPUX_THROW_WHEN(maxKernelSize <= 0, "Invalid maxKernelSize {0}", maxKernelSize);
+    const auto KY = kernelSize[Dims4D::Kernel::Y.ind()];
+    const auto KX = kernelSize[Dims4D::Kernel::X.ind()];
+    if (KY <= maxKernelSize && KX <= maxKernelSize) {
+        return mlir::failure();
+    }
+
+    const auto strides = parseIntArrayAttr<int64_t>(origOp.getStrides());
+    const auto padsBegin = parseIntArrayAttr<int64_t>(origOp.getPadsBegin());
+    const auto padsEnd = parseIntArrayAttr<int64_t>(origOp.getPadsEnd());
+
+    const auto IC = inShape[Dims4D::Act::C];
+    const auto outH = outShape[Dims4D::Act::H];
+    const auto outW = outShape[Dims4D::Act::W];
+    const auto strideY = strides[Dims4D::Strides::Y.ind()];
+    const auto strideX = strides[Dims4D::Strides::X.ind()];
+    const auto padTop = padsBegin[Dims4D::PadsBegin::Top.ind()];
+    const auto padLeft = padsBegin[Dims4D::PadsBegin::Left.ind()];
+    const auto padBottom = padsEnd[Dims4D::PadsEnd::Bottom.ind()];
+    const auto padRight = padsEnd[Dims4D::PadsEnd::Right.ind()];
+
+    // Verify that the explicitly padded input is large enough for all output positions.
+    // With CEIL rounding, the last kernel window might extend beyond paddedH/paddedW,
+    // which our explicit-pad + slice approach cannot handle.
+    const auto paddedH = inShape[Dims4D::Act::H] + padTop + padBottom;
+    const auto paddedW = inShape[Dims4D::Act::W] + padLeft + padRight;
+    const auto requiredH = (outH - 1) * strideY + KY;
+    const auto requiredW = (outW - 1) * strideX + KX;
+    if (requiredH > paddedH || requiredW > paddedW) {
+        _log.trace("Cannot handle AvgPool: CEIL rounding causes kernel to extend beyond padded input "
+                   "(required [{0},{1}] > padded [{2},{3}])",
+                   requiredH, requiredW, paddedH, paddedW);
+        return mlir::failure();
+    }
+
+    _log.trace("Converting large kernel AvgPool [{0}x{1}] to sub-AvgPools", KY, KX);
+
+    // Step 1: Explicitly pad the input with zeros
+    // Pad W dimension first (left + right), then H dimension (top + bottom)
+    const auto paddedInput = getExtendedActivation<IE::AvgPoolOp>(origOp, rewriter);
+
+    // Step 2: Compute sub-kernel layout
+    const int64_t targetKernelSize = maxKernelSize;
+    const int64_t numYSlices = (KY + targetKernelSize - 1) / targetKernelSize;
+    const int64_t numXSlices = (KX + targetKernelSize - 1) / targetKernelSize;
+
+    // Step 3: Compute per-sub-region static_scale correction
+    // Each sub-AvgPool computes: sum / (subKY * subKX) * sub_static_scale
+    // We need each sub to produce: sum / (KY * KX) * original_static_scale
+    // Therefore: sub_static_scale = (subKY * subKX) / (KY * KX) * original_static_scale
+    // Without original static_scale: sub_static_scale = (subKY * subKX) / (KY * KX)
+    const auto origArea = static_cast<double>(KY * KX);
+    const auto origStaticScale = origOp.getStaticScaleAttr();
+    const auto origScaleVal = origStaticScale ? origStaticScale.getValueAsDouble() : 1.0f;
+
+    auto* ctx = rewriter.getContext();
+    const auto stridesAttr = origOp.getStridesAttr();
+    const auto zeroPadAttr = getIntArrayAttr(ctx, ArrayRef({0, 0}));
+    const auto broadcastType = vpux::IE::AutoBroadcastTypeAttr::get(ctx, IE::AutoBroadcastType::NONE_OR_EXPLICIT);
+
+    const auto outputPaddingAttr = origOp.getOutputPaddingAttr();
+    const auto inputPaddingAttr = origOp.getInputPaddingAttr();
+
+    SmallVector<mlir::Value> subOutputs;
+
+    for (int64_t j = 0; j < numYSlices; j++) {
+        for (int64_t i = 0; i < numXSlices; i++) {
+            // Sub-kernel size
+            const int64_t subKY = (j < numYSlices - 1) ? targetKernelSize : (KY - j * targetKernelSize);
+            const int64_t subKX = (i < numXSlices - 1) ? targetKernelSize : (KX - i * targetKernelSize);
+
+            // Offset in padded input
+            const int64_t offsetH = j * targetKernelSize;
+            const int64_t offsetW = i * targetKernelSize;
+
+            // Input slice size for this sub-AvgPool
+            int64_t sliceH = (outH - 1) * strideY + subKY;
+            int64_t sliceW = (outW - 1) * strideX + subKX;
+            sliceH = std::min(sliceH, paddedH - offsetH);
+            sliceW = std::min(sliceW, paddedW - offsetW);
+
+            // Slice the padded input
+            Shape offsets(inShape.size());
+            offsets[Dims4D::Act::H] = offsetH;
+            offsets[Dims4D::Act::W] = offsetW;
+            const SmallVector<int64_t> sliceShape{inShape[Dims4D::Act::N], IC, sliceH, sliceW};
+
+            auto sliceOp =
+                    rewriter.create<IE::SliceOp>(takeOpLoc(origOp, "sub_slice_{0}_{1}", j, i), paddedInput,
+                                                 getIntArrayAttr(ctx, offsets.raw()), getIntArrayAttr(ctx, sliceShape));
+
+            // Compute sub_static_scale to correct the averaging denominator:
+            // sub-AvgPool produces: sum / (subKY * subKX) * sub_static_scale
+            // We need it to produce: sum * origScaleVal / (KY * KX)
+            // So: sub_static_scale = (subKY * subKX) * origScaleVal / (KY * KX)
+            const auto subStaticScale =
+                    static_cast<float>(static_cast<double>(subKY * subKX) * origScaleVal / origArea);
+            const auto subStaticScaleAttr = mlir::FloatAttr::get(mlir::Float32Type::get(ctx), subStaticScale);
+
+            // Create sub-AvgPool with corrected static_scale and no padding
+            const auto subKernelAttr = getIntArrayAttr(ctx, SmallVector<int64_t>{subKY, subKX});
+            auto subAvgPool = rewriter.create<IE::AvgPoolOp>(
+                    takeOpLoc(origOp, "sub_avgpool_{0}_{1}", j, i), sliceOp.getResult(), subKernelAttr, stridesAttr,
+                    zeroPadAttr, zeroPadAttr, origOp.getRoundingTypeAttr(),
+                    /*exclude_pads=*/nullptr,
+                    /*post_op=*/nullptr, /*clamp=*/nullptr, subStaticScaleAttr, outputPaddingAttr, inputPaddingAttr);
+
+            subOutputs.push_back(subAvgPool.getOutput());
+
+            _log.nest(2).trace("Sub-AvgPool({0},{1}): kernel=[{2},{3}], offset=[{4},{5}], "
+                               "inputSlice=[{6},{7}], subStaticScale={8}",
+                               j, i, subKY, subKX, offsetH, offsetW, sliceH, sliceW, subStaticScale);
+        }
+    }
+
+    // Step 4: Accumulate partial results via Add
+    // Propagate post_op and clamp from the original AvgPool to the last Add
+
+    VPUX_THROW_WHEN(subOutputs.empty(), "No sub-AvgPool outputs generated for large kernel decomposition");
+    const auto subOutputSize = subOutputs.size();
+    mlir::Value result = subOutputs[0];
+    for (size_t idx = 1; idx < subOutputSize; idx++) {
+        const bool isLast = (idx == subOutputSize - 1);
+        auto addOp = rewriter.create<IE::AddOp>(takeOpLoc(origOp, "sub_add_{0}", idx), result, subOutputs[idx],
+                                                broadcastType, isLast ? origOp.getPostOpAttr() : nullptr,
+                                                isLast ? origOp.getClampAttr() : nullptr, /*output_padding=*/nullptr,
+                                                /*input_padding=*/nullptr);
+        result = addOp.getOutput();
+    }
+
+    rewriter.replaceOp(origOp, result);
+    _log.trace("Successfully replaced large kernel AvgPool with {0} sub-AvgPools", subOutputSize);
+
     return mlir::success();
 }
 
@@ -1583,7 +1779,7 @@ mlir::LogicalResult SliceLargePrimeKernelRewriter::matchAndRewrite(IE::Convoluti
                slicedFilters, origOp->getLoc());
 
     // Pad activation
-    auto extendedActivation = getExtendedActivation(origOp, rewriter);
+    auto extendedActivation = getExtendedActivation<IE::ConvolutionOp>(origOp, rewriter);
     _log.trace("[{0}] Pad on activation, new shape {1}, new activation {2} at {3}", getDebugName(),
                getShape(extendedActivation), extendedActivation, origOp->getLoc());
 
@@ -1709,10 +1905,16 @@ void HandleLargeKernelsPass::safeRunOnFunc() {
     // Note 2: The reason to distinguish GeneralPool and OverlappedPool is the influence of padding Attr.
     // The pad will have different implementation methods. To simplify and split it.
     mlir::RewritePatternSet poolingPatterns(&ctx);
-    poolingPatterns.add<GeneralAvgPoolRewriter>(&ctx, _log);
-    poolingPatterns.add<GeneralMaxPoolRewriter>(&ctx, _log);
-    poolingPatterns.add<OverlappedMaxPoolRewriter>(&ctx, _log);
+    poolingPatterns.add<GeneralAvgPoolRewriter>(&ctx, benefitLevels[0], _log);
+    poolingPatterns.add<GeneralMaxPoolRewriter>(&ctx, benefitLevels[0], _log);
+    poolingPatterns.add<OverlappedMaxPoolRewriter>(&ctx, benefitLevels[0], _log);
 
+    // After the main pooling patterns have been applied, there may still be AvgPool ops
+    // with large kernels that could not be split by GeneralAvgPoolRewriter (e.g., non-global pooling
+    // with hasPadValue). SliceLargeKernelAvgPoolRewriter handles these remaining cases by explicitly
+    // padding the input and splitting the kernel into non-overlapping sub-AvgPools with corrected
+    // static_scale, then accumulating results via element-wise Add.
+    poolingPatterns.add<SliceLargeKernelAvgPoolRewriter>(&ctx, benefitLevels[1], _log);
     if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(poolingPatterns), getDefaultGreedyRewriteConfig()))) {
         signalPassFailure();
     }

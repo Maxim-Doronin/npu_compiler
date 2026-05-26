@@ -3,7 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-translate --vpu-arch=NPU37XX --import-IE ./slice.xml | FileCheck %s
+// RUN: vpux-translate --platform=%platform% --import-IE ./slice.xml | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 // CHECK:   net.NetworkInfo entryPoint : @main inputsInfo : {
 // CHECK:       DataInfo "param_node_0" tensorNames = ["param_node_0"] : tensor<?xf32

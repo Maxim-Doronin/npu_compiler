@@ -8,12 +8,12 @@
 // - dash-separated: "dump-statistics-of-ie-ops" (from pass->getArgument())
 
 // Test with dash-separated format (original behavior)
-// RUN: env OV_NPU_LOG_LEVEL=LOG_INFO IE_NPU_LOG_FILTER=dump-statistics-of-ie-ops vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --dump-statistics-of-ie-ops -o /dev/null %s 2>&1 | FileCheck %s --check-prefix=CHECK-DASH
+// RUN: env OV_NPU_LOG_LEVEL=LOG_INFO IE_NPU_LOG_FILTER=dump-statistics-of-ie-ops vpux-opt --split-input-file --init-compiler="platform=%platform%" --dump-statistics-of-ie-ops -o /dev/null %s 2>&1 | FileCheck %s --check-prefix=CHECK-DASH
 
 // Test with CamelCase format (new behavior)
-// RUN: env OV_NPU_LOG_LEVEL=LOG_INFO IE_NPU_LOG_FILTER=DumpStatisticsOfIEOps vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --dump-statistics-of-ie-ops -o /dev/null %s 2>&1 | FileCheck %s --check-prefix=CHECK-CAMEL
+// RUN: env OV_NPU_LOG_LEVEL=LOG_INFO IE_NPU_LOG_FILTER=DumpStatisticsOfIEOps vpux-opt --split-input-file --init-compiler="platform=%platform%" --dump-statistics-of-ie-ops -o /dev/null %s 2>&1 | FileCheck %s --check-prefix=CHECK-CAMEL
 
-// REQUIRES: arch-NPU40XX
+// REQUIRES: platform-NPU4000
 
 module @TestLogFilterFormats {
     net.NetworkInfo entryPoint : @main inputsInfo : {

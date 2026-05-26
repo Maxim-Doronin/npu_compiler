@@ -18,7 +18,7 @@ mlir::LogicalResult BarrierRewriter::matchAndRewrite(VPURT::ConfigureBarrierOp o
 
     rewriter.replaceOpWithNewOp<VPUMI40XX::ConfigureBarrierOp>(
             origOp, VPURegMapped::IndexType::get(ctx, 0),  // setup all barriers with the trivial index (0)
-            checked_cast<uint8_t>(origOp.getId()),         // realId
+            origOp.getId(),                                // realId
             -1,                                            // nextSameId
             zeroByteAttr,                                  // producerCount,
             zeroByteAttr,                                  // consumerCount,

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --vpu-arch=%arch% --split-input-file --mlir-elide-elementsattrs-if-larger 8 --default-hw-mode %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --platform=%platform% --split-input-file --mlir-elide-elementsattrs-if-larger 8 --default-hw-mode %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -72,7 +72,7 @@ module @Convolution {
 // -----
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
-!qElemType2 = !quant.uniform<u8:f16, 0.047852594712201289:128>
+!qElemType = !quant.uniform<u8:f16, 0.047852594712201289:128>
 
 // CHECK-LABEL: @ScaleShiftSubgraph
 module @ScaleShiftSubgraph {
@@ -122,13 +122,13 @@ module @ScaleShiftSubgraph {
         // CHECK-DAG:   const.Declare memref<1x1x1x12288xf16>
 
         // CHECK:       VPURT.Task waits([[barrier_0:%.+]] : !VPURT.Barrier) updates([[barrier_1:%.+]] : !VPURT.Barrier)
-        // CHECK:       VPUIP.NCEClusterTask <{is_segmented, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<DWCONV>}>
-        // CHECK-SAME:      input([[input_0:%.+]] : memref<1x512x10x20xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 0]>)
+        // CHECK:       VPUIP.NCEClusterTask <{is_segmented, is_superdense, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>, task_type = #VPUIP.nce_task_type<DWCONV>}>
+        // CHECK-SAME:      input([[input_0:%.+]] : memref<1x512x10x20xf16, #NHWC, [@CMX_NN, 0]>)
         // CHECK-SAME:      weights([[weight_0:%.+]] : memref<512x16x1x1xf16, #NHWC, [@CMX_NN, 0]>)
         // CHECK-SAME:      weight_table([[weight_table_0:%.+]] : memref<512x1x1x4xsi32, [@CMX_NN, 0]>)
-        // CHECK-SAME:      parent_input([[parent_input_0:%.+]] : !VPUIP.DistributedBuffer<1x512x20x20xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)
-        // CHECK-SAME:      parent_output([[parent_output_0:%.+]] : !VPUIP.DistributedBuffer<1x512x20x20x!qElemType2, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)
-        // CHECK-SAME:      outputs([[output_0:%.+]] : memref<1x512x10x20x!qElemType2, #NHWC, [@CMX_NN, 0]>) -> memref<1x512x10x20x!qElemType2, #NHWC, [@CMX_NN, 0]> variants : {
+        // CHECK-SAME:      parent_input([[parent_input_0:%.+]] : !VPUIP.DistributedBuffer<1x512x20x20xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)
+        // CHECK-SAME:      parent_output([[parent_output_0:%.+]] : !VPUIP.DistributedBuffer<1x512x20x20xf32, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)
+        // CHECK-SAME:      outputs([[output_0:%.+]] : memref<1x512x10x20xf32, [@CMX_NN, 0]>) -> memref<1x512x10x20xf32, [@CMX_NN, 0]> variants : {
         // CHECK:               DPUTask
         // CHECK:               DPUTask
         // CHECK:               DPUTask
@@ -141,13 +141,13 @@ module @ScaleShiftSubgraph {
         // CHECK:               PPETask {ppe = #VPU.PPEInt<mode = <LPRELU>
 
         // CHECK:       VPURT.Task waits([[barrier_0:%.+]] : !VPURT.Barrier) updates([[barrier_1:%.+]] : !VPURT.Barrier)
-        // CHECK:       VPUIP.NCEClusterTask <{is_segmented, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<DWCONV>}>
-        // CHECK-SAME:      input([[input_1:%.+]] : memref<1x512x10x20xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, [@CMX_NN, 1]>)
+        // CHECK:       VPUIP.NCEClusterTask <{is_segmented, is_superdense, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>, task_type = #VPUIP.nce_task_type<DWCONV>}>
+        // CHECK-SAME:      input([[input_1:%.+]] : memref<1x512x10x20xf16, #NHWC, [@CMX_NN, 1]>)
         // CHECK-SAME:      weights([[weight_1:%.+]] : memref<512x16x1x1xf16, #NHWC, [@CMX_NN, 1]>)
         // CHECK-SAME:      weight_table([[weight_table_1:%.+]] : memref<512x1x1x4xsi32, [@CMX_NN, 1]>)
-        // CHECK-SAME:      parent_input([[parent_input_0:%.+]] : !VPUIP.DistributedBuffer<1x512x20x20xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 512 : i64>}, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)
-        // CHECK-SAME:      parent_output([[parent_output_0:%.+]] : !VPUIP.DistributedBuffer<1x512x20x20x!qElemType2, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)
-        // CHECK-SAME:      outputs([[output_1:%.+]] : memref<1x512x10x20x!qElemType2, #NHWC, [@CMX_NN, 1]>) -> memref<1x512x10x20x!qElemType2, #NHWC, [@CMX_NN, 1]> variants : {
+        // CHECK-SAME:      parent_input([[parent_input_0:%.+]] : !VPUIP.DistributedBuffer<1x512x20x20xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)
+        // CHECK-SAME:      parent_output([[parent_output_0:%.+]] : !VPUIP.DistributedBuffer<1x512x20x20xf32, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>)
+        // CHECK-SAME:      outputs([[output_1:%.+]] : memref<1x512x10x20xf32, [@CMX_NN, 1]>) -> memref<1x512x10x20xf32, [@CMX_NN, 1]> variants : {
         // CHECK:               DPUTask
         // CHECK:               DPUTask
         // CHECK:               DPUTask
@@ -349,30 +349,28 @@ module @BatchedGroupConvWithBroadcast {
     return %0 : tensor<4x1x2x2xf16>
 
     // CHECK: VPURT.Task waits([[BAR_0:%.+]] : !VPURT.Barrier) updates([[BAR_1:%.+]] : !VPURT.Barrier) {
-    // CHECK: VPUIP.NCEClusterTask <{
-    // CHECK:   kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>
-    // CHECK:   kernel_size = [3, 3], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>
+    // CHECK: VPUIP.NCEClusterTask <{is_superdense, kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
+    // CHECK-SAME:   kernel_size = [3, 3], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>,
     // CHECK-SAME: task_type = #VPUIP.nce_task_type<DWCONV>
-    // CHECK:   }> input([[INPUT_0:%.+]] : memref<1x16x2x2xf16, #NHWC, [@CMX_NN, 0]>)
-    // CHECK:   weights([[WEIGHTS_0:%.+]] : memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>)
-    // CHECK:   weight_table([[WT_0:%.+]] : memref<16x1x1x4xsi32, [@CMX_NN, 0]>)
-    // CHECK:   parent_input([[PARENT_IN:%.+]] : !VPUIP.DistributedBuffer<1x16x2x2xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
-    // CHECK:   parent_output([[PARENT_OUT:%.+]] : !VPUIP.DistributedBuffer<1x16x2x2xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
-    // CHECK:   outputs([[OUT_0:%.+]] : memref<1x16x2x2xf16, [@CMX_NN, 0]>) -> memref<1x16x2x2xf16, [@CMX_NN, 0]> variants : {
+    // CHECK-SAME:   input([[INPUT_0:%.+]] : memref<1x16x2x2xf16, #NHWC, [@CMX_NN, 0]>)
+    // CHECK-SAME:   weights([[WEIGHTS_0:%.+]] : memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 0]>)
+    // CHECK-SAME:   weight_table([[WT_0:%.+]] : memref<16x1x1x4xsi32, [@CMX_NN, 0]>)
+    // CHECK-SAME:   parent_input([[PARENT_IN:%.+]] : !VPUIP.DistributedBuffer<1x16x2x2xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
+    // CHECK-SAME:   parent_output([[PARENT_OUT:%.+]] : !VPUIP.DistributedBuffer<1x16x2x2xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
+    // CHECK-SAME:   outputs([[OUT_0:%.+]] : memref<1x16x2x2xf16, [@CMX_NN, 0]>) -> memref<1x16x2x2xf16, [@CMX_NN, 0]> variants : {
     // CHECK:     DPUTask {cluster_id = 0 : i64
     // CHECK:   PPETask {ppe = #VPU.PPEInt<mode = <NOOP>
 
     // CHECK: VPURT.Task waits([[BAR_0:%.+]] : !VPURT.Barrier) updates([[BAR_1:%.+]] : !VPURT.Barrier) {
-    // CHECK: VPUIP.NCEClusterTask <{
-    // CHECK:   kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>
-    // CHECK:   kernel_size = [3, 3], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>
+    // CHECK: VPUIP.NCEClusterTask <{is_superdense, kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
+    // CHECK-SAME:   kernel_size = [3, 3], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>,
     // CHECK-SAME: task_type = #VPUIP.nce_task_type<DWCONV>
-    // CHECK:   }> input([[INPUT_1:%.+]] : memref<1x16x2x2xf16, #NHWC, [@CMX_NN, 1]>)
-    // CHECK:   weights([[WEIGHTS_1:%.+]] : memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 1]>)
-    // CHECK:   weight_table([[WT_1:%.+]] : memref<16x1x1x4xsi32, [@CMX_NN, 1]>)
-    // CHECK:   parent_input([[PARENT_IN:%.+]] : !VPUIP.DistributedBuffer<1x16x2x2xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
-    // CHECK:   parent_output([[PARENT_OUT:%.+]] : !VPUIP.DistributedBuffer<1x16x2x2xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
-    // CHECK:   outputs([[OUT_1:%.+]] : memref<1x16x2x2xf16, [@CMX_NN, 1]>) -> memref<1x16x2x2xf16, [@CMX_NN, 1]> variants : {
+    // CHECK-SAME:   input([[INPUT_1:%.+]] : memref<1x16x2x2xf16, #NHWC, [@CMX_NN, 1]>)
+    // CHECK-SAME:   weights([[WEIGHTS_1:%.+]] : memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 1]>)
+    // CHECK-SAME:   weight_table([[WT_1:%.+]] : memref<16x1x1x4xsi32, [@CMX_NN, 1]>)
+    // CHECK-SAME:   parent_input([[PARENT_IN:%.+]] : !VPUIP.DistributedBuffer<1x16x2x2xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
+    // CHECK-SAME:   parent_output([[PARENT_OUT:%.+]] : !VPUIP.DistributedBuffer<1x16x2x2xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
+    // CHECK-SAME:   outputs([[OUT_1:%.+]] : memref<1x16x2x2xf16, [@CMX_NN, 1]>) -> memref<1x16x2x2xf16, [@CMX_NN, 1]> variants : {
     // CHECK:     DPUTask {cluster_id = 1 : i64
     // CHECK:   PPETask {ppe = #VPU.PPEInt<mode = <NOOP>
 

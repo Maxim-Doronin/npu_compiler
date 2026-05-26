@@ -5,7 +5,6 @@
 
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v2/merge_vf_region_rewriter.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
-
 #include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/multi_cluster_strategy_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/tile_utils.hpp"
@@ -14,6 +13,7 @@
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v2/vertical_fusion_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vertical_fusion_algorithm.hpp"
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vertical_fusion_utils.hpp"
+#include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/loop.hpp"
@@ -24,6 +24,8 @@
 #include <mlir/IR/IRMapping.h>
 
 namespace vpux::VPU::VF::v2 {
+
+constexpr double ELTWISE_PERFORMANT_RATIO_FOR_MULTI_DIM_TILING = 0.5;
 
 // Check if there is a spill between parent op and current op due to incompatible distributed type. This function is
 // used to help VF op calculate related spilling status around its parent or user op
@@ -108,14 +110,37 @@ bool tileOnSameDims(const VFSplit& curVFSplit, const VFSplit& preVFSplit, const 
     return true;
 }
 
-SmallVector<VFSplit> getSplitFromDimArr(DimArrRef dimsToCheck, DimArrRef allowedDims, VFConfig& vfConfig) {
+bool isMultiDimTilingPerformant(VFConfig& vfConfig, const VFSplit& curVFSplit) {
+    // For some subgraph patterns, multi dim tiling is not performant. Skip it for now.
+    // E#205782: For in-place eltwise ops at VF output, DMA cost estimation is inaccurate and can skew VF scheduling.
+    // As more view-like ops become VF-compatible, this inaccuracy grows with multi-dimensional tiling.
+    // Disable multi-dimensional splits in this scenario.
+    auto outputOp = vfConfig.getOutputs().back();
+    auto isInplaceEltwise = [](mlir::Operation* op) {
+        return mlir::isa<VPU::NCEOpInterface>(op) && op->hasTrait<VPU::EltwiseOp>() && op->getNumOperands() > 1 &&
+               op->hasAttr(VPU::isInPlace);
+    };
+    auto hasInplaceEltwiseOutputWithViewOpInput =
+            isInplaceEltwise(outputOp) && llvm::any_of(outputOp->getOperands(), [](mlir::Value operand) {
+                return mlir::isa_and_present<VPU::TilingViewLikeOpInterface>(operand.getDefiningOp());
+            });
+    auto hasMultiDimTiling = curVFSplit.size() > 1;
+    auto inplaceEltwiseOpCount = llvm::count_if(vfConfig.getOperationsForTiling(), isInplaceEltwise);
+    auto nceOpCount = llvm::count_if(vfConfig.getOperationsForTiling(), [](mlir::Operation* op) {
+        return mlir::isa<VPU::NCEOpInterface>(op);
+    });
+    return hasMultiDimTiling || !hasInplaceEltwiseOutputWithViewOpInput ||
+           inplaceEltwiseOpCount < ELTWISE_PERFORMANT_RATIO_FOR_MULTI_DIM_TILING * nceOpCount;
+}
+
+SmallVector<VFSplit> getSplitFromDimArr(DimArrRef dimsToCheck, DimArrRef allowedDims, VFConfig& vfConfig,
+                                        bool enableMultiDimTiling) {
     SmallVector<VFSplit> splits;
     for (auto dim : dimsToCheck) {
         VFSplit singleSplit = {{dim, std::nullopt}};
         splits.emplace_back(singleSplit);
-
         for (auto otherDim : allowedDims) {
-            if (dim.ind() > otherDim.ind()) {
+            if (enableMultiDimTiling && dim.ind() > otherDim.ind()) {
                 const auto isSpatialTilingForOther = isSpatialDim(otherDim);
                 auto outerDimLimit = getTilingLimit(otherDim, vfConfig, true);
                 if (outerDimLimit > 1 || isSpatialTilingForOther) {
@@ -126,6 +151,75 @@ SmallVector<VFSplit> getSplitFromDimArr(DimArrRef dimsToCheck, DimArrRef allowed
         }
     }
     return splits;
+}
+
+SmallVector<OpWithViewInputs> getParentOpWithViewInputs(mlir::Operation* op) {
+    SmallVector<OpWithViewInputs> parentOps;
+    for (auto& item : op->getOpOperands()) {
+        auto operand = item.get();
+        auto idx = item.getOperandNumber();
+
+        auto parent = operand.getDefiningOp();
+        SmallVector<mlir::Operation*> viewOps;
+        while (parent != nullptr && isPureViewOp(parent)) {
+            viewOps.push_back(parent);
+            parent = parent->getOperand(0).getDefiningOp();
+        }
+        if (auto clusteredOp = mlir::dyn_cast_or_null<VPU::ClusteredOpInterface>(findParent(operand))) {
+            parentOps.push_back({idx, clusteredOp, std::move(viewOps)});
+        }
+    }
+    return parentOps;
+}
+
+// Collect all non-viewlike uses of the VF block argument by traversing through chains of
+// TilingViewLikeOpInterface ops
+SmallVector<mlir::OpOperand*> getComputeUses(mlir::BlockArgument currInputArg) {
+    SmallVector<mlir::OpOperand*> uses;
+    SmallVector<mlir::OpOperand*> worklist;
+    for (auto& use : currInputArg.getUses()) {
+        worklist.push_back(&use);
+    }
+    while (!worklist.empty()) {
+        auto* use = worklist.pop_back_val();
+        auto userOp = use->getOwner();
+        if (mlir::isa<VPU::TilingViewLikeOpInterface>(userOp)) {
+            // Skip view-like op, but add its users to the worklist
+            for (auto& user : userOp->getUses()) {
+                worklist.push_back(&user);
+            }
+        } else {
+            uses.push_back(use);
+        }
+    }
+    return uses;
+}
+
+mlir::Operation* getMappedOpInMergedVF(mlir::Operation* op, VPU::VerticalFusionOp prevOp, VPU::VerticalFusionOp currOp,
+                                       VPU::VerticalFusionOp mergedOp) {
+    auto vfOp = op->getParentOfType<VPU::VerticalFusionOp>();
+    VPUX_THROW_UNLESS(vfOp == prevOp || vfOp == currOp,
+                      "Operation {0} does not belong to previous VF {1} or current VF {2}", op->getLoc(),
+                      prevOp->getLoc(), currOp->getLoc());
+    auto opIdx = std::distance(vfOp.getBody()->getOperations().begin(), mlir::Block::iterator(op));
+    if (vfOp == prevOp) {
+        return &*std::next(mergedOp.getBody()->getOperations().begin(), opIdx);
+    }
+
+    auto prevOutputOp = prevOp.getBody()->getTerminator()->getOperands().back().getDefiningOp();
+    auto prevOutputOpIdx =
+            std::distance(prevOp.getBody()->getOperations().begin(), mlir::Block::iterator(prevOutputOp));
+    return &*std::next(mergedOp.getBody()->getOperations().begin(), opIdx + prevOutputOpIdx + 1);
+}
+
+VPU::MultiClusterStrategy getMultiClusterStrategy(
+        VPU::ClusteredOpInterface clusteredOp,
+        const DenseMap<VPU::ClusteredOpInterface, VPU::MultiClusterStrategy>& rollbackStrategy) {
+    auto iter = rollbackStrategy.find(clusteredOp);
+    if (iter != rollbackStrategy.end()) {
+        return iter->second;
+    }
+    return clusteredOp.getMultiClusterStrategy().value();
 }
 
 StrategyCost MergeVFRegionRewriter::extractVFCost(VFConfig& vfConfig) const {
@@ -337,7 +431,8 @@ StrategyCost MergeVFRegionRewriter::extractVFCost(VFConfig& vfConfig) const {
                 !mlir::isa_and_nonnull<Const::DeclareOp>(closestParent) && isParentOperation && chain.size() > 1) {
                 auto operandType = mlir::cast<vpux::NDTypeInterface>(earliestParent->getResult(0).getType());
                 auto operandSize = operandType.getTotalAllocSize();
-                if (auto distributedOutType = VPU::getDistributedOutputType(earliestParent)) {
+                if (auto distributedOutType = mlir::dyn_cast_if_present<VPU::DistributedTensorType>(
+                            VPU::getDistributedOutputType(earliestParent))) {
                     operandSize = distributedOutType.getTotalAllocSize();
                 }
                 const auto hasLongSpilling = [&](mlir::Operation* op) {
@@ -390,6 +485,276 @@ StrategyCost MergeVFRegionRewriter::extractVFCost(VFConfig& vfConfig) const {
 
     vfCase.setScheduling(std::move(scenario));
     return vfCase.getCost(_vpunnCostFunction, _log);
+}
+
+bool MergeVFRegionRewriter::isMCStrategyAligned(VPU::VerticalFusionOp currentOp, VPU::VerticalFusionOp prevOp) const {
+    // Check if previous output op has MC strategy
+    const auto prevOutDistType =
+            mlir::dyn_cast_if_present<VPU::DistributedTensorType>(getDistributedOutputType(prevOp));
+    const auto isPrevOutOpWithMCStrategy = prevOutDistType != nullptr;
+    if (!isPrevOutOpWithMCStrategy) {
+        return true;
+    }
+
+    // Get input arg of current vf region corresponding to previous vf op
+    auto currInputArg = getLinkedArgumentBetweenVFOps(currentOp, prevOp);
+    VPUX_THROW_UNLESS(currInputArg != nullptr,
+                      "No corresponding input argument found for current VF region {0} with previous VF region {1}",
+                      currentOp, prevOp);
+
+    // Here we check whether the MC strategies are aligned between the previous VF output and all
+    // compute consumers in the current VF region. The check accounts for view-like ops (e.g. PermuteCast,
+    // ShapeCast) that may appear between the block argument and the actual compute op, since these ops
+    // can remap the multi-cluster axis. For example, in a SOK -> PermuteCast -> SOH chain, the PermuteCast
+    // may transpose the split-over-kernel distribution into a split-over-height layout.
+    //
+    // The algorithm works as follows:
+    // 1. For each direct user of the linked block argument, collect the chain of TilingViewLikeOpInterface
+    //    ops until a compute (non-view-like) op is reached.
+    // 2. Compute the "actual" input distributed type that the compute op expects for its operand
+    //    (actualCurrInDistType).
+    // 3. Starting from the previous VF output's distributed type (prevOutDistType), propagate it through
+    //    the collected view-like op chain via inferDistributedTypeThroughViewOps to obtain the "inferred"
+    //    distributed type that would arrive at the compute op after passing through those view-like ops
+    //    (inferredCurrInDistType).
+    // 4. Compare the inferred type against the actual type using areDistributionAttrsCompatible. If they
+    //    are incompatible (e.g. the clustering axis changed in a way the compute op does not expect),
+    //    the strategies are considered misaligned and the function returns false.
+    auto hasCompatibleMCStrategy = true;
+    for (auto currInputOp : currInputArg.getUsers()) {
+        SmallVector<mlir::Operation*> currInputViewLikeOps;
+        while (mlir::isa<VPU::TilingViewLikeOpInterface>(currInputOp) && currInputOp->hasOneUse()) {
+            currInputViewLikeOps.push_back(currInputOp);
+            currInputOp = *(currInputOp->getUsers().begin());
+        }
+        // isLegalFusion has ensured currInputOp is clustered op with MC strategy
+        auto currInputOperand = currInputViewLikeOps.empty() ? mlir::cast<mlir::Value>(currInputArg)
+                                                             : currInputViewLikeOps.back()->getResult(0);
+        auto actualCurrInDistType = mlir::cast<VPU::DistributedTensorType>(
+                getDistributedInputType(currInputOp, currInputOperand).getDistributedTypes().front());
+        auto inferredCurrInDistType = inferDistributedTypeThroughViewOps(prevOutDistType, currInputViewLikeOps);
+        if (inferredCurrInDistType == nullptr ||
+            areDistributionAttrsCompatible(inferredCurrInDistType, actualCurrInDistType, true).failed()) {
+            hasCompatibleMCStrategy = false;
+            break;
+        }
+        // For NCE(SOK) -> NCE.Eltwise(SOH), the DMA cost is not accurate for the eltwise, especially
+        // when the input has duplicated distribution, and it has bad impact on the scheduling decision. So we
+        // disable VF for this case.
+
+        if (mlir::isa<VPU::NCEOpInterface>(currInputOp) && currInputOp->hasTrait<VPU::EltwiseOp>()) {
+            const auto inDistribution = VPU::DistributionInfo::getClassFromAttr(actualCurrInDistType.getDistribution());
+            const auto outType = mlir::dyn_cast_if_present<VPU::DistributedTensorType>(
+                    getDistributedOutputType(currInputOp).getDistributedTypes().front());
+            const auto outDistribution = VPU::DistributionInfo::getClassFromAttr(outType.getDistribution());
+            const auto isInputSegmentedLike = isSegmentedLikeDistributionMode(actualCurrInDistType, inDistribution);
+            const auto isOutputSegmentedLike = isSegmentedLikeDistributionMode(outType, outDistribution);
+            if (!isInputSegmentedLike && isOutputSegmentedLike) {
+                hasCompatibleMCStrategy = false;
+                break;
+            }
+        }
+    }
+
+    return hasCompatibleMCStrategy;
+}
+
+bool MergeVFRegionRewriter::adjustMCStrategyInMergedVF(VPU::VerticalFusionOp currentOp, VPU::VerticalFusionOp prevOp,
+                                                       VPU::VerticalFusionOp mergedVF) const {
+    auto currInputArg = getLinkedArgumentBetweenVFOps(currentOp, prevOp);
+    auto argUses = getComputeUses(currInputArg);
+    if (argUses.empty()) {
+        // No user is found for the input argument, no need to adjust MC strategy
+        return false;
+    }
+    auto hasMultipleParentVFOps = llvm::count_if(currentOp->getOperands(), [](mlir::Value operand) {
+                                      return operand.getDefiningOp<VPU::VerticalFusionOp>() != nullptr;
+                                  }) > 1;
+    if (hasMultipleParentVFOps) {
+        // In case the current VF can fuse with other parent VFs without MC strategy adjustment, which may has better
+        // performance than adjusting MC strategy on prevOp, we choose to not adjust MC strategy for current VF.
+        return false;
+    }
+
+    auto firstUse = argUses.front();
+    auto firstClusteredUser = mlir::dyn_cast_or_null<VPU::ClusteredOpInterface>(firstUse->getOwner());
+    if (firstClusteredUser == nullptr) {
+        return false;
+    }
+    auto firstUserInType = mlir::cast<VPU::DistributedTensorType>(
+            getDistributedInputType(firstClusteredUser, firstClusteredUser->getOperand(firstUse->getOperandNumber()))
+                    .getDistributedTypes()
+                    .front());
+
+    auto allUsersHaveCompatibleInputType = llvm::all_of(argUses, [&firstUserInType](auto* use) {
+        auto clusteredUserOp = mlir::dyn_cast_or_null<VPU::ClusteredOpInterface>(use->getOwner());
+        if (clusteredUserOp == nullptr) {
+            return false;
+        }
+        auto userInType = mlir::cast<VPU::DistributedTensorType>(
+                getDistributedInputType(clusteredUserOp, clusteredUserOp->getOperand(use->getOperandNumber()))
+                        .getDistributedTypes()
+                        .front());
+        return areDistributionAttrsCompatible(firstUserInType, userInType, true).succeeded();
+    });
+    if (!allUsersHaveCompatibleInputType) {
+        return false;
+    }
+
+    auto userOpInMergedVF = mlir::dyn_cast_or_null<VPU::ClusteredOpInterface>(
+            getMappedOpInMergedVF(firstUse->getOwner(), prevOp, currentOp, mergedVF));
+
+    std::queue<VPU::ClusteredOpInterface> adjustedOpList;
+    DenseMap<VPU::ClusteredOpInterface, VPU::MultiClusterStrategy> rollBackStrategy;
+
+    adjustedOpList.push(userOpInMergedVF);
+    while (!adjustedOpList.empty()) {
+        auto op = adjustedOpList.front();
+        adjustedOpList.pop();
+        auto parentOps = getParentOpWithViewInputs(op);
+
+        if (parentOps.empty()) {
+            continue;
+        }
+
+        auto strategy = getMultiClusterStrategy(op, rollBackStrategy);
+        auto allParentsAligned = llvm::all_of(parentOps, [&](auto& opToAdjust) {
+            auto& parentOp = opToAdjust.clusteredOp;
+            auto& viewOps = opToAdjust.viewOps;
+
+            auto parentOutType = getDistributedOutputType(parentOp, parentOp.getMultiClusterStrategy().value());
+            if (parentOutType == nullptr) {
+                return false;
+            }
+            auto parentOutDataType =
+                    mlir::cast<VPU::DistributedTensorType>(parentOutType.getDistributedTypes().front());
+            auto castedParentOutType = inferDistributedTypeThroughViewOps(parentOutDataType, viewOps);
+            if (castedParentOutType == nullptr) {
+                return false;
+            }
+            auto userInType = getDistributedInputType(op, op->getOperand(opToAdjust.operandIdx), strategy);
+            if (userInType == nullptr) {
+                return false;
+            }
+            // For NCE(SOK) -> NCE.Eltwise(SOH), the DMA cost is not accurate for the eltwise op, especially
+            // when the input has duplicated distribution, and it has bad impact on the scheduling decision. So we
+            // disable the alignment for this case.
+            auto userInDataType = mlir::cast<VPU::DistributedTensorType>(userInType.getDistributedTypes().front());
+            if (mlir::isa<VPU::NCEOpInterface>(op.getOperation()) && op->hasTrait<VPU::EltwiseOp>()) {
+                const auto inDistribution = VPU::DistributionInfo::getClassFromAttr(userInDataType.getDistribution());
+                const auto outType = mlir::dyn_cast_if_present<VPU::DistributedTensorType>(
+                        getDistributedOutputType(op).getDistributedTypes().front());
+                const auto outDistribution = VPU::DistributionInfo::getClassFromAttr(outType.getDistribution());
+                const auto isInputSegmentedLike = isSegmentedLikeDistributionMode(userInDataType, inDistribution);
+                const auto isOutputSegmentedLike = isSegmentedLikeDistributionMode(outType, outDistribution);
+                if (!isInputSegmentedLike && isOutputSegmentedLike) {
+                    return false;
+                }
+            }
+
+            return areDistributionAttrsCompatible(castedParentOutType, userInDataType, true).succeeded();
+        });
+
+        if (allParentsAligned) {
+            continue;
+        }
+
+        for (auto& opToAdjust : parentOps) {
+            auto newParentStrategy = alignMCStrategy(opToAdjust, op, rollBackStrategy);
+            if (mlir::failed(newParentStrategy)) {
+                // fail to adjust parent op's mc strategy
+                return false;
+            }
+            rollBackStrategy[opToAdjust.clusteredOp] = newParentStrategy.value();
+            adjustedOpList.push(opToAdjust.clusteredOp);
+        }
+    }
+    for (auto& item : rollBackStrategy) {
+        _log.trace("adjust MC strategy: set {0} for op {1} in merged VF ", item.second, item.first->getLoc());
+        item.first.setMultiClusterStrategy(item.second);
+    }
+
+    VFConfig mergedConfig(mergedVF, _enableVerticalFusionPipelining);
+    auto inputOps = mergedConfig.getInputs();
+    auto isInputOpStrategyChanged = llvm::any_of(inputOps, [&](mlir::Operation* inputOp) {
+        return rollBackStrategy.find(mlir::cast<VPU::ClusteredOpInterface>(inputOp)) != rollBackStrategy.end();
+    });
+    if (isInputOpStrategyChanged) {
+        for (auto operand : mergedVF->getOperands()) {
+            if (auto parentVFOp = operand.getDefiningOp<VPU::VerticalFusionOp>()) {
+                auto storage = std::make_unique<TilingOperationStorage>();
+                auto tilingArray = parseIntArrayAttr<int64_t>(parentVFOp.getTilingStrategyAttr());
+                auto tilingRegions = calculateTilingRegions(parentVFOp, tilingArray, _log, storage);
+                if (mlir::failed(tilingRegions)) {
+                    _log.trace("The parent op has its distributed mode changed, which caused a failure in calculating "
+                               "tiling regions for op {0}",
+                               parentVFOp->getLoc());
+                    return false;
+                }
+            }
+        }
+    }
+
+    return true;
+}
+
+mlir::FailureOr<VPU::MultiClusterStrategy> MergeVFRegionRewriter::alignMCStrategy(
+        const OpWithViewInputs& parentOpInfo, VPU::ClusteredOpInterface userOp,
+        const DenseMap<VPU::ClusteredOpInterface, VPU::MultiClusterStrategy>& rollbackStrategy) const {
+    auto parentOp = parentOpInfo.clusteredOp;
+    if (!VF::v2::supportMultiClusterStrategyAdjustmentInVF(parentOp.getOperation())) {
+        return mlir::failure();
+    }
+    auto parentStrategy = parentOp.getMultiClusterStrategy().value();
+    auto userStrategy = getMultiClusterStrategy(userOp, rollbackStrategy);
+    auto userInType = getDistributedInputType(userOp, userOp->getOperand(parentOpInfo.operandIdx), userStrategy);
+    if (userInType == nullptr) {
+        return mlir::failure();
+    }
+    auto userInDataType = mlir::cast<VPU::DistributedTensorType>(userInType.getDistributedTypes().front());
+
+    SmallVector<VPU::MultiClusterStrategy> potentialStrategies = {VPU::MultiClusterStrategy::HKSwitch,
+                                                                  VPU::MultiClusterStrategy::SplitOverHeight,
+                                                                  VPU::MultiClusterStrategy::SplitOverKernel};
+    auto isNCEOp = mlir::isa<VPU::NCEOpInterface>(parentOp.getOperation());
+    for (const auto& strategy : potentialStrategies) {
+        if (parentStrategy == strategy) {
+            continue;
+        }
+        if ((!isNCEOp || parentOp->hasAttr(VPU::isInPlace)) && strategy == VPU::MultiClusterStrategy::HKSwitch) {
+            // HKswitch is only supported for non-inplace NCE ops
+            continue;
+        }
+
+        if ((strategy == VPU::MultiClusterStrategy::SplitOverHeight ||
+             strategy == VPU::MultiClusterStrategy::HKSwitch) &&
+            !parentOp.isOperationSplitOverHeightCompatible(TileInfo(ShapeRef()))) {
+            continue;
+        } else if (strategy == VPU::MultiClusterStrategy::SplitOverKernel &&
+                   !parentOp.isOperationSplitOverKernelCompatible(ShapeRef(), ShapeRef(), ShapeRef())) {
+            continue;
+        }
+
+        auto outType = mlir::cast<vpux::NDTypeInterface>(parentOp->getResult(0).getType());
+        auto numClusters = getOptimalNumClusters(parentOp, outType.getShape(), strategy);
+        if (!parentOp.checkStrategyCompatibility(strategy, checked_cast<size_t>(numClusters))) {
+            continue;
+        }
+        auto newOutType = getDistributedOutputTypeFromOp(parentOp, outType, numClusters, strategy);
+        if (newOutType == nullptr) {
+            continue;
+        }
+        auto newOutDataType = mlir::cast<VPU::DistributedTensorType>(newOutType.getDistributedTypes().front());
+        auto inferredOutType = inferDistributedTypeThroughViewOps(newOutDataType, parentOpInfo.viewOps);
+        if (inferredOutType == nullptr) {
+            continue;
+        }
+        if (areDistributionAttrsCompatible(inferredOutType, userInDataType, true).failed()) {
+            continue;
+        }
+        return strategy;
+    }
+    return mlir::failure();
 }
 
 bool MergeVFRegionRewriter::cmxSizeExceedForEltwiseOpWithSwOpUser(VFConfig& currentConfig,
@@ -454,9 +819,20 @@ bool MergeVFRegionRewriter::cmxSizeExceedForEltwiseOpWithSwOpUser(VFConfig& curr
     auto types = getTileTypes(eltwiseOp, TileInfo(getShape(eltwiseOp->getResult(0))), strategy);
     auto sharedInputSize = types.front().getTotalAllocSize();
     auto totalAvailableCMXSize = getTotalCMXVFPipelineFragmentationAwareSize(currentVFOp);
-    // Caclulate the required size for the eltwise op and swOp user
+    // Caculate the required size for the eltwise op and swOp user
     auto usedSize = getUsedSize(swOpUser) + sharedInputSize;
     return usedSize > totalAvailableCMXSize;
+}
+
+std::optional<VFCase> MergeVFRegionRewriter::findVFCase(VPU::VerticalFusionOp prevOp, VPU::VerticalFusionOp currentOp,
+                                                        VPU::VerticalFusionOp mergedVFOp) const {
+    if (!isLegalFusion(currentOp, prevOp)) {
+        return std::nullopt;
+    }
+    if (isMCStrategyAligned(currentOp, prevOp) || adjustMCStrategyInMergedVF(currentOp, prevOp, mergedVFOp)) {
+        return findVFTiling(mergedVFOp, prevOp, currentOp);
+    }
+    return std::nullopt;
 }
 
 bool MergeVFRegionRewriter::canMergeVFOpsWithoutCostCheck(VFCase&) const {
@@ -480,9 +856,6 @@ std::optional<VFCase> MergeVFRegionRewriter::findVFTiling(VPU::VerticalFusionOp 
     const auto currentTiling = parseIntArrayAttr<int64_t>(currentOp.getTilingStrategy());
     const auto prevTiling = parseIntArrayAttr<int64_t>(prevOp.getTilingStrategy());
 
-    VPUX_THROW_WHEN(currentTiling.size() != prevTiling.size(),
-                    "Tiling info rank of current block {0} is not equal to tiling info rank of previous block {1}",
-                    currentTiling.size(), prevTiling.size());
     VFConfig currentConfig(currentOp, _enableVerticalFusionPipelining);
     VFConfig prevConfig(prevOp, _enableVerticalFusionPipelining);
 
@@ -700,7 +1073,9 @@ std::optional<VFCase> MergeVFRegionRewriter::findVFTiling(VPU::VerticalFusionOp 
         return vfCases[std::distance(vfCosts.begin(), bestCostIter)];
     };
 
-    auto splits = getSplitFromDimArr(dimsToCheck, allowedDims, vfConfig);
+    auto enableMultiDimTiling = isMultiDimTilingPerformant(vfConfig, curVFSplit);
+    auto splits = getSplitFromDimArr(dimsToCheck, allowedDims, vfConfig, enableMultiDimTiling);
+
     auto mergedCase = getVFCaseFromSplits(splits);
     if (mergedCase.has_value()) {
         return mergedCase;
@@ -714,7 +1089,7 @@ std::optional<VFCase> MergeVFRegionRewriter::findVFTiling(VPU::VerticalFusionOp 
     llvm::copy_if(allowedDims, std::back_inserter(restAllowedDims), [&](const Dim& dim) {
         return llvm::find(dimsToCheck, dim) == dimsToCheck.end();
     });
-    auto splitsWithLowPriority = getSplitFromDimArr(restAllowedDims, allowedDims, vfConfig);
+    auto splitsWithLowPriority = getSplitFromDimArr(restAllowedDims, allowedDims, vfConfig, enableMultiDimTiling);
     mergedCase = getVFCaseFromSplits(splitsWithLowPriority);
     return mergedCase;
 }

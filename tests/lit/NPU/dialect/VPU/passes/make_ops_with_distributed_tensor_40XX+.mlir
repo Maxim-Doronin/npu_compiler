@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW allow-custom-values=true" --make-ops-with-distributed-tensor="enable-explicit-distributed-attr=true" %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW allow-custom-values=true" --make-ops-with-distributed-tensor="enable-explicit-distributed-attr=true" %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 module @executors {
 config.Resources 3 of @NCE at 1.700000e+03 MHz
@@ -45,6 +45,110 @@ func.func @SWEltwiseNeedAlignmentSOW(%arg0: tensor<1x3x1x255xf16>, %arg1: tensor
     // CHECK-SAME:           -> tensor<1x3x1x255xf16>
 
     // CHECK:     return [[OUT]] : tensor<1x3x1x255xf16>
+}
+
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+!qElemType = !quant.uniform<u8:f16, 1.0>
+
+module @executors {
+config.Resources 3 of @NCE at 1.700000e+03 MHz
+
+// CHECK-LABEL: @INT8DepthConvWith32AlignmentSOK
+// CHECK-SAME:    [[INPUT:%.+]]: tensor<1x256x28x28x!qElemType, {order = #NHWC}>
+func.func @INT8DepthConvWith32AlignmentSOK(%input: tensor<1x256x28x28x!qElemType, {order = #NHWC}>) -> tensor<1x256x28x28x!qElemType, {order = #NHWC}> {
+    %weights = const.Declare tensor<256x16x1x1x!qElemType, {order = #NHWC}> = dense<1> : tensor<256x1x1x3x3xsi8>, [#const.Reshape<[1, 256, 3, 3]>, #const.CastElemType<f16>, #const.CastElemType<!qElemType>, #const.AffineReshape<[[0], [0], [1, 2], [3]], [256, 1, 3, 3]>, #const.ConvertElemType<!qElemType>, #const.Reshape<[256, 9, 1, 1]>, #const.PadWithZero<[0, 0, 0, 0], [0, 7, 0, 0]>, #const.Reorder<#NHWC>]
+    %0 = VPU.NCE.DepthConvolution(%input, %weights) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>, pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = 0.000000e+00 : f64, clamp_high = 2.550000e+02 : f64, prelu_alpha = [1.000000e+00], adder = 0.000000e+00 : f64>, rawFilterShape = [256, 1, 3, 3], strides = [1, 1]} -> tensor<1x256x28x28x!qElemType, {order = #NHWC}>
+    return %0 : tensor<1x256x28x28x!qElemType, {order = #NHWC}>
+
+    // CHECK:               [[WEIGHTS:%.+]] = const.Declare tensor<256x16x1x1x!qElemType, {order = #NHWC}> = dense<1> : tensor<256x1x1x3x3xsi8>,
+    // CHECK-SAME{LITERAL}:     [#const.Reshape<[1, 256, 3, 3]>, #const.CastElemType<f16>, #const.CastElemType<!qElemType>, #const.AffineReshape<[[0], [0], [1, 2], [3]], [256, 1, 3, 3]>, #const.ConvertElemType<!qElemType>, #const.Reshape<[256, 9, 1, 1]>, #const.PadWithZero<[0, 0, 0, 0], [0, 7, 0, 0]>, #const.Reorder<#NHWC>]
+
+    // CHECK:               [[UNROLLED_INPUT:%.+]] = VPU.UnrolledType([[INPUT]] : tensor<1x256x28x28x!qElemType, {order = #NHWC}>)
+    // CHECK-SAME:              -> !VPU.DistributedTensor<1x256x28x28x!qElemType, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 3, 1, 1], num_clusters = 3 : i64, alignment = [1, 32, 1, 1], uniform_distributed_segments,
+    // CHECK-SAME{LITERAL}:     compute_shapes = [[1, 96, 28, 28], [1, 96, 28, 28], [1, 64, 28, 28]],
+    // CHECK-SAME{LITERAL}:     compute_offsets = [[0, 0, 0, 0], [0, 96, 0, 0], [0, 192, 0, 0]],
+    // CHECK-SAME{LITERAL}:     memory_shapes = [[1, 96, 28, 28], [1, 96, 28, 28], [1, 64, 28, 28]],
+    // CHECK-SAME{LITERAL}:     memory_offsets = [[0, 0, 0, 0], [0, 96, 0, 0], [0, 192, 0, 0]]}>
+
+    // CHECK:               [[UNROLLED_WEIGHTS:%.+]] = VPU.UnrolledType([[WEIGHTS]] : tensor<256x16x1x1x!qElemType, {order = #NHWC}>)
+    // CHECK-SAME:              -> !VPU.DistributedTensor<256x16x1x1x!qElemType, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [3, 1, 1, 1], num_clusters = 3 : i64, alignment = [32, 1, 1, 1], uniform_distributed_segments,
+    // CHECK-SAME{LITERAL}:     compute_shapes = [[96, 16, 1, 1], [96, 16, 1, 1], [64, 16, 1, 1]],
+    // CHECK-SAME{LITERAL}:     compute_offsets = [[0, 0, 0, 0], [96, 0, 0, 0], [192, 0, 0, 0]],
+    // CHECK-SAME{LITERAL}:     memory_shapes = [[96, 16, 1, 1], [96, 16, 1, 1], [64, 16, 1, 1]],
+    // CHECK-SAME{LITERAL}:     memory_offsets = [[0, 0, 0, 0], [96, 0, 0, 0], [192, 0, 0, 0]]}>
+
+    // CHECK:               [[DWCONV:%.+]] = VPU.NCE.DepthConvolution([[UNROLLED_INPUT]], [[UNROLLED_WEIGHTS]]) {pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = 0.000000e+00 : f64, clamp_high = 2.550000e+02 : f64, prelu_alpha = [1.000000e+00], adder = 0.000000e+00 : f64>, rawFilterShape = [256, 1, 3, 3], strides = [1, 1]}
+    // CHECK-SAME:              -> !VPU.DistributedTensor<1x256x28x28x!qElemType, #NHWC, @CMX_NN, {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 3, 1, 1], num_clusters = 3 : i64, alignment = [1, 32, 1, 1], uniform_distributed_segments,
+    // CHECK-SAME{LITERAL}:     compute_shapes = [[1, 96, 28, 28], [1, 96, 28, 28], [1, 64, 28, 28]],
+    // CHECK-SAME{LITERAL}:     compute_offsets = [[0, 0, 0, 0], [0, 96, 0, 0], [0, 192, 0, 0]],
+    // CHECK-SAME{LITERAL}:     memory_shapes = [[1, 256, 28, 28], [1, 256, 28, 28], [1, 256, 28, 28]],
+    // CHECK-SAME{LITERAL}:     memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]}>
+
+    // CHECK:               [[UNROLLED_OUTPUT:%.+]] = VPU.UnrolledType([[DWCONV]] :
+    // CHECK-SAME:              !VPU.DistributedTensor<1x256x28x28x!qElemType, #NHWC, @CMX_NN, {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 3, 1, 1], num_clusters = 3 : i64, alignment = [1, 32, 1, 1], uniform_distributed_segments,
+    // CHECK-SAME{LITERAL}:     compute_shapes = [[1, 96, 28, 28], [1, 96, 28, 28], [1, 64, 28, 28]],
+    // CHECK-SAME{LITERAL}:     compute_offsets = [[0, 0, 0, 0], [0, 96, 0, 0], [0, 192, 0, 0]],
+    // CHECK-SAME{LITERAL}:     memory_shapes = [[1, 256, 28, 28], [1, 256, 28, 28], [1, 256, 28, 28]],
+    // CHECK-SAME{LITERAL}:     memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]}>)
+    // CHECK-SAME:              -> tensor<1x256x28x28x!qElemType, {order = #NHWC}>
+
+    // CHECK:               return [[UNROLLED_OUTPUT]]
+}
+
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+!qElemType = !quant.uniform<u8:f16, 1.0>
+
+module @executors {
+config.Resources 3 of @NCE at 1.700000e+03 MHz
+
+// CHECK-LABEL: @INT8DepthConvWith16AlignmentSOK
+// CHECK-SAME:    [[INPUT:%.+]]: tensor<1x48x28x28x!qElemType, {order = #NHWC}>
+func.func @INT8DepthConvWith16AlignmentSOK(%input: tensor<1x48x28x28x!qElemType, {order = #NHWC}>) -> tensor<1x48x28x28x!qElemType, {order = #NHWC}> {
+    %weights = const.Declare tensor<48x16x1x1x!qElemType, {order = #NHWC}> = dense<1> : tensor<48x1x1x3x3xsi8>, [#const.Reshape<[1, 48, 3, 3]>, #const.CastElemType<f16>, #const.CastElemType<!qElemType>, #const.AffineReshape<[[0], [0], [1, 2], [3]], [48, 1, 3, 3]>, #const.ConvertElemType<!qElemType>, #const.Reshape<[48, 9, 1, 1]>, #const.PadWithZero<[0, 0, 0, 0], [0, 7, 0, 0]>, #const.Reorder<#NHWC>]
+    %0 = VPU.NCE.DepthConvolution(%input, %weights) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>, pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = 0.000000e+00 : f64, clamp_high = 2.550000e+02 : f64, prelu_alpha = [1.000000e+00], adder = 0.000000e+00 : f64>, rawFilterShape = [48, 1, 3, 3], strides = [1, 1]} -> tensor<1x48x28x28x!qElemType, {order = #NHWC}>
+    return %0 : tensor<1x48x28x28x!qElemType, {order = #NHWC}>
+
+    // CHECK:               [[WEIGHTS:%.+]] = const.Declare tensor<48x16x1x1x!qElemType, {order = #NHWC}> = dense<1> : tensor<48x1x1x3x3xsi8>,
+    // CHECK-SAME{LITERAL}:     [#const.Reshape<[1, 48, 3, 3]>, #const.CastElemType<f16>, #const.CastElemType<!qElemType>, #const.AffineReshape<[[0], [0], [1, 2], [3]], [48, 1, 3, 3]>, #const.ConvertElemType<!qElemType>, #const.Reshape<[48, 9, 1, 1]>, #const.PadWithZero<[0, 0, 0, 0], [0, 7, 0, 0]>, #const.Reorder<#NHWC>]
+
+    // CHECK:               [[UNROLLED_INPUT:%.+]] = VPU.UnrolledType([[INPUT]] : tensor<1x48x28x28x!qElemType, {order = #NHWC}>)
+    // CHECK-SAME:              -> !VPU.DistributedTensor<1x48x28x28x!qElemType, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 3, 1, 1], num_clusters = 3 : i64, alignment = [1, 16, 1, 1], uniform_distributed_segments,
+    // CHECK-SAME{LITERAL}:     compute_shapes = [[1, 16, 28, 28], [1, 16, 28, 28], [1, 16, 28, 28]],
+    // CHECK-SAME{LITERAL}:     compute_offsets = [[0, 0, 0, 0], [0, 16, 0, 0], [0, 32, 0, 0]],
+    // CHECK-SAME{LITERAL}:     memory_shapes = [[1, 16, 28, 28], [1, 16, 28, 28], [1, 16, 28, 28]],
+    // CHECK-SAME{LITERAL}:     memory_offsets = [[0, 0, 0, 0], [0, 16, 0, 0], [0, 32, 0, 0]]}>
+
+    // CHECK:               [[UNROLLED_WEIGHTS:%.+]] = VPU.UnrolledType([[WEIGHTS]] : tensor<48x16x1x1x!qElemType, {order = #NHWC}>)
+    // CHECK-SAME:              -> !VPU.DistributedTensor<48x16x1x1x!qElemType, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [3, 1, 1, 1], num_clusters = 3 : i64, alignment = [16, 1, 1, 1], uniform_distributed_segments,
+    // CHECK-SAME{LITERAL}:     compute_shapes = [[16, 16, 1, 1], [16, 16, 1, 1], [16, 16, 1, 1]],
+    // CHECK-SAME{LITERAL}:     compute_offsets = [[0, 0, 0, 0], [16, 0, 0, 0], [32, 0, 0, 0]],
+    // CHECK-SAME{LITERAL}:     memory_shapes = [[16, 16, 1, 1], [16, 16, 1, 1], [16, 16, 1, 1]],
+    // CHECK-SAME{LITERAL}:     memory_offsets = [[0, 0, 0, 0], [16, 0, 0, 0], [32, 0, 0, 0]]}>
+
+    // CHECK:               [[DWCONV:%.+]] = VPU.NCE.DepthConvolution([[UNROLLED_INPUT]], [[UNROLLED_WEIGHTS]]) {pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = 0.000000e+00 : f64, clamp_high = 2.550000e+02 : f64, prelu_alpha = [1.000000e+00], adder = 0.000000e+00 : f64>, rawFilterShape = [48, 1, 3, 3], strides = [1, 1]}
+    // CHECK-SAME:              -> !VPU.DistributedTensor<1x48x28x28x!qElemType, #NHWC, @CMX_NN, {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 3, 1, 1], num_clusters = 3 : i64, alignment = [1, 16, 1, 1], uniform_distributed_segments,
+    // CHECK-SAME{LITERAL}:     compute_shapes = [[1, 16, 28, 28], [1, 16, 28, 28], [1, 16, 28, 28]],
+    // CHECK-SAME{LITERAL}:     compute_offsets = [[0, 0, 0, 0], [0, 16, 0, 0], [0, 32, 0, 0]],
+    // CHECK-SAME{LITERAL}:     memory_shapes = [[1, 48, 28, 28], [1, 48, 28, 28], [1, 48, 28, 28]],
+    // CHECK-SAME{LITERAL}:     memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]}>
+
+    // CHECK:               [[UNROLLED_OUTPUT:%.+]] = VPU.UnrolledType([[DWCONV]] :
+    // CHECK-SAME:              !VPU.DistributedTensor<1x48x28x28x!qElemType, #NHWC, @CMX_NN, {mode = "DUPLICATED|SEGMENTED", num_tiles = [1, 3, 1, 1], num_clusters = 3 : i64, alignment = [1, 16, 1, 1], uniform_distributed_segments,
+    // CHECK-SAME{LITERAL}:     compute_shapes = [[1, 16, 28, 28], [1, 16, 28, 28], [1, 16, 28, 28]],
+    // CHECK-SAME{LITERAL}:     compute_offsets = [[0, 0, 0, 0], [0, 16, 0, 0], [0, 32, 0, 0]],
+    // CHECK-SAME{LITERAL}:     memory_shapes = [[1, 48, 28, 28], [1, 48, 28, 28], [1, 48, 28, 28]],
+    // CHECK-SAME{LITERAL}:     memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]}>)
+    // CHECK-SAME:              -> tensor<1x48x28x28x!qElemType, {order = #NHWC}>
+
+    // CHECK:               return [[UNROLLED_OUTPUT]]
 }
 
 }

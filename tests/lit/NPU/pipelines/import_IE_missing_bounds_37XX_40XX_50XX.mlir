@@ -4,8 +4,8 @@
 //
 
 // Expected this test to fail, so revert error code
-// RUN: not vpux-translate --vpu-arch=%arch% --import-IE ./IR/test_dynamic_shapes.xml 2>&1 | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: not vpux-translate --platform=%platform% --import-IE ./IR/test_dynamic_shapes.xml 2>&1 | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // Input: Validate IR without upper bounds specified, should fail on frontend level
 // Case : Cannot handle IR without information about bounds

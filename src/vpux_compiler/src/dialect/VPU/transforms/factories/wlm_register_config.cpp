@@ -11,9 +11,12 @@
 
 #include "vpux/utils/core/error.hpp"
 
+#include <mlir/IR/Operation.h>
+
 using namespace vpux;
 
-VPU::RegisterConfig VPU::getRegisterConfig(config::ArchKind arch) {
+VPU::RegisterConfig VPU::getRegisterConfig(config::ArchKind arch, mlir::Operation* op) {
+    std::ignore = op;
     switch (arch) {
     case config::ArchKind::NPU37XX: {
         return VPU::arch37xx::RegisterConfig{};

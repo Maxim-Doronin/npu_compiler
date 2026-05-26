@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --init-compiler="vpu-arch=%arch%" --lower-VPUIP-to-ELF %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --init-compiler="platform=%platform%" --lower-VPUIP-to-ELF %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 module @dmaSwProfiling {
   net.NetworkInfo entryPoint : @main inputsInfo :  {

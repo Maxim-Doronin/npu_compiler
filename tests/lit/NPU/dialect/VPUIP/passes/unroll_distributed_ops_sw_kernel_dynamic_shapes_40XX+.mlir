@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --unroll-distributed-ops --canonicalize  %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --unroll-distributed-ops --canonicalize  %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #C = affine_map<(d0) -> (d0)>
@@ -152,4 +152,97 @@ func.func @UnrollSWKernelWithDynamicShapes() -> !DistributedShape {
 
 
     return %outputShape: !DistributedShape
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+module @VPU.SW {
+    func.func private @builtin_AtanDma(memref<*xf16>, memref<*xsi32>, memref<*xui8, @CMX_NN>, memref<*xf16>, memref<*xsi32>, memref<*xui8, @CMX_NN>, i64)
+                      attributes {VPU.kernel_code = "activation_atan_dma.cpp",
+                                  VPU.kernel_entry = "activation_atan_dma",
+                                  VPU.kernel_name = "activation_atan_dma",
+                                  VPU.task_type = @COMPUTE}
+    func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
+}
+
+!AuxDistributed = !VPUIP.DistributedBuffer<1x1x1x524288xui8, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64, uniform_distributed_segments,
+    compute_shapes  = [[1, 1, 1, 524288], [1, 1, 1, 524288]],
+    compute_offsets = [[0, 0, 0, 0], [0, 0, 0, 0]],
+    memory_shapes   = [[1, 1, 1, 524288], [1, 1, 1, 524288]],
+    memory_offsets  = [[0, 0, 0, 0], [0, 0, 0, 0]]}>
+
+// CHECK-LABEL: UnrollAtanDma
+func.func @UnrollAtanDma() -> (memref<1x1x1x4194304xf16, @DDR>, memref<4xsi32, @DDR>) {
+    %0 = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<1x1x1x4194304xf16, @DDR>
+    %1 = VPURT.DeclareBuffer <NetworkInput> [1] <0> -> memref<4xsi32, @DDR>
+    %2 = VPURT.DeclareBuffer <NetworkOutput> [0] <0> -> memref<1x1x1x4194304xf16, @DDR>
+    %3 = VPURT.DeclareBuffer <NetworkOutput> [1] <0> -> memref<4xsi32, @DDR>
+
+    %8 = VPURT.DeclareBuffer <CMX_NN> <0> -> !AuxDistributed
+
+    VPURT.Task {
+      %results:2, %dynamicOutputShapes = VPUIP.SW.Kernel
+      {dynamicInputShapesMap = array<i32: 0, -1>, dynamicOutputShapesMap = array<i32: 0, -1>, resultSegmentSizes = array<i32: 2, 1, 0>}
+       @VPU.SW::@builtin_AtanDma
+           inputs(%0 as %arg4: memref<1x1x1x4194304xf16, @DDR>, %8 as %arg5: !AuxDistributed)
+           dynamicInputShapes(%1 : memref<4xsi32, @DDR>)
+           outputs(%2 as %arg6: memref<1x1x1x4194304xf16, @DDR>, %8 as %arg7: !AuxDistributed)
+           dynamicOutputShapes(%3 : memref<4xsi32, @DDR>)
+           on tile 0 list 0 -> (memref<1x1x1x4194304xf16, @DDR>, !AuxDistributed, memref<4xsi32, @DDR>)
+      {
+        VPUIP.SW.Kernel.run {attrs = [8589934594]}(%arg4, %arg5, %arg6, %arg7) : memref<1x1x1x4194304xf16, @DDR>, !AuxDistributed, memref<1x1x1x4194304xf16, @DDR>, !AuxDistributed
+      }
+    }
+    VPURT.Task {
+      %results:2, %dynamicOutputShapes = VPUIP.SW.Kernel
+      {dynamicInputShapesMap = array<i32: 0, -1>, dynamicOutputShapesMap = array<i32: 0, -1>, resultSegmentSizes = array<i32: 2, 1, 0>}
+       @VPU.SW::@builtin_AtanDma
+           inputs(%0 as %arg4: memref<1x1x1x4194304xf16, @DDR>, %8 as %arg5: !AuxDistributed)
+           dynamicInputShapes(%1 : memref<4xsi32, @DDR>)
+           outputs(%2 as %arg6: memref<1x1x1x4194304xf16, @DDR>, %8 as %arg7: !AuxDistributed)
+           dynamicOutputShapes(%3 : memref<4xsi32, @DDR>)
+           on tile 0 list 1 -> (memref<1x1x1x4194304xf16, @DDR>, !AuxDistributed, memref<4xsi32, @DDR>)
+      {
+        VPUIP.SW.Kernel.run {attrs = [8589934594]}(%arg4, %arg5, %arg6, %arg7) : memref<1x1x1x4194304xf16, @DDR>, !AuxDistributed, memref<1x1x1x4194304xf16, @DDR>, !AuxDistributed
+      }
+    }
+
+    return %2, %3 : memref<1x1x1x4194304xf16, @DDR>, memref<4xsi32, @DDR>
+
+    // CHECK:   [[IN_DATA:%.*]]   = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<1x1x1x4194304xf16, @DDR>
+    // CHECK:   [[IN_SHAPE:%.*]]  = VPURT.DeclareBuffer <NetworkInput> [1] <0> -> memref<4xsi32, @DDR>
+    // CHECK:   [[OUT_DATA:%.*]]  = VPURT.DeclareBuffer <NetworkOutput> [0] <0> -> memref<1x1x1x4194304xf16, @DDR>
+    // CHECK:   [[OUT_SHAPE:%.*]] = VPURT.DeclareBuffer <NetworkOutput> [1] <0> -> memref<4xsi32, @DDR>
+    // CHECK:   [[AUX_0a:%.*]]    = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x1x1x524288xui8, [@CMX_NN, 0]>
+    // CHECK:   [[AUX_1a:%.*]]    = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> memref<1x1x1x524288xui8, [@CMX_NN, 1]>
+    // CHECK:   [[AUX_0b:%.*]]    = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x1x1x524288xui8, [@CMX_NN, 0]>
+    // CHECK:   [[AUX_1b:%.*]]    = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> memref<1x1x1x524288xui8, [@CMX_NN, 1]>
+
+    // CHECK:      @VPU.SW::@builtin_AtanDma inputs([[IN_DATA]] as [[IN_1:[^:]+]]: memref<1x1x1x4194304xf16, @DDR>, [[AUX_0b]]
+    // CHECK-SAME:                           dynamicInputShapes([[IN_SHAPE]]
+    // CHECK-SAME:                           outputs([[OUT_DATA]] as [[OUT_1:[^:]+]]: memref<1x1x1x4194304xf16, @DDR>, [[AUX_0b]]
+    // CHECK-SAME:                           dynamicOutputShapes([[OUT_SHAPE]]
+    // CHECK-SAME:                           on tile 0 list 0
+
+    // CHECK:      @VPU.SW::@builtin_AtanDma inputs([[IN_DATA]] as [[IN_2:[^:]+]]: memref<1x1x1x4194304xf16, @DDR>, [[AUX_1b]]
+    // CHECK-SAME:                           dynamicInputShapes([[IN_SHAPE]]
+    // CHECK-SAME:                           outputs([[OUT_DATA]] as [[OUT_2:[^:]+]]: memref<1x1x1x4194304xf16, @DDR>, [[AUX_1b]]
+    // CHECK-SAME:                           dynamicOutputShapes([[OUT_SHAPE]]
+    // CHECK-SAME:                           on tile 1 list 0
+
+    // CHECK:      @VPU.SW::@builtin_AtanDma inputs([[IN_DATA]] as [[IN_3:[^:]+]]: memref<1x1x1x4194304xf16, @DDR>, [[AUX_0a]]
+    // CHECK-SAME:                           dynamicInputShapes([[IN_SHAPE]]
+    // CHECK-SAME:                           outputs([[OUT_DATA]] as [[OUT_3:[^:]+]]: memref<1x1x1x4194304xf16, @DDR>, [[AUX_0a]]
+    // CHECK-SAME:                           dynamicOutputShapes([[OUT_SHAPE]]
+    // CHECK-SAME:                           on tile 0 list 1
+
+    // CHECK:      @VPU.SW::@builtin_AtanDma inputs([[IN_DATA]] as [[IN_4:[^:]+]]: memref<1x1x1x4194304xf16, @DDR>, [[AUX_1a]]
+    // CHECK-SAME:                           dynamicInputShapes([[IN_SHAPE]]
+    // CHECK-SAME:                           outputs([[OUT_DATA]] as [[OUT_4:[^:]+]]: memref<1x1x1x4194304xf16, @DDR>, [[AUX_1a]]
+    // CHECK-SAME:                           dynamicOutputShapes([[OUT_SHAPE]]
+    // CHECK-SAME:                           on tile 1 list 1
+
+    // CHECK:      return [[OUT_DATA]], [[OUT_SHAPE]]
 }

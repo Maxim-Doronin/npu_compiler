@@ -10,6 +10,7 @@
 namespace vpux {
 namespace IE {
 
+mlir::LogicalResult isScaleShiftAdaptationSupported(mlir::Operation* origOp);
 mlir::LogicalResult isBeneficialConvertScaleShiftToDW(IE::ScaleShiftOp scaleShiftOp, Logger log);
 
 }  // namespace IE

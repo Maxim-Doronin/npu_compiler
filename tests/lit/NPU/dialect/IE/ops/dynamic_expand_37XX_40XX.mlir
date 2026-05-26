@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000
 
 // CHECK: func.func @SingleLayerDynamicExpandOp([[ARG0:%.+]]: tensor<1x3x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 20, 20]> : tensor<4xsi64>}>) -> tensor<1x3x20x20xf16>
 func.func @SingleLayerDynamicExpandOp(%arg0: tensor<1x3x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 20, 20]>: tensor<4xsi64>}>) -> tensor<1x3x20x20xf16> {

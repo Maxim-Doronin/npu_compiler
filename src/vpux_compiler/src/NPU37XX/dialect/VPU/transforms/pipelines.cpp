@@ -20,8 +20,8 @@ void vpux::VPU::arch37xx::buildIncrementalPipeline(mlir::OpPassManager& pm, cons
     pm.addPass(VPU::createMultiClusterStrategyAssignmentPass(options.enablePrefetching, options.opTilingCacheThreshold,
                                                              options.mcOptimizationScope, log));
 
-    pm.addPass(VPU::createManualStrategyUtilsPass(options.writeStrategyToJson, writeStrategyFileLocation,
-                                                  options.readStrategyFromJson, readStrategyFileLocation,
+    pm.addPass(VPU::createManualStrategyUtilsPass(options.writeStrategyToJson, writeStrategyDefaultFileLocation,
+                                                  options.readStrategyFromJson, readStrategyDefaultFileLocation,
                                                   options.dumpStrategyToLog, false, log));
 
     pm.addPass(VPU::createSplitGRUSequencePass(log));
@@ -85,11 +85,10 @@ void vpux::VPU::arch37xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
         pm.addPass(VPU::createLowerOpsToSENCEPass(log));
     }
 
-    pm.addPass(VPU::createFuseClampPass(log));
-
     pm.addPass(VPU::createEnsureNCEOpsSizeRequirementsPass(/*enableOutputEnsurance=*/true,
                                                            /*enableDequantWeightEnsuranceBeforeStrategy=*/false,
-                                                           /*skipNonConvOC=*/false, log));
+                                                           /*skipConvOC=*/"SKIP_NONE",
+                                                           /*skipEltwiseOC=*/"SKIP_NONE", log));
     pm.addPass(VPU::createOptimizeConcatPass(/*optimizeOnlyOuterConcat*/ false,
                                              /*disablePassOnEntryFunctionForHostCompile=*/false, log));
     if (options.enableWeightsSparsity) {
@@ -102,9 +101,7 @@ void vpux::VPU::arch37xx::buildDefaultHWPipeline(mlir::OpPassManager& pm,
 
     pm.addPass(VPU::createAddExplicitPaddingBeforeNCEPermutePass(log));
 
-    if (options.enableInPlaceEltwise) {
-        pm.addPass(VPU::createDetectInPlaceEltwisePass(log));
-    }
+    pm.addPass(VPU::createDetectInPlaceEltwisePass(log));
 
     pm.addPass(VPU::createCostModelAnalysisConstructPass(log));
     if (options.enableSMPipeline) {
@@ -147,7 +144,7 @@ void vpux::VPU::arch37xx::buildReferenceSWPipeline(mlir::OpPassManager& pm,
     pm.addPass(VPU::createSplitGRUSequencePass(log));
     pm.addPass(VPU::createDecomposeMVNPass(log));
 
-    pm.addPass(VPU::createFlashSDPATilingStrategyEstimationPass(log));
+    pm.addPass(VPU::createFlashSDPATilingPass(/*enablePipelining=*/false, log));
     pm.addPass(VPU::createTilingStrategyAssignmentPass(
             /*enablePrefetchTiling=*/false, /*enableVPUNNCostForTiling*/ false,
             /*enableShaveDDRAccessOptimization*/ "true", /*enableDynAlignment=*/false, log));

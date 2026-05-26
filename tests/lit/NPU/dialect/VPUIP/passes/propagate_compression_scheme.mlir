@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --propagate-compression-scheme %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --propagate-compression-scheme %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -33,7 +33,7 @@ func.func @SparseConvWeights(%arg0: memref<1x16x64x64xf16, #NHWC>, %arg1: memref
         -> memref<32x16x3x3xf16, #NHWC, @CMX_NN>, memref<32x1x1x256xi1, @CMX_NN>
 
     %output_cmx = memref.alloc() : memref<1x32x64x64xf16, #NHWC, @CMX_NN>
-    %conv_out = VPUIP.NCEClusterTask <{
+    %conv_out = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
             kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
             kernel_size = [3, 3],
             kernel_strides = [1, 1],
@@ -139,7 +139,7 @@ func.func @SparseConvWeightsDistributed(%arg0: !IODistributed) -> !IODistributed
     %weights_data, %weights_sm = VPUIP.UngroupSparseBuffer(%weights) {resultSegmentSizes = array<i32: 1, 1, 0>}
         -> !WeightsDistributed, !WeightsSMDistributed
 
-    %output = VPUIP.NCEClusterTask <{
+    %output = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
         kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>,
         kernel_size = [3, 3],
         kernel_strides = [1, 1],

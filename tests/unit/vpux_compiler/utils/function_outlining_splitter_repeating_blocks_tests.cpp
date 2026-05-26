@@ -7,7 +7,7 @@
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/utils/function_outlining_splitter.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
-#include "vpux/compiler/init.hpp"
+#include "vpux/compiler/init/dialects_registry.hpp"
 
 #include <mlir/IR/BuiltinOps.h>
 #include <mlir/Parser/Parser.h>

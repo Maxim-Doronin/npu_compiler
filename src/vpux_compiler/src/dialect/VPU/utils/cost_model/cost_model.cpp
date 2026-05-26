@@ -1044,8 +1044,12 @@ VPUIP::WorkloadCostParams vpux::VPU::getWorkloadCostParam(VPU::NCEOpInterface nc
         auto sepTableShape = mlir::cast<vpux::NDTypeInterface>((*std::prev(inputs.end())).getType()).getShape();
         SmallVector<int64_t> sepDataShapeVec(sepDataShape.begin(), sepDataShape.end());
         SmallVector<int64_t> sepTableShapeVec(sepTableShape.begin(), sepTableShape.end());
+
+        // Check if sparsity map is present
+        bool hasSparseMap = inputSparseTensorOp.getSparsityMap() != nullptr;
+
         params.sepInfo = VPUIP::SEPInfo{vpux::Shape(sepTableShape.begin(), sepTableShape.end()),
-                                        vpux::Shape(sepDataShapeVec.begin(), sepDataShapeVec.end())};
+                                        vpux::Shape(sepDataShapeVec.begin(), sepDataShapeVec.end()), hasSparseMap};
     }
 
     // set MC strategy
@@ -1243,7 +1247,7 @@ std::shared_ptr<VPUNN::VPUCostModel> vpux::VPU::CostModelAnalysis::getOrCreateCo
         std::optional<std::reference_wrapper<vpux::VPU::CostModelAnalysis>> analysis, mlir::MLIRContext* ctx,
         Logger log) {
     if (analysis.has_value()) {
-        log.trace("Load preserved cost model");
+        log.debug("Load preserved cost model");
         return analysis.value().get().getVPUNNCostModel();
     }
     log.warning("Create new cost model instance");

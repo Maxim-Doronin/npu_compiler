@@ -18,5 +18,7 @@ std::optional<IE::PermuteCastOp> tryToFindPermuteCastOp(mlir::Location loc, mlir
 IE::LayerWithPermuteInterface getFusableLayerWithPermuteInterface(mlir::Operation* op);
 
 bool isTrivialReorder(IE::ReorderOp origOp);
+bool isTrivialTranspose(IE::TransposeOp origOp);
+bool isTrivialMemPermute(IE::MemPermuteOp origOp);
 
 }  // namespace vpux::IE

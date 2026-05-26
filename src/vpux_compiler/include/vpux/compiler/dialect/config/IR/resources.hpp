@@ -116,19 +116,19 @@ memory_resource_if<Enum> getDummySwKernelsForInstructionPrefetchReservedMemory(m
 }
 
 //
-// Shave stacks reserved memory
+// CMX stack frames reserved memory
 //
-static constexpr StringLiteral shaveStacksResMemModuleName = "ShaveStacksReservedMemory";
+static constexpr StringLiteral cmxStackFramesResMemModuleName = "CMXStackFramesReservedMemory";
 
-config::MemoryResourceOp setShaveStacksReservedMemory(mlir::ModuleOp mainModule, mlir::SymbolRefAttr memSpace,
-                                                      int64_t size, size_t alignment);
+config::MemoryResourceOp setCMXStackFramesReservedMemory(mlir::ModuleOp mainModule, mlir::SymbolRefAttr memSpace,
+                                                         int64_t size, size_t alignment);
 
-config::MemoryResourceOp getShaveStacksReservedMemory(mlir::ModuleOp mainModule, mlir::SymbolRefAttr memSpace);
+config::MemoryResourceOp getCMXStackFramesReservedMemory(mlir::ModuleOp mainModule, mlir::SymbolRefAttr memSpace);
 
 template <typename Enum>
-memory_resource_if<Enum> getShaveStacksReservedMemory(mlir::ModuleOp mainModule, Enum kind) {
-    return getShaveStacksReservedMemory(mainModule,
-                                        mlir::SymbolRefAttr::get(mainModule.getContext(), stringifyEnum(kind)));
+memory_resource_if<Enum> getCMXStackFramesReservedMemory(mlir::ModuleOp mainModule, Enum kind) {
+    return getCMXStackFramesReservedMemory(mainModule,
+                                           mlir::SymbolRefAttr::get(mainModule.getContext(), stringifyEnum(kind)));
 }
 
 //

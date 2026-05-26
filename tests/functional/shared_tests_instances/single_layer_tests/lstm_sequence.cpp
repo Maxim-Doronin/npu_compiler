@@ -619,23 +619,12 @@ private:
 
 };  // namespace test
 
-class LSTMSequenceLayerTestCommonSwDpu : public LSTMSequenceLayerTestCommon {
-    void configure_model() override {
-        configuration[ov::intel_npu::compilation_mode_params.name()] = "enable-dpu-from-shave-control=true";
-    }
-};
-
 TEST_P(LSTMSequenceLayerTestCommon, NPU3720_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU3720);
 }
 
 TEST_P(LSTMSequenceLayerTestCommon, NPU4000_HW) {
-    setDefaultHardwareMode();
-    run(Platform::NPU4000);
-}
-
-TEST_P(LSTMSequenceLayerTestCommonSwDpu, NPU4000_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
 }
@@ -647,11 +636,6 @@ TEST_P(LSTMSequenceLayerTestCommon, NPU5010_HW) {
 TEST_P(LSTMSequenceLayerTestCommon, NPU5010_HW_SINGLE_CLUSTER) {
     setDefaultHardwareMode();
     setSingleClusterMode();
-    run(Platform::NPU5010);
-}
-
-TEST_P(LSTMSequenceLayerTestCommonSwDpu, NPU5010_HW) {
-    setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
 
@@ -743,9 +727,6 @@ const auto lstmConfigAccuracy = ::testing::Combine(
         ::testing::Values(test_utils::TARGET_DEVICE));
 
 INSTANTIATE_TEST_SUITE_P(smoke_precommit_LSTMSequenceAccuracy, LSTMSequenceLayerTestCommon, lstmConfigAccuracy,
-                         LSTMSequenceLayerTestCommon::getTestCaseName);
-
-INSTANTIATE_TEST_SUITE_P(smoke_precommit_LSTMSequenceAccuracy, LSTMSequenceLayerTestCommonSwDpu, lstmConfigAccuracy,
                          LSTMSequenceLayerTestCommon::getTestCaseName);
 
 }  // namespace

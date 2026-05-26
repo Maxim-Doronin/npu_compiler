@@ -130,6 +130,31 @@ mlir::ValueRange getOutputShapes(mlir::func::FuncOp caller, mlir::OpBuilder& bui
     return outputShapeCallOp.getResults();
 }
 
+/*
+ * @DebatcherInlinerInterface
+ * The interface allows all operations (without exceptions) to be inlined in a context
+ * of calling of the DeDebatcherPass.
+ * Inlining is applied to embed auxiliary functions (e.g., output_shape) directly into the body of the main function.
+ * This helps avoid issues caused by introduction of additional pure host-compiled functions when the entire module
+ * context is packed into nested modules later in the HostCompile pipeline. By embedding these helpers into main, nested
+ * modules remain clean and we prevent mixing different dialects.
+ */
+struct DebatcherInlinerInterface : public mlir::InlinerInterface {
+    using InlinerInterface::InlinerInterface;
+
+    bool isLegalToInline(mlir::Operation*, mlir::Operation*, bool) const final {
+        return true;
+    }
+
+    bool isLegalToInline(mlir::Operation*, mlir::Region*, bool, mlir::IRMapping&) const final {
+        return true;
+    }
+
+    bool isLegalToInline(mlir::Region*, mlir::Region*, bool, mlir::IRMapping&) const final {
+        return true;
+    }
+};
+
 void inlineAuxiliaryCallOps(mlir::func::FuncOp caller, const Logger& log) {
     auto module = vpux::getModuleOp(caller);
     mlir::DenseMap<mlir::func::FuncOp, std::vector<mlir::func::CallOp>> inliningCallOpsPerFunc;
@@ -149,7 +174,7 @@ void inlineAuxiliaryCallOps(mlir::func::FuncOp caller, const Logger& log) {
     log.debug("Found functions to inline count: {0}", inliningCallOpsPerFunc.size());
     size_t inlinedCallOpsCount = 0;
     mlir::InlinerConfig config;
-    mlir::InlinerInterface interface(caller.getContext());
+    DebatcherInlinerInterface interface(caller.getContext());
     for (auto [funcOp, callOps] : inliningCallOpsPerFunc) {
         log.trace("Inline function's: {0} calls: {1}", funcOp.getName(), callOps.size());
         for (auto&& callOp : callOps) {

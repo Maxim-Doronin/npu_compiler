@@ -20,7 +20,7 @@
 #include "vpux/utils/core/numeric.hpp"
 
 #include <mlir/Dialect/Quant/IR/Quant.h>
-#include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Transforms/WalkPatternRewriteDriver.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_SPLITFAKEQUANT
@@ -79,12 +79,8 @@ bool hasRangeWithoutZero(IE::FakeQuantizeOp fqOp) {
     auto outLowConst = fqOp.getOutputLow().getDefiningOp<Const::DeclareOp>();
     auto outHighConst = fqOp.getOutputHigh().getDefiningOp<Const::DeclareOp>();
 
-    if (!containsValueZero(inLowConst.getContentAttr(), inHighConst.getContentAttr(), fqOp.getAutoBroadcast()) ||
-        !containsValueZero(outLowConst.getContentAttr(), outHighConst.getContentAttr(), fqOp.getAutoBroadcast())) {
-        return true;
-    }
-
-    return false;
+    return !containsValueZero(inLowConst.getContentAttr(), inHighConst.getContentAttr(), fqOp.getAutoBroadcast()) ||
+           !containsValueZero(outLowConst.getContentAttr(), outHighConst.getContentAttr(), fqOp.getAutoBroadcast());
 }
 
 // Scalar like [7, 7] is handled separately and zero value is not required.
@@ -99,6 +95,45 @@ bool isScalar(IE::FakeQuantizeOp fqOp) {
 
     return checkRange(inLowConst.getContentAttr(), inHighConst.getContentAttr(), fqOp.getAutoBroadcast(),
                       isScalarLambda);
+}
+
+bool shouldConvertFakeQuantizeOpForSplit(IE::FakeQuantizeOp fqOp) {
+    // per-channel quantization with different zero points is not supported on HW (E#65130)
+    // if this is the case, the FQ op will be marked legal and will later be executed as SW op
+    if (!IE::hasStaticLowAndHighValues(fqOp)) {
+        return false;
+    }
+
+    auto maybeConstOp = fqOp.getInput().getDefiningOp<Const::DeclareOp>();
+    const bool isConstInput = (maybeConstOp != nullptr);
+
+    // #E-122320 support fuse range withoutZero to const.
+    if (hasRangeWithoutZero(fqOp) && !isScalar(fqOp)) {
+        return false;
+    }
+
+    auto inLowConst = fqOp.getInputLow().getDefiningOp<Const::DeclareOp>();
+    auto inHighConst = fqOp.getInputHigh().getDefiningOp<Const::DeclareOp>();
+    auto outLowConst = fqOp.getOutputLow().getDefiningOp<Const::DeclareOp>();
+    auto outHighConst = fqOp.getOutputHigh().getDefiningOp<Const::DeclareOp>();
+    const auto realType = mlir::cast<vpux::NDTypeInterface>(fqOp.getInput().getType());
+    const auto realElemType = mlir::cast<mlir::FloatType>(realType.getElementType());
+
+    // Although HW could not support multi Zero Point, but if the input is const, we can fuse the fq to const
+    // So here ignore multi Zero Point check for const input
+    const auto inQuantizeElemType = getQuantizedType(
+            inLowConst.getContentAttr(), inHighConst.getContentAttr(), fqOp.getLevels(), fqOp.getLowFpType(),
+            realElemType, false, fqOp.getLoc(), fqOp.getAutoBroadcast(), /*ignoreZPCheck=*/isConstInput);
+
+    if (inQuantizeElemType == nullptr) {
+        return false;
+    }
+
+    const auto outQuantizeElemType = getQuantizedType(
+            outLowConst.getContentAttr(), outHighConst.getContentAttr(), fqOp.getLevels(), fqOp.getLowFpType(),
+            realElemType, false, fqOp.getLoc(), fqOp.getAutoBroadcast(), /*ignoreZPCheck=*/isConstInput);
+
+    return outQuantizeElemType != nullptr;
 }
 
 //
@@ -119,6 +154,10 @@ private:
 };
 
 mlir::LogicalResult UseQuantDequant::matchAndRewrite(IE::FakeQuantizeOp origOp, mlir::PatternRewriter& rewriter) const {
+    if (!shouldConvertFakeQuantizeOpForSplit(origOp)) {
+        return mlir::failure();
+    }
+
     _log.trace("[{0}] Got FakeQuantize Operation '{1}'", getDebugName(), origOp->getLoc());
     auto innerLog = _log.nest();
 
@@ -163,17 +202,29 @@ mlir::LogicalResult UseQuantDequant::matchAndRewrite(IE::FakeQuantizeOp origOp, 
                     op = value.getDefiningOp();
                 }
             }
-            if (mlir::isa<mlir::BlockArgument>(value)) {
-                auto valueElemType = mlir::cast<vpux::NDTypeInterface>(value.getType()).getElementType();
-                if (auto intElemType = mlir::dyn_cast_or_null<mlir::IntegerType>(valueElemType)) {
-                    isSigned = mlir::cast<mlir::IntegerType>(valueElemType).isSigned();
-                }
+            // Read signedness from the ConvertOp input type regardless of whether it
+            // originates from a BlockArgument or another op (e.g., Gather, MatMul).
+            // The IntegerType signedness in IE dialect is reliable for all sources.
+            auto valueElemType = mlir::cast<vpux::NDTypeInterface>(value.getType()).getElementType();
+            if (auto intElemType = mlir::dyn_cast_if_present<mlir::IntegerType>(valueElemType)) {
+                isSigned = intElemType.isSigned();
             }
         }
     }
 
-    if (IE::keepIntTypeForSIWeightsAsInput(origOp)) {
-        isSigned = true;
+    if (IE::keepIntTypeForSIWeightsAsInputOrConst(origOp)) {
+        auto scaleAndZeroPoints = IE::getScalesAndZeroPointsFromContentAttr(
+                inLowConst.getContentAttr(), inHighConst.getContentAttr(), origOp.getAutoBroadcast(),
+                origOp.getLevels(), lowFpType, true, innerLog);
+        if (!mlir::failed(scaleAndZeroPoints)) {
+            const auto& zeroPoints = std::get<1>(scaleAndZeroPoints.value());
+            auto isNegativeZeroPoint = llvm::any_of(zeroPoints, [](double zeroPoint) {
+                return zeroPoint < 0;
+            });
+            if (!isNegativeZeroPoint) {
+                isSigned = true;
+            }
+        }
     }
 
     const auto inQuantizeElemType = getQuantizedType(
@@ -247,6 +298,10 @@ mlir::FailureOr<float> getCommonRatio(const Const::Content& content1, const Cons
 }
 
 mlir::LogicalResult UseConstDequant::matchAndRewrite(IE::FakeQuantizeOp origOp, mlir::PatternRewriter& rewriter) const {
+    if (!shouldConvertFakeQuantizeOpForSplit(origOp)) {
+        return mlir::failure();
+    }
+
     _log.trace("[{0}] Got FakeQuantize Operation '{1}'", getDebugName(), origOp->getLoc());
     auto innerLog = _log.nest();
 
@@ -393,60 +448,11 @@ private:
 void SplitFakeQuantPass::safeRunOnFunc() {
     auto& ctx = getContext();
 
-    mlir::ConversionTarget target(ctx);
-
-    // per-channel quantization with different zero points is not supported on HW (E#65130)
-    // if this is the case, the FQ op will be marked legal and will later be executed as SW op
-    target.addDynamicallyLegalOp<IE::FakeQuantizeOp>([](IE::FakeQuantizeOp fqOp) {
-        if (!IE::hasStaticLowAndHighValues(fqOp)) {
-            return true;
-        }
-
-        auto maybeConstOp = fqOp.getInput().getDefiningOp<Const::DeclareOp>();
-        bool isConstInput = (maybeConstOp != nullptr);
-
-        // #E-122320 support fuse range withoutZero to const.
-        if (hasRangeWithoutZero(fqOp) && !isScalar(fqOp)) {
-            return true;
-        }
-
-        auto inLowConst = fqOp.getInputLow().getDefiningOp<Const::DeclareOp>();
-        auto inHighConst = fqOp.getInputHigh().getDefiningOp<Const::DeclareOp>();
-        auto outLowConst = fqOp.getOutputLow().getDefiningOp<Const::DeclareOp>();
-        auto outHighConst = fqOp.getOutputHigh().getDefiningOp<Const::DeclareOp>();
-        const auto realType = mlir::cast<vpux::NDTypeInterface>(fqOp.getInput().getType());
-        const auto realElemType = mlir::cast<mlir::FloatType>(realType.getElementType());
-
-        // Although HW could not support multi Zero Point, but if the input is const, we can fuse the fq to const
-        // So here ignore multi Zero Point check for const input
-        const auto inQuantizeElemType = getQuantizedType(
-                inLowConst.getContentAttr(), inHighConst.getContentAttr(), fqOp.getLevels(), fqOp.getLowFpType(),
-                realElemType, false, fqOp.getLoc(), fqOp.getAutoBroadcast(), /*ignoreZPCheck=*/isConstInput);
-
-        if (inQuantizeElemType == nullptr) {
-            return true;
-        }
-
-        const auto outQuantizeElemType = getQuantizedType(
-                outLowConst.getContentAttr(), outHighConst.getContentAttr(), fqOp.getLevels(), fqOp.getLowFpType(),
-                realElemType, false, fqOp.getLoc(), fqOp.getAutoBroadcast(), /*ignoreZPCheck=*/isConstInput);
-
-        return outQuantizeElemType == nullptr;
-    });
-
-    target.addLegalOp<Const::DeclareOp>();
-    target.addLegalOp<IE::QuantizeOp>();
-    target.addLegalOp<IE::QuantizeCastOp>();
-    target.addLegalOp<IE::DequantizeOp>();
-
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<UseQuantDequant>(&ctx, _log);
     patterns.add<UseConstDequant>(&ctx, _log);
 
-    auto func = getOperation();
-    if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
-        signalPassFailure();
-    }
+    walkAndApplyPatterns(getOperation(), std::move(patterns));
 }
 
 }  // namespace

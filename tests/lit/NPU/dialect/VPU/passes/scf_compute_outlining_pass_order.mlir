@@ -7,8 +7,8 @@
 // when compute functions have quantized output types. FinalizeComputeFunctionBoundaries converts
 // quantized types to storage types before PackNestedModules creates DataInfo operations.
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --scf-ops-outlining %s | FileCheck %s
-// REQUIRES: arch-NPU40XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --scf-ops-outlining %s | FileCheck %s
+// REQUIRES: platform-NPU4000
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 !qElemType = !quant.uniform<u8:f16, 0.0019697112195632038>
@@ -50,10 +50,12 @@ module @PassOrderingScfComputeOpsOutlining {
 // CHECK-SAME: ([[ARG0:%.+]]: tensor<1x3x64x640xf32>, [[ARG1:%.+]]: tensor<1x64x640x3xf32>)
 // CHECK-SAME: -> (tensor<1x64x640x16xi8>, tensor<1x16x64x640xf32>)
 // CHECK-DAG: [[CAST0:%.+]] = Core.ReinterpretCast([[ARG1]]) : tensor<1x64x640x3xf32> -> tensor<1x3x64x640xf32, {order = #NHWC}>
-// CHECK-DAG: [[UNREALIZED0:%.+]] = builtin.unrealized_conversion_cast [[ARG0]] : tensor<1x3x64x640xf32> to tensor<1x16x64x640x!qElemType, {order = #NHWC}>
+// CHECK-DAG: [[CAST2:%.+]] = Core.ReinterpretCast([[ARG0]]) : tensor<1x3x64x640xf32> -> tensor<1x3x64x640xf32>
+// CHECK-DAG: [[UNREALIZED0:%.+]] = builtin.unrealized_conversion_cast [[CAST2]] : tensor<1x3x64x640xf32> to tensor<1x16x64x640x!qElemType, {order = #NHWC}>
 // CHECK-DAG: [[CAST1:%.+]] = Core.ReinterpretCast([[UNREALIZED0]]) : tensor<1x16x64x640x!qElemType, {order = #NHWC}> -> tensor<1x64x640x16xi8>
 // CHECK-DAG: [[UNREALIZED1:%.+]] = builtin.unrealized_conversion_cast [[CAST0]] : tensor<1x3x64x640xf32, {order = #NHWC}> to tensor<1x16x64x640xf32>
-// CHECK: return [[CAST1]], [[UNREALIZED1]] : tensor<1x64x640x16xi8>, tensor<1x16x64x640xf32>
+// CHECK-DAG: [[CAST3:%.+]] = Core.ReinterpretCast([[UNREALIZED1]]) : tensor<1x16x64x640xf32> -> tensor<1x16x64x640xf32>
+// CHECK: return [[CAST1]], [[CAST3]] : tensor<1x64x640x16xi8>, tensor<1x16x64x640xf32>
 
 // CHECK: func.func @main
 // CHECK-SAME: ([[ARG0:%.+]]: tensor<1x3x64x640xf32>, [[ARG1:%.+]]: tensor<1x64x640x3xf32>)
@@ -131,16 +133,16 @@ module @LoopInvariantCodeMotionTest {
 
 // CHECK: func.func @main_func0_static
 // CHECK: %[[CST_BIAS:.*]] = const.Declare tensor<1x16x32x16xf16, {order = #NHWC}> = dense<5.000000e-01>
-// CHECK: VPU.NCE.Eltwise(%{{.*}}, %{{.*}}) {op_type = #VPU.eltwise_type<ADD>
-// CHECK: VPU.NCE.Eltwise(%{{.*}}, %[[CST_BIAS]]) {op_type = #VPU.eltwise_type<ADD>
+// CHECK: VPU.NCE.Eltwise({{%.+}}, {{%.+}}) {op_type = #VPU.eltwise_type<ADD>
+// CHECK: VPU.NCE.Eltwise({{%.+}}, %[[CST_BIAS]]) {op_type = #VPU.eltwise_type<ADD>
 
 // CHECK: func.func @main
 // CHECK: scf.for
 // CHECK: %[[H_OFFSET:.*]] = affine.max
 // CHECK: scf.for
 // CHECK: %[[W_OFFSET:.*]] = affine.max
-// CHECK: tensor.extract_slice %{{.*}}[0, %[[H_OFFSET]], %[[W_OFFSET]], 0]
-// CHECK: tensor.extract_slice %{{.*}}[0, %[[H_OFFSET]], %[[W_OFFSET]], 0]
+// CHECK: tensor.extract_slice {{%.+}}[0, %[[H_OFFSET]], %[[W_OFFSET]], 0]
+// CHECK: tensor.extract_slice {{%.+}}[0, %[[H_OFFSET]], %[[W_OFFSET]], 0]
 // CHECK: Core.NestedCall @Module0::@main_func0_static
 // CHECK: tensor.insert_slice
 // CHECK: scf.yield

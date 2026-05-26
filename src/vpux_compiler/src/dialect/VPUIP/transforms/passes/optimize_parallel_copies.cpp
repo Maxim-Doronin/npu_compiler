@@ -11,6 +11,7 @@
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/const/utils/sub_byte.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 namespace vpux::VPUIP {
@@ -223,25 +224,25 @@ bool ParallelCopiesRewriter::isCopyFusable(VPUIP::CopyOp copyOp, Logger& log) co
                 }
             }
 
-            // TODO: to adjust codes for the two branchs with same condition.
+            // Due to some regression, we limited the optimization for low bit weights, and only for the inputs like
+            // scale/bias/pallet table
             if (auto nceOp = mlir::dyn_cast<VPUIP::NCEClusterTaskOp>(user)) {
+                if (nceOp.getWeights() != nullptr) {
+                    auto weightType = mlir::cast<vpux::NDTypeInterface>(nceOp.getWeights().getType());
+                    auto elementSize = vpux::getElemTypeSize(weightType.getElementType());
+                    if ((copyOutput == nceOp.getWeightTableBias() || copyOutput == nceOp.getWeightTableScale() ||
+                         copyOutput == nceOp.getPalletLookupTable())) {
+                        if (vpux::Const::isSubByte(elementSize.count())) {
+                            continue;
+                        } else {
+                            return false;
+                        }
+                    }
+                }
+
                 if (nceOp.getWeights() != copyOutput || VPUIP::canWeightsBeCompressed(nceOp) ||
                     nceOp.getWeightsSparsityMap() != nullptr) {
                     log.trace("Is not fusable because copyOutput is not weights or weights can be compressed");
-                    return false;
-                }
-            } else if (auto nceTask = mlir::dyn_cast<VPUIP::NCEClusterTaskOp>(user)) {
-                // check for NCE multicluster task, no need for Shave multicluster task
-                if (!vpux::VPUIP::hasDistributedOperand(nceTask)) {
-                    continue;
-                }
-                auto weights = nceTask.getWeights();
-                if (copyOutput != weights) {
-                    log.trace("Is not fusable because copyOutput is not weights");
-                    return false;
-                }
-                if (VPUIP::canTilingWeightsBeCompressed(nceTask)) {
-                    log.trace("Is not fusable because tiling weights can be compressed");
                     return false;
                 }
             }
@@ -301,7 +302,7 @@ mlir::LogicalResult ParallelCopiesRewriter::matchAndRewrite(VPUIP::CopyOp origin
                (srcSubView.getStaticStrides() == siblingSubView.getStaticStrides());
     };
 
-    const auto isCopySameFunc = [&](VPUIP::CopyOp srcCopyOp, mlir::Operation* op) {
+    const auto areEquivalentCopies = [&](VPUIP::CopyOp srcCopyOp, mlir::Operation* op) {
         if (vpux::VPUIP::hasDistributedOperand(srcCopyOp) != vpux::VPUIP::hasDistributedOperand(op)) {
             return false;
         }
@@ -333,7 +334,7 @@ mlir::LogicalResult ParallelCopiesRewriter::matchAndRewrite(VPUIP::CopyOp origin
         return false;
     };
 
-    const auto isSameCopyFunc = [&](VPUIP::CopyOp srcCopyOp, mlir::Operation* op) {
+    const auto isIdenticalCopyOp = [&](VPUIP::CopyOp srcCopyOp, mlir::Operation* op) {
         VPUX_THROW_WHEN(srcCopyOp == nullptr, "Expected CopyOp and op to be valid");
         auto siblingCopy = mlir::dyn_cast<VPUIP::CopyOp>(op);
         return siblingCopy != nullptr && siblingCopy == srcCopyOp;
@@ -463,7 +464,7 @@ mlir::LogicalResult ParallelCopiesRewriter::matchAndRewrite(VPUIP::CopyOp origin
                         continue;
                     }
                     auto siblingCopyOp = *siblingSubViewOp.getResult().getUsers().begin();
-                    if (isCopySameFunc(rootCopyOp, siblingCopyOp)) {
+                    if (areEquivalentCopies(rootCopyOp, siblingCopyOp)) {
                         auto user = *siblingCopyOp->getUsers().begin();
                         auto nceConvUserOp = mlir::dyn_cast<VPUIP::NCEClusterTaskOp>(user);
                         if (nceConvUserOp == nullptr || nceConvUserOp.getTaskType() != VPUIP::NCETaskType::CONV) {
@@ -481,7 +482,7 @@ mlir::LogicalResult ParallelCopiesRewriter::matchAndRewrite(VPUIP::CopyOp origin
         auto parentOpUsers = to_small_vector(parentOp->getResult(0).getUsers());
         positions.clear();
         for (auto* siblingOp : llvm::make_early_inc_range(parentOpUsers | reversed)) {
-            if (isSameCopyFunc(rootCopyOp, siblingOp)) {
+            if (areEquivalentCopies(rootCopyOp, siblingOp)) {
                 auto user = *siblingOp->getUsers().begin();
                 auto nceConvUserOp = mlir::dyn_cast<VPUIP::NCEClusterTaskOp>(user);
                 if (nceConvUserOp == nullptr || nceConvUserOp.getTaskType() != VPUIP::NCETaskType::CONV) {
@@ -519,9 +520,9 @@ mlir::LogicalResult ParallelCopiesRewriter::matchAndRewrite(VPUIP::CopyOp origin
             return false;
         }
 
-        if (isSameCopyFunc(rootCopyOpAsCopyOp, nceConvUserOpWeight)) {
+        if (isIdenticalCopyOp(rootCopyOpAsCopyOp, nceConvUserOpWeight)) {
             return checkSiblingCopies(nceConvUserOpInput);
-        } else if (isSameCopyFunc(rootCopyOpAsCopyOp, nceConvUserOpInput)) {
+        } else if (isIdenticalCopyOp(rootCopyOpAsCopyOp, nceConvUserOpInput)) {
             return checkSiblingCopies(nceConvUserOpWeight);
         }
 
@@ -548,7 +549,7 @@ mlir::LogicalResult ParallelCopiesRewriter::matchAndRewrite(VPUIP::CopyOp origin
                 bool closeToPrev = prevComputePostion != invalidPostion &&
                                    std::abs(static_cast<int>(currComputePosition.value() - prevComputePostion)) <
                                            COMPUTE_OP_DISTANCE_COST;
-                if (!closeToPrev || isSameCopyFunc(originCopyOp, op)) {
+                if (!closeToPrev || isIdenticalCopyOp(originCopyOp, op)) {
                     prevComputePostion = currComputePosition.value();
                     prevCopyOp = mlir::cast<VPUIP::CopyOp>(op);
                     return false;
@@ -631,9 +632,9 @@ mlir::LogicalResult ParallelCopiesRewriter::matchAndRewrite(VPUIP::CopyOp origin
             }
 
             auto siblingCopyOp = *siblingSubViewOp.getResult().getUsers().begin();
-            if (!isCopySameFunc(newRootCopyOp, siblingCopyOp) ||
+            if (!areEquivalentCopies(newRootCopyOp, siblingCopyOp) ||
                 !isWithinCostDistance(siblingCopyOp, isRootCopyTilingOnTwoAxis, nearestDistanceForTilingOnTwoAxis) ||
-                isSameCopyFunc(newRootCopyOp, siblingCopyOp)) {
+                isIdenticalCopyOp(newRootCopyOp, siblingCopyOp)) {
                 continue;
             }
 
@@ -676,9 +677,9 @@ mlir::LogicalResult ParallelCopiesRewriter::matchAndRewrite(VPUIP::CopyOp origin
         }
     }
     for (auto* siblingOp : llvm::make_early_inc_range(parentOpUsers | reversed)) {
-        if (!isCopySameFunc(newRootCopyOp, siblingOp) ||
+        if (!areEquivalentCopies(newRootCopyOp, siblingOp) ||
             !isWithinCostDistance(siblingOp, isRootCopyTilingOnTwoAxis, nearestDistanceForTilingOnTwoAxis) ||
-            isSameCopyFunc(newRootCopyOp, siblingOp)) {
+            isIdenticalCopyOp(newRootCopyOp, siblingOp)) {
             continue;
         }
 

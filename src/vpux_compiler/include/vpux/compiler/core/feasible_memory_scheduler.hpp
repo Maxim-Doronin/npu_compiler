@@ -150,8 +150,8 @@ public:
                   opType_(type),
                   cycleBegin_(cycleBegin),
                   cycleEnd_(cycleEnd),
-                  inputResourceInfo_(inputResourceInfo),
-                  outputResourceInfo_(outputResourceInfo) {
+                  inputResourceInfo_(std::move(inputResourceInfo)),
+                  outputResourceInfo_(std::move(outputResourceInfo)) {
         }
 
         ScheduledOpInfo(operationIdxType op, EOpType type, size_t cycleBegin, vpux::AddressType freeCmx, bool isDataOp)
@@ -284,9 +284,6 @@ public:
         SmallVector<IntervalInfo> outputResourceInfo_;
         QueueType queueType{config::ExecutorKind::DMA_NN, 0};
         llvm::BitVector executorInstanceMask;
-        // flag indicating if operation is modified by any post schedule optimizations,
-        // some assumptions such as coexistence can be invalidated
-        bool modifiedMemoryRange_{false};
     };
     using ScheduledOpInfoVec = SmallVector<ScheduledOpInfo, 1>;
 
@@ -332,6 +329,14 @@ public:
 
             // smaller size
             if (ec1.size_ != ec2.size_) {
+                // avoid spilling extremely small buffers, since they have small memory impact
+                // with large initialization overhead - larger cycle cost
+                const vpux::AddressType extremelySmallSizeThreshold = 512;
+                if (ec1.size_ > extremelySmallSizeThreshold && ec2.size_ <= extremelySmallSizeThreshold) {
+                    return true;
+                } else if (ec1.size_ <= extremelySmallSizeThreshold && ec2.size_ > extremelySmallSizeThreshold) {
+                    return false;
+                }
                 return ec1.size_ < ec2.size_;
             }
 
@@ -354,7 +359,7 @@ public:
                             config::ArchKind arch, VPUNN::VPUDevice vpuDevice,
                             std::shared_ptr<VPUNN::VPUCostModel> costModel, int64_t nceClusterCount, int64_t dmaCount,
                             bool enableScheduleStatistics, bool optimizeFragmentation, bool activelySpillForPrefetching,
-                            const ComputeRegionVec& loopRegions = {});
+                            ComputeRegionsSchedule computeRegionsSchedule, ComputeRegionVec loopRegions = {});
 
 public:
     ScheduledOpInfoVec generateSchedule();
@@ -410,7 +415,7 @@ private:
     void updateCurrentCycleForExecutor(QueueType queueType, llvm::BitVector executorInstanceMask, size_t newCycle);
 
     // scheduling various operation types
-    size_t scheduleSpilledOpBuffer(operationIdxType opIdx, mlir::Value* buffer);
+    size_t scheduleSpilledOpBuffer(operationIdxType opIdx, mlir::Value buffer);
     size_t scheduleDependencies(operationIdxType opIdx);
     size_t scheduleOp(operationIdxType opIdx, EOpType opType = EOpType::ORIGINAL_OP);
     bool freeMemoryResources(const HeapElement& hElement);
@@ -467,51 +472,41 @@ private:
     void unscheduleAllCompletingOps();
     // calculate the scheduling level of an operation based on its dependencies in the DAG
     size_t getOperationLevel(operationIdxType opIdx, bool isSpilled = false) const;
-    // schedule non-compute operations (e.g., profiling buffer management DMAs)
-    void scheduleNonComputeOps();
     // schedule ready compute operations along with their data dependencies
     void scheduleComputeOps();
 
+    // Drain all operations from cycle end heap, freeing memory resources and collecting
+    // newly ready operations. Used at loop entry (prepareLoopRegion) to fully clear the heap
+    // before allocating the loop's reserved region, and to propagate in-degrees from pre-loop
+    // compute ops so downstream operations become ready.
+    void drainAndCollectReadyOps(SmallVector<operationIdxType>& readyOps);
+
     // loop scheduling logics
-    // Build index sets (_loopRegionInd, _loopPrefetchInd) that categorize operations
-    // belonging to loop bodies. Loop operations are excluded from normal scheduling
-    // and handled separately by scheduleLoopRegions(). DATA_IN operations are marked
-    // as prefetchable for better performance.
-    void buildLoopOperationIndices();
     // get list of loop operations that are ready to be scheduled (all dependencies satisfied)
     std::vector<size_t> getReadyLoopOps();
+    // Partial heap eviction: frees memory only for ops completing by targetCycle.
+    // Used during loop body execution (applyLoopSchedule) to reclaim iteration N-2 memory
+    // while keeping iteration N-1 alive for ping-pong overlap. Skips readiness propagation
+    // because loop ops follow a predetermined schedule.
+    void unscheduleOpsToCycle(size_t targetCycle);
+    // find the latest cycle end among operations using any of targetBuffers, then unschedule up to that cycle
+    void unscheduleOpsUsingBuffers(const SmallVector<mlir::Value>& targetBuffers);
     // main entry point for loop region scheduling with ping-pong memory allocation
     bool scheduleLoopRegions();
-    // unschedule operations from cycle heaps and collect ready operations for loop scheduling
-    void cleanupBeforeLoopScheduling(SmallVector<operationIdxType>& readyOps);
-    // schedule operations that must execute before the loop starts (e.g., input DMAs)
-    void schedulePreLoopDependencies(const ComputeRegion& computeRegion);
-    // schedule spill-read operations for shared buffers that are dynamically spilled
-    void scheduleLoopSpills(const ComputeRegion& computeRegion);
-    // allocate memory for shared buffers used across all loop iterations
-    vpux::AddressType allocateLoopSharedBuffers(mlir::DenseSet<mlir::Value>& buffersToAllocate,
-                                                const ComputeRegion& computeRegion);
-    // verify buffer usage across iterations and collect spilled/prefetched buffer information
-    void verifyAndCollectLoopBuffers(const ComputeRegion& computeRegion,
-                                     mlir::DenseMap<size_t, mlir::DenseSet<mlir::Value>>& dynamicSpillBuffers,
-                                     mlir::DenseMap<mlir::Value, vpux::AddressType>& prefetchBuffers);
-    // schedule a single loop iteration with ping-pong buffer assignment and loop-2 unscheduling
-    void scheduleLoopIterationAtIndex(const ComputeRegion& computeRegion, size_t loopIdx,
-                                      vpux::AddressType reserveOffset, mlir::DenseMap<size_t, size_t>& loopCycleEnd,
-                                      mlir::DenseMap<size_t, mlir::SmallVector<mlir::Value>>& loopBuffers,
-                                      const mlir::DenseMap<size_t, mlir::DenseSet<mlir::Value>>& dynamicSpillBuffers,
-                                      const mlir::DenseMap<mlir::Value, vpux::AddressType>& prefetchBuffers,
-                                      size_t& loopMaxCycleEnd);
-    // attempt to prefetch operations outside the loop after the last two iterations
-    void handleLoopBoundaryPrefetch(const ComputeRegion& computeRegion, vpux::AddressType reserveOffset,
-                                    const mlir::DenseMap<size_t, size_t>& loopCycleEnd,
-                                    const mlir::DenseMap<size_t, mlir::SmallVector<mlir::Value>>& loopBuffers,
-                                    const mlir::DenseMap<mlir::Value, vpux::AddressType>& prefetchBuffers);
-    // unschedule operations from cycle end heap up to the target cycle
-    void unscheduleOpsToCycle(size_t targetUnscheduleCycle);
-    // unschedule operations from a specific loop iteration and spill its local buffers
-    void unscheduleLoopOps(size_t loopIdx, size_t targetUnscheduleCycle,
-                           const mlir::SmallVector<mlir::Value>& loopBuffersForIndex);
+    // prepare a loop region for applying predefined schedule: collect shared buffers, check allocation,
+    // schedule dependencies and spills, allocate memory. Returns reserveOffset on success.
+    std::optional<vpux::AddressType> prepareLoopRegion(const ComputeRegion& computeRegion,
+                                                       const LoopScheduleResult& scheduleResult);
+    // collect last scheduled op index, level, and cycle for a given loop body
+    std::tuple<size_t, size_t, size_t> getScheduledInfo(const ComputeRegion& computeRegion, size_t loopIdx) const;
+    // prefetch operations for a given loop iteration, return buffers to allocate
+    mlir::DenseSet<mlir::Value> loopPrefetch(const ComputeRegion& computeRegion, size_t loopIdx);
+    // apply one iteration of predefined schedule: deallocate, allocate, and schedule operations
+    size_t applyIterationSchedule(const IterationSchedule& iterSchedule, vpux::AddressType reserveOffset,
+                                  size_t loopCycleEnd);
+    // apply all loop iterations of predefined schedule and prefetch for the last two iterations
+    void applyLoopSchedule(const ComputeRegion& computeRegion, const LoopScheduleResult& scheduleResult,
+                           vpux::AddressType reserveOffset);
 
     // eviction utility
     void evictActiveOp(EvictionCandidate evictionCandidate);
@@ -584,11 +579,6 @@ private:
     mlir::DenseMap<mlir::Value, operationIdxType> _readySpilledOps;
     // store operation spilled buffers
     llvm::DenseMap<operationIdxType, llvm::DenseSet<mlir::Value>> _spillBufferMap;
-    // operations which do not belong to main compute chain for activations from network
-    // input to output. Such operations need to be distinguished from other ops as scheduler
-    // is focused on scheduling ops along compute chain. Such operation will only be considered
-    // for scheduling once all input dependency data and/or compute ops have been executed
-    std::set<operationIdxType, operationIdxSort> _nonComputeChainOps;
     // operation in-degree, number of incoming edges
     std::unordered_map<operationIdxType, size_t> _inDegreeTable;
     // operation out-degree, number of outgoing edges
@@ -671,13 +661,11 @@ private:
     mlir::DenseMap<operationIdxType, size_t> _originalOpIdxEndCycleMapFromScheduleComputeOps;
     mlir::DenseSet<operationIdxType> _newOpsFromScheduleComputeOps;
 
+    // Pre-computed loop schedule state (predefined schedules, region/prefetch indices)
+    const ComputeRegionsSchedule _computeRegionsSchedule;
     // loop region allocation variables, used for quick check during scheduling
-    const ComputeRegionVec& _loopRegions;
-    // store the ops' ids which are wrapped in loop regions
-    std::unordered_set<size_t> _loopRegionInd;
-    // store the data in ops ids which are prefetchable
-    std::unordered_set<size_t> _loopPrefetchInd;
-    // store the scheduled loop regions' indexes
+    const ComputeRegionVec _loopRegions;
+    // store the scheduled loop regions' indexes (modified during scheduling)
     std::unordered_set<size_t> _scheduledLoopRegionInd;
 };
 

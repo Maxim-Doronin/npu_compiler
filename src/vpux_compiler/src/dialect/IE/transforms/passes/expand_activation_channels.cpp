@@ -19,10 +19,9 @@
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/dialect/core/interfaces/type_interfaces.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
+#include "vpux/compiler/utils/passes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/numeric.hpp"
-
-#include "vpux/compiler/utils/passes.hpp"
 #include "vpux/utils/core/range.hpp"
 
 namespace vpux::IE {
@@ -554,12 +553,12 @@ mlir::LogicalResult IE::SoftMaxRewriter::matchAndRewrite(IE::SoftMaxOp origOp, m
 }
 
 //
-// SDPAExtendedRewriter
+// AttentionRewriter
 //
 
-mlir::LogicalResult IE::SDPAExtendedRewriter::matchAndRewrite(IE::SDPAExtendedOp origOp,
-                                                              mlir::PatternRewriter& rewriter) const {
-    _log.trace("[{0}] Got SDPAExtendedRewriter layer at '{1}'", getDebugName(), origOp->getLoc());
+mlir::LogicalResult IE::AttentionRewriter::matchAndRewrite(IE::AttentionOp origOp,
+                                                           mlir::PatternRewriter& rewriter) const {
+    _log.trace("[{0}] Got AttentionRewriter layer at '{1}'", getDebugName(), origOp->getLoc());
     auto expandDimensions = [origOp, &rewriter](auto dataToExpand, auto dimsToExpand, ArrayRef<int64_t> pad, auto rank,
                                                 const std::string& suffix) mutable {
         auto newLoc = appendLoc(origOp.getLoc(), suffix);
@@ -622,21 +621,45 @@ mlir::LogicalResult IE::SDPAExtendedRewriter::matchAndRewrite(IE::SDPAExtendedOp
         }
     }
 
-    auto sdpaExpanded = rewriter.create<IE::SDPAExtendedOp>(
-            origOp.getLoc(), expandedInQ, expandedInK, expandedInV, paddedAttentionMask, origOp.getInputScale(),
-            origOp.getInputBias(), getIntAttr(rewriter.getContext(), inSPad));
+    auto paddedBias = mlir::Value{origOp.getInputBias()};
+    if (paddedBias != nullptr) {
+        const auto inBiasType = mlir::cast<vpux::NDTypeInterface>(paddedBias.getType());
+        const auto inBiasShape = inBiasType.getShape().toValues();
+        auto inBiasRank = checked_cast<int64_t>(inBiasType.getRank());
+        auto biasSDim = inBiasShape[Dim(inBiasRank - 1)];
+        if (inSDim == biasSDim) {  // Is not broadcast 1d dimension for mask, so it will be aligned as inSDim
+            paddedBias = expandDimensions(paddedBias, SmallVector<int64_t>{inBiasRank - 1},
+                                          SmallVector<int64_t>{inSPad}, inBiasRank, "_expandedBias");
+        }
+    }
+
+    auto paddedSink = mlir::Value{origOp.getInputSink()};
+    if (paddedSink != nullptr) {
+        const auto inSinkType = mlir::cast<vpux::NDTypeInterface>(paddedSink.getType());
+        const auto inSinkShape = inSinkType.getShape().toValues();
+        auto inSinkRank = checked_cast<int64_t>(inSinkType.getRank());
+        auto sinkSDim = inSinkShape[Dim(inSinkRank - 2)];
+        if (inSDim == sinkSDim) {  // Is not broadcast 1d dimension for sink, so it will be aligned as inSDim
+            paddedSink = expandDimensions(paddedSink, SmallVector<int64_t>{inSinkRank - 2},
+                                          SmallVector<int64_t>{inSPad}, inSinkRank, "_expandedSink");
+        }
+    }
+
+    auto attention = rewriter.create<IE::AttentionOp>(origOp.getLoc(), expandedInQ, expandedInK, expandedInV,
+                                                      paddedAttentionMask, origOp.getInputScale(), paddedSink,
+                                                      paddedBias, getIntAttr(rewriter.getContext(), inSPad));
 
     if (inEvPad) {
-        _log.trace("Slice SDPAExtended output with padding {0}", inEvPad);
+        _log.trace("Slice Attention output with padding {0}", inEvPad);
         const auto outShape = mlir::cast<vpux::NDTypeInterface>(origOp->getResult(0).getType()).getShape();
         auto offsets = SmallVector<int64_t>(outShape.size(), 0);
 
         auto sliceOp = rewriter.createOrFold<IE::SliceOp>(
-                appendLoc(origOp.getLoc(), "sliced"), origOp->getResult(0).getType(), sdpaExpanded.getOutput(),
+                appendLoc(origOp.getLoc(), "sliced"), origOp->getResult(0).getType(), attention.getOutput(),
                 getIntArrayAttr(rewriter, offsets), getIntArrayAttr(rewriter, outShape));
         rewriter.replaceOp(origOp, sliceOp);
     } else {
-        rewriter.replaceOp(origOp, sdpaExpanded.getOutput());
+        rewriter.replaceOp(origOp, attention.getOutput());
     }
 
     return mlir::success();
@@ -734,36 +757,21 @@ namespace {
 
 class ExpandActivationChannelsPass final : public IE::impl::ExpandActivationChannelsBase<ExpandActivationChannelsPass> {
 public:
-    explicit ExpandActivationChannelsPass(const bool seOpsEnabled, Logger log): _seOpsEnabled(seOpsEnabled) {
+    explicit ExpandActivationChannelsPass(Logger log) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
-    mlir::LogicalResult initialize(mlir::MLIRContext* ctx) override;
-
 private:
-    bool _seOpsEnabled;
     void safeRunOnFunc() override;
 };  // class ExpandActivationChannelsPass
-
-mlir::LogicalResult ExpandActivationChannelsPass::initialize(mlir::MLIRContext* ctx) {
-    if (mlir::failed(Base::initialize(ctx))) {
-        return mlir::failure();
-    }
-
-    // When this parameter has a value, it probably comes from LIT test.
-    // Override the default
-    if (seOpsEnabled.hasValue()) {
-        _seOpsEnabled = seOpsEnabled.getValue();
-    }
-
-    return mlir::success();
-}
 
 void ExpandActivationChannelsPass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
-    auto& strategyFactory = IE::getIEStrategyFactory(&ctx);
-    auto strategy = strategyFactory->getExpandActivationChannelsStrategy(_seOpsEnabled, _log);
+    const auto moduleOp = getModuleOp(func);
+    const auto& strategyFactory = IE::getIEStrategyFactory(&ctx);
+    auto strategy = strategyFactory->getExpandActivationChannelsStrategy(
+            vpux::config::hasEnableSEPtrsOperations(moduleOp), _log);
 
     mlir::ConversionTarget target(ctx);
     strategy->addTargets(target);
@@ -783,7 +791,7 @@ void ExpandActivationChannelsPass::safeRunOnFunc() {
 //
 
 namespace vpux::IE {
-std::unique_ptr<mlir::Pass> createExpandActivationChannelsPass(const bool seOpsEnabled, Logger log) {
-    return std::make_unique<ExpandActivationChannelsPass>(seOpsEnabled, log);
+std::unique_ptr<mlir::Pass> createExpandActivationChannelsPass(Logger log) {
+    return std::make_unique<ExpandActivationChannelsPass>(log);
 }
 }  // namespace vpux::IE

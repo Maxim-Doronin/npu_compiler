@@ -339,6 +339,27 @@ void addCopySwKernelWithBlockArgIOInMainFuncOp(mlir::func::FuncOp mainFuncOp, ml
             processSwKernelWithOutputBlockArg(mainFuncOp, swKernelOp, outputBufOperandIdx, builder, handledBlockArgs,
                                               aliasesInfo, isTilePattern);
         }
+
+        // Update all replicated output-buffs (corresponding to kernel run > 1) to be same as 1st run
+        if (isIoDmaSwKernel(swKernelOp)) {
+            const auto runs = swKernelOp.getBody().getOps<VPUIP::SwKernelRun>();
+            const auto numRuns = std::distance(runs.begin(), runs.end());
+            if (numRuns > 1) {
+                int64_t outsPerRun = swKernelOp.getOutputs().size() / numRuns;
+                // index of max regular output (i.e. non dynamic-shape output)
+                int64_t maxOutputIdx = swKernelOp.getInputs().size() + swKernelOp.getDynamicInputShapes().size() +
+                                       swKernelOp.getResults().size() - 1;
+                for (auto outputBufOperandIdx : outputIdx) {
+                    if (outputBufOperandIdx < maxOutputIdx) {
+                        for (int64_t run = 1; run < numRuns; run++) {
+                            auto dupOutputIdx = outputBufOperandIdx + run * outsPerRun;
+                            VPUX_THROW_UNLESS(dupOutputIdx <= maxOutputIdx, "Exceeding output index range");
+                            swKernelOp.setOperand(dupOutputIdx, swKernelOp.getOperand(outputBufOperandIdx));
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

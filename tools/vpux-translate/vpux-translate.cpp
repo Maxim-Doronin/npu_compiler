@@ -6,13 +6,13 @@
 #include "vpux/compiler/act_kernels/shave_binary_resources.h"
 #include "vpux/compiler/dialect/ELF/IR/export.hpp"
 #include "vpux/compiler/dialect/ELFNPU37XX/export.hpp"
-#include "vpux/compiler/dialect/ELFNPU37XX/import.hpp"
+#include "vpux/compiler/dialect/bytecode/IR/serialize.hpp"
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/frontend/IE.hpp"
-#include "vpux/compiler/init.hpp"
+#include "vpux/compiler/init/dialects_registry.hpp"
 #include "vpux/compiler/init/hw_strategy_registry.hpp"
-#include "vpux/compiler/interfaces_registry.hpp"
+#include "vpux/compiler/init/interfaces_registry.hpp"
 #include "vpux/compiler/tools/options.hpp"
 #include "vpux/utils/core/range.hpp"
 
@@ -177,37 +177,6 @@ mlir::OwningOpRef<mlir::ModuleOp> importIE(llvm::SourceMgr& sourceMgr, mlir::MLI
 }
 
 //
-// import-ELF
-//
-
-mlir::OwningOpRef<mlir::ModuleOp> importELF(llvm::SourceMgr& sourceMgr, mlir::MLIRContext* ctx) {
-    if (sourceMgr.getNumBuffers() != 1) {
-        printTo(llvm::errs(),
-                "Invalid source file for elf, it has unsupported number of "
-                "buffers {0}",
-                sourceMgr.getNumBuffers());
-        return nullptr;
-    }
-
-    const auto elfFileName = sourceMgr.getMemoryBuffer(1)->getBufferIdentifier();
-    if (elfFileName.empty()) {
-        printTo(llvm::errs(), "Invalid source file for elf, not a file");
-        return nullptr;
-    }
-
-    mlir::OwningOpRef<mlir::ModuleOp> module;
-
-    try {
-        module = ELFNPU37XX::importELF(ctx, elfFileName.str());
-    } catch (const std::exception& ex) {
-        printTo(llvm::errs(), "Failed to translate elf {0} to MLIR : {1}", elfFileName, ex.what());
-        return nullptr;
-    }
-
-    return module;
-}
-
-//
 // export-ELF
 //
 
@@ -276,6 +245,14 @@ mlir::LogicalResult exportLLVMIR(mlir::ModuleOp module, llvm::raw_ostream& outpu
     return mlir::success();
 }
 
+//
+// export-bytecode
+//
+
+mlir::LogicalResult exportBytecode(mlir::ModuleOp moduleOp, llvm::raw_ostream& output) {
+    return bytecode::serializeTo(moduleOp, output);
+}
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
@@ -284,7 +261,7 @@ int main(int argc, char* argv[]) {
         // TODO(E#84874):
         // currently, arch is used for both import and export
         // however, it would be a better option to extract arch info from module for the export
-        const auto arch = vpux::parseArchKind(argc, argv);
+        const auto arch = vpux::parseParamsAndDeduceArch(argc, argv);
         auto dialectRegistration = [&](mlir::DialectRegistry& registry) {
             if (!arch.has_value()) {
                 return;
@@ -297,15 +274,15 @@ int main(int argc, char* argv[]) {
 
             vpux::config::registerConstraints(registry, arch.value());
             vpux::IE::registerStrategies(registry, arch.value());
+            vpux::VPU::registerStrategies(registry, arch.value());
             vpux::VPUIP::registerStrategies(registry, arch.value());
         };
         mlir::TranslateToMLIRRegistration("import-IE", "Translate OV IR to IE dialect", importIE, dialectRegistration);
-        mlir::TranslateToMLIRRegistration("import-ELF", "Translate blob to ELF dialect", importELF,
-                                          dialectRegistration);
-
         mlir::TranslateFromMLIRRegistration("export-ELF", "Translate ELF dialect to blob", exportELF,
                                             dialectRegistration);
         mlir::TranslateFromMLIRRegistration("export-LLVMIR", "Translate LLVMIR dialect to blob", exportLLVMIR,
+                                            dialectRegistration);
+        mlir::TranslateFromMLIRRegistration("export-bytecode", "Translate Bytecode dialect to binary", exportBytecode,
                                             dialectRegistration);
 
         return mlir::asMainReturnCode(mlir::mlirTranslateMain(argc, argv, "NPU Translation Testing Tool"));

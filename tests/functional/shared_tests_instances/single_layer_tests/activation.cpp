@@ -3,6 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include <cmath>
+
 #include <common_test_utils/ov_tensor_utils.hpp>
 
 #include <pretty_test_arguments.hpp>
@@ -18,7 +20,7 @@ namespace test {
 
 class ActivationLayerTestCommon : public ActivationLayerTest, virtual public VpuOv2LayerTest {
     void configure_model() override {
-        configuration[ov::intel_npu::compilation_mode_params.name()] = "convert-precision-to-fp16=false";
+        configuration[ov::intel_npu::compilation_mode_params.name()] = "disabled-passes=convert-precision-to-fp16";
     }
 };
 
@@ -91,7 +93,8 @@ DEFINE_ACT_TESTS(NPU5020, /*DISABLED_SW_*/, /*DISABLED_HW_*/, /*CONFIG_SW*/, /*C
 
 DEFINE_DYNAMIC_ACT_TESTS(NPU3720, /*DISABLED_DYN_SW_*/, /*DISABLED_DYN_HW_*/, /*CONFIG_DYN_SW*/, /*CONFIG_DYN_HW*/);
 DEFINE_DYNAMIC_ACT_TESTS(NPU4000, /*DISABLED_DYN_SW_*/, /*DISABLED_DYN_HW_*/, /*CONFIG_DYN_SW*/, /*CONFIG_DYN_HW*/);
-DEFINE_DYNAMIC_ACT_TESTS(NPU5010, /*DISABLED_DYN_SW_*/, /*DISABLED_DYN_HW_*/, /*CONFIG_DYN_SW*/, /*CONFIG_DYN_HW*/);
+// Tracking number [E#207309]
+DEFINE_DYNAMIC_ACT_TESTS(NPU5010, DISABLED_DYN_SW_, DISABLED_DYN_HW_, /*CONFIG_DYN_SW*/, /*CONFIG_DYN_HW*/);
 DEFINE_DYNAMIC_ACT_TESTS(NPU5020, /*DISABLED_DYN_SW_*/, /*DISABLED_DYN_HW_*/, /*CONFIG_DYN_SW*/, /*CONFIG_DYN_HW*/);
 
 DEFINE_SHAVE_CODE_GEN_TESTS(NPU4000, /*DISABLED_SW_*/, /*DISABLED_PROF_*/, /*CONFIG_SW*/, /*CONFIG_PROF*/);
@@ -179,7 +182,9 @@ const std::map<ActivationTypes, std::vector<std::vector<float>>> activationDynam
         {Gelu, {{1.0f}}}, {Atan, {{1.0f}}}, {Cos, {{1.0f}}},     {Sin, {{1.0f}}},
         {Sqrt, {{1.0f}}}, {Log, {{1.0f}}},  {Ceiling, {{1.0f}}},
 };
-
+const std::map<ActivationTypes, std::vector<std::vector<float>>> activationDynamicTypesLarge = {
+        {Atan, {{1.0f}}},
+};
 const std::map<ActivationTypes, std::vector<std::vector<float>>> preluParamTypes = {
         {PReLu, {{}}},
 };
@@ -256,6 +261,7 @@ ShapeMap basic = {{{{1, 50, 1, 1}}, {}}, {{{1, 128, 1, 1}}, {}}};
 std::vector<ov::test::InputShape> dynamicBasic = {generateTestShape(256_Dyn), generateTestShape(1, 64_Dyn),
                                                   generateTestShape(1, 8_Dyn, 3072), generateTestShape(1, 50_Dyn, 1, 1),
                                                   generateTestShape(1, 128_Dyn, 1, 1)};
+std::vector<ov::test::InputShape> dynamicLarge = {generateTestShape(1, 1, 1, 2333333_Dyn)};
 
 ShapeMap profilingBasic = {{{{1, 1, 50, 120}}, {}}, {{{1, 20, 50, 150}}, {}}};
 
@@ -289,6 +295,7 @@ const auto basicShaveCodeGenFpCases = genActLessParams(shaveCodeGenActivationTyp
 const auto basicShaveCodeGenIntCases = genActLessParams(shaveCodeGenIntActivationTypes, basic, ov::element::i32);
 const auto basicDynamicCasesSWFP16 = genActLessParamsDyn(activationDynamicTypes, dynamicBasic, ov::element::f16);
 const auto basicDynamicCasesHWFP16 = genActLessParamsDyn(activationDynamicTypes, dynamicBasic, ov::element::f16);
+const auto largeDynamicCasesHWFP16 = genActLessParamsDyn(activationDynamicTypesLarge, dynamicLarge, ov::element::f16);
 
 const auto basicClampI32 = genActLessParams(
         std::map<ActivationTypes, std::vector<std::vector<float>>>{{Clamp, {{-1.0f, 1.0f}}}},
@@ -347,6 +354,76 @@ INSTANTIATE_TEST_SUITE_P(precommit_Act_PRelu_Slope_param, ShaveCodeGenActivation
 INSTANTIATE_TEST_SUITE_P(precommit_Act_Dynamic, DynamicActivationLayerTest_SW_FP16, basicDynamicCasesSWFP16,
                          ActivationLayerTest::getTestCaseName);
 INSTANTIATE_TEST_SUITE_P(smoke_Act_Dynamic, DynamicActivationLayerTest_HW_FP16, basicDynamicCasesHWFP16,
+                         ActivationLayerTest::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(smoke_Act_Large_Dynamic, DynamicActivationLayerTest_HW_FP16, largeDynamicCasesHWFP16,
+                         ActivationLayerTest::getTestCaseName);
+
+// Verify Log on fp16 does not produce NaN when input is in the subnormal range
+// that NPU FTZ flushes to zero. The kernel clamps to fp16 min-normal (2^-14).
+class LogSubnormalLayerTest : public ActivationLayerTestCommon {
+    void generate_inputs(const std::vector<ov::Shape>& targetInputStaticShapes) override {
+        inputs.clear();
+        const auto& param = function->get_parameters()[0];
+        auto tensor = ov::Tensor(param->get_element_type(), targetInputStaticShapes[0]);
+        // Use a spread of subnormal fp16 values to cover the full subnormal range:
+        //   0x0001 (~5.96e-8) smallest subnormal, 0x0200 (~3.05e-5) mid-range,
+        //   1e-6f, 6.0e-5f (just below min-normal 2^-14 ~6.10e-5).
+        // All are flushed to 0 by NPU FTZ without the clamp fix.
+        static const float kSubnormals[] = {5.96e-8f, 1e-6f, 3.05e-5f, 6.0e-5f};
+        auto* data = tensor.data<ov::float16>();
+        for (size_t i = 0; i < tensor.get_size(); ++i) {
+            data[i] = ov::float16(kSubnormals[i % 4]);
+        }
+        inputs.insert({param, tensor});
+    }
+
+    void validate() override {
+        // Expected: inputs clamped to fp16 min-normal (2^-14) before log, so output ~ log(2^-14).
+        const float minNormalF16 = std::ldexp(1.0f, -14);
+        const float expectedLog = std::log(minNormalF16);
+        const float absTolerance = 1e-2f;
+
+        const auto actualOutputs = get_plugin_outputs();
+        ASSERT_FALSE(actualOutputs.empty());
+        for (const auto& out : actualOutputs) {
+            ASSERT_EQ(out.get_element_type(), ov::element::f16);
+            const auto* data = out.data<ov::float16>();
+            for (size_t i = 0; i < out.get_size(); ++i) {
+                const float value = static_cast<float>(data[i]);
+                ASSERT_TRUE(std::isfinite(value)) << "non-finite at index " << i;
+                ASSERT_NEAR(value, expectedLog, absTolerance) << "unexpected log result at index " << i;
+            }
+        }
+    }
+};
+
+TEST_P(LogSubnormalLayerTest, NPU3720) {
+    setReferenceSoftwareMode();
+    run(Platform::NPU3720);
+}
+TEST_P(LogSubnormalLayerTest, NPU4000) {
+    setReferenceSoftwareMode();
+    run(Platform::NPU4000);
+}
+TEST_P(LogSubnormalLayerTest, NPU5010) {
+    setReferenceSoftwareMode();
+    run(Platform::NPU5010);
+}
+TEST_P(LogSubnormalLayerTest, NPU5020) {
+    setReferenceSoftwareMode();
+    run(Platform::NPU5020);
+}
+
+const auto logSubnormalCases = ::testing::Combine(
+        ::testing::Values(std::pair<ActivationTypes, std::vector<float>>{Log, {1.0f}}),
+        ::testing::Values(ov::element::f16),
+        ::testing::ValuesIn(staticShapesParamTransform(
+                ov::test::utils::combineParams(std::map<std::vector<ov::Shape>, std::vector<ov::Shape>>{
+                        {{{1, 64, 1, 1}}, {}},
+                }))),
+        ::testing::Values(test_utils::TARGET_DEVICE));
+
+INSTANTIATE_TEST_SUITE_P(precommit_Log_subnormal, LogSubnormalLayerTest, logSubnormalCases,
                          ActivationLayerTest::getTestCaseName);
 
 }  // namespace

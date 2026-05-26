@@ -73,9 +73,24 @@ def MovePureViewOpBeforeCopy : PassBase<"move-pure-view-op-before-copy", "vpux::
     let summary = "Move pure view-like operations before copy";
 
     let description = [{
-        By moving pure view-like ops, this pass creates copy operation chains, that can be fused:
-        Before: CopyOp -> PermuteCast -> GenericReshape -> CopyOp
-        After: PermuteCast -> GenericReshape -> CopyOp -> CopyOp
+        AI-generated summary
+
+        By moving pure view-like ops before Copy operations, this pass creates copy operation chains
+        that can later be fused by downstream optimization passes.
+
+        Rewriters:
+        - MoveViewOpToTheFrontOfCopy: Moves PermuteCast, GenericReshape, QuantizeCast, and ShapeCast
+          ops that appear after a CopyOp to before it. Skips ShapeCast when used with input channels
+          compression (compressed convolution). Handles distributed buffer types and validates
+          stride compatibility.
+          Before: CopyOp -> PermuteCast -> GenericReshape -> CopyOp
+          After: PermuteCast -> GenericReshape -> CopyOp -> CopyOp
+
+        - MoveSubviewToTheFrontOfCopy: Moves SubViewOp that sits between two CopyOps to before
+          the first CopyOp, reducing copied data size. Only applies when the parent CopyOp has a
+          single SubView user and the SubView is compatible with any distributed buffer distribution.
+          Before: CopyOp(full) -> SubView -> CopyOp
+          After: SubView -> CopyOp(reduced)
     }];
 
     let constructor = "vpux::VPUIP::createMovePureViewOpBeforeCopyPass()";
@@ -89,9 +104,33 @@ def OptimizeCopies : PassBase<"optimize-copies", "vpux::FunctionPass"> {
     let summary = "Removes Copy Ops which are unnecessary";
 
     let description = [{
-        This pass checks if Copy Op can be optimized out to reduce the amount of unnecessary DMAs and intermediate buffers.
-        We need to check the workload management mode to determine if we can apply certain optimizations to the Copy Op sequence.
-        This is necessary because the vpux::WorkloadManagementMode::PWLM_V0_LCA mode may fail with these optimizations, potentially causing performance regressions.
+        AI-generated summary
+
+        This pass applies multiple rewrite patterns to eliminate unnecessary Copy operations,
+        reducing DMA transfers and intermediate buffer allocations.
+
+        Rewrite patterns (applied in priority order):
+        Phase 1 (greedy, with benefit ordering):
+        - CopyOpSequence: Fuses chains of Copy operations (e.g. CMX->DDR->CMX) into a single Copy.
+          Checks workload management mode compatibility. Handles SubView and view-like op chains.
+        - CMXToCMXCopy: Eliminates CMX-to-CMX copies by replacing the output buffer allocation
+          with a NonDistributedCast or DistributedCast when memory layouts are compatible.
+        - DDRToDDRCopy: Removes DDR-to-DDR copies by propagating the source buffer to all users.
+        - ConcatViewWithCopy: Optimizes ConcatView followed by Copy by adjusting ConcatView
+          output buffer allocation.
+        - FuseCopyToTheFrontOfDistributedCopy: Fuses a plain Copy into a preceding distributed Copy.
+        - FuseCopyToTheBackOfDistributedCopy: Fuses a plain Copy into a following distributed Copy.
+        - SubViewWithDistributedCopy: Combines SubView with a distributed Copy to avoid
+          materializing the full tensor.
+        - DuplicatedCopyWithCMXCopy: Removes redundant CMX copy when source is already DUPLICATED
+          in CMX.
+        - FuseCopiesThroughReshape: Eliminates copies separated by a GenericReshape.
+        - SubViewWithCopy: Fuses SubView with a following Copy.
+
+        Phase 2 (separate greedy pass, depends on Phase 1 results):
+        - CopyOpSequenceWithSubview: Handles Copy sequences with intervening SubViews,
+          checking stride constraints after Phase 1 optimizations.
+        - GatherDMAWithSubview: Fuses GatherDMA with a following SubView.
     }];
 
     let options = [
@@ -100,10 +139,8 @@ def OptimizeCopies : PassBase<"optimize-copies", "vpux::FunctionPass"> {
             "vpux::WorkloadManagementMode", "",
             "Setting which controls mode of WLM",
             [{::llvm::cl::values(
-                clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA", "WLM enqueue barriers search algorithm at VPURT ENABLED"),
                 clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_1_PAGES, "PWLM_V0_1_PAGES", "PWLM with split into subgraphs (pages)"),
-                clEnumValN(vpux::WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO", "WLM enqueue barriers search algorithm at VPURT DISABLED"),
-                clEnumValN(vpux::WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES", "WLM with split into subgraphs(pages)")
+                clEnumValN(vpux::WorkloadManagementMode::FWLM_V1_PAGES, "FWLM_V1_PAGES", "Full WLM with split into pages")
             )}]
         >
     ];
@@ -119,8 +156,15 @@ def UniquifyWeightsTableCopies : PassBase<"uniquify-weights-table-copies", "vpux
     let summary = "Removes Copy Ops of shared constant weights table";
 
     let description = [{
-        This pass checks if Copy Op can be optimized out to reduce the amount of unnecessary DMAs
-        and intermediate buffers when having weights table reuse enabled.
+        AI-generated summary
+
+        This pass deduplicates Copy operations of shared constant weights tables when weights table
+        reuse is enabled (isZeroOffsetWeightsTable attribute is set).
+
+        The pass finds NCEClusterTaskOp operations with IsZeroOffsetWeightsTable set, traces their
+        weight table inputs to Const::DeclareOp sources through single-use CopyOps, groups all
+        CopyOps that share the same Const::DeclareOp source and output type, then replaces all
+        duplicate CopyOps with the first CopyOp in each group, erasing the redundant copies.
     }];
 
     let constructor = "vpux::VPUIP::createUniquifyWeightsTableCopiesPass()";
@@ -134,11 +178,13 @@ def OptimizeConcatViewCopies : PassBase<"optimize-concat-view-copies", "vpux::Fu
     let summary = "Optimize ConcatView Op to remove unnecessary copies or reduce copies data size";
 
     let description = [{
-        1. Propagate SubView Op before ConcatView Op to reduce data size of copies
+        AI-generated summary
+
+        - Propagate SubView Op before ConcatView Op to reduce data size of copies
         Target Pattern: NCE Task 16 channels output -> Copy 16 channels -> Concat -> Subview -> 3 channels
         Optimization:   NCE Task 16 channels output -> Copy 3 channels -> Concat -> Subview -> 3 channels
 
-        2. Fuse ConcatView Ops to remove unnecessary copies, two conditions need to be satisfied:
+        - Fuse ConcatView Ops to remove unnecessary copies, two conditions need to be satisfied:
         a) The Stride Level for each ConcatView input (after fusing) should be no more than 2;
            It's a runtime and HW limitation in order to get the right NNDMA descriptor, we support a maximum of 3D DMA transfers with 2 levels of striding.
         b) The number of inputs from the second ConcatView, which come from the output of the first ConcatView should no more than 1;
@@ -192,8 +238,20 @@ def OptimizeParallelCopies : PassBase<"optimize-parallel-copies", "vpux::Functio
     let summary = "Copy the data only once for all the tiles that share the same data";
 
     let description = [{
-        This pass checks all the CopyOps consumed by tiles of one tiling subgraph.
-        If the CopyOps operate on the same weight or activation, merge the parallel copies into one.
+        AI-generated summary
+
+        This pass merges parallel Copy operations that transfer the same data into a single Copy.
+
+        Rewriter: ParallelCopiesRewriter
+        The rewriter finds CopyOps consumed by tiles of one tiling subgraph that operate on the same
+        weight or activation source. Merge candidates are validated against:
+        - Compute operation distance: fuses copies only when consumer NCE tasks (in-place Eltwise
+          or Conv) are within 3 compute steps of each other
+        - Two-axis tiling distance: applies a distance cost of 2 for two-axis tiling scenarios
+        - Constant copy optimization: optionally merges constant copies (controlled by
+          enableOptimizeConstCopy flag)
+        - Interpolate mode and coordinate mode compatibility for NCE operations
+        - SubView and DistributedBuffer compatibility
     }];
 
     let constructor = "vpux::VPUIP::createOptimizeParallelCopiesPass()";
@@ -207,7 +265,25 @@ def FuseLastCopy : PassBase<"fuse-last-copy", "vpux::FunctionPass"> {
     let summary = "Remove last Copy operations that output to DDR";
 
     let description = [{
-        This pass checks if the Copy ops output to DDR can be optimized out to reduce the amount of unnecessary DMAs and intermediate buffers.
+        AI-generated summary
+
+        This pass eliminates the final Copy operations that write results to network output buffers
+        (function block arguments) by making producers write directly to the output buffer.
+
+        The pass walks Copy operations whose output buffer is a function block argument (network output).
+        For each such Copy, it uses AliasesInfo to trace the input back to its root allocation. It then
+        replaces the root allocation with the output buffer, eliminating the Copy.
+
+        When cast operations (GenericReshape, QuantizeCast, PermuteCast, ShapeCast, ReinterpretCast)
+        appear between the producer and the Copy, the pass reverses and applies the same casts to the
+        output buffer so the producer can write directly to it. Chains of multiple casts are handled
+        iteratively. ConcatView operations in the chain are also fused.
+
+        Restrictions:
+        - Input and output must be in the same memory space
+        - Input and output must be compact (no strides)
+        - No multiple output copy operations sharing the same source root
+        - Strided network outputs are not supported
     }];
 
     let constructor = "vpux::VPUIP::createFuseLastCopyPass()";
@@ -221,11 +297,21 @@ def CopyOpTiling : PassBase<"tile-copies", "vpux::FunctionPass"> {
     let summary = "Legalizes Copy Ops which do not fit hardware capabilities";
 
     let description = [{
-        This pass checks if Copy Op can be executed at target hardware and splits it into a few tiles if necessary.
-        To fit hardware requirements it should copy less or equal than 16MB(2**24 bytes) and have less than 256 planes.
-        The higher dimensional stride of the two-dimensional stride DMA is implemented through the plane.
-        So if the copy has two dimensional stride, and the higher dimensional stride exceeds the number of planes,
-        we need to split the copy on the higher stride dimension
+        AI-generated summary
+
+        This pass splits Copy operations that exceed hardware DMA capabilities into multiple
+        smaller tiles.
+
+        Rewriters:
+        - CopyOpTiling: Splits large CopyOps to fit DMA hardware constraints:
+          * Maximum transfer size: 16MB (2^24 bytes)
+          * Maximum number of planes: 256 (planes implement higher-dimensional stride DMA)
+          Tiles are balanced across DMA ports for parallel execution. Does not handle
+          distributed buffer types.
+
+        - SingleCopyOpWithConcatOpUserTiling: For CopyOp → ConcatView patterns with strided
+          copies, splits the CopyOp across DMA ports (typically 2) for parallel execution.
+          Applied after CopyOpTiling in a separate partial conversion phase.
     }];
 
     let constructor = "vpux::VPUIP::createCopyOpTilingPass()";
@@ -239,7 +325,15 @@ def ConvertDynamicReshapeToInPlace : PassBase<"convert-dynamic-reshape-to-in-pla
     let summary = "Convert DynamicReshape operation to read and write to the same buffer in memory";
 
     let description = [{
-        This pass will convert DynamicReshape to an inplace operation when the input rank is equal with the output rank.
+        AI-generated summary
+
+        This pass converts DynamicReshape SwKernel operations to in-place operations that read and
+        write to the same buffer when the input and output ranks are equal and memory kinds match.
+
+        The pass walks SwKernelOp operations with kernel entry name "dynamic_reshape". For eligible
+        operations, it inserts a VPUIP.ViewOp on the input to cast it to the output type, then
+        creates a new SwKernelOp that uses the viewed buffer as both input and output. Dynamic
+        input shapes (bounded buffers) are preserved through the transformation.
     }];
 
     let constructor = "vpux::VPUIP::createConvertDynamicReshapeToInPlacePass()";
@@ -289,7 +383,12 @@ def ConvertPalletLUTToConst : PassBase<"convert-pallet-lut-to-const", "vpux::Fun
     let summary = "Convert pallet LUT to Const";
 
     let description = [{
-        Extract pallet LUT from input quantile type and make it Const inputs.
+        AI-generated summary
+
+        Materializes palette Look-Up Table data as a Const.DeclareOp for NCE cluster tasks
+        with palletized (quantile-quantized) weights. Fills a 64-entry 16-bit LUT from the
+        quantile type definition and attaches it as the palletLookupTable input of
+        VPUIP.NCEClusterTaskOp.
     }];
 
     let constructor = "vpux::VPUIP::createConvertPalletLUTToConstPass()";
@@ -322,8 +421,20 @@ def SetMemorySpace : PassBase<"set-memory-space", "vpux::ModulePass"> {
     let summary = "Set specific memory space for all memory buffers";
 
     let description = [{
-        This pass updates all Types for internal memory buffers and function arguments and sets the specified memory space for them.
-        Also updates the operand types for grouping operations, to cover scenarios where some operands are buffers and some are constants.
+        AI-generated summary
+
+        This pass assigns the specified memory space (e.g. DDR) to all internal memory buffers that
+        do not yet have a memory space set.
+
+        The pass operates in three phases per function:
+        1. Function signature update (optional, controlled by setMemorySpaceForFunctionBoundaries):
+           Updates function argument types and their aliases to the target memory space, then
+           updates the function signature.
+        2. Allocation update: Walks memref::AllocOp operations without a memory space and updates
+           all their aliases to the target memory space, including async::ValueType wrappers.
+        3. Grouping operation update: Walks GroupedViewOpInterface operations (e.g.
+           VPUIP.GroupBoundedBuffer) and propagates the memory space to operands that lack one
+           when at least one operand already has the target memory space set.
     }];
 
     let constructor = [{
@@ -371,8 +482,12 @@ def StaticAllocation : PassBase<"static-allocation", "vpux::FunctionPass"> {
     let summary = "Replace dynamic allocations with static";
 
     let description = [{
-        This pass replaces all dynamic `alloc`/`dealloc` Operations with `VPUIP.StaticAlloc`.
-        It uses simple LinearScan algorithm.
+        AI-generated summary
+
+        Performs static memory allocation for buffers in the specified memory space (CMX or DDR)
+        using a linear scan algorithm. Assigns fixed memory offsets to all buffer declarations at
+        compile time, computes the total memory requirement, and verifies allocations fit within
+        available memory capacity.
     }];
 
     let constructor = [{
@@ -396,8 +511,24 @@ def PatchWeightsTable : PassBase<"patch-weight-table", "vpux::FunctionPass"> {
     let summary = "Adjusts weights and sparsity pointers after memory scheduling";
 
     let description = [{
-        This pass adds RelocateWeightsTable transformation to weights table constants. The transformation adds weights and sparsity base pointers
-        to offset that are already filled in the weights table constants.
+        AI-generated summary
+
+        This pass patches weights table constants with correct memory pointers after memory
+        scheduling has assigned buffer addresses.
+
+        For each NCEClusterTaskOp with a weight table (excluding MaxPool, operations with
+        populateWeightTableWithShave, and operations with isZeroOffsetWeightsTable), the pass:
+        1. Traces the weight table operand through DeclareBufferOp to find the loading DMA and
+           source Const::DeclareOp (resolving spill chains if weights were spilled).
+        2. Computes per-cluster weights pointers from the DeclareBufferOp byte offset of the
+           weights operand. For Duplicated|Segmented distributions, per-cluster offsets are
+           computed based on the segmentation axis and strides.
+        3. Computes the sparsity map pointer from the root buffer of the weightsSparsityMap
+           operand.
+        4. Handles fused constants by using the fused buffer base offset and computing the
+           weight table size from the weights pointer minus base offset.
+        5. Adds a relocateWeightsTablePointers transformation to the Const::DeclareOp content
+           attribute, which patches the weight and sparsity pointer fields at runtime.
     }];
 
     let constructor = "vpux::VPUIP::createPatchWeightsTablePass()";
@@ -411,7 +542,12 @@ def PatchPopulateWeightTableWithShave : PassBase<"patch-populate-weight-table-wi
     let summary = "Adjusts weights pointers after memory scheduling and before loosing data dependencies due to slices";
 
     let description = [{
-        This pass updates weight base address and weight offset for Shave populating the weight table.
+        AI-generated summary
+
+        Updates weight table entries for operations that execute on SHAVE processors by patching
+        the weight pointer and sparsity pointer fields. Adjusts pointer offsets based on
+        SHAVE-specific memory mapping requirements, which differ from DPU weight table pointer
+        conventions.
     }];
 
     let constructor = "vpux::VPUIP::createPatchPopulateWeightTableWithShavePass()";
@@ -425,7 +561,12 @@ def Linearization : PassBase<"linearization", "vpux::ModulePass"> {
     let summary = "Perform linearization of the IR";
 
     let description = [{
-        Perform linearization of the IR with fully sequential execution.
+        AI-generated summary
+
+        Serializes the task execution order by inserting explicit dependencies between all tasks,
+        creating a fully sequential execution schedule. Adds barrier dependencies that enforce an
+        execution order matching the original IR order, used as a baseline scheduling strategy or
+        for debugging.
     }];
 
     let constructor = "vpux::VPUIP::createLinearizationPass()";
@@ -440,8 +581,19 @@ def BreakDataFlow : PassBase<"break-data-flow", "vpux::FunctionPass"> {
     let summary = "Breaks the data flow in the graph";
 
     let description = [{
-        This pass breaks the data flow in the graph. It is required for the VPURT dialect for correct task creation
-        because all VPUIP dialect tasks will be inside body of the TaskOp and it is impossible to use operation results inside another body of TaskOp.
+        AI-generated summary
+
+        This pass breaks the data flow in the graph so that operation results are no longer directly
+        used by subsequent operations. This is required for the VPURT dialect because all VPUIP
+        dialect tasks will be wrapped inside the body of a TaskOp, and operation results from one
+        TaskOp body cannot be used inside another TaskOp body.
+
+        The pass performs two transformations:
+        1. For all VPUIP::LayerOpInterface operations: replaces each operation result with the
+           corresponding output buffer operand, breaking the def-use chain.
+        2. For all VPUIP::ConcatViewOp operations: replaces the ConcatView result with its output
+           buffer and erases the ConcatViewOp. Also cleans up single-use async.await operations
+           feeding into the ConcatView inputs.
     }];
 
     let constructor = "vpux::VPUIP::createBreakDataFlowPass()";
@@ -455,7 +607,11 @@ def DMATaskProfilingAfterBarrierSched : PassBase<"dma-task-profiling-after-barri
     let summary = "DMA task profiling handling after barrier scheduled";
 
     let description = [{
-        This pass adds DMA profiling tasks after barrier scheduler.
+        AI-generated summary
+
+        Inserts DMA profiling timestamp operations after barrier scheduling. Creates NNDMAOp
+        tasks that read the hardware timer register and write timestamps to profiling buffer
+        slots, integrating them into the existing barrier dependency graph.
     }];
 
     let constructor = "vpux::VPUIP::createDMATaskProfilingAfterBarrierSchedPass()";
@@ -469,7 +625,11 @@ def CaptureWorkpoint : PassBase<"capture-workpoint", "vpux::ModulePass"> {
     let summary = "Read value from WORKPOINT_CONFIG_MIRROR.FINAL_PLL_FREQ and store to profiling output";
 
     let description = [{
-        Insert DMA transaction to capture PLL frequency multiplier needed for DPU profiling
+        AI-generated summary
+
+        Inserts DMA operations that read the hardware workpoint register at inference start and
+        end. The workpoint value captures the NPU clock frequency configuration, which profiling
+        tools use to convert hardware cycle counts into wall-clock timing measurements.
     }];
 
     let constructor = "vpux::VPUIP::createCaptureWorkpointPass()";
@@ -483,7 +643,12 @@ def DPUProfiling : PassBase<"dpu-profiling", "vpux::ModulePass"> {
     let summary = "DPU task profiling";
 
     let description = [{
-        This pass allocate required memory for DPU profiling and perform buffer spilling
+        AI-generated summary
+
+        Instruments DPU (NCE) tasks with profiling timestamp capture by allocating profiling
+        buffer slots in CMX and inserting timestamp write operations. Each DPU task records start
+        and end cycle counts, enabling per-layer performance analysis of convolution and pooling
+        operations.
     }];
 
     let constructor = "vpux::VPUIP::createDPUProfilingPass()";
@@ -498,7 +663,11 @@ def M2IProfiling : PassBase<"m2i-profiling", "vpux::ModulePass"> {
     let summary = "M2I task profiling";
 
     let description = [{
-        This pass allocate required memory for M2I profiling and perform buffer spilling
+        AI-generated summary
+
+        Allocates profiling buffer slots for M2I tasks and inserts timestamp capture operations.
+        Records start and end cycle counts for M2I media preprocessing tasks (resize, color
+        convert, normalize).
     }];
 
     let constructor = "vpux::VPUIP::createM2IProfilingPass()";
@@ -532,7 +701,12 @@ def WrapIntoAsyncRegions : PassBase<"wrap-into-async-regions", "vpux::FunctionPa
     let summary = "Wraps layer operations into asynchronous regions";
 
     let description = [{
-        This pass wraps each VPUIP layer operation into async region preserving linear execution.
+        AI-generated summary
+
+        Wraps each VPUIP.AsyncLayerOpInterface operation into its own mlir.async.execute
+        region. Clones the operation into the async body, creates async.yield for results,
+        and replaces original uses with async.await values. Preserves the executor attribute
+        on each async.execute region for downstream scheduling.
     }];
 
     let constructor = "vpux::VPUIP::createWrapIntoAsyncRegionsPass()";
@@ -732,7 +906,16 @@ def AsyncRegionsOutlining : PassBase<"async-regions-outlining", "vpux::ModulePas
 //
 
 def MoveWaitResultToAsyncBlockArgs : PassBase<"move-wait-result-to-async-block-args", "vpux::FunctionPass"> {
-    let summary = "Moves 'async.await' result usage from 'async.execute' body to it's operands";
+    let summary = "Move async.await results into async.execute block arguments to optimize scheduling";
+
+    let description = [{
+        AI-generated summary
+
+        Converts async.await results used inside async.execute regions into block arguments
+        of those regions (via bodyOperands), eliminating the need for the await at the outer
+        scope. Moves remaining await operations closer to their first user and erases unused
+        ones.
+    }];
 
     let constructor = "vpux::VPUIP::createMoveWaitResultToAsyncBlockArgsPass()";
 }
@@ -742,7 +925,15 @@ def MoveWaitResultToAsyncBlockArgs : PassBase<"move-wait-result-to-async-block-a
 //
 
 def CalculateAsyncRegionCycleCost : PassBase<"calculate-async-region-cycle-cost", "vpux::FunctionPass"> {
-    let summary = "Calculates cycle cost of 'async.execute'";
+    let summary = "Calculate and attach cycle cost attributes to async.execute operations";
+
+    let description = [{
+        AI-generated summary
+
+        Computes the execution cycle cost for each async.execute operation using CycleCostInfo
+        (backed by the VPU cost model) and stores the result as the cycleCost integer attribute
+        on the operation.
+    }];
 
     let constructor = "vpux::VPUIP::createCalculateAsyncRegionCycleCostPass()";
 }
@@ -752,7 +943,15 @@ def CalculateAsyncRegionCycleCost : PassBase<"calculate-async-region-cycle-cost"
 //
 
 def MoveViewOpsIntoAsyncRegions : PassBase<"move-view-ops-into-async-regions", "vpux::FunctionPass"> {
-    let summary = "Moves view-like Operations inside the asynchronous regions which depends on them";
+    let summary = "Duplicate pure view operations into async.execute regions to reduce outer dependencies";
+
+    let description = [{
+        AI-generated summary
+
+        Clones pure view-like operations (e.g., SubView, PermuteCast) that are defined outside
+        async.execute regions but used inside them, placing the clone at the start of the
+        async.execute body block. The original outer operation is left in place for other users.
+    }];
 
     let constructor = "vpux::VPUIP::createMoveViewOpsIntoAsyncRegionsPass()";
 }
@@ -780,7 +979,12 @@ def FeasibleAllocation : PassBase<"feasible-allocation", "vpux::FunctionPass"> {
     let summary = "Feasible Memory Scheduling Pass";
 
     let description = [{
-        Schedule async.execute operations based on their dependencies and CMX memory availability
+        AI-generated summary
+
+        Performs feasible memory allocation using a spill-aware algorithm that handles cases where
+        tensors do not fit in CMX. Attempts to allocate buffers in CMX and automatically inserts
+        spill-to-DDR and prefetch-from-DDR DMA operations when memory pressure exceeds available
+        CMX capacity, with configurable spill optimization strategies.
     }];
 
     let constructor = [{
@@ -854,7 +1058,30 @@ def WrapWithPermuteAsNNDMA: PassBase<"wrap-with-permute-as-nndma", "vpux::Functi
     let summary = "Wrap op and permute operation as dma and fuse unnecessary copy ops";
 
     let description = [{
-        This pass will replace specific op and permute as one DMA and fuse the unnecessary following copy ops
+        AI-generated summary
+
+        This pass fuses permutation, expansion, tiling, and depth/space conversion operations with
+        adjacent Copy operations, converting them into efficient PermuteDMA or other DMA operations.
+
+        Rewrite patterns:
+        - FuseMemPermuteWithCopy: Fuses SwKernel MemPermute with a following Copy into PermuteDMA.
+        - FuseExpandWithCopy: Fuses VPUIP.Expand with a following Copy into PermuteDMA when the
+          expand can be expressed as a permutation.
+        - FusePerAxisTileWithCopy: Fuses SwKernel PerAxisTile with a following Copy into
+          PerAxisTileDMA.
+        - FuseExpandWithUpsampling: Fuses VPUIP.Expand with a following UpsamplingDMA.
+        - FuseExpandAndPermuteWithCopy: Fuses an Expand followed by a MemPermute and Copy
+          into a single PermuteDMA.
+        - FuseSpaceToDepthAndPermute: Fuses SwKernel SpaceToDepth with a MemPermute into
+          SpaceToDepthDMA.
+        - WrapDepthToSpaceAsDistributedNNDMA: Converts SwKernel DepthToSpace to
+          DepthToSpaceDMA with distributed buffer support.
+        - FuseSpaceToDepthWithDistributedCopy: Fuses SwKernel SpaceToDepth with a distributed
+          Copy into SpaceToDepthDMA.
+        - FuseDistributedCopyWithMemPermute: Fuses a distributed Copy with a following
+          SwKernel MemPermute into PermuteDMA.
+        - FuseDistributedMemPermuteWithViewLikeOps: Fuses a PermuteDMA with following
+          view-like operations (PermuteCast, ShapeCast, GenericReshape) to avoid redundant copies.
     }];
 
     let constructor = "vpux::VPUIP::createWrapWithPermuteAsNNDMAPass()";
@@ -872,7 +1099,17 @@ def OptimizeTileOpAsNNDMA: PassBase<"optimize-tile-op-as-nndma", "vpux::Function
     let summary = "Optimize tile op with concat op user by convert it as dma and fuse unnecessary copy ops";
 
     let description = [{
-        This pass will replace specific tile op as DMA and fuse the unnecessary following copy ops.
+        AI-generated summary
+
+        This pass optimizes Tile operations followed by ConcatView and clustered Copy by converting
+        them into PerAxisTileDMA operations.
+
+        Rewriter: FuseTileWithConcatClusteredCopy
+        Matches the pattern: SwKernel(Tile) -> ConcatView -> CopyOp (with DistributedBuffer output)
+        and replaces it with PerAxisTileDMA when:
+        - The Tile repeats data along a single axis
+        - The output is a distributed buffer (multi-cluster)
+        - The tile and concat can be expressed as a single DMA transfer
     }];
 
     let constructor = "vpux::VPUIP::createOptimizeTileOpAsNNDMAPass()";
@@ -927,7 +1164,11 @@ def ConvertExpand : PassBase<"convert-expand", "vpux::FunctionPass"> {
     let summary = "Convert Expand that cannot fuse with permute to copy and concat subgraph";
 
     let description = [{
-        This pass will convert the Expand to copy and concat subgraph.
+        AI-generated summary
+
+        Converts VPUIP.Expand operations into DMA-based data movement sequences. Replaces logical
+        expand operations (which pad tensors along a dimension with zeros) with explicit DMA copies
+        that transfer original data and zero-fill padding regions in the destination buffer.
     }];
 
     let constructor = "vpux::VPUIP::createConvertExpandPass()";
@@ -945,8 +1186,21 @@ def ConvertToDMA: PassBase<"convert-to-dma", "vpux::FunctionPass"> {
     let summary = "Convert Permute and DepthToSpace from SW ops to DMA ops";
 
     let description = [{
-        This pass will convert some SW operations (e.g. DepthToSpace, Permute) to DMA ops
-        if it is possible to achieve better performance
+        AI-generated summary
+
+        This pass converts several SW kernel operations and VPUIP operations to DMA equivalents
+        when it is both legal and beneficial for performance.
+
+        Rewrite patterns:
+        - SwKernelMemPermuteConverter: Converts SwKernel MemPermute to PermuteDMA.
+        - SwKernelDepthToSpaceConverter: Converts SwKernel DepthToSpace to DepthToSpaceDMA.
+        - SwKernelSpaceToDepthConverter: Converts SwKernel SpaceToDepth to SpaceToDepthDMA.
+        - SwKernelPerAxisTileConverter: Converts SwKernel PerAxisTile to PerAxisTileDMA.
+        - ExpandConverter: Converts VPUIP.ExpandOp to ExpandDMA (always converted, marked illegal).
+        - UpsamplingOpConverter: Converts VPUIP.UpsamplingOp (DDR-to-DDR only) to UpsamplingDMA.
+
+        Operations with bounded (dynamic) buffers or sub-byte quantized types with unaligned
+        dimensions are excluded from conversion.
     }];
 
     let constructor = "vpux::VPUIP::createConvertToDMAPass()";
@@ -964,7 +1218,10 @@ def ActShaveProfiling : PassBase<"act-shave-profiling", "vpux::ModulePass"> {
     let summary = "ActShave task profiling";
 
     let description = [{
-        This pass allocate required memory for ActShaveProfiling profiling and perform buffer spilling
+        AI-generated summary
+
+        Allocates CMX profiling buffer slots for each SHAVE task and inserts timestamp capture
+        operations that record start and end cycle counts.
     }];
 
     let constructor = "vpux::VPUIP::createActShaveProfilingPass()";
@@ -982,8 +1239,20 @@ def GroupProfilingBuffers : PassBase<"group-profiling-buffers", "vpux::ModulePas
     let summary = "Group profiling buffers into single profiling output buffer";
 
     let description = [{
-        Group profiling buffers from different profiling engines into single profiling output buffer with name as
-        [offset]_[profiling name]_[offset]_[profiling name] so postprocessing tool can parse it back
+        AI-generated summary
+
+        This pass merges individual per-engine profiling buffers (DPU, DMA, ActShave, M2I) into
+        a single combined profiling output buffer.
+
+        The pass:
+        1. Collects sizes of all profiling buffer sections from the network's ProfilingOutputsInfo.
+        2. Computes aligned offsets for each section within a combined buffer, maintaining
+           PROFILING_SECTION_ALIGNMENT between sections.
+        3. Creates a single U32 output buffer sized to hold all profiling sections.
+        4. Records section metadata (execution type, offset, size) for postprocessing tools.
+        5. Replaces individual profiling function arguments with SubView slices of the combined
+           buffer at the computed offsets.
+        6. Updates the function signature to expose the single combined profiling output.
     }];
 
     let constructor = "vpux::VPUIP::createGroupProfilingBuffersPass()";
@@ -997,28 +1266,18 @@ def UpdateSwKernelParams : PassBase<"update-sw-kernel-params", "vpux::FunctionPa
     let summary = "Update parameters sent to sw kernel for selected operations";
 
     let description = [{
-        Part of shave kernel attributes depend by resolution. Pass allow update them
-        based on final resolution information.
+        AI-generated summary
+
+        This pass updates SHAVE kernel parameters that depend on resolved tensor shapes.
+
+        Rewriter: UpdateSwKernelParamsRewriter
+        Applies to SwKernelOp operations with kernel entry names: softmax, log_softmax,
+        log_softmax_topk, and log_softmax_peak. Updates the kernel run attributes with
+        parameters computed from the final resolved output (or input for log_softmax_peak)
+        shape, including axis, pad size, and dynamic shape information.
     }];
 
     let constructor = "vpux::VPUIP::createUpdateSwKernelParamsPass()";
-}
-
-//
-// SyncShvDpu
-//
-
-def SyncShvDpu : PassBase<"sync-shv-dpu", "vpux::FunctionPass"> {
-    let summary = "Add a sync dummy kernel after shave kernel that use DPU inside.";
-
-    let description = [{
-        Add a sync dummy kernel after shave kernel that use DPU inside.
-        This is made automaticaly base on kernel description "isDpuShaveKernelType".
-        It is necesarry for allow WLM to retrigger dpu fifo advance fill after filter finish.
-        Previous, Dpu fifo was emptied, not allowing task fill advance.
-    }];
-
-    let constructor = "vpux::VPUIP::createSyncShvDpuPass()";
 }
 
 //
@@ -1029,7 +1288,20 @@ def DumpStatisticsOfTaskOpsPass : PassBase<"dump-statistics-of-task-ops", "vpux:
     let summary = "Dump the statistics of operations (used Task operations and weights compression)";
 
     let description = [{
-        This pass dumps the statistics for of used operations (e.g. tasks, weights compression) and makes a report as warning for operations not converted to DPU.
+        AI-generated summary
+
+        This pass collects and reports statistics about the compiled model's operations, barriers,
+        weights compression, and constant swizzling.
+
+        The pass reports:
+        - Input and output tensor sizes
+        - DDR heap size
+        - VPUIP task operation counts (DMA, DPU, SHAVE, etc.)
+        - Barrier statistics (total count, producer/consumer counts)
+        - Weights compression statistics (compressed vs. uncompressed sizes, compression ratios)
+        - Constant swizzling statistics (count and sizes of swizzled constants)
+
+        Operations not converted to DPU are flagged as warnings. Output is logged at info level.
     }];
 
     let constructor = "vpux::VPUIP::createDumpStatisticsOfTaskOpsPass()";
@@ -1070,8 +1342,17 @@ def UnrollExpandDMA : PassBase<"unroll-expand-dma", "vpux::FunctionPass"> {
     let summary = "Unroll expand task with several NN DMA tasks";
 
     let description = [{
-        This pass unroll ExpandDMA tasks with several NN DMA tasks, which are functionally equivalent.
-        Each sub ExpandDMA will be converted to a NNDMA.
+        AI-generated summary
+
+        This pass unrolls ExpandDMA tasks into per-cluster NNDMA operations.
+
+        Rewrite patterns:
+        - SingleClusterExpandDMARewriter: Handles single-cluster ExpandDMA by splitting the expand
+          into multiple NNDMAs that copy original data and zero-fill padding regions.
+        - MultiClusterExpandDMARewriter: Handles multi-cluster (DistributedBuffer) ExpandDMA by
+          creating per-cluster expand operations with DMA port balancing.
+
+        The pass checks UnrollDMAAnalysis to skip execution when no ExpandDMA operations exist.
     }];
 
     let constructor = "vpux::VPUIP::createUnrollExpandDMAPass()";
@@ -1085,8 +1366,18 @@ def UnrollGatherDMA : PassBase<"unroll-gather-dma", "vpux::FunctionPass"> {
     let summary = "Unroll gather DMA task with several NN DMA tasks";
 
     let description = [{
-        This pass unrolls GatherDMA tasks with several NN DMA tasks, which are functionally equivalent.
-        Each sub GatherDMA will be converted to a NNDMA.
+        AI-generated summary
+
+        This pass unrolls GatherDMA tasks into per-cluster NNDMA operations for multi-cluster
+        execution.
+
+        Rewriter: GatherDMARewriter
+        Handles DistributedBuffer inputs by splitting indices and output buffers per cluster.
+        Supports both DUPLICATED indices (input is split per cluster) and SEGMENTED indices
+        (input is shared across clusters). Assigns DMA ports in round-robin fashion and marks
+        unpaired cluster operations as split candidates when indices alignment permits.
+
+        The pass checks UnrollDMAAnalysis to skip execution when no GatherDMA operations exist.
     }];
 
     let constructor = "vpux::VPUIP::createUnrollGatherDMAPass()";
@@ -1130,8 +1421,19 @@ def UnrollSwKernel : PassBase<"unroll-sw-kernel", "vpux::FunctionPass"> {
     let summary = "Unroll SwKernel task with several SwKernel.Run";
 
     let description = [{
-        This pass unroll SwKernel task with several SwKernel.Run, which are functionally equivalent.
-        Each SwkernelRun will be wrapped into a SwKernel task.
+        AI-generated summary
+
+        This pass unrolls SwKernel tasks that contain multiple SwKernel.Run operations into
+        individual SwKernel tasks, each wrapping a single SwKernel.Run.
+
+        Rewriter: SwKernelRewriter
+        For each SwKernelOp with multiple SwKernelRun regions, creates separate SwKernelOp
+        instances per run with the corresponding input/output operands mapped from block
+        arguments to the outer SwKernelOp operands. Handles:
+        - Dynamic shapes (BoundedBuffer operands with shape maps)
+        - Profiling metadata updates (per-tile profiling buffer indices)
+        - Optional dedicated FIFO per SHAVE engine (controlled by
+          enableSwKernelFifoPerShaveEngine option), assigning listIndex attributes
     }];
 
     let constructor = "vpux::VPUIP::createUnrollSwKernelPass()";
@@ -1151,7 +1453,14 @@ def UnrollSwKernel : PassBase<"unroll-sw-kernel", "vpux::FunctionPass"> {
 //
 
 def ConvertTransferOpsToDMAs : PassBase<"convert-transfer-ops-to-DMAs", "vpux::FunctionPass"> {
-    let summary = "Convert data transfer operations to DMA";
+    let summary = "Convert CopyOp and TimestampOp operations to low-level NNDMAOp operations";
+
+    let description = [{
+        AI-generated summary
+
+        Converts VPUIP.CopyOp to VPUIP.NNDMAOp and VPUIP.TimestampOp to NNDMAOp reading
+        from the hardware timer register (architecture-specific address).
+    }];
 
     let constructor = "vpux::VPUIP::createConvertTransferOpsToDMAsPass()";
 
@@ -1166,7 +1475,16 @@ def ConvertTransferOpsToDMAs : PassBase<"convert-transfer-ops-to-DMAs", "vpux::F
 //
 
 def ConvertAllocationsToDeclarations : PassBase<"convert-allocations-to-declarations", "vpux::FunctionPass"> {
-    let summary = "Convert static allocations to declarations";
+    let summary = "Convert dynamic buffer allocations to static declarations";
+
+    let description = [{
+        AI-generated summary
+
+        Converts VPUIP.StaticAllocOp to VPURT.DeclareBufferOp, replacing abstract memory
+        allocations with buffer declarations that carry explicit memory section and byte
+        offset. Required before codegen because the runtime uses flat buffer declarations,
+        not alloc operations.
+    }];
 
     let constructor = "vpux::VPUIP::createConvertAllocationsToDeclarationsPass()";
 
@@ -1201,7 +1519,15 @@ def ConvertFuncArgsToDeclarations : PassBase<"convert-func-args-to-declarations"
 //
 
 def ConvertViewOpsToDeclarations : PassBase<"convert-view-ops-to-declarations", "vpux::FunctionPass"> {
-    let summary = "Convert view-like operations to declarations";
+    let summary = "Convert view-like operations to buffer declarations with computed offsets";
+
+    let description = [{
+        AI-generated summary
+
+        Converts view operations (SubView, PermuteCast, GenericReshape, QuantizeCast, ShapeCast)
+        to VPURT.DeclareBufferOp with computed byte offset and strides. Traces alias chains from
+        ViewOp results back to root buffer declarations to compute the final memory offset.
+    }];
 
     let constructor = "vpux::VPUIP::createConvertViewOpsToDeclarationsPass()";
 
@@ -1263,15 +1589,32 @@ def Swizzling : PassBase<"swizzling", "vpux::FunctionPass"> {
     let summary = "Configure swizzling for eligible buffers";
 
     let description = [{
-        On HW with swizzling support (VPUX37XX) enable activation swizzling for DPU to DPU
-        buffers. This includes setting specific swizzling key and alignment as part of
-        allocation operation.
-        Swizzling requirement:
+        AI-generated summary
+
+        Enables swizzling for eligible buffers on all architectures with swizzling support
+        (VPUX37XX, VPUX40XX, VPUX50XX, and later). The pass is controlled by two independent
+        flags: `enableWeightsSwizzling` and `enableActivationSwizzling`.
+
+        The pass performs two iterations over NCEClusterTask operations:
+        1. Identifies operations whose weight constants (weights, weights table, weights sparsity
+           map) can be swizzled, applying the swizzling transformation to constant content.
+        2. Identifies operations whose activation output buffers can be swizzled (DPU-to-DPU
+           buffers where both producer and all consumers are NCEClusterTask operations).
+
+        For Eltwise operations, both inputs must have matching swizzling attributes. The pass
+        iteratively disables activation swizzling on mismatched Eltwise inputs until consistency
+        is achieved. Fused constants are handled separately with a dedicated enable flag.
+        Before enabling swizzling, CMX usage is verified across all operand permutations to
+        ensure the aligned buffer sizes do not exceed available CMX capacity.
+
+        Swizzling requirements:
         - buffer needs to be properly aligned
-        - swizzled buffers must be given in CMX space with size of multiple of 512
-        - activation buffer must be one produced and consumed by DPU type task
-        - buffer for weights can be swizzled and needs to have swizzling transformation performed on the content
-        Device supported swizzling key
+        - swizzled buffers must be in CMX space with size a multiple of 512
+        - activation buffer must be produced and consumed by DPU type tasks
+        - weights require a swizzling transformation on constant content
+        - 5-d tensors are excluded from swizzling
+
+        Device supported swizzling keys:
         - 0: 16 bytes alignment
         - 1: 1024 bytes alignment
         - 2: 2048 bytes alignment
@@ -1305,7 +1648,17 @@ def Swizzling : PassBase<"swizzling", "vpux::FunctionPass"> {
 //
 
 def BarrierOptimization : PassBase<"barrier-optimization", "vpux::FunctionPass"> {
-    let summary = "Optimize barrier dependencies between tasks on all queues";
+    let summary = "Optimize and merge redundant barrier synchronization points";
+
+    let description = [{
+        AI-generated summary
+
+        Merges barriers whose producers are FIFO-ordered (all producers of barrier B follow
+        all producers of barrier A). Orders barriers by largest producer index and iteratively
+        merges compatible pairs within each task block. Removes barriers with no producers
+        or consumers after merging.
+    }];
+
     let constructor = "vpux::VPUIP::createBarrierOptimizationPass()";
     let options = [
         Option<
@@ -1313,10 +1666,7 @@ def BarrierOptimization : PassBase<"barrier-optimization", "vpux::FunctionPass">
             "vpux::WorkloadManagementMode", "",
             "Setting which controls mode of WLM",
             [{::llvm::cl::values(
-                clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA", "WLM enqueue barriers search algorithm at VPURT ENABLED"),
                 clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_1_PAGES, "PWLM_V0_1_PAGES", "PWLM with split into subgraphs (pages)"),
-                clEnumValN(vpux::WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO", "WLM enqueue barriers search algorithm at VPURT DISABLED"),
-                clEnumValN(vpux::WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES", "WLM with split into subgraphs(pages)"),
                 clEnumValN(vpux::WorkloadManagementMode::FWLM_V1_PAGES, "FWLM_V1_PAGES", "Full WLM with split into pages")
             )}]
         >
@@ -1328,7 +1678,16 @@ def BarrierOptimization : PassBase<"barrier-optimization", "vpux::FunctionPass">
 //
 
 def OperationStubbing : PassBase<"operation-stubbing", "vpux::FunctionPass"> {
-    let summary = "Stub operations with StubOp";
+    let summary = "Replace selected operations with stub operations based on a condition predicate";
+
+    let description = [{
+        AI-generated summary
+
+        Conditionally transforms operations into stub replacements (IE::StubOp, VPU::StubOp,
+        or VPUIP::StubOp) that preserve type and operand information while bypassing actual
+        execution. Supports operations from IE, VPU, and VPUIP dialects, enabling selective
+        operation elimination for debugging and testing purposes.
+    }];
 
     let constructor = "vpux::VPUIP::createOperationStubbingPass()";
 
@@ -1347,8 +1706,26 @@ def ConvWeightsCompression : PassBase<"conv-weights-compression", "vpux::Functio
     let summary = "Compress weights of Conv operation";
 
     let description = [{
-        This pass checks if weights from a Convolution op were previously padded with zero, remove that pad, insert a ShapeCast op
-        and set cm_sp_pattern value.
+        AI-generated summary
+
+        This pass applies weights compression for NCEClusterTask convolution operations whose
+        weights were previously padded with zeros along the input channels dimension.
+
+        For each NCEClusterTaskOp with a weight table, the pass checks whether compression is
+        applicable via canWeightsBeCompressed. Two cases are handled:
+
+        1. Padding done only on IC (input channels): The pass strips the zero-padding from the
+           weights constant by creating a SubView of the original shape, updates the weights
+           table pointers to reflect the new per-OC strides, and creates a new CopyOp with the
+           reduced constant. For distributed (tiled) weights, the DistributedBufferType and
+           DistributionInfoAttr are recomputed with the new shape.
+
+        2. General case: The pass sets cm_sp_pattern based on VPU_COMPRESSED_INPUT_CHANNEL_NUM
+           without modifying the weights data.
+
+        In both cases, a VPUIP.ShapeCast is inserted on the weights input of the NCEClusterTask
+        to reshape the weights to [OC, channelAlignment, KY, KX] and the cm_sp_pattern attribute
+        is set on the new NCEClusterTask clone.
     }];
 
     let constructor = "vpux::VPUIP::createConvWeightsCompressionPass()";
@@ -1362,11 +1739,26 @@ def FuseConstants : PassBase<"fuse-constants", "vpux::FunctionPass"> {
     let summary = "Fuse constant inputs of NCEClusterOp";
 
     let description = [{
-        Concatenates input constants into one in the following order:
-            weight_table -> weights -> weights_sparsity_map
-        For any NCEClusterTaskOp if the number of constants to fuse is 1 such layers are skipped
-        Special Case with DWCONV, if the constants to fuse are == 2 such DWCONV are skipped as weights are not constants
-        Special Case for Compressed Conv layer, if the weights are ShapeCast these such layers are skipped
+        AI-generated summary
+
+        Concatenates NCEClusterTaskOp constant inputs into a single fused constant in the
+        following order: weight_table -> weights -> weights_sparsity_map.
+
+        Rewriter: FuseConstants (greedy pattern on NCEClusterTaskOp)
+        For each NCEClusterTaskOp with a weight table, the pass:
+        1. Skips ELTWISE and AVEPOOL task types, operations already fused (constantsFused
+           attribute set), and operations with isZeroOffsetWeightsTable.
+        2. Locates the Const::DeclareOp and CopyOp for each of the three constants
+           (weight_table, weights, weights_sparsity_map). All three CopyOps must have
+           single use. If weights are not constants (e.g. activation tensors), fusion is skipped.
+        3. Creates a new fused Const::DeclareOp using the Fuse content transformation, which
+           concatenates the binary data of all constants into a single flat tensor (U8 or F16
+           element type, chosen based on which dominates the total size).
+        4. Allocates a CMX buffer for the fused constant (VPURT::AllocDistributed for tiled
+           operations, memref::AllocOp for single-tile) and copies the fused constant into it.
+        5. Replaces each original constant CopyOp with a SubView -> ViewOp chain that extracts
+           the corresponding slice from the fused constant buffer.
+        6. Sets the constantsFused attribute on the NCEClusterTaskOp.
     }];
 
     let constructor = "vpux::VPUIP::createFuseConstantsPass()";
@@ -1401,8 +1793,20 @@ def FlattenSparseWeightsTypes : PassBase<"flatten-sparse-weights-types", "vpux::
     let summary = "Flattens types that have a compression scheme";
 
     let description = [{
-        Flattens the type of the sparse weights into a binary buffer of values.
-        The weights operand of a NCE operation maintains the original type.
+        AI-generated summary
+
+        Flattens the types of sparse weights with compression schemes into binary buffers.
+        The pass operates in three phases:
+
+        1. Creates an explicit DeclareBuffer operand for each NCE weights operand that has a
+           compression scheme, preserving the original dense type so the NCE task can correctly
+           interpret the weights layout.
+        2. Enables the compressed output flag on the Sparsify transformation of weight constants,
+           allowing the constant's output type to be flattened.
+        3. Walks all operations and flattens the shapes of operands and results that carry a
+           compression scheme into 1-D U8 tensors sized to the compressed allocation. NCE weights
+           operands are excluded from flattening because they retain the original dense type from
+           phase 1.
     }];
 
     let constructor = "vpux::VPUIP::createFlattenSparseWeightsTypesPass()";
@@ -1568,9 +1972,21 @@ def ResolveDMAWithSwizzling : PassBase<"resolve-dma-with-swizzling", "vpux::Func
     let summary = "Transform DMAs that operate on swizzled buffers";
 
     let description = [{
-        This pass will transform DMAs that operate on swizzled buffers so that they
-        copy buffers of size aligned to 512 to satisfy swizzling HW restrictions.
-        Transformation will result in a flat buffer copy of required size
+        AI-generated summary
+
+        Transforms DMA operations on swizzled buffers whose real data size (shape times stride)
+        does not match the total allocation size (which is aligned to 512 for swizzling).
+
+        For each such DMA, the pass creates new flat tensor shapes that cover the full
+        512-aligned allocation size. The source operand is replaced: if a constant, its shape
+        is flattened in place; if a DeclareBufferOp, a new flat buffer declaration is created.
+        The destination DeclareBufferOp is similarly replaced with a flat buffer of aligned size.
+        A new NNDMAOp is then created to copy between the flat representations.
+
+        Activation compression and decompression are handled as special cases: for compression
+        (CMX source), only the input is required to be size-aligned; for decompression (DDR
+        source), only the output must be aligned and the output buffer's allocation size is used
+        for computing the flat tensor dimensions.
     }];
 
     let constructor = "vpux::VPUIP::createResolveDMAWithSwizzlingPass()";
@@ -1589,7 +2005,12 @@ def TileActShaveKernelTask : PassBase<"tile-act-shave-kernel-task", "vpux::Funct
     let summary = "Tile act shave kernel task on multi shaves";
 
     let description = [{
-        This pass will tile act kernel run task on multi shaves.
+        AI-generated summary
+
+        Splits SwKernelOp tasks across available SHAVE engines by tiling input/output tensors
+        along a chosen dimension. Creates per-SHAVE SwKernel.Run entries so each SHAVE engine
+        processes a subset of the data in parallel. Uses SwKernelRewriter for single-tile and
+        ClusterSwKernelRewriter for distributed (multi-cluster) operations.
     }];
 
     let constructor = "vpux::VPUIP::createTileActShaveKernelTaskPass()";
@@ -1603,10 +2024,15 @@ def SetZeroOffsetWeightsTable : PassBase<"set-zero-offset-weights-table", "vpux:
     let summary = "Set NCEClusterTask isZeroOffsetWeightsTable attribute";
 
     let description = [{
+        AI-generated summary
+
         Identifies NCEClusterTask operations whose weights table pointers can be relative to the start of the
         weights base address (i.e. the pointers start from zero) and adds the `isZeroOffsetWeightsTable`
         attribute to them. This will prevent future passes like PatchWeightsTable and
         PatchPopulateWeightTableWithShave to patch the weights table content, keeping the data offset starting from 0.
+
+        The pass only applies to CONV operations (`NCETaskType::CONV`) where `isWeightsTableReuseEnabled`
+        returns true.  Operations with sparse weights (non-null `weightsSparsityMap`) are skipped.
 
         This allows such operations to share the weights table buffer, if the pointer steps are the same.
         Compared to the operations targeted by this pass, the remaining NCEClusterTasks will have their
@@ -1665,8 +2091,22 @@ def AdjustSpillSize : PassBase<"adjust-spill-size", "vpux::FunctionPass"> {
     let summary = "Adjusts activation spilling buffer size in DDR";
 
     let description = [{
-        This pass prepares DDR allocation for handling HW support for activation spilling compression.
-        In worst case scenario DDR buffer needs to be enlarged in case size after compression is bigger
+        AI-generated summary
+
+        This pass prepares DDR allocation for handling hardware activation spilling compression.
+        In the worst case, compressed activation data can be larger than the original, so DDR
+        spill buffers must be enlarged to prevent memory corruption.
+
+        The pass walks all NNDMAOp operations that have a spillId attribute:
+        - For spill-write (CMX -> DDR): If the source buffer size is supported for compression,
+          the DDR allocation is enlarged using updateSizeForCompression (which accounts for
+          worst-case compression overhead). For SEGMENTED or OVERLAPPED distributions, each
+          per-cluster chunk is independently sized. The buffer type is updated with the new
+          allocation size and marked as CompressionCandidate. The async result types are also
+          updated.
+        - For spill-read (DDR -> CMX): The input block argument type is updated to match the
+          enlarged type from the corresponding spill-write, and the DMA is marked as a
+          compress candidate.
     }];
 
     let constructor = "vpux::VPUIP::createAdjustSpillSizePass()";
@@ -1680,9 +2120,23 @@ def FuseDDRCopiesIntoConcats : PassBase<"fuse-ddr-copies-into-concats", "vpux::F
     let summary = "Fuse VPUIP.Copy into adjacent VPUIP.ConcatView";
 
     let description = [{
-        When there's NCEClusterTask (CMX2DDR) -> Copy (DDR2DDR) -> ConcatView (DDR) pattern in a graph,
-        it is possible to get rid of the copy.
-        In order to do that both NCEClusterTask and ConcatView must share output buffer.
+        AI-generated summary
+
+        Fuses redundant DDR-to-DDR Copy operations into ConcatView operations.
+
+        Rewriter: FuseCopies (greedy pattern on VPUIP.ConcatViewOp)
+        Matches the pattern:
+            CopyOp (CMX->DDR) -> memref::AllocOp -> CopyOp (DDR->DDR) -> ConcatViewOp (DDR)
+        and fuses the two CopyOps into a single CMX-to-DDR Copy that writes directly into
+        the ConcatView output buffer, eliminating the intermediate DDR allocation and DDR-to-DDR
+        copy.
+
+        Eligibility checks:
+        - The ConcatView input must be produced by a DDR-to-DDR CopyOp
+        - The DDR-to-DDR CopyOp input must come from a non-distributed CopyOp
+        - The intermediate buffer must be allocated via memref::AllocOp (not a block argument)
+
+        After fusion, unused intermediate CopyOps and their AllocOps are erased.
     }];
 
     let constructor = "vpux::VPUIP::createFuseDDRCopiesIntoConcats()";
@@ -1696,10 +2150,27 @@ def NNDMATiling : PassBase<"nn-dma-tiling", "vpux::FunctionPass"> {
     let summary = "Legalizes NNDMA Ops which do not fit hardware capabilities";
 
     let description = [{
-        This pass splits NNDMAOp if DMA data size is greater than 16MB(2**24 bytes) or it has more than 256 planes after unroll-distributed-ops.
-        CopyOpTiling pass has similar logic to tile CopyOp, but Distributed CopyOp can not be handled.
-        This pass is added to legalize NNDMAOp so that each DMA job can fit hardware capabilities as a timely solution.
-        The refactoring in E#84706 will provide a more maintainable long term solution.
+        AI-generated summary
+
+        This pass splits NNDMAOp operations that exceed hardware DMA capabilities into multiple
+        smaller tiles. Unlike the CopyOpTiling pass which handles CopyOp before unrolling,
+        this pass operates on NNDMAOp after unroll-distributed-ops.
+
+        Rewriter: SplitNNDMARewriter (greedy pattern on VPUIP.NNDMAOp)
+        Splits an NNDMAOp when:
+        - DMA data size exceeds the architecture-specific maximum transfer length
+          (e.g. 16MB for some architectures)
+        - Number of planes exceeds the maximum supported by the DMA engine
+          (architecture-dependent, e.g. 255 planes)
+
+        Tiling strategy:
+        - Selects a tiling dimension using getCopyDMATilingDim (or
+          getCopyDMATilingDimForLargePlaneNum for plane-count violations)
+        - Computes balanced tile sizes to evenly distribute work
+        - Creates per-tile VPURT::DeclareBufferOp declarations with adjusted byte offsets
+        - Wraps each tile in a VPURT::TaskOp with the original barrier dependencies
+        - Distributes tiles across DMA ports in round-robin fashion
+        - Handles sparse buffer types by selecting the maximum component size for tiling
     }];
 
     let constructor = "vpux::VPUIP::createNNDMATilingPass()";
@@ -1744,6 +2215,24 @@ def UngroupBoundedBuffersAsFuncArgs : PassBase<"ungroup-bounded-buffers-as-func-
     }];
 
     let constructor = "vpux::VPUIP::createUngroupBoundedBuffersAsFuncArgsPass()";
+    let dependentDialects = [
+        "vpux::VPUIP::VPUIPDialect"
+    ];
+}
+
+def UngroupHostBuffersAsFuncArgs : PassBase<"ungroup-host-buffers-as-func-args", "vpux::ModulePass"> {
+    let summary = "Expose hidden bounded-buffer shapes at func boundaries";
+
+    let description = [{
+        This pass is similar to UngroupBoundedBuffersAsFuncArgs, but targets hidden boundaries.
+        It detects hidden bounded-buffer boundaries introduced by one-shot bufferization,
+        where dynamic memref boundaries are represented by Group/Ungroup and ReinterpretCast
+        operations inside function bodies, and makes the shape explicit in function args/results.
+
+        This pass also updates call sites and NetworkInfo with shape DataInfo entries.
+    }];
+
+    let constructor = "vpux::VPUIP::createUngroupHostBuffersAsFuncArgsPass()";
     let dependentDialects = [
         "vpux::VPUIP::VPUIPDialect"
     ];
@@ -1794,19 +2283,27 @@ def ConvertVPUIPCopyToSWCopy : PassBase<"convert-vpuip-copy-to-sw-copy", "vpux::
     let summary = "Convert VPUIP.Copy to SW.Kernel Copy";
 
     let description = [{
-           Traverses the IR and when found VPUIP.Copy it is converted as SW.Copy operator
-           which is created in this pass on certain conditions.
-           Need to cover the cases of memory transfers, with strides which are not byte aligned,
-           and because of that can't be executed as DMA ops.
+        AI-generated summary
 
-           The only solution for that is to have a dedicated SW Copy operator which can handle these sub byte accesses.
-           Copy has the inBitOffset and outBitOffset attributes to suggest which nibble to start copying from.
+        Converts VPUIP.CopyOp operations to SwKernel Copy operations when the copy involves
+        sub-byte element types (e.g. INT4/UINT4) with non-byte-aligned strides that cannot
+        be executed as DMA operations.
 
-           Current version has the base functionality: INPUT (strided) -> OUTPUT && INPUT -> OUTPUT (strided)
-            The main conditions for using Copy operator are:
-                sub_byte_type_used && strides_non_byte_aligned
-                                    OR
-                strides_aligned && strides_in_bit > dims_in_bit && innermost_dim_not_aligned
+        Rewriter: ConvertVPUIPCopyToSWCopy (partial conversion on VPUIP.CopyOp)
+        A CopyOp is converted when:
+        - The element type is sub-byte (SInt4 or UInt4), AND
+        - Either strides are not byte-aligned, OR strides exceed dimension sizes with
+          non-aligned innermost dimension
+
+        The SW Copy kernel receives inBitOffset and outBitOffset attributes computed from
+        any SubViewOp offsets on the input or output operands, indicating which nibble to
+        start copying from. The offsets are transformed from logical dimension order to
+        memory order.
+
+        Restrictions:
+        - Direct access to NetworkInput/NetworkOutput block arguments is not supported
+        - The pass creates a runtime kernel definition and a built-in SW function for the
+          copy operation on tile 0
     }];
 
     let constructor = "vpux::VPUIP::createConvertVPUIPCopyToSWCopyPass()";
@@ -1820,9 +2317,19 @@ def UnrollDMAAnalysis : PassBase<"unroll-analysis", "vpux::FunctionPass"> {
     let summary = "Analysis pass to cache which unroll dma passes are needed";
 
     let description = [{
-        This pass creates and fill UnrollDMAAnalysis. It traverses the IR and looks for DMA ops that have to be unrolled.
-        The DMA unrolling passes use UnrollDMAAnalysis analysis to return early if unrolling is not needed.
-        Prevents slow IR traversal and checks and speedup compile time especially for bigger graphs.
+        AI-generated summary
+
+        This pass creates and populates the UnrollDMAAnalysis cache. It traverses the IR and
+        records which DMA operation types (ExpandDMA, GatherDMA, DepthToSpaceDMA,
+        SpaceToDepthDMA, PermuteDMA, PerAxisTileDMA, UpsamplingDMA) are present and require
+        unrolling.
+
+        Downstream DMA unrolling passes (e.g. UnrollExpandDMA, UnrollPermuteDMA) query this
+        analysis to skip execution entirely when no operations of their type exist, avoiding
+        unnecessary IR traversal and reducing compile time for larger graphs.
+
+        The analysis is marked as preserved so it can be reused by multiple subsequent passes
+        without recomputation.
     }];
 
     let constructor = "vpux::VPUIP::createUnrollDMAAnalysisPass()";
@@ -1836,7 +2343,11 @@ def InvalidateUnrollDMAAnalysis : PassBase<"invalidate-unroll-dma-analysis", "vp
     let summary = "Invalidates UnrollDMAAnalysis";
 
     let description = [{
-        Invalidates UnrollDMAAnalysis which is used to skipp unnecessary DMA unroll passes.
+        AI-generated summary
+
+        Invalidates cached DMA unrolling analysis results when the IR has been modified by
+        intervening passes. Marks the DMA split decision data as stale so that subsequent passes
+        that query DMA unrolling will recompute the analysis from the current IR state.
     }];
 
     let constructor = "vpux::VPUIP::createInvalidateUnrollDMAAnalysisPass()";
@@ -1850,7 +2361,12 @@ def DispatchedInliner : PassBase<"dispatched-inliner", "vpux::ModulePass"> {
     let summary = "Inlines using VPUIP's FuncInlinerInterface";
 
     let description = [{
-        This pass executes MLIR's inliner pass which dispatches to VPUIP's FuncInlinerInterface.
+        AI-generated summary
+
+        Inlines dispatched function calls by delegating to the MLIR built-in inliner.
+        Sets the Core::InlinerDispatchAttr to VPUIPInlinerDispatchAttr (which provides
+        VPUIP-specific inlining hooks via FuncInlinerInterface), then invokes
+        mlir::createInlinerPass() to inline all CallOpInterface sites in the module.
     }];
 
     let constructor = "vpux::VPUIP::createDispatchedInlinerPass()";
@@ -1868,6 +2384,8 @@ def UnrollDepthToSpaceDMA : PassBase<"unroll-depth-to-space-dma", "vpux::Functio
     let summary = "Unroll DepthToSpaceDMA tasks";
 
     let description = [{
+        AI-generated summary
+
         This pass unrolls DepthToSpaceDMA tasks to multiple new DepthToSpaceDMA tasks, where applicable.
 
         Main considerations when deciding to unroll a task to multiple new tasks are:
@@ -1879,8 +2397,8 @@ def UnrollDepthToSpaceDMA : PassBase<"unroll-depth-to-space-dma", "vpux::Functio
         is defined separately for NPU37XX and NPU40XX.
 
         For NPU37XX single-cluster unrolling:
-        1. if input/output layout is NHWC with model block_first, number of sub DepthToSpaceDMA is same as block_size.
-        2. if input/output layout is NHWC with model depth_first, number of sub DepthToSpaceDMA is OH * OW / block_size.
+        - if input/output layout is NHWC with model block_first, number of sub DepthToSpaceDMA is same as block_size.
+        - if input/output layout is NHWC with model depth_first, number of sub DepthToSpaceDMA is OH * OW / block_size.
         block_size is the size as the spatial block. It is an attribute of DepthToSpace.
     }];
 
@@ -1969,7 +2487,12 @@ def UnrollDistributedOps : PassBase<"unroll-distributed-ops", "vpux::FunctionPas
     let summary = "Extracts child operations from distributed operation";
 
     let description = [{
-        Legalizes chain of distributed operations according to the tile schema
+        AI-generated summary
+
+        Unrolls distributed (multi-tile) operations into per-tile concrete operations. Replaces
+        VPU.DistributedBuffer types with individual per-tile buffer declarations and generates
+        explicit per-tile DMA copies, DPU tasks, and SHAVE invocations according to the
+        distribution mode (SEGMENTED, DUPLICATED, OVERLAPPED).
     }];
 
     let constructor = "vpux::VPUIP::createUnrollDistributedOpsPass()";
@@ -1983,8 +2506,24 @@ def ComputeHaloRegionForDPUTaskOp : PassBase<"compute-halo-region-for-dpu-task-o
     let summary = "Add halo region information to each DPU Task Op.";
 
     let description = [{
-        This pass will transfer halo region information from the ITIBuffer type of output and output_ITI operands of
-        VPUIP.NCEClusterTask to each of its VPUIP.DPUTaskOps.
+        AI-generated summary
+
+        This pass transfers halo region information from the ITIBuffer type of output and
+        output_ITI operands of VPUIP.NCEClusterTask to each of its VPUIP.DPUTaskOps.
+
+        For each NCEClusterTaskOp with an ITIBufferType output (multi-cluster with halos):
+        1. Builds a mapping from each outward halo to the neighboring NCEClusterTaskOp that
+           consumes it, by tracing through the output_ITI buffer operands.
+        2. For each DPUTaskOp variant, checks whether its workload region [outStart, outEnd]
+           intersects with each outward halo region. Non-intersecting halos are skipped.
+        3. Computes per-workload DPUHaloRegionAttr containing: halo coordinate ranges,
+           target byte offset (relative to the destination ITI buffer), target cluster IDs,
+           sparsity offset (when sparse outputs are present), and target width for stride
+           computation.
+        4. Handles layout mismatches between input and output by applying dimension mapping.
+        5. Replaces each DPUTaskOp with a new one carrying the computed haloRegions attribute.
+
+        The pass is skipped for single-tile configurations.
     }];
 
     let constructor = "vpux::VPUIP::createComputeHaloRegionForDPUTaskOpPass()";
@@ -2002,7 +2541,12 @@ def DMATaskProfilingHwDdr : PassBase<"dma-task-profiling-hw-ddr", "vpux::ModuleP
     let summary = "DMA hardware task profiling";
 
     let description = [{
-        This pass enables hardware DMA profiling directly to DDR.
+        AI-generated summary
+
+        Assigns DMA HWP (Hardware Performance) IDs to profiled DMA tasks and allocates DDR
+        profiling output buffers. Supports two modes: STATIC_HWP (assigns sequential IDs to
+        all DMAs up to a limit) and DYNAMIC_HWP (manages profiling buffer copy-out DMAs
+        after each group of measured tasks).
     }];
 
     let options = [
@@ -2042,7 +2586,12 @@ def CompressSpillDma : PassBase<"compress-spill-dma", "vpux::ModulePass"> {
     let summary = "CompressedDMA for activation spills";
 
     let description = [{
-        Use Compress/Decompress DMA for DMA tasks responsible for activation spilling
+        AI-generated summary
+
+        Converts eligible CMX-to-DDR spill NNDMAOps to CompressDMAOp and DDR-to-CMX spill
+        reads to DecompressDMAOp. Manages a pool of reserved CMX slots for the act_comp_size
+        buffer needed by hardware compression. Slot allocation tracks deallocation points
+        to reuse slots across non-overlapping spills.
     }];
 
     let constructor = "vpux::VPUIP::createCompressSpillDmaPass()";
@@ -2056,9 +2605,24 @@ def OptimizeConvertDMAOp : PassBase<"optimize-convert-dma-op", "vpux::FunctionPa
     let summary = "This pass deals with optimizations around ConvertDMAOp";
 
     let description = [{
-        This pass deals with optimizations around ConvertDMAOp including rewriters like
-        1. ConvertDMACopy - Eliminate CopyOp in ConvertDMA -> Copy sequence
-        1. ConvertDMAClusterCopy - Eliminate CopyOp in ConvertDMA -> ClusteredCopy sequence
+        AI-generated summary
+
+        This pass applies optimizations to eliminate redundant Copy operations around
+        ConvertDMAOp operations.
+
+        Rewrite patterns:
+        - ConvertDMAViewLikeCopy: Fuses ConvertDMA -> [ViewLikeOps] -> CopyOp into a single
+          ConvertDMA by moving view-like operations (GenericReshape, PermuteCast) before the
+          ConvertDMA and writing directly to the Copy output buffer. Validates stride
+          compatibility and distribution attribute consistency.
+        - CopyConvertDMA: Eliminates CopyOp in Copy -> ConvertDMA sequences by feeding the
+          Copy source directly into the ConvertDMA. Checks that input and output distributed
+          buffer types are compatible.
+        - ConvertDMASubViewCopy: Handles ConvertDMA -> [ViewLikeOps] => SubView -> Copy
+          patterns where the ConvertDMA has multiple SubView users. Moves view-like ops
+          before ConvertDMA and replaces each SubView -> Copy pair with SubView -> ConvertDMA,
+          eliminating the intermediate copies. Only applies to non-distributed, compact-stride
+          inputs and excludes ReinterpretCast view ops.
     }];
 
     let constructor = "vpux::VPUIP::createOptimizeConvertDMAOpPass()";
@@ -2072,7 +2636,19 @@ def DMAOutOfOrderOptimization : PassBase<"dma-out-of-order-optimization", "vpux:
     let summary = "enable DMA out of order execution if possile";
 
     let description = [{
-        Take advantage of DMA out of order execution if consequitive DMAs do not have any data dependency
+        AI-generated summary
+
+        Enables out-of-order execution for consecutive DMA tasks that have no data dependency.
+
+        The pass groups DMA operations by their hardware queue (port + channel) and tracks the
+        last 1-2 DMA tasks per queue. For each new DMA task[N], the pass checks whether its
+        input buffers overlap in memory with the output buffers of the previous task[N-1] and,
+        if task[N-1] was also marked out-of-order, with task[N-2] on the same queue. When no
+        overlap is detected, the ORD bit is cleared to allow hardware out-of-order execution.
+
+        Profiling buffer management DMAs are excluded from the optimization and reset the
+        per-queue tracking state to prevent concurrency issues in DMA HWP. After processing
+        all DMA tasks, barrier slot counts are verified for correctness.
     }];
 
     let constructor = "vpux::VPUIP::createDMAOutOfOrderOptimizationPass()";
@@ -2086,8 +2662,23 @@ def ComputeTaskStripping : PassBase<"compute-task-stripping", "vpux::FunctionPas
     let summary = "Strips compute tasks from the model";
 
     let description = [{
-        This pass strips compute tasks from the model.
-        There are three options that can be selected to strip tasks : dpu, act-shave, all.
+        AI-generated summary
+
+        This pass strips DPU and/or SHAVE compute tasks from the model for dry-run or
+        debugging purposes, controlled by the dpuDryRun and shaveDryRun options.
+
+        The pass uses BarrierInfo to analyze the barrier dependency graph and performs:
+        1. Producer legalization: For each barrier with illegal (stripped) producers, traces
+           upward through the barrier graph to find the nearest legal (non-stripped) producers
+           and redirects the barrier's producer set to them.
+        2. Consumer legalization: For each barrier with illegal consumers, traces downward
+           to find the nearest legal consumers and redirects the barrier's consumer set.
+        3. Erases all stripped TaskOps from the IR.
+        4. Removes orphaned barriers (those with no producers or no consumers) and performs
+           post-processing cleanup of barrier operations.
+
+        DPU stripping supports STRIP mode (removes DPU tasks entirely). SHAVE stripping
+        removes all ActShave tasks when enabled.
     }];
 
     let constructor = "vpux::VPUIP::createComputeTaskStrippingPass()";
@@ -2119,10 +2710,27 @@ def AddStartBarrier: PassBase<"add-start-barrier", "vpux::FunctionPass"> {
 
 
     let description = [{
-        Adds a start barrier to always ensure that there is a barrier consumption event. The barrier should
-        be produced by a sync DMA which is supposed to be zero copy with transfer size 0. The pattern is
-        expected after this pattern at the start of the nework:
-        DMATask -> Barrier -> DMATask -> other tasks
+        AI-generated summary
+
+        Ensures a start barrier exists at the beginning of the network so that DPU/SHV task
+        enqueueing can be deferred until the barrier is signaled.
+
+        The pass analyzes all DMA queues and searches for a valid start barrier candidate among
+        barriers updated by the first DMA on port 0, channel DDR. A valid candidate must satisfy:
+        (1) it is produced by DMA P0 Channel DDR to allow WLM Fetch DMAs to be inserted before it,
+        (2) it is consumed only by DMA tasks (not DPU or SHV),
+        (3) none of its consumers depend on DPU/SHV task execution, and
+        (4) it is not produced by any task other than the first DMA (to avoid race conditions
+            under compiler barrier programming).
+
+        If no valid candidate is found, the pass creates a new virtual barrier and inserts a
+        zero-copy sync DMA (transfer size 0) to produce it. Cross-queue dependencies are then
+        added so that the first DMA on every other queue (port/channel combination) waits on the
+        start barrier, guaranteeing that service DMAs (barrier programming, LUT programming)
+        complete before compute tasks begin.
+
+        Expected pattern after the pass:
+        SyncDMA -> StartBarrier -> DMATask -> other tasks
     }];
 
     let constructor = "vpux::VPUIP::createAddStartBarrierPass()";
@@ -2136,7 +2744,13 @@ def DetectDMASplitCandidate : PassBase<"detect-dma-split-candidate", "vpux::Func
     let summary = "Detect DMA split candidate";
 
     let description = [{
-        This pass looks for DMAs need to be split and assign splitCandidate attribute
+        AI-generated summary
+
+        Analyzes DMA task cycle costs using an inference execution simulator. For each
+        NNDMA, computes the idle interval on the other DMA port during the task's execution
+        window. Marks the task as a split candidate if the idle interval can fit the split
+        cost, enabling the subsequent SplitDMAToBalanceLoad pass to distribute the transfer
+        across both DMA ports. Only applies when 2 DMA ports are available.
     }];
 
     let constructor = "vpux::VPUIP::createDetectDMASplitCandidatePass()";
@@ -2150,7 +2764,12 @@ def SplitDMAToBalanceLoad : PassBase<"split-dma-to-balance-load", "vpux::Functio
     let summary = "Legalize split candidates to balance load on DMA ports";
 
     let description = [{
-        This pass looks for DMAs with splitCandidate attribute and split them
+        AI-generated summary
+
+        Splits NNDMAOp and GatherDMAOp operations that were marked as split candidates by
+        DetectDMASplitCandidate. Distributes the transfer across available DMA ports
+        (requires 2 ports). Does not handle hardware descriptor size limit violations —
+        that is done by NNDMATiling.
     }];
 
     let constructor = "vpux::VPUIP::createSplitDMAToBalanceLoadPass()";
@@ -2164,29 +2783,15 @@ def FuseSegmentedDMA : PassBase<"fuse-segmented-dma", "vpux::FunctionPass"> {
     let summary = "This pass fuse segmented DMAs, which has compatible parameters in one DMA to decrease configuration overhead";
 
     let description = [{
-        This pass combines DMA with help of inter-cluster stride to combine them
+        AI-generated summary
+
+        Fuses multiple small DMA operations that transfer contiguous memory segments into single
+        larger DMA transfers. Combines per-tile DMA copies that were created during distributed
+        operation unrolling when they can be coalesced into one descriptor, reducing DMA task
+        scheduling overhead.
     }];
 
     let constructor = "vpux::VPUIP::createFuseSegmentedDmaPass()";
-}
-
-//
-// LegalizeScheduleForPartialWlmFetchDmas
-//
-
-def LegalizeScheduleForPartialWlmFetchDmas : PassBase<"legalize-schedule-for-partial-wlm", "vpux::FunctionPass"> {
-    let summary = "Pass inserts dummy dmas to facilitate add-fetch-ops pass";
-
-    let description = [{
-        Workload Management pass expects to always find a DMA on tile 0 and list 0 for attaching a
-        fetch task which copies the descriptors from DDR to CMX Metadata. In cases when we have super optimized
-        schedule we may not have any such DMAs which would cause the fetch task insertion algorithm to fail
-
-        This pass understands how WLM creates execution groups and attaches fetch task. It emulates and tries to fit the
-        dummy DMAs such we would always find DMAs during fetch task insertion while maintaining a valid schedule
-    }];
-
-    let constructor = "vpux::VPUIP::createLegalizeScheduleForPartialWlmFetchDmasPass()";
 }
 
 //
@@ -2224,22 +2829,77 @@ def LegalizeStridedDmas : PassBase<"legalize-strided-dmas", "vpux::ModulePass"> 
 
     let description = [{
         Checks whether the DMAs reading from or writing to network I/Os are compatible with dynamic strides,
-        and legalizes the network if they are not. A DMA is considered compatible with dynamic strides if the strides
-        of its inputs and outputs match the strides of the network’s main function arguments.
+        and legalizes the network if they are not. A DMA is considered compatible with dynamic strides if the
+        layout function of the DMA input/output has the same dimensionality and strides as the network IO or
+        can be reliably transformed into such function by adding/removing terms that do not contribute to the function.
+        Layout function in this context is a function which maps tensor indices to byte position in the memory. For instance
+        consider a network IO mxnxpxq tensor with following layout:
 
-        If a DMA is compatible, it is marked as having dynamicInput and/or dynamicOutput.
-        If a DMA is not compatible with dynamic strides, a new DDR buffer is allocated to hold compact data,
-        and a new DDR→DDR DMA is added to copy data from the strided argument to the new compact buffer.
-        For example, the following incompatible DMA, which reads from a network input:
+        f(m, n, p, q) = m * s1 + n * s2 + p * s3 + q * s4
 
-        VPUIP.NNDMA inputs(%incompatible_view_into_arg0) outputs(%cmx_buffer)
+        Which is a typical strided tensor layout. Now let's say DMA reading that tensor has following layout:
+
+        f'(m, n, p, q) = m * s1' + n * s2' + p * s3' + q * s4'
+
+        DMA is compatible iff each sn == sn' or the terms with unequal strides is actually a vanishing term.
+        Vanishing terms are terms for which the corresponding dimension is 1 so the term always evaluates to 0.
+
+        An example of a vanishing term:
+
+        argument shape - mxnxp
+
+        DMA shape - mxnx1xp
+
+        Layout function for argument
+
+        f(m, n, p) = s1 * m + s2 * n + s3 * p
+
+        Layout for DMA:
+
+        f'(m, n, 0, p) = s1 * m + s2 * n + s3 * 0 + s3 * p
+
+        Which trivially simplifies to:
+
+        f'(m, n, p) = s1 * m + s2 * n + s3 * p
+
+        Which is compatible under previous definition.
+
+        If this pass detects any incompatible DMA it will allocate auxiliary DDR buffer and transfer
+        data from network IO to it and replace all uses of the network IO with uses of auxiliary buffer.
+        If the branch using that auxiliary buffer has writes legalization pass will additionally insert
+        DMA to transfer data back from auxiliary buffer to network IO. Below is an example of the legalized IR:
+
+        func(%arg) {
+            ...
+            %val = SomeChainOfOps(%arg)
+            %incompatible_view = SomeIncompatibleView(%val)
+            %compatible_view = SomeCompatibleView(%val)
+            %write_compatible = DMA(%source, %compatible_view)
+            %write_incompatible = DMA(%source2, %incompatible_view)
+            ...
+        }
 
         Is transformed into:
 
-        %compact_ddr_buffer = memref.alloc()
-        VPUIP.NNDMA {stridedInput} inputs(%arg0) outputs(%compact_ddr_buffer)
-        %incompatible_reshape = GenericReshape(%compact_ddr_buffer)
-        VPUIP.NNDMA inputs(%compact_ddr_buffer) outputs(%cmx_buffer)
+        func(%arg) {
+            ...
+            %val = SomeChainOfOps(%arg)
+
+            // Legalization prologue
+            %auxiliary = memref.alloc()
+            %legalization = DMA {stridedInput} (%val, %auxiliary)
+
+            %incompatible_view = SomeIncompatibleView(%legalization)
+            %compatible_view = SomeCompatibleView(%legalization)
+            %write_compatible = DMA(%source, %compatible_view)
+            %write_incompatible = DMA(%source2, %incompatible_view)
+
+            // Legalization epilogue
+            %concat = ConcatView input(%write_compatible, %write_incompatible) output(%legalization)
+            %legalization_write = DMA {stridedOutput} (%concat, %val)
+
+            ...
+        }
     }];
 
     let constructor = "vpux::VPUIP::createLegalizeStridedDMAsPass()";
@@ -2306,8 +2966,18 @@ def UngroupBufferSectionRewriterExecutor : PassBase<"run-ungroup-buffer-section-
     let summary = "Build ungroup sparse and bounded buffer rewriter collection";
 
     let description = [{
-        This pass hoists SubViewOp through GroupSparseBufferOp with constant fusion and decomposes sparse-buffer operations into per-buffer operations,
-        inserting temporary group/ungroup ops that are later optimized away.
+        AI-generated summary
+
+        This pass executes a named rewriter from the ungroup-buffer-section strategy registry.
+        The strategy is selected via the rewriterName option and the rewriters are registered
+        by createUngroupBufferSectionStrategy. Typical rewriters include:
+        - Hoisting SubViewOp through GroupSparseBufferOp with constant fusion
+        - Decomposing sparse-buffer operations into per-buffer operations, inserting temporary
+          group/ungroup ops that are later optimized away
+        - Optionally reordering SubView operations (controlled by enableReorderSubViewOp flag)
+
+        The pass uses the dynamic rewriter framework (RewriterExecutorInterface) to discover
+        and apply registered rewriters by name.
     }];
 
     let options = [
@@ -2339,6 +3009,65 @@ def UnrollShaveCacheOps : PassBase<"unroll-shave-cache-ops", "vpux::FunctionPass
     }];
 
     let constructor = "vpux::VPUIP::createUnrollShaveCacheOpsPass()";
+}
+
+//
+// LegalizeShaveSubmitDMAs
+//
+
+def LegalizeShaveSubmitDMAs : PassBase<"legalize-shave-submit-dmas", "vpux::FunctionPass"> {
+    let summary = "Pass inserts fetch dmas for skip dmas in correct order along with inserting skip dmas themselves";
+
+    let description = [{
+        This pass legalizes DMA submissions originating from SHAVE kernels that use DMA operations.
+        Certain SHAVE (SwKernel) tasks can submit DMA descriptors to hardware. For such kernels, the compiler must explicitly
+        generate the descriptor fetch and synchronization DMAs required for the hardware to correctly execute those descriptors.
+        This pass analyzes SHAVE tasks that use DMA and inserts the required fetch, synchronization, and skip DMAs together with 
+        the necessary barrier dependencies.
+
+        The pass first scans the execution graph using BarrierInfo to identify SHAVE tasks whose kernels issue DMA commands. 
+        These tasks are grouped by their logical task index so that all DMA submissions associated with the same logical SHAVE task 
+        can be handled together.
+
+        For each logical SHAVE task group the pass plans a sequence of operations consisting of:
+            • Fetch DMAs that retrieve DMA descriptors for both DDR and CMX DMA engines.  
+            • A shared barrier used to synchronize the completion of descriptor fetches.  
+            • Synchronization DMAs (one per DMA engine) which ensure that descriptor fetches complete before hardware begins executing 
+                the corresponding descriptors.  
+            • Skip DMAs corresponding to the SHV Tasks that will be executed in loop by the hardware.
+
+        Fetch DMAs are scheduled to produce the group barrier, while the synchronization DMAs consume that barrier to guarantee ordering 
+        between descriptor fetch and execution. The SHAVE tasks themselves are also made consumers of the barrier so that execution of the 
+        SHAVE kernels waits for descriptor preparation to complete.
+
+        The pass first constructs a plan describing all required DMA and barrier insertions without modifying the IR. During this planning 
+        stage it determines insertion points, allocates new DMA and barrier indices, records barrier producer/consumer relationships, and 
+        establishes a deterministic ordering of skip DMAs based on tile, list, and DMA channel.
+
+        After planning, the pass materializes the new operations in the IR. Dummy buffers are created as needed for the inserted DMA operations. 
+        Fetch, sync, and skip DMAs are created using the appropriate helpers and added to BarrierInfo so that the control graph reflects the new 
+        tasks. The pass also creates the required virtual barriers and updates the barrier producer and consumer sets accordingly.
+
+        Finally, the execution graph is re-ordered and validated using BarrierInfo utilities to ensure the control dependencies are consistent 
+        and the resulting schedule is legal.
+        
+        Overall, this pass ensures that DMA submissions originating from SHAVE kernels are properly materialized as explicit DMA tasks with 
+        correct ordering, synchronization, and barrier dependencies in the final execution graph.
+
+        A final graph emit would look like
+
+        -> Fetch(Skip_list0_DDR) -|
+        -> Fetch(Skip_list1_DDR) -|-> BAR -> |-> SyncDMA(DDR) -> SkipDMA(list0_DDR), SkipDMA(list1_DDR)
+        -> Fetch(Skip_list0_CMX) -|          |-> SyncDMA(CMX) -> SkipDMA(list0_CMX), SkipDMA(list1_CMX)
+        -> Fetch(Skip_list1_CMX) -|          |
+                                             |------------------------> SHV[list0](withDMA)
+                                             |------------------------> SHV[list1](withDMA)
+
+        Note: The pass currently ONLY legalizes for single DMA port/engine, to support multiple ports/engines the logic needs
+        to be extended using same fundamentals
+    }];
+
+    let constructor = "vpux::VPUIP::createLegalizeShaveSubmitDMAsPass()";
 }
 
 #endif

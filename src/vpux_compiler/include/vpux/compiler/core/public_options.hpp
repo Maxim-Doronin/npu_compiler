@@ -5,9 +5,9 @@
 
 #pragma once
 
-#include "vpux/compiler/core/developer_build_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/utils/options.hpp"
+#include "vpux/utils/core/developer_build_utils.hpp"
 
 #include <mlir/Pass/PassManager.h>
 #include <mlir/Pass/PassOptions.h>
@@ -44,6 +44,14 @@ struct PublicOptions : mlir::PassPipelineOptions<PublicOptions> {
 
     StrOption enableActivationSparsity{*this, "enable-activation-sparsity",
                                        llvm::cl::desc("Enable activation sparsity"), llvm::cl::init("auto")};
+
+    BoolOption readStrategyFromJson{*this, "read-strategy-from-json",
+                                    llvm::cl::desc("Read the multiclustering and tiling strategy from a JSON file"),
+                                    llvm::cl::init(false)};
+
+    BoolOption writeStrategyToJson{*this, "write-strategy-to-json",
+                                   llvm::cl::desc("Write the multiclustering and tiling strategy to a JSON file"),
+                                   llvm::cl::init(false)};
     static std::string getDefaultEnableActivationSparsity(config::ArchKind arch) {
         switch (arch) {
         case config::ArchKind::NPU37XX:
@@ -105,15 +113,12 @@ struct PublicOptions : mlir::PassPipelineOptions<PublicOptions> {
             ::llvm::cl::values(
                     clEnumValN(WorkloadManagementMode::FWLM_V1_PAGES, "FWLM_V1_PAGES",
                                "Full WLM with split into pages"),
-                    clEnumValN(WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES",
-                               "Partial WLM with split into subgraphs"),
-                    clEnumValN(WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO",
-                               "Partial WLM, enqueue barriers search algorithm at VPURT ENABLED"),
                     clEnumValN(WorkloadManagementMode::PWLM_V0_1_PAGES, "PWLM_V0_1_PAGES",
                                "PWLM with split into subgraphs (pages)"),
-                    clEnumValN(WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA",
-                               "Partial WLM, enqueue barriers search algorithm at VPURT DISABLED. Use LCA based "
-                               "enqueue algorithm at VPUMI"))};
+                    clEnumValN(WorkloadManagementMode::PWLM_V0_1_PAGES, "PWLM_V0_LCA",
+                               "This is a deprecated WLM mode which is no longer supported. The option is kept for "
+                               "backwards compatibility only and the mode redirects to PWLM_V0_1_PAGES mode, which has "
+                               "the same vpu-fw compatibility but offers numerous stability improvements."))};
     static WorkloadManagementMode getDefaultWorkloadManagementMode(config::ArchKind arch) {
         switch (arch) {
         case config::ArchKind::NPU40XX:

@@ -111,8 +111,6 @@ class TwoMishTest_NPU4000 : public TwoMishTest_NPU3720 {};
 
 TEST_P(TwoMishTest_NPU4000, HW) {
     setDefaultHardwareMode();
-    // TODO: E129229
-    configuration["NPU_COMPILATION_MODE_PARAMS"] = "workload-management-enable=false";
     run(Platform::NPU4000);
 }
 

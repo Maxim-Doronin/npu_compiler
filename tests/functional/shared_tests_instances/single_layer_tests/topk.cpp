@@ -11,16 +11,23 @@ namespace test {
 
 class TopKLayerTestCommon : virtual public TopKLayerTest, virtual public VpuOv2LayerTest {
     void configure_model() override {
-        configuration[ov::intel_npu::compilation_mode_params.name()] = "convert-precision-to-fp16=false";
+        configuration[ov::intel_npu::compilation_mode_params.name()] = "disabled-passes=convert-precision-to-fp16";
     }
 };
 class TopK11LayerTestCommon : public TopK11LayerTest, virtual public VpuOv2LayerTest {};
 class TopKDDRLayerTestCommon : public TopK11LayerTest, virtual public VpuOv2LayerTest {
     void configure_model() override {
-        configuration[ov::intel_npu::compilation_mode_params.name()] = "convert-precision-to-fp16=false";
+        configuration[ov::intel_npu::compilation_mode_params.name()] = "disabled-passes=convert-precision-to-fp16";
     }
 };
-
+class TopK_SCFTilingLayerTest : public TopKLayerTestCommon {
+    void configure_model() override {
+        configuration[ov::intel_npu::compilation_mode_params.name()] =
+                "disabled-passes=convert-precision-to-fp16 scf-tiling=true";
+        // E-190336 for MC support
+        VpuOv2LayerTest::configuration["NPU_TILES"] = "1";
+    }
+};
 TEST_P(TopKLayerTestCommon, NPU3720_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU3720);
@@ -31,12 +38,22 @@ TEST_P(TopKLayerTestCommon, NPU4000_HW) {
     run(Platform::NPU4000);
 }
 
+TEST_P(TopK_SCFTilingLayerTest, NPU4000_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU4000);
+}
+
 TEST_P(TopKDDRLayerTestCommon, NPU4000_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU4000);
 }
 
 TEST_P(TopKDDRLayerTestCommon, NPU5010_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU5010);
+}
+
+TEST_P(TopK_SCFTilingLayerTest, NPU5010_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU5010);
 }
@@ -103,6 +120,7 @@ TEST_P(TopK1LayerTest, NPU3720_HW) {
 
 using ov::test::TopK11LayerTestCommon;
 using ov::test::TopK1LayerTest;
+using ov::test::TopK_SCFTilingLayerTest;
 using ov::test::TopKDDRLayerTestCommon;
 using ov::test::TopKLayerTestCommon;
 
@@ -147,6 +165,9 @@ const auto paramsConfigPrecommitFP32 = ::testing::Combine(
 INSTANTIATE_TEST_SUITE_P(smoke_precommit_TopK_FP32, TopKLayerTestCommon, paramsConfigPrecommitFP32,
                          TopKLayerTestCommon::getTestCaseName);
 
+INSTANTIATE_TEST_SUITE_P(smoke_precommit_TopK_FP32_SCFTiling, TopK_SCFTilingLayerTest, paramsConfigPrecommitFP32,
+                         TopK_SCFTilingLayerTest::getTestCaseName);
+
 // Tiling tests
 const std::vector<int64_t> k_Tilling = {1};
 const std::vector<int64_t> axes_Tilling = {1};
@@ -190,6 +211,15 @@ INSTANTIATE_TEST_SUITE_P(
                            ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(inShapes)),
                            ::testing::Values(test_utils::TARGET_DEVICE)),
         TopKLayerTestCommon::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(smoke_TopK_SCFTiling, TopK_SCFTilingLayerTest,
+                         ::testing::Combine(::testing::ValuesIn(k_Tilling), ::testing::ValuesIn(axes_Tilling),
+                                            ::testing::ValuesIn(modes_Tilling), ::testing::ValuesIn(sortTypes_Tilling),
+                                            ::testing::ValuesIn(modelTypes_Tilling),
+                                            ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(
+                                                    std::vector<std::vector<ov::Shape>>({{{1, 5, 512, 512}}}))),
+                                            ::testing::Values(test_utils::TARGET_DEVICE)),
+                         TopK_SCFTilingLayerTest::getTestCaseName);
 
 }  // namespace
 

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --swizzling="enable-activation-swizzling=true enable-weights-swizzling=false" %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --swizzling="enable-activation-swizzling=true enable-weights-swizzling=false" %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 !Weights_DDR = memref<16x16x1x1xf16, #NHWC, @DDR>
@@ -31,7 +31,7 @@ func.func @SetSwizzlingForDpuToDpuBufferOnly(%in : memref<1x16x56x56xf16, #NHWC,
             outputs(%buf0 : memref<1x16x56x56xf16, #NHWC, @CMX_NN>)
              -> memref<1x16x56x56xf16, #NHWC, @CMX_NN>
 
-    %1 = VPUIP.NCEClusterTask <{
+    %1 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1],
             kernel_strides = [1, 1],
@@ -56,7 +56,7 @@ func.func @SetSwizzlingForDpuToDpuBufferOnly(%in : memref<1x16x56x56xf16, #NHWC,
         {
         }
 
-    %2 = VPUIP.NCEClusterTask <{
+    %2 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1],
             kernel_strides = [1, 1],
@@ -90,7 +90,8 @@ func.func @SetSwizzlingForDpuToDpuBufferOnly(%in : memref<1x16x56x56xf16, #NHWC,
 
     // Verify that swizzling for DPU to DPU buffer only
 
-    // CHECK:   VPUIP.NCEClusterTask <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
+    // CHECK:   VPUIP.NCEClusterTask <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1],
+    // CHECK-SAME:                   task_type = #VPUIP.nce_task_type<CONV>}
     // CHECK:   input({{[^:]+}} : memref<1x16x56x56xf16, #NHWC, @CMX_NN>)
     // CHECK:   weights({{[^:]+}} : memref<16x16x1x1xf16, #NHWC, @CMX_NN>)
     // CHECK:   weight_table({{[^:]+}} : memref<16x1x1x4xsi32, #NHWC, @CMX_NN>)

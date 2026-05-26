@@ -5,7 +5,7 @@
 
 #include "vpux/compiler/core/loop_allocator.hpp"
 #include "vpux/compiler/core/schedule_builder_utils.hpp"
-#include "vpux/compiler/init.hpp"
+#include "vpux/compiler/init/dialects_registry.hpp"
 
 #include <mlir/Dialect/MemRef/IR/MemRef.h>
 #include <mlir/IR/Builders.h>

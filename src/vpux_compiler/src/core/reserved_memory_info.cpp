@@ -39,7 +39,7 @@ ReservedMemInfo::ReservedMemInfo(mlir::func::FuncOp netFunc) {
     MemLiveRangeInfo liveRangeInfo{netFunc, aliasesInfo, VPU::MemoryKind::DDR};
     // AllocationInfo modifies MemLiveRangeInfo, provide a copy
     auto allocRangeInfo = liveRangeInfo;
-    AllocationInfo allocInfo{netFunc, depsInfo, allocRangeInfo};
+    AllocationInfo allocInfo{netFunc, depsInfo, allocRangeInfo, aliasesInfo};
     auto scanResult = allocInfo.getScanResult(VPU::MemoryKind::DDR);
 
     reserveFunctionRanges(netFunc, liveRangeInfo, scanResult);

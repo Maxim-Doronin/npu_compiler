@@ -103,6 +103,8 @@ void ConvertPrecisionToI32Pass::safeRunOnModule() {
     target.addDynamicallyLegalOp<IE::BitwiseOrOp>(isLegalOp);
     target.addDynamicallyLegalOp<IE::BitwiseXorOp>(isLegalOp);
     target.addDynamicallyLegalOp<IE::BitwiseNotOp>(isLegalOp);
+    target.addDynamicallyLegalOp<IE::BitwiseRightShiftOp>(isLegalOp);
+    target.addDynamicallyLegalOp<IE::BitwiseLeftShiftOp>(isLegalOp);
     target.addDynamicallyLegalOp<IE::OneHotOp>(isLegalOp);
     target.addDynamicallyLegalOp<mlir::func::ReturnOp>(isLegalOp);
     target.addDynamicallyLegalOp<mlir::func::CallOp>(isLegalOp);
@@ -140,22 +142,33 @@ void ConvertPrecisionToI32Pass::safeRunOnModule() {
         mlir::Type sInt32Type = mlir::IntegerType::get(&ctx, 32, mlir::IntegerType::Signed);
         op->setAttr(op.getDstElemTypeAttrName(), mlir::TypeAttr::get(sInt32Type));
     });
-    // Cast Select condition to si32 when output is si32.
+    // Ensure the Select condition matches the expected si32 type for the builtin_Select kernel.
+    // - When data is si64/ui64: promote condition to si64 so runConvertPrecision converts all
+    //   inputs uniformly to si32.
+    // - When data is already si32: cast condition directly to si32, as runConvertPrecision does
+    //   not touch types that are already si32.
+    // For other data types (e.g. f16) the condition must remain unchanged.
     module.walk([&](IE::SelectOp op) {
-        const auto outElemType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType()).getElementType();
-        if (!outElemType.isSignedInteger(32)) {
-            return;
-        }
+        const auto dataElemType = mlir::cast<vpux::NDTypeInterface>(op.getInput2().getType()).getElementType();
         const auto condElemType = mlir::cast<vpux::NDTypeInterface>(op.getInput1().getType()).getElementType();
-        if (condElemType.isSignedInteger(32)) {
-            return;
-        }
-        mlir::Type sInt32Type = mlir::IntegerType::get(&ctx, 32, mlir::IntegerType::Signed);
         mlir::OpBuilder builder(op);
-
-        auto condCast = builder.create<IE::ConvertOp>(appendLoc(op.getLoc(), "convert_si32"), op.getInput1(),
-                                                      mlir::TypeAttr::get(sInt32Type));
-        op.getInput1Mutable().assign(condCast.getOutput());
+        if (dataElemType.isSignedInteger(64) || dataElemType.isUnsignedInteger(64)) {
+            if (condElemType.isSignedInteger(64) || condElemType.isUnsignedInteger(64)) {
+                return;
+            }
+            mlir::Type sInt64Type = mlir::IntegerType::get(&ctx, 64, mlir::IntegerType::Signed);
+            auto condCast = builder.create<IE::ConvertOp>(appendLoc(op.getLoc(), "convert_si64"), op.getInput1(),
+                                                          mlir::TypeAttr::get(sInt64Type));
+            op.getInput1Mutable().assign(condCast.getOutput());
+        } else if (dataElemType.isSignedInteger(32) || dataElemType.isUnsignedInteger(32)) {
+            if (condElemType.isSignedInteger(32)) {
+                return;
+            }
+            mlir::Type sInt32Type = mlir::IntegerType::get(&ctx, 32, mlir::IntegerType::Signed);
+            auto condCast = builder.create<IE::ConvertOp>(appendLoc(op.getLoc(), "convert_si32"), op.getInput1(),
+                                                          mlir::TypeAttr::get(sInt32Type));
+            op.getInput1Mutable().assign(condCast.getOutput());
+        }
     });
     if (mlir::failed(runConvertPrecision(module, typeConverter, target, _log))) {
         signalPassFailure();

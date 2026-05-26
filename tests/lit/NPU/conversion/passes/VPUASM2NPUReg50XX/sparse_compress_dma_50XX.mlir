@@ -3,11 +3,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --convert-VPUASM-to-NPUReg50XX %s | FileCheck %s
-// REQUIRES: dev-build && arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --convert-VPUASM-to-NPUReg50XX %s | FileCheck %s
+// REQUIRES: dev-build && platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-module @OneDMAWithoutAttributes attributes {config.arch = #config.arch_kind<NPU50XX>} {
+module @OneDMAWithoutAttributes attributes {config.platform = #config.platform<NPU5010>} {
   config.ExecutorResource 1 of @DMA_NN
   config.Resources 1 of @NCE at 6.000000e+02 MHz
   net.NetworkInfo entryPoint : @main inputsInfo : {
@@ -18,17 +18,19 @@ module @OneDMAWithoutAttributes attributes {config.arch = #config.arch_kind<NPU5
     DataInfo "output_1" : tensor<1x1x1x25632xf16>
     DataInfo "output_2" : tensor<1x16x32x32xi1>
   }
-  VPUASM.IOBindings inputDeclarations : {
+  VPUASM.InputBindings inputDeclarations : {
     VPUASM.DeclareBuffer @input_0_buffDecl !VPUASM.Buffer< "NetworkInput"[0] <0> : memref<1x16x32x32xf16, #NHWC, @DDR> :  swizzling(0)>
     VPUASM.DeclareBuffer @input_1_buffDecl !VPUASM.Buffer< "NetworkInput"[1] <32768> : memref<1x16x32x32xi1, #NHWC, @DDR> :  swizzling(0)>
-  } outputDeclarations : {
+  }
+  VPUASM.OutputBindings outputDeclarations : {
     VPUASM.DeclareBuffer @output_0_buffDecl !VPUASM.Buffer< "NetworkOutput"[0] <0> : memref<1x16x32x32xf16, #NHWC, @DDR> :  swizzling(0)>
     VPUASM.DeclareBuffer @output_1_buffDecl !VPUASM.Buffer< "NetworkOutput"[1] <32768> : memref<1x1x1x25632xf16, @DDR> :  swizzling(0)>
     VPUASM.DeclareBuffer @output_2_buffDecl !VPUASM.Buffer< "NetworkOutput"[2] <84032> : memref<1x16x32x32xi1, @DDR> :  swizzling(0)>
-  } profilingBuffDeclarations : {
+  }
+  VPUASM.ProfilingBindings profilingDeclarations : {
   }
   func.func @main() {
-    ELF.Main @ELFMain {
+    ELF.Main {
       ELF.CreateLogicalSection @io.NetworkInput0 aligned(1) secType(SHT_NOBITS) secFlags(VPU_SHF_USERINPUT) secLocation(<NetworkInput>) {
         VPUASM.DeclareBuffer @DeclareBuffer0 !VPUASM.Buffer< "NetworkInput"[0] <0> : memref<1x16x32x32xf16, #NHWC, @DDR> :  swizzling(0)>
       }

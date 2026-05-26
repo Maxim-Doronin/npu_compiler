@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/utils/algorithms/simulated_annealing.hpp"
+#include "vpux/utils/algorithm/simulated_annealing.hpp"
 
 namespace vpux {
 namespace algorithm {

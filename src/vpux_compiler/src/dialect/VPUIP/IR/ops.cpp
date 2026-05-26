@@ -51,13 +51,6 @@ using namespace vpux;
 namespace {
 
 //
-// SEOpInterface
-//
-
-template <class MainOpType>
-class SEOpModel final : public IE::SEOpInterface::ExternalModel<SEOpModel<MainOpType>, MainOpType> {};
-
-//
 // TilingInfoOpModel
 //
 
@@ -732,13 +725,6 @@ public:
 //
 
 void vpux::VPUIP::VPUIPDialect::setupExtraInterfaces(mlir::DialectRegistry& registry) {
-    registry.addExtension(+[](mlir::MLIRContext* ctx, IE::IEDialect*) {
-        IE::InterpolateOp::attachInterface<SEOpModel<IE::InterpolateOp>>(*ctx);
-        IE::TransposedConvolutionOp::attachInterface<SEOpModel<IE::TransposedConvolutionOp>>(*ctx);
-        IE::PadOp::attachInterface<SEOpModel<IE::PadOp>>(*ctx);
-        IE::RollOp::attachInterface<SEOpModel<IE::RollOp>>(*ctx);
-    });
-
     registry.addExtension(+[](mlir::MLIRContext* ctx, mlir::async::AsyncDialect*) {
         mlir::async::ExecuteOp::attachInterface<CycleCostInfoOpModel<mlir::async::ExecuteOp>>(*ctx);
     });
@@ -770,6 +756,7 @@ void vpux::VPUIP::VPUIPDialect::setupExtraInterfaces(mlir::DialectRegistry& regi
         VPU::MVN1NormalizeOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::MVN6Op::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::InterpolateOp::attachInterface<SoftwareLayerOpModel>(*ctx);
+        VPU::InterpolateDMAOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::ScatterNDUpdateOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::StridedSliceOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::EluOp::attachInterface<SoftwareLayerOpModel>(*ctx);
@@ -811,6 +798,7 @@ void vpux::VPUIP::VPUIPDialect::setupExtraInterfaces(mlir::DialectRegistry& regi
         VPU::AsinOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::AcosOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::AtanOp::attachInterface<SoftwareLayerOpModel>(*ctx);
+        VPU::AtanDmaOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::AsinhOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::AcoshOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::AtanhOp::attachInterface<SoftwareLayerOpModel>(*ctx);
@@ -858,6 +846,7 @@ void vpux::VPUIP::VPUIPDialect::setupExtraInterfaces(mlir::DialectRegistry& regi
         VPU::LessOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::LessEqualOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::IsInfOp::attachInterface<SoftwareLayerOpModel>(*ctx);
+        VPU::IsFiniteOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::LogicalOrOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::HSigmoidOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::LogicalXorOp::attachInterface<SoftwareLayerOpModel>(*ctx);
@@ -867,6 +856,8 @@ void vpux::VPUIP::VPUIPDialect::setupExtraInterfaces(mlir::DialectRegistry& regi
         VPU::BitwiseOrOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::BitwiseXorOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::BitwiseNotOp::attachInterface<SoftwareLayerOpModel>(*ctx);
+        VPU::BitwiseRightShiftOp::attachInterface<SoftwareLayerOpModel>(*ctx);
+        VPU::BitwiseLeftShiftOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::NotEqualOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::ReduceL1Op::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::ReduceSumOp::attachInterface<SoftwareLayerOpModel>(*ctx);
@@ -934,7 +925,7 @@ void vpux::VPUIP::VPUIPDialect::setupExtraInterfaces(mlir::DialectRegistry& regi
         VPU::RoPEOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::DynamicDataMaskOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::SDPAOp::attachInterface<SoftwareLayerOpModel>(*ctx);
-        VPU::SDPAExtendedOp::attachInterface<SoftwareLayerOpModel>(*ctx);
+        VPU::AttentionOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::ExternalKernelOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::FlashSDPAOp::attachInterface<SoftwareLayerOpModel>(*ctx);
         VPU::YuvToRgbOp::attachInterface<SoftwareLayerOpModel>(*ctx);
@@ -1019,6 +1010,9 @@ Byte vpux::VPUIP::SubViewOp::getByteOffset() {
             return std::nullopt;
         }
 
+        const auto hasExplicitOutputShapes = getExplicitOutputShapes().has_value();
+        const auto hasExplicitOutputOffsets = getExplicitOutputOffsets().has_value();
+
         auto origShape = getShape(getSource());
         auto subShape = getShape(getResult());
         if ((origShape.size() != 4 && origShape.size() != 5) || origShape.size() != subShape.size()) {
@@ -1027,9 +1021,17 @@ Byte vpux::VPUIP::SubViewOp::getByteOffset() {
 
         // Distributed and subview are done on the same axis+
         if (origShape[Dim(tileIndexVal)] != subShape[Dim(tileIndexVal)]) {
-            VPUX_THROW_WHEN(distribution.getMode().getValue() == VPU::DistributionMode::OVERLAPPED,
-                            "Cannot extract correct address for subview with OVERLAPPED distribution mode and "
-                            "subview axis same as clustering axis");
+            if (distribution.getMode().getValue() == VPU::DistributionMode::OVERLAPPED) {
+                VPUX_THROW_WHEN(!hasExplicitOutputShapes || !hasExplicitOutputOffsets,
+                                "Cannot extract correct address for subview with OVERLAPPED distribution mode and "
+                                "subview axis same as clustering axis without explicit output shapes and offsets");
+
+                // For OVERLAPPED mode with explicit output shapes and offsets, the byte offset of the SubView is the
+                // regular logical slice offset. Per-cluster CMX offsets are derived later from explicit distribution
+                // attributes during view-to-buffer conversion and unrolling.
+                return std::nullopt;
+            }
+
             return tileIndexVal;
         }
 

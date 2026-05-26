@@ -27,6 +27,8 @@
 #include "vpux/compiler/conversion/rewriters/VPUMI40XX2VPUASM/profiling_metadata_rewriter.hpp"
 #include "vpux/compiler/conversion/rewriters/VPUMI40XX2VPUASM/shave_stack_rewriter.hpp"
 #include "vpux/compiler/conversion/rewriters/VPUMI40XX2VPUASM/view_task_range_rewriter.hpp"
+#include "vpux/compiler/dialect/VPUMI40XX/utils.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
 
 #include <mlir/IR/IRMapping.h>
 #include <mlir/Transforms/DialectConversion.h>
@@ -57,12 +59,6 @@ public:
         Base::initLogger(log, Base::getArgumentName());
     }
 
-    ConvertVPUMI40XX2VPUASMPass(Logger log, bool enablePWLM, bool disableDmaSwFifo)
-            : _disableDmaSwFifo(disableDmaSwFifo) {
-        Base::initLogger(log, Base::getArgumentName());
-        enablePWLMOpt = enablePWLM;
-    }
-
     mlir::LogicalResult initialize(mlir::MLIRContext* ctx) override;
 
 private:
@@ -82,6 +78,7 @@ void ConvertVPUMI40XX2VPUASMPass::safeRunOnModule() {
     auto moduleOp = getOperation();
     auto& ctx = getContext();
     auto netFunc = net::getMainFunc(moduleOp);
+    bool skipBarrierLowering = false;
 
     llvm::DenseMap<mlir::Value, mlir::SymbolRefAttr> symbolNameMappings;
     std::unordered_map<ELF::SectionSignature, ELF::ElfSectionInterface> sectionMap;
@@ -110,15 +107,6 @@ void ConvertVPUMI40XX2VPUASMPass::safeRunOnModule() {
 
     mlir::OpBuilder builderFunc(&(netFunc.getBody().front().back()));
 
-    // don't use rewriter infrastructure here as it's not "regular" lowering
-    // ELF::ABIVersionOp does not need op symbolization
-    // ELF::ABIVersionOp is moved into proper ELF section at this point
-    auto abiVersionOps = to_small_vector(netFunc.getOps<ELF::ABIVersionOp>());
-    VPUX_THROW_UNLESS(abiVersionOps.size() == 1, "Expected exactly one ELF ABIVersionOp. Got {0}",
-                      abiVersionOps.size());
-    auto abiVersionOp = abiVersionOps[0];
-    ELF::moveOpToSection(abiVersionOp.getOperation(), sectionMap, builderFunc);
-
     // E-141668:
     // insertion of PerformanceMetricsOp in IR should be done in a dedicated pass
     auto perfMetricsOp = builderFunc.create<ELF::PerformanceMetricsOp>(builderFunc.getUnknownLoc());
@@ -142,9 +130,10 @@ void ConvertVPUMI40XX2VPUASMPass::safeRunOnModule() {
     patterns.add<DPUInvariantRewriter>(netFunc, typeConverter, symbolNameMappings, sectionMap, &ctx, _log);
     patterns.add<ViewTaskRangeRewriter>(netFunc, typeConverter, symbolNameMappings, sectionMap, &ctx, _log);
     patterns.add<EnqueueRewriter>(netFunc, typeConverter, symbolNameMappings, sectionMap, &ctx, _log);
-    patterns.add<BarrierRewriter>(netFunc, typeConverter, symbolNameMappings, sectionMap, &ctx, _log, enablePWLMOpt);
+    patterns.add<BarrierRewriter>(netFunc, typeConverter, symbolNameMappings, sectionMap, &ctx, _log,
+                                  skipBarrierLowering);
     patterns.add<MappedInferenceRewriter>(netFunc, typeConverter, symbolNameMappings, sectionMap, &ctx, _log,
-                                          _disableDmaSwFifo);
+                                          _disableDmaSwFifo, skipBarrierLowering);
     patterns.add<ProfilingMetadataRewriter>(netFunc, typeConverter, symbolNameMappings, sectionMap, &ctx, _log);
     patterns.add<BootstrapRewriter>(netFunc, typeConverter, symbolNameMappings, sectionMap, &ctx, _log);
     patterns.add<PlatformInfoRewriter>(netFunc, typeConverter, symbolNameMappings, sectionMap, &ctx, _log);
@@ -165,9 +154,4 @@ void ConvertVPUMI40XX2VPUASMPass::safeRunOnModule() {
 
 std::unique_ptr<mlir::Pass> vpux::createConvertVPUMI40XX2VPUASMPass(Logger log, bool disableDmaSwFifo) {
     return std::make_unique<ConvertVPUMI40XX2VPUASMPass>(log, disableDmaSwFifo);
-}
-
-std::unique_ptr<mlir::Pass> vpux::createConvertVPUMI40XX2VPUASMPass(bool enablePWLM, Logger log,
-                                                                    bool disableDmaSwFifo) {
-    return std::make_unique<ConvertVPUMI40XX2VPUASMPass>(log, enablePWLM, disableDmaSwFifo);
 }

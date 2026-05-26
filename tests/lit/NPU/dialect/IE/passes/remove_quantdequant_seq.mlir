@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --remove-quantdequant-seq %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --remove-quantdequant-seq %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 !qElemType = !quant.uniform<u8<1:255>:f16:0, {0.010680671751968504:128,0.0081200787401574797:128,0.010596087598425197:128}>
 !qElemType1 = !quant.uniform<u8:f16, 1.1534313725490195:128>
@@ -275,4 +275,20 @@ func.func @Ignore_Pattern_FuncOpArg_ElemTypeInfoOp_ConcatOp(%arg0: tensor<1x1x14
   //CHECK: [[VAL1:%.+]] = IE.Slice [[ARG_0]]
   //CHECK: [[VAL2:%.+]] = IE.Concat([[VAL0]], [[VAL1]])
   //CHECK: return [[VAL2]]
+}
+
+// -----
+
+!qElemType = !quant.uniform<u8:f16, 1.1534313725490195:128>
+
+// CHECK-LABEL: @RemoveQuantDequantSeqWithSameInputConcat
+func.func @RemoveQuantDequantSeqWithSameInputConcat(%arg0: tensor<1x16x32x32xf16>) -> tensor<1x32x32x32xf16> {
+  %0 = IE.Quantize(%arg0) {dstElemType = !qElemType} : tensor<1x16x32x32xf16> -> tensor<1x16x32x32x!qElemType>
+  %1 = IE.Concat(%0, %0) {static_offsets = [[0, 0, 0, 0], [0, 16, 0, 0]]} : tensor<1x16x32x32x!qElemType>, tensor<1x16x32x32x!qElemType> -> tensor<1x32x32x32x!qElemType>
+  %2 = IE.Dequantize(%1) {dstElemType = f16} : tensor<1x32x32x32x!qElemType> -> tensor<1x32x32x32xf16>
+  return %2 : tensor<1x32x32x32xf16>
+
+  //CHECK: [[VAL0:%.+]] = IE.Concat(%arg0, %arg0)
+  //CHECK-SAME{LITERAL}: {static_offsets = [[0, 0, 0, 0], [0, 16, 0, 0]]} : tensor<1x16x32x32xf16>, tensor<1x16x32x32xf16> -> tensor<1x32x32x32xf16>
+  //CHECK: return [[VAL0]]
 }

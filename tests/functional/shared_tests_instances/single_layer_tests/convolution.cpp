@@ -22,7 +22,6 @@ class ConvolutionLayerTest_SCFTiling : public ConvolutionLayerTestCommon {
         configuration["NPU_TILES"] = "1";
     }
 };
-
 class ConvolutionLayerTest_NPU3720_SCM : public ConvolutionLayerTestCommon {};
 class ConvolutionLayerTest_NPU3720_HW : public ConvolutionLayerTestCommon {};
 class ConvolutionLayerTest_NPU3720_SW : public ConvolutionLayerTestCommon {};
@@ -35,7 +34,7 @@ class ConvolutionLayerTest_NPU5020_SW : public ConvolutionLayerTestCommon {};
 
 class ConvolutionLayerTest_FP32_SW : public ConvolutionLayerTestCommon {
     void configure_model() override {
-        configuration[ov::intel_npu::compilation_mode_params.name()] = "convert-precision-to-fp16=false";
+        configuration[ov::intel_npu::compilation_mode_params.name()] = "disabled-passes=convert-precision-to-fp16";
     }
 };
 
@@ -55,6 +54,12 @@ class ConvolutionLayerTest_MULTI_BATCH_HW : public ConvolutionLayerTestCommon {
 class ConvolutionLayerTest_SCF_Unroll : public ConvolutionLayerTestCommon {
     void configure_model() override {
         configuration[ov::intel_npu::compilation_mode_params.name()] = "loop-unroll-factor=1,1,10,1";
+    }
+};
+
+class ConvolutionLayerTest_SCF_AutoUnroll : public ConvolutionLayerTestCommon {
+    void configure_model() override {
+        configuration[ov::intel_npu::compilation_mode_params.name()] = "enable-auto-unrolling=true";
     }
 };
 
@@ -122,9 +127,8 @@ TEST_P(ConvolutionLayerTest_MULTI_BATCH_HW, NPU4000_HW) {
 TEST_P(ConvolutionLayerTest_HostCompile, NPU4000_HC) {
     rel_threshold = 0.02;
     setSkipInferenceCallback([](std::stringstream& skip) {
-        skip << "Host Pipeline does not support inference yet: C#164943";
+        skip << "Host Pipeline does not support inference yet: C#208371";
     });
-
     setHostCompileMode();
     setPluginCompilerType();
     run(Platform::NPU4000);
@@ -133,7 +137,7 @@ TEST_P(ConvolutionLayerTest_HostCompile, NPU4000_HC) {
 TEST_P(ConvolutionLayerTest_HostCompile_Profiling, NPU4000_HC) {
     rel_threshold = 0.02;
     setSkipInferenceCallback([](std::stringstream& skip) {
-        skip << "Host Pipeline does not support inference yet: C#164943";
+        skip << "Host Pipeline does not support inference yet: C#208186";
     });
 
     setHostCompileMode();
@@ -145,11 +149,17 @@ TEST_P(ConvolutionLayerTest_HostCompile_Profiling, NPU4000_HC) {
 TEST_P(ConvolutionLayerTest_SCF_Unroll, NPU4000_HC) {
     rel_threshold = 0.02;
     setSkipInferenceCallback([](std::stringstream& skip) {
-        skip << "Host Pipeline does not support inference yet: C#164943";
+        skip << "Host Pipeline does not support inference yet: C#206274";
     });
 
     setHostCompileMode();
     setPluginCompilerType();
+    run(Platform::NPU4000);
+}
+
+TEST_P(ConvolutionLayerTest_SCFTiling, NPU4000_HW) {
+    rel_threshold = 0.02;
+    setDefaultHardwareMode();
     run(Platform::NPU4000);
 }
 
@@ -174,9 +184,8 @@ TEST_P(ConvolutionLayerTest_MULTI_BATCH_HW, NPU5010_HW) {
 TEST_P(ConvolutionLayerTest_HostCompile, NPU5010_HC) {
     rel_threshold = 0.02;
     setSkipInferenceCallback([](std::stringstream& skip) {
-        skip << "Host Pipeline does not support inference yet: C#164943";
+        skip << "Host Pipeline does not support inference yet: C#208371";
     });
-
     setHostCompileMode();
     setPluginCompilerType();
     run(Platform::NPU5010);
@@ -185,7 +194,7 @@ TEST_P(ConvolutionLayerTest_HostCompile, NPU5010_HC) {
 TEST_P(ConvolutionLayerTest_HostCompile_Profiling, NPU5010_HC) {
     rel_threshold = 0.02;
     setSkipInferenceCallback([](std::stringstream& skip) {
-        skip << "Host Pipeline does not support inference yet: C#164943";
+        skip << "Host Pipeline does not support inference yet: C#208186";
     });
 
     setHostCompileMode();
@@ -197,9 +206,23 @@ TEST_P(ConvolutionLayerTest_HostCompile_Profiling, NPU5010_HC) {
 TEST_P(ConvolutionLayerTest_SCF_Unroll, NPU5010_HC) {
     rel_threshold = 0.02;
     setSkipInferenceCallback([](std::stringstream& skip) {
-        skip << "Host Pipeline does not support inference yet: C#164943";
+        skip << "Host Pipeline does not support inference yet: C#206274";
     });
 
+    setHostCompileMode();
+    setPluginCompilerType();
+    run(Platform::NPU5010);
+}
+
+TEST_P(ConvolutionLayerTest_SCF_AutoUnroll, NPU4000_HC) {
+    rel_threshold = 0.02;
+    setHostCompileMode();
+    setPluginCompilerType();
+    run(Platform::NPU4000);
+}
+
+TEST_P(ConvolutionLayerTest_SCF_AutoUnroll, NPU5010_HC) {
+    rel_threshold = 0.02;
     setHostCompileMode();
     setPluginCompilerType();
     run(Platform::NPU5010);
@@ -945,14 +968,17 @@ const auto conv2DParams_2DynDims =
                            ::testing::Values(ov::op::PadType::EXPLICIT)            // padType
         );
 
-const std::vector<std::vector<ov::test::InputShape>> in2DShape = {{generateTestShape(1, 16, 1280_Dyn, 1280)},
-                                                                  {generateTestShape(1, 16, 1280_Dyn, 1280_Dyn)},
-                                                                  {generateTestShape(1, 3, 1280_Dyn, 1280)},
-                                                                  {generateTestShape(1, 3, 1280_Dyn, 1280_Dyn)}};
+const std::vector<std::vector<ov::test::InputShape>> in2DShape = {
+        {generateTestShape(std::vector<BoundedDim>{1, 16, 1280_Dyn, 1280}, hostCompileSmallShapesLimitationCallback)},
+        {generateTestShape(std::vector<BoundedDim>{1, 16, 1280_Dyn, 1280_Dyn},
+                           hostCompileSmallShapesLimitationCallback)},
+        {generateTestShape(std::vector<BoundedDim>{1, 3, 1280_Dyn, 1280}, hostCompileSmallShapesLimitationCallback)},
+        {generateTestShape(std::vector<BoundedDim>{1, 3, 1280_Dyn, 1280_Dyn},
+                           hostCompileSmallShapesLimitationCallback)}};
 
 const auto DynamicShapesHostCompileConvParams =
-        ::testing::Combine(conv2DParams_2DynDims,                //
-                           ::testing::Values(ov::element::f16),  // netPrc
+        ::testing::Combine(conv2DParams_2DynDims,                                  //
+                           ::testing::Values(ov::element::f16, ov::element::f32),  // netPrc
                            ::testing::ValuesIn(in2DShape), ::testing::Values(test_utils::TARGET_DEVICE));
 
 INSTANTIATE_TEST_SUITE_P(smoke_DynamicShapes, ConvolutionLayerTest_HostCompile, DynamicShapesHostCompileConvParams,
@@ -962,9 +988,8 @@ INSTANTIATE_TEST_SUITE_P(smoke_DynamicShapes, ConvolutionLayerTest_HostCompile_P
                          DynamicShapesHostCompileConvParams, ConvolutionLayerTest::getTestCaseName);
 
 // Conv2D with dynamic dimensions with 2x2 stride
-const std::vector<std::vector<ov::test::InputShape>> in2DShapeForStrided = {
-        {generateTestShape(1, 3, 1080_Dyn, 1920_Dyn)}};
-
+const std::vector<std::vector<ov::test::InputShape>> in2DShapeForStrided = {{generateTestShape(
+        std::vector<BoundedDim>{1, 3, 1080_Dyn, 1920_Dyn}, hostCompileSmallShapesLimitationCallback)}};
 const auto conv2DParams_2DynDims_Stride =
         ::testing::Combine(::testing::ValuesIn<std::vector<size_t>>({{3, 3}}),     // kernels
                            ::testing::ValuesIn<std::vector<size_t>>({{2, 2}}),     // strides
@@ -976,8 +1001,8 @@ const auto conv2DParams_2DynDims_Stride =
         );
 
 const auto DynamicShapesHostCompileConvParamsStrided =
-        ::testing::Combine(conv2DParams_2DynDims_Stride,         //
-                           ::testing::Values(ov::element::f16),  // netPrc
+        ::testing::Combine(conv2DParams_2DynDims_Stride,                           //
+                           ::testing::Values(ov::element::f16, ov::element::f32),  // netPrc
                            ::testing::ValuesIn(in2DShapeForStrided), ::testing::Values(test_utils::TARGET_DEVICE));
 
 INSTANTIATE_TEST_SUITE_P(smoke_DynamicShapes_Strided, ConvolutionLayerTest_HostCompile,
@@ -992,6 +1017,18 @@ const auto DynamicShapesHostCompileConvParamsUnroll =
 
 INSTANTIATE_TEST_SUITE_P(smoke_DynamicShapes_SCF_Unroll, ConvolutionLayerTest_SCF_Unroll,
                          DynamicShapesHostCompileConvParamsUnroll, ConvolutionLayerTest::getTestCaseName);
+
+// Auto-unroll test uses hostCompileSmallShapesLimitationCallback to avoid runtime shapes smaller than the unrolled
+// tiling step.
+const std::vector<std::vector<ov::test::InputShape>> in2DShapeForAutoUnroll = {
+        {generateTestShape(std::vector<BoundedDim>{1, 16, 1280_Dyn, 1280}, hostCompileSmallShapesLimitationCallback)}};
+
+const auto DynamicShapesHostCompileConvParamsAutoUnroll =
+        ::testing::Combine(conv2DParams_2DynDims, ::testing::Values(ov::element::f16),
+                           ::testing::ValuesIn(in2DShapeForAutoUnroll), ::testing::Values(test_utils::TARGET_DEVICE));
+
+INSTANTIATE_TEST_SUITE_P(smoke_DynamicShapes_SCF_AutoUnroll, ConvolutionLayerTest_SCF_AutoUnroll,
+                         DynamicShapesHostCompileConvParamsAutoUnroll, ConvolutionLayerTest::getTestCaseName);
 
 // Conv 2D with tiling
 const auto conv2DParams_Tiling = ::testing::Combine(::testing::ValuesIn<std::vector<size_t>>({{3, 3}}),     // kernels

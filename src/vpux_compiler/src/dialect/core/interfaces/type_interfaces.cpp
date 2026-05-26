@@ -15,6 +15,7 @@
 #include "vpux/compiler/dialect/VPUIP/utils/swizzling_utils.hpp"
 #include "vpux/compiler/dialect/core/IR/attributes.hpp"
 #include "vpux/compiler/dialect/core/IR/dynamic_attrs.hpp"
+#include "vpux/compiler/dialect/core/IR/indexed_symbol_attr.hpp"
 #include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
@@ -738,7 +739,12 @@ vpux::NDTypeInterface MemRefNDTypeInterface::changeDimsOrder(mlir::Type type, vp
 
 vpux::NDTypeInterface MemRefNDTypeInterface::changeMemSpace(mlir::Type type, vpux::IndexedSymbolAttr memSpace) const {
     return llvm::TypeSwitch<mlir::Type, mlir::ShapedType>(type)
-            .Case<mlir::MemRefType>([&](mlir::MemRefType) {
+            .Case<mlir::MemRefType>([&](mlir::MemRefType memrefType) {
+                // TODO (E#211610): implement for strided layout support for other methods where it makes sense
+                if (hasStridedLayout(memrefType)) {
+                    return mlir::MemRefType::get(memrefType.getShape(), memrefType.getElementType(),
+                                                 memrefType.getLayout(), memSpace);
+                }
                 const auto strides = getStrides(type);
                 return vpux::getMemRefType(getShape(type), getElementType(type), getDimsOrder(type), memSpace, strides,
                                            VPUIP::getSwizzlingSchemeAttr(type), VPUIP::getSparsityCompressionAttr(type),

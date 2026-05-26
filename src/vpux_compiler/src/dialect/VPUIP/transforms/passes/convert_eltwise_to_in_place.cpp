@@ -101,6 +101,20 @@ void makeInPlaceEltwise(VPUIP::NCEClusterTaskOp clusterTaskOp, AliasesInfo& alia
             inputRootBuff = shapeCastOp.getResult();
         }
 
+        // Handle the case where shape and/or dims order differ but the physical memory layout is equivalent.
+        const auto currentInType = mlir::cast<vpux::NDTypeInterface>(VPUIP::extractDataType(inputRootBuff));
+        const auto inMemShape = currentInType.getDimsOrder().toMemoryOrder(currentInType.getShape());
+        const auto outMemShape = outBuffType.getDimsOrder().toMemoryOrder(outBuffType.getShape());
+        if (currentInType.getShape() != outBuffType.getShape() &&
+            currentInType.getDimsOrder() != outBuffType.getDimsOrder() && inMemShape == outMemShape &&
+            currentInType.getElementType() == outBuffType.getElementType()) {
+            mlir::OpBuilder builder(clusterTaskOp);
+            builder.setInsertionPointAfterValue(inputRootBuff);
+            auto supportView = builder.create<VPUIP::ViewOp>(input.getLoc(), outputRootBuff.getType(), inputRootBuff);
+            aliasesInfo.addAlias(inputRootBuff, supportView.getResult());
+            inputRootBuff = supportView.getResult();
+        }
+
         // Ensure distribution compatibility
         const auto inRootBuffDistributedType =
                 mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(VPUIP::extractDataType(inputRootBuff));

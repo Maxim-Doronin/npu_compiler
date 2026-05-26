@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --resolve-shaped-type-result-dims %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --resolve-shaped-type-result-dims %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // -----
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
@@ -100,4 +100,44 @@ func.func @ConvWithFlattenedFilter(%arg0: tensor<1x3x?x?xf16, {bounds = #const.O
     return %CONV, %DIM : tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 1080, 1920]> : tensor<4xsi64>, order = #NHWC}>, index
     // CHECK: return [[CONV]], [[DIM]]
 }
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+!InterpDMAInType = tensor<1x3x4x6xf16>
+!InterpDMAOutType = tensor<?x?x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 32, 48]> : tensor<4xsi64>, order = #NCHW}>
+
+// CHECK-LABEL: @ReifyInterpolateDMAOpShape
+// CHECK-SAME: [[ARG0:%.+]]: tensor<1x3x4x6xf16>, [[ARG1:%.+]]: tensor<2xf16>
+func.func @ReifyInterpolateDMAOpShape(%IN: !InterpDMAInType, %SCALES: tensor<2xf16>) -> (!InterpDMAOutType, index, index) {
+    %IDX_2 = arith.constant 2 : index
+    %IDX_3 = arith.constant 3 : index
+    // CHECK: [[CST_W:%.+]] = arith.constant 6.000000e+00 : f64
+    // CHECK: [[C1:%.+]] = arith.constant 1 : index
+    // CHECK: [[CST_H:%.+]] = arith.constant 4.000000e+00 : f64
+    // CHECK: [[C0:%.+]] = arith.constant 0 : index
+
+    %INTERP = VPU.InterpolateDMA(%IN, %SCALES) {
+        attr = #IE.Interpolate<mode = <LINEAR>, shape_calc_mode = <SCALES>, coord_mode = <HALF_PIXEL>, nearest_mode = <FLOOR>, antialias = false, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], cube_coeff = -7.500000e-01 : f64>,
+        axes_attr = [2, 3], operandSegmentSizes = array<i32: 1, 1, 0, 0>
+    } : !InterpDMAInType, tensor<2xf16> -> !InterpDMAOutType
+    // CHECK: [[INTERP:%.+]] = VPU.InterpolateDMA([[ARG0]], [[ARG1]])
+
+    %DIM_2 = tensor.dim %INTERP, %IDX_2 : !InterpDMAOutType
+    %DIM_3 = tensor.dim %INTERP, %IDX_3 : !InterpDMAOutType
+    // CHECK: [[SCALE_H:%.+]] = tensor.extract [[ARG1]]{{\[}}[[C0]]{{\]}} : tensor<2xf16>
+    // CHECK: [[SCALE_H_F64:%.+]] = arith.extf [[SCALE_H]] : f16 to f64
+    // CHECK: [[H_MUL:%.+]] = arith.mulf [[SCALE_H_F64]], [[CST_H]] : f64
+    // CHECK: [[H_I64:%.+]] = arith.fptosi [[H_MUL]] : f64 to i64
+    // CHECK: [[DIM_2_REIFIED:%.+]] = arith.index_cast [[H_I64]] : i64 to index
+    // CHECK: [[SCALE_W:%.+]] = tensor.extract [[ARG1]]{{\[}}[[C1]]{{\]}} : tensor<2xf16>
+    // CHECK: [[SCALE_W_F64:%.+]] = arith.extf [[SCALE_W]] : f16 to f64
+    // CHECK: [[W_MUL:%.+]] = arith.mulf [[SCALE_W_F64]], [[CST_W]] : f64
+    // CHECK: [[W_I64:%.+]] = arith.fptosi [[W_MUL]] : f64 to i64
+    // CHECK: [[DIM_3_REIFIED:%.+]] = arith.index_cast [[W_I64]] : i64 to index
+
+    return %INTERP, %DIM_2, %DIM_3 : !InterpDMAOutType, index, index
+    // CHECK: return [[INTERP]], [[DIM_2_REIFIED]], [[DIM_3_REIFIED]]
 }

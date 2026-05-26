@@ -9,15 +9,15 @@
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/dialect/IE/utils/transposed_convolution_utils.hpp"
-#include "vpux/compiler/dialect/VPU/utils/conv_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
-#include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Transforms/WalkPatternRewriteDriver.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_CONVERTTRANSPOSEDCONV2DTOCONV2D
@@ -29,14 +29,38 @@ using namespace vpux;
 
 namespace {
 
+bool shouldConvertTransposedConvOp(IE::TransposedConvolutionOp transposedConv, bool enableSEPTransposedConv,
+                                   Logger log) {
+    const auto logCb = [&](const formatv_object_base& msg) {
+        log.trace("{0}", msg.str());
+    };
+
+    log.trace("Got '{0}' at '{1}'", transposedConv->getName(), transposedConv->getLoc());
+    if (enableSEPTransposedConv) {
+        auto seOp = mlir::dyn_cast<IE::SEOpInterface>(transposedConv.getOperation());
+        if (seOp && seOp.isSupported(logCb)) {
+            log.nest(1).trace("TransposedConv can be executed using SEP");
+            return false;
+        }
+    }
+    if (mlir::failed(IE::canConvertTransposedConvToConv(transposedConv))) {
+        log.nest(1).trace("TransposedConv cannot be converted. Filter must be constant");
+        return false;
+    }
+
+    return true;
+}
+
 //
 // TransposedConvolutionConversion
 //
 
 class TransposedConvolutionConversion final : public mlir::OpRewritePattern<IE::TransposedConvolutionOp> {
 public:
-    TransposedConvolutionConversion(mlir::MLIRContext* ctx, Logger log)
-            : mlir::OpRewritePattern<IE::TransposedConvolutionOp>(ctx), _log(log) {
+    TransposedConvolutionConversion(mlir::MLIRContext* ctx, bool enableSEPTransposedConv, Logger log)
+            : mlir::OpRewritePattern<IE::TransposedConvolutionOp>(ctx),
+              _enableSEPTransposedConv(enableSEPTransposedConv),
+              _log(log) {
         setDebugName("TransposedConvolutionConversion");
     }
 
@@ -45,11 +69,16 @@ public:
                                         mlir::PatternRewriter& rewriter) const final;
 
 private:
+    bool _enableSEPTransposedConv;
     Logger _log;
 };
 
 mlir::LogicalResult TransposedConvolutionConversion::matchAndRewrite(IE::TransposedConvolutionOp origOp,
                                                                      mlir::PatternRewriter& rewriter) const {
+    if (!shouldConvertTransposedConvOp(origOp, _enableSEPTransposedConv, _log)) {
+        return mlir::failure();
+    }
+
     _log.trace("Found IE::TransposedConvolution Operation '{0}'", origOp->getLoc());
 
     auto padsOutput = Shape(parseIntArrayAttr<int64_t>(origOp.getSpatialOutputPadding()));
@@ -136,41 +165,11 @@ void ConvertTransposedConv2DToConv2DPass::safeRunOnFunc() {
     const auto func = getOperation();
     const auto moduleOp = getModuleOp(func);
     const auto enableSEPtrsOps = config::hasEnableSEPtrsOperations(moduleOp);
-    const auto logCb = [&](const formatv_object_base& msg) {
-        _log.trace("{0}", msg.str());
-    };
-
-    const auto isLegalTransposedConvOp = [&](IE::TransposedConvolutionOp transposedConv) {
-        _log.trace("Got '{0}' at '{1}'", transposedConv->getName(), transposedConv->getLoc());
-        if (enableSEPtrsOps && VPU::isSupportedSEPTransposedConv(transposedConv, logCb, /*checkLayout=*/false,
-                                                                 /*checkChannelAlignment=*/false)) {
-            _log.nest(1).trace("TransposedConv can be executed using SEP");
-            return true;
-        }
-        if (mlir::failed(IE::canConvertTransposedConvToConv(transposedConv))) {
-            _log.nest(1).trace("TransposedConv cannot be converted. Filter must be constant");
-            return true;
-        }
-
-        return false;
-    };
-
-    mlir::ConversionTarget target(ctx);
-    target.addDynamicallyLegalOp<IE::TransposedConvolutionOp>(isLegalTransposedConvOp);
-    target.addLegalOp<IE::ConvolutionOp>();
-    target.addLegalOp<IE::UpsamplingOp>();
-    target.addLegalOp<Const::DeclareOp>();
-    target.addLegalOp<IE::ReshapeOp>();
-    target.addLegalOp<IE::FakeQuantizeOp>();
-    target.addLegalOp<IE::SliceOp>();
-    target.addLegalOp<IE::ConcatOp>();
 
     mlir::RewritePatternSet patterns(&ctx);
-    patterns.add<TransposedConvolutionConversion>(&ctx, _log);
+    patterns.add<TransposedConvolutionConversion>(&ctx, enableSEPtrsOps, _log);
 
-    if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
-        signalPassFailure();
-    }
+    walkAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

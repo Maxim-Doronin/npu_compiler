@@ -3,13 +3,13 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --run-batch-op-processing-rewriters="enable-grouped-matmul=true rewriter=matmul-inputs-to-2d-set" %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --run-batch-op-processing-rewriters="enable-grouped-matmul=true rewriter=matmul-inputs-to-2d-set" %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 // Two test below show that CMX calculations are not affected by quantization
 // As currently quantization for grouped matmul is not enabled.
-// Tests are valid only for NPU37XX due to dependency on CMX memory otherwise
-// batched matmul related changes are not specific to NPU37XX.
+// Tests are valid only for NPU3720 due to dependency on CMX memory otherwise
+// batched matmul related changes are not specific to NPU3720.
 
 // CHECK-LABEL: @MatMul4dInputs4dWeightsTo2dQuantized
 // CHECK-SAME:  [[ARG0:%.+]]: tensor<1x2x650x750xf16>

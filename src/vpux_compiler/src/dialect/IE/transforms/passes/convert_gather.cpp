@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -43,6 +44,11 @@ private:
 
 bool checkAttrsForGatherOp(IE::GatherOp gatherOp) {
     const auto batchDims = gatherOp.getBatchDims();
+
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(gatherOp.getInput().getType());
+    if (auto boundedInputTensor = mlir::dyn_cast<Core::BoundedTensorType>(inType)) {
+        return false;
+    }
 
     auto indices = gatherOp.getIndices().getDefiningOp<Const::DeclareOp>();
     if (indices == nullptr) {

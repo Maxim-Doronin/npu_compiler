@@ -54,13 +54,11 @@ void FuseQuantizedOpsStrategy::addPatterns(mlir::RewritePatternSet& patterns, Lo
     patterns.add<FuseWithConcat>(ctx, log);
     patterns.add<FuseWithMatMul>(ctx, log);
     patterns.add<FuseWithPostOp>(ctx, log);
+    // TODO: optimize for SEP Pad & Roll
     if (_seOpsEnabled) {
         patterns.add<FuseWithInterpolate>(ctx, log);
         patterns.add<FuseWithTransposedConv>(ctx, checkPostOp, false, log);
     }
-
-    // TODO: optimize for SEP Pad & Roll
-    VPUX_UNUSED(_seExperimentalOpsEnabled);
 }
 
 }  // namespace vpux::IE::arch50xx

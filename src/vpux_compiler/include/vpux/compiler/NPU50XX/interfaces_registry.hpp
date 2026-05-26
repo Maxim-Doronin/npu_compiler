@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "vpux/compiler/interfaces_registry.hpp"
+#include "vpux/compiler/init/interfaces_registry.hpp"
 
 namespace vpux {
 

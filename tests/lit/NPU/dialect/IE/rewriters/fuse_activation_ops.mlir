@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --fuse-activation-ops="enable-fuse-clamp=false" %s | FileCheck %s
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --run-adjust-for-vpu-rewriters="enable-fuse-clamp=false rewriter=fuse-activation-ops-set" %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW" --fuse-activation-ops %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW" --run-adjust-for-vpu-rewriters="rewriter=fuse-activation-ops-set" %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL: @Conv2dWithReluTest
 func.func @Conv2dWithReluTest(%arg0: tensor<1x16x4x4xf16>) -> tensor<1x16x3x3xf16> {
@@ -87,10 +87,10 @@ func.func @Conv2dWithClampTest(%arg0: tensor<1x16x4x4xf16>) -> tensor<1x16x3x3xf
     return %1 : tensor<1x16x3x3xf16>
 
     // CHECK:       IE.Convolution
+    // CHECK-SAME:     clamp = {max = 6.000000e+00 : f64, min = 0.000000e+00 : f64}
     // CHECK-SAME:     dilations = [1, 1]
     // CHECK-SAME:     pads_begin = [0, 0]
     // CHECK-SAME:     pads_end = [0, 0]
-    // CHECK-SAME:     post_op = #IE.Clamp<min = 0.000000e+00 : f64, max = 6.000000e+00 : f64>
     // CHECK-SAME:     strides = [1, 1]
     // CHECK-NOT:   IE.Clamp
     // CHECK: return
@@ -125,10 +125,10 @@ func.func @QuantizedConv2dWithClampTest(%arg0: tensor<1x16x20x20x!qElemType>) ->
     return %1 : tensor<1x32x20x20x!qElemType2>
 
     // CHECK:       IE.Convolution
+    // CHECK-SAME:     clamp = {max = 5.000000e+00 : f64, min = -5.000000e+00 : f64}
     // CHECK-SAME:     dilations = [1, 1]
     // CHECK-SAME:     pads_begin = [0, 0]
     // CHECK-SAME:     pads_end = [0, 0]
-    // CHECK-SAME:     post_op = #IE.Clamp<min = -5.000000e+00 : f64, max = 5.000000e+00 : f64>
     // CHECK-SAME:     strides = [1, 1]
     // CHECK-NOT:   IE.Clamp
     // CHECK: return
@@ -250,67 +250,6 @@ func.func @Conv2dWithLeakyRelu15Test(%arg0: tensor<1x16x4x4xf16>) -> tensor<1x16
 }
 
 // -----
-// CHECK-LABEL: @TransposedConv2dWithLeakyReluTest
-func.func @TransposedConv2dWithLeakyReluTest(%arg0: tensor<1x32x64x100xf16>) -> tensor<1x16x128x101xf16> {
-    %filters = const.Declare tensor<16x32x3x2xf16> = dense<1.0> : tensor<16x32x3x2xf16>
-    %0 = IE.TransposedConvolution(%arg0, %filters)
-        {
-            dilations = [1, 1],
-            operandSegmentSizes = array<i32: 1, 1, 0, 0>,
-            spatial_output_padding = [1, 0],
-            pads_begin = [1, 0],
-            pads_end = [1, 0],
-            strides = [2, 1]
-        } :
-        tensor<1x32x64x100xf16>, tensor<16x32x3x2xf16> -> tensor<1x16x128x101xf16>
-
-    %1 = IE.LeakyRelu(%0) {negative_slope = 1.500000e-01 : f64} : tensor<1x16x128x101xf16> -> tensor<1x16x128x101xf16>
-
-    return %1 : tensor<1x16x128x101xf16>
-
-    // CHECK:       IE.TransposedConvolution
-    // CHECK-SAME:     dilations = [1, 1]
-    // CHECK-SAME:     operandSegmentSizes = array<i32: 1, 1, 0, 0>
-    // CHECK-SAME:     pads_begin = [1, 0]
-    // CHECK-SAME:     pads_end = [1, 0]
-    // CHECK-SAME:     post_op = #IE.LeakyRelu<negative_slope = 1.500000e-01 : f64>
-    // CHECK-SAME:     spatial_output_padding = [1, 0]
-    // CHECK-SAME:     strides = [2, 1]
-    // CHECK-NOT:   IE.LeakyRelu
-    // CHECK: return
-}
-
-// -----
-// CHECK-LABEL: @TransposedConv2dWithLeakyReluNotFuseTest
-func.func @TransposedConv2dWithLeakyReluNotFuseTest(%arg0: tensor<1x32x64x100xf16>, %arg1: tensor<16x32x3x2xf16>) -> tensor<1x16x128x101xf16> {
-    %0 = IE.TransposedConvolution(%arg0, %arg1)
-        {
-            dilations = [1, 1],
-            operandSegmentSizes = array<i32: 1, 1, 0, 0>,
-            spatial_output_padding = [1, 0],
-            pads_begin = [1, 0],
-            pads_end = [1, 0],
-            strides = [2, 1]
-        } :
-        tensor<1x32x64x100xf16>, tensor<16x32x3x2xf16> -> tensor<1x16x128x101xf16>
-
-    %1 = IE.LeakyRelu(%0) {negative_slope = 1.500000e-01 : f64} : tensor<1x16x128x101xf16> -> tensor<1x16x128x101xf16>
-
-    return %1 : tensor<1x16x128x101xf16>
-
-    // CHECK:       IE.TransposedConvolution
-    // CHECK-SAME:     dilations = [1, 1]
-    // CHECK-SAME:     operandSegmentSizes = array<i32: 1, 1, 0, 0>
-    // CHECK-SAME:     pads_begin = [1, 0]
-    // CHECK-SAME:     pads_end = [1, 0]
-    // CHECK-SAME:     post_op = #IE.LeakyRelu<negative_slope = 1.500000e-01 : f64>
-    // CHECK-SAME:     spatial_output_padding = [1, 0]
-    // CHECK-SAME:     strides = [2, 1]
-    // CHECK-NOT:   IE.LeakyRelu
-    // CHECK: return
-}
-
-// -----
 
 !qElemType = !quant.uniform<u8:f16, 0.034064797794117647:55>
 // CHECK-LABEL: @ConvWithLeakyReluFuseQuantType
@@ -391,4 +330,76 @@ func.func @MatMulWithRelu(%arg0: tensor<1x32x1x96xf16>) -> tensor<1x32x1x16xf16>
     // CHECK:       [[MAT_MUL:%.+]] = IE.MatMul([[INPUT]], [[CST]]) {post_op = #IE.Relu<>, transpose_b} : tensor<1x32x1x96xf16>, tensor<1x32x16x96xf16> -> tensor<1x32x1x16xf16>
 
     // CHECK:       return [[MAT_MUL]] : tensor<1x32x1x16xf16>
+}
+
+// ----
+
+// CHECK-LABEL: @Conv2dWithMultipleClampsTest
+func.func @Conv2dWithMultipleClampsTest(%arg0: tensor<1x16x4x4xf16>) -> tensor<1x16x3x3xf16> {
+    %filters = const.Declare tensor<16x16x2x2xf16> = dense<1.0> : tensor<16x16x2x2xf16>
+    %0 = IE.Convolution(%arg0, %filters)
+        {
+            strides = [1, 1],
+            pads_begin = [0, 0],
+            pads_end = [0, 0],
+            dilations = [1, 1]
+        } :
+        tensor<1x16x4x4xf16>, tensor<16x16x2x2xf16> -> tensor<1x16x3x3xf16>
+
+    %1 = IE.Clamp(%0)
+        {
+            max = 6.000000e+00,
+            min = 0.000000e+00
+        } :
+        tensor<1x16x3x3xf16> -> tensor<1x16x3x3xf16>
+
+    %2 = IE.Clamp(%1)
+        {
+            max = 4.000000e+00,
+            min = 0.000000e+00
+        } :
+        tensor<1x16x3x3xf16> -> tensor<1x16x3x3xf16>
+
+    %3 = IE.Clamp(%2)
+        {
+            max = 5.000000e+00,
+            min = 0.000000e+00
+        } :
+        tensor<1x16x3x3xf16> -> tensor<1x16x3x3xf16>
+
+    return %3 : tensor<1x16x3x3xf16>
+
+    // CHECK:       IE.Convolution
+    // CHECK-SAME:  {clamp = {max = 4.000000e+00 : f64, min = 0.000000e+00 : f64},
+    // CHECK-SAME:   dilations = [1, 1],
+    // CHECK-SAME:   pads_begin = [0, 0],
+    // CHECK-SAME:   pads_end = [0, 0],
+    // CHECK-SAME:   strides = [1, 1]
+    // CHECK-SAME:  } : tensor<1x16x4x4xf16>, tensor<16x16x2x2xf16> -> tensor<1x16x3x3xf16>
+    // CHECK-NOT:   IE.Clamp
+    // CHECK: return
+}
+
+// ----
+
+// CHECK-LABEL: @Conv2dWithReluAndClamp
+// CHECK-SAME: ([[ARG_0:%[^:]+]]: tensor<4x512x1x1xf16>
+func.func @Conv2dWithReluAndClamp(%arg0: tensor<4x512x1x1xf16>) -> tensor<4x2048x1x1xf16> {
+    %cst = const.Declare tensor<2048x512x1x1xf16> = dense<1.000000e+00> : tensor<2048x512xf16>, [#const.Reshape<[2048, 512, 1, 1]>]
+    %0 = IE.Convolution(%arg0, %cst) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<4x512x1x1xf16>, tensor<2048x512x1x1xf16> -> tensor<4x2048x1x1xf16>
+    %1 = IE.ReLU(%0) : tensor<4x2048x1x1xf16> -> tensor<4x2048x1x1xf16>
+    %2 = IE.Clamp(%1) {max = 0.700000e+00 : f64, min = 0.000000e+00 : f64} : tensor<4x2048x1x1xf16> -> tensor<4x2048x1x1xf16>
+
+    return %2 : tensor<4x2048x1x1xf16>
+
+    // CHECK:       [[CST:%.+]] = const.Declare tensor<2048x512x1x1xf16> = dense<1.000000e+00> : tensor<2048x512xf16>, [#const.Reshape<[2048, 512, 1, 1]>]
+    // CHECK:       [[CONV:%.+]] = IE.Convolution([[ARG_0]], [[CST]]) {
+    // CHECK-SAME:   clamp = {max = 0.69999999999999996 : f64, min = 0.000000e+00 : f64},
+    // CHECK-SAME:   dilations = [1, 1],
+    // CHECK-SAME:   pads_begin = [0, 0],
+    // CHECK-SAME:   pads_end = [0, 0],
+    // CHECK-SAME:   post_op = #IE.Relu<>,
+    // CHECK-SAME:   strides = [1, 1]
+    // CHECK-SAME:   } : tensor<4x512x1x1xf16>, tensor<2048x512x1x1xf16> -> tensor<4x2048x1x1xf16>
+    // CHECK:        return [[CONV]] : tensor<4x2048x1x1xf16>
 }

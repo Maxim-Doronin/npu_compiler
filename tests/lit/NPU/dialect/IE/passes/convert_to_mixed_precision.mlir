@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-to-mixed-precision %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --convert-to-mixed-precision %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 !qElemType = !quant.uniform<u8:f16, 1.1534313725490195:128>
 
@@ -956,7 +956,7 @@ func.func @AvoidMixedPrecisionForInvalidApproximation(%arg0: tensor<1x1x256x256x
         groups = 1 : i64,
         pads_begin = [0, 0],
         pads_end = [0, 0],
-        post_op = #IE.Clamp<min = 0.000000e+00 : f64, max = 1.000000e+00 : f64>,
+        clamp = {min = 0.000000e+00 : f64, max = 1.000000e+00 : f64},
         strides = [1, 1]
     } : tensor<1x1x256x256xf16>, tensor<1x1x1x1xf16> -> tensor<1x1x256x256xf16>
     %1 = IE.Quantize(%0) {dstElemType = !qElemType} : tensor<1x1x256x256xf16> -> tensor<1x1x256x256x!qElemType>
@@ -967,11 +967,11 @@ func.func @AvoidMixedPrecisionForInvalidApproximation(%arg0: tensor<1x1x256x256x
     //CHECK-SAME:               dense<-1.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
 
     //CHECK: [[VAL0:%.+]] = IE.GroupConvolution([[ARG_0]], [[CST]]) {
+    //CHECK-SAME:               clamp = {max = 1.000000e+00 : f64, min = 0.000000e+00 : f64},
     //CHECK-SAME:               dilations = [1, 1],
     //CHECK-SAME:               groups = 1 : i64,
     //CHECK-SAME:               pads_begin = [0, 0],
     //CHECK-SAME:               pads_end = [0, 0],
-    //CHECK-SAME:               post_op = #IE.Clamp<min = 0.000000e+00 : f64, max = 1.000000e+00 : f64>,
     //CHECK-SAME:               strides = [1, 1]
     //CHECK-SAME:           } : tensor<1x1x256x256xf16>, tensor<1x1x1x1xf16> -> tensor<1x1x256x256xf16>
 
@@ -984,6 +984,8 @@ func.func @AvoidMixedPrecisionForInvalidApproximation(%arg0: tensor<1x1x256x256x
 
 !qElemType = !quant.uniform<u8:f16, 3.1368405211205576E-7>
 
+// CHECK-LABEL: @AvoidMixedPrecisionForInvalidApproximationWithClamp
+// CHECK-SAME:     [[ARG_0:%[^:]+]]: tensor<1x1x256x256xf16>
 func.func @AvoidMixedPrecisionForInvalidApproximationWithClamp(%arg0: tensor<1x1x256x256xf16>) -> tensor<1x1x256x256x!qElemType> {
     %cst = const.Declare tensor<1x1x1x1xf16> = dense<-1.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
     %0 = IE.GroupConvolution(%arg0, %cst) {
@@ -1001,7 +1003,7 @@ func.func @AvoidMixedPrecisionForInvalidApproximationWithClamp(%arg0: tensor<1x1
     //CHECK: [[CST:%.+]] = const.Declare tensor<1x1x1x1xf16> =
     //CHECK-SAME:               dense<-1.000000e+00> : tensor<1x1x1x1xf32>, [#const.CastElemType<f16>]
 
-    //CHECK: [[VAL0:%.+]] = IE.GroupConvolution(%arg0, [[CST]]) {
+    //CHECK: [[VAL0:%.+]] = IE.GroupConvolution([[ARG_0]], [[CST]]) {
     //CHECK-SAME:               clamp = {max = 1.000000e+00 : f64, min = 0.000000e+00 : f64},
     //CHECK-SAME:               dilations = [1, 1],
     //CHECK-SAME:               groups = 1 : i64,

@@ -14,12 +14,26 @@
 namespace vpux {
 namespace VPU {
 
+bool checkForQuantization(mlir::Operation* op, mlir::Type type);
 bool checkForQuantization(mlir::Operation* op, mlir::Operation* postOp);
 bool hasPerChannelQuantizedOutput(mlir::Operation* op);
 
 template <typename ConcreteModel, typename MainOpType>
 class LayerWithPostOpModelBase : public IE::LayerWithPostOpInterface::ExternalModel<ConcreteModel, MainOpType> {
 public:
+    bool isSupportedClampProperties(mlir::Operation* mainOp, double minValue, double maxValue, mlir::Type type,
+                                    const LogCb& logCb) const {
+        if (config::getCompilationMode(mainOp) == config::CompilationMode::ReferenceSW) {
+            return false;
+        }
+
+        if (!ConcreteModel::isSupportedHWClampOp(mainOp, minValue, maxValue, type, logCb)) {
+            return false;
+        }
+
+        return VPU::NCEInvariant::isSupported(mlir::cast<MainOpType>(mainOp)).succeeded();
+    }
+
     bool isSupportedClampOp(mlir::Operation* mainOp, mlir::Operation* maybeClampOp, const LogCb& logCb) const {
         auto clampOp = mlir::cast<vpux::IE::ClampOp>(maybeClampOp);
 

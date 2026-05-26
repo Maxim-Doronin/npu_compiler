@@ -14,6 +14,7 @@
 #include "vpux/compiler/utils/pipeline_strategies.hpp"
 
 #include "vpux/compiler/dialect/HostExec/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/core/transforms/passes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/error.hpp"
@@ -44,6 +45,7 @@ void DefaultHwStrategy::buildPipeline(mlir::OpPassManager& pm) {
     auto strategy = _createPipelineStrategy(config::CompilationMode::DefaultHW);
 
     strategy->initializePipeline(pm, _log);
+    strategy->buildDebatcherPipeline(pm, _log);
     strategy->buildIEPipeline(pm, _log);
     strategy->buildLowerIE2VPUPipeline(pm, _log);
     strategy->buildVPUPipeline(pm, _log);
@@ -59,6 +61,7 @@ void ReferenceSWStrategy::buildPipeline(mlir::OpPassManager& pm) {
     auto strategy = _createPipelineStrategy(config::CompilationMode::ReferenceSW);
 
     strategy->initializePipeline(pm, _log);
+    strategy->buildDebatcherPipeline(pm, _log);
     strategy->buildIEPipeline(pm, _log);
     strategy->buildLowerIE2VPUPipeline(pm, _log);
     strategy->buildVPUPipeline(pm, _log);
@@ -83,6 +86,11 @@ void HostPipelineStrategy::buildPipeline(mlir::OpPassManager& pm) {
 
     strategy->initializePipeline(pm, _log);
 
+    // Fuse color conversion pattern BEFORE shape extraction so that
+    // @output_shape sees the fused YuvToRgb (which has reifyResultShapes)
+    // instead of the unfused chain of IE ops + const.Declare
+    pm.addPass(IE::createFuseColorConversionPass(/*enableYuvToRgbShaveScale=*/true, _log));
+
     // build output shape predict func and pack @main func to a nested @NPU module
     buildOutputShapePredictFunc(pm);
 
@@ -91,6 +99,7 @@ void HostPipelineStrategy::buildPipeline(mlir::OpPassManager& pm) {
 
     // perform these transformations on the nested @NPU module
     auto& nestedNPUPm = pm.nest<mlir::ModuleOp>();
+    strategy->buildDebatcherPipeline(nestedNPUPm, _log);
     strategy->buildIEPipeline(nestedNPUPm, _log);
     strategy->buildLowerIE2VPUPipeline(nestedNPUPm, _log);
     strategy->buildVPUPipeline(nestedNPUPm, _log);

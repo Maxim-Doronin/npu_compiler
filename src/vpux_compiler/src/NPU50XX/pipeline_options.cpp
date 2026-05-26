@@ -27,15 +27,9 @@ void setupPWLMParams50XX(DefaultHWOptions50XX& compilationOptions, LogLevel logL
 
     if (!isWorkloadManagementBarrierProgrammingModeSet) {
         switch (compilationOptions.workloadManagementMode) {
-        case WorkloadManagementMode::PWLM_V0_LCA:
         case WorkloadManagementMode::PWLM_V0_1_PAGES:
             compilationOptions.workloadManagementBarrierProgrammingMode =
                     WorkloadManagementBarrierProgrammingMode::LEGACY;
-            break;
-        case WorkloadManagementMode::PWLM_V1_BARRIER_FIFO:
-        case WorkloadManagementMode::PWLM_V2_PAGES:
-            compilationOptions.workloadManagementBarrierProgrammingMode =
-                    WorkloadManagementBarrierProgrammingMode::INITIAL_BARRIER_DMAS_SCHEDULED;
             break;
         case WorkloadManagementMode::FWLM_V1_PAGES:
             compilationOptions.workloadManagementBarrierProgrammingMode =

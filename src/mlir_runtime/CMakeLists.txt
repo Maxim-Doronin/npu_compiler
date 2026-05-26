@@ -31,6 +31,7 @@ target_link_libraries(${TARGET_NAME}
         LLVMX86CodeGen
         LLVMX86AsmParser
         openvino::npu_al
+        openvino::npu_vm_runtime_api
         openvino::npu_zero_utils
         npu_logger
         npu_compiler_interface

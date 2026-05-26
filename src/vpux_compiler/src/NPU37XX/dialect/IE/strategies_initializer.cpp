@@ -43,9 +43,8 @@ class StrategyFactory37XX : public IE::StrategyFactory {
         return std::make_unique<arch37xx::MapBilinearInterpolateOnDPUStrategy>(interpolateAsSEOpInStrategy);
     }
 
-    std::unique_ptr<IGreedilyPassStrategy> getFuseQuantizedOpsStrategy(const bool seOpsEnabled,
-                                                                       const bool seExperimentalOpsEnabled) override {
-        return std::make_unique<arch37xx::FuseQuantizedOpsStrategy>(seOpsEnabled, seExperimentalOpsEnabled);
+    std::unique_ptr<IGreedilyPassStrategy> getFuseQuantizedOpsStrategy(const bool seOpsEnabled) override {
+        return std::make_unique<arch37xx::FuseQuantizedOpsStrategy>(seOpsEnabled);
     }
 
     std::unique_ptr<IGreedilyPassStrategy> getFuseOutstandingQuantStrategy() override {

@@ -48,6 +48,8 @@ void vpux::VPU::arch50xx::registerSWTilingInfoOpInterface(mlir::DialectRegistry&
         VPU::MaxPool8Op::attachInterface<SwLayerPipeliningTilingSupportedInfoOpModel<VPU::MaxPool8Op>>(*ctx);
         VPU::RMSOp::attachInterface<SwLayerPipeliningTilingSupportedInfoOpModel<VPU::RMSOp>>(*ctx);
         VPU::SwishOp::attachInterface<SwLayerPipeliningTilingSupportedInfoOpModel<VPU::SwishOp>>(*ctx);
+        VPU::DynamicDequantizeOp::attachInterface<
+                SwLayerPipeliningTilingSupportedInfoOpModel<VPU::DynamicDequantizeOp>>(*ctx);
     });
     // Register common interface if the op is tiling-supported but doesn't have TilingInfoOpInterface yet
     vpux::VPU::registerSWTilingInfoOpInterfaceCommon(registry);

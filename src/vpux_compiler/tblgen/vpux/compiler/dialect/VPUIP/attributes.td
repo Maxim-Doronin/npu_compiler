@@ -548,7 +548,8 @@ def VPUIP_DynamicScaleConfigAttr : VPUIP_Attr<"DynamicScaleConfig"> {
         dynamicAdjustMode: config of how the tasks should be adjusted; mostly on a invariant level
 
         ppeOverwriteData: if present, data which is still computed yet invalid, will be overwritten with
-        this pattern
+        this pattern. PPE_OVERWRITE_DATA[31:0] When the output data type is 16bit, DYN_PPE_OVRWR_DATA[15:0] is used.
+        When the output data type is 8 bit DYN_PPE_OVRWR_DATA[7:0] is used
         invariantPrimitiveId: if present, use primitives and dynamic scaling feature on invariant level
     }];
 
@@ -563,54 +564,28 @@ def VPUIP_DynamicScaleConfigAttr : VPUIP_Attr<"DynamicScaleConfig"> {
 }
 
 //
-// VPUIP_S2DConfigAttr
+// VPUIP_FetchType
 //
-
-def VPUIP_S2DMode :
+def VPUIP_FetchType :
     VPUIP_I64EnumAttr<
-        "S2DMode",
-        "S2D/D2S is enabled or disabled",
+        "FetchType",
+        "Either fetch single descriptor or multiple descriptors",
         [
-            I64EnumAttrCase<"DISABLED", 0>,
-            I64EnumAttrCase<"S2D", 1>,
-            I64EnumAttrCase<"D2S", 2>
+            I64EnumAttrCase<"SingleDescriptor", 1>,
+            I64EnumAttrCase<"DescriptorGroup", 2>
         ]
     > {
 }
-
-def VPUIP_S2DModeAttr : VPUIP_EnumAttr<VPUIP_S2DMode, "s2d_mode">;
-
-def VPUIP_S2DVar :
-    VPUIP_I64EnumAttr<
-        "S2DVar",
-        "To select Variant Type",
-        [
-            I64EnumAttrCase<"BLOCK_FIRST",  0>,
-            I64EnumAttrCase<"DEPTH_FIRST",  1>
-        ]
-    > {
-}
-
-def VPUIP_S2DVarAttr : VPUIP_EnumAttr<VPUIP_S2DVar, "s2d_var">;
-
-def VPUIP_S2DConfigAttr : VPUIP_Attr<"S2DConfig"> {
-    let description = [{
-        Config for NCE S2D (Space to Depth) and D2S (Depth to Space) operations
-    }];
-
-    let parameters = (ins
-        "S2DModeAttr":$s2dMode,
-        "S2DVarAttr":$s2dVar,
-        "mlir::IntegerAttr":$s2dBlkSize
-    );
-    let assemblyFormat = "`<` struct(params) `>`";
-}
+def VPUIP_FetchTypeAttr : VPUIP_EnumAttr<VPUIP_FetchType, "fetch_type">;
 
 //
 // VPUIP_FetchDMAAttr
 //
 
-def VPUIP_FetchDMAAttr : VPUIP_Attr<"FetchDMA"> {
+
+def VPUIP_FetchDMAAttr : AttrDef<VPUIP_Dialect,"FetchDMA",[]> {
+    let mnemonic = "FetchDMAAttr";
+
     let description = [{
         "Represents attributes required to correctly lower with NNDMAs for fetch task descriptors"
     }];
@@ -619,17 +594,14 @@ def VPUIP_FetchDMAAttr : VPUIP_Attr<"FetchDMA"> {
         "vpux::config::ExecutorKindAttr":$targetExecutorKindAttr,
         "mlir::IntegerAttr":$tileIdx,
         "mlir::IntegerAttr":$listIdx,
-        "mlir::IntegerAttr":$execGroupIdx
+        "VPUIP::FetchTypeAttr":$fetchType,
+        OptionalParameter<"mlir::IntegerAttr">:$execGroupIdx,
+        // TODO: E#205261 Remove once the feature is stable, is only a debug field
+        OptionalParameter<"mlir::IntegerAttr">:$logicalTaskIdx,
+        OptionalParameter<"mlir::IntegerAttr">:$descId
     );
 
-    let assemblyFormat = [{
-        `<`
-            $targetExecutorKindAttr `,`
-            `tile` `=` $tileIdx `,`
-            `list` `=` $listIdx `,`
-            `group` `=` $execGroupIdx
-        `>`
-    }];
+    let hasCustomAssemblyFormat = 1;
 }
 
 //
@@ -655,6 +627,39 @@ def VPUIP_EnqueueDMAAttr : VPUIP_Attr<"EnqueueDMA"> {
             `list` `=` $listIdx `,`
             `startTask` `=` $startTaskIdx `,`
             `endTask` `=` $endTaskIdx `>`
+    }];
+}
+
+
+//
+// VPUIP_SkipDMAAttr
+//
+
+def VPUIP_SkipDMAAttr : VPUIP_Attr<"SkipDMA"> {
+    let description = [{
+        - Tile and list indices are stored to identify which SHV a given skip corresponds to; in other words, which SHV task will take control from a particular SkipDMA. 
+            These indices are also used to impose a deterministic ordering of SkipDMA operations (tile -> list).
+            This ordering is not strictly required for correctness, as the skip loop may iterate in any order as long as all skips for a given logicalIndex are processed. 
+            However, deterministic ordering is enforced to make the control flow predictable and easier to reason about.
+
+        - The descId is used to associate a SkipDMA with its corresponding FetchDMA. They're just integers in order
+        - The logicalIndex is used to construct skip loops in VPUASM, enabling straightforward traversal and loop transitions whenever the logicalIndex changes. They're just integers in order
+    }];
+
+    let parameters = (ins
+        "mlir::IntegerAttr":$associatedTileIdx,
+        "mlir::IntegerAttr":$associatedListIdx,
+        "mlir::IntegerAttr":$associatedLogicalTaskIdx,
+        "mlir::IntegerAttr":$descId
+    );
+
+    let assemblyFormat = [{
+        `<`
+            `tile` `=` $associatedTileIdx `,`
+            `list` `=` $associatedListIdx `,`
+            `logicalTask` `=` $associatedLogicalTaskIdx `,`
+            `descId` `=` $descId
+        `>`
     }];
 }
 

@@ -5,8 +5,8 @@
 
 // max_pool_1x64x16x16xfp16_2x2_pads_1x0x1x0_strides_2x2_fp16
 
-// RUN: vpux-opt --init-compiler="vpu-arch=%arch%" --convert-VPUMI37XX-to-ELF %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --init-compiler="platform=%platform%" --convert-VPUMI37XX-to-ELF %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module @mainModule {
@@ -50,8 +50,8 @@ module @mainModule {
 // CHECK: [[VAL33:%.+]] = ELFNPU37XX.Symbol  {{.+}} name("sym_inVariantsSection")
 // CHECK: [[VAL34:%.+]] = ELFNPU37XX.Symbol  {{.+}} name("sym_variantsSection")
 
-// CHECK: [[VAL44:%.+]] = ELFNPU37XX.Symbol %c0_i8 name("VPU_NNRD_SYM_NNCXM_SLICE_BASE_ADDR")
-// CHECK: [[VAL45:%.+]] = ELFNPU37XX.Symbol %c1_i8 name("VPU_NNRD_SYM_RTM_IVAR")
+// CHECK: [[VAL44:%.+]] = ELFNPU37XX.Symbol {{%.+}} name("VPU_NNRD_SYM_NNCXM_SLICE_BASE_ADDR")
+// CHECK: [[VAL45:%.+]] = ELFNPU37XX.Symbol {{%.+}} name("VPU_NNRD_SYM_RTM_IVAR")
 
 // CHECK: [[VAL51:%.+]] = ELFNPU37XX.CreateSymbolTableSection secName("VPU_RT_SYMTAB")
 // CHECK: ELFNPU37XX.PutOpInSection [[VAL44]]

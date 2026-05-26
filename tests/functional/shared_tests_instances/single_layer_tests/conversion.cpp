@@ -71,18 +71,12 @@ TEST_P(ConversionLayerTestCommon, NPU5020_SW) {
 class ConversionLayerTest_HostCompile : public ConversionLayerTestCommon {};
 
 TEST_P(ConversionLayerTest_HostCompile, NPU4000_HC) {
-    setSkipInferenceCallback([](std::stringstream& skip) {
-        skip << "Host Pipeline does not support inference yet: C#164943";
-    });
     setHostCompileMode();
     setPluginCompilerType();
     run(Platform::NPU4000);
 }
 
 TEST_P(ConversionLayerTest_HostCompile, NPU5010_HC) {
-    setSkipInferenceCallback([](std::stringstream& skip) {
-        skip << "Host Pipeline does not support inference yet: C#164943";
-    });
     setHostCompileMode();
     setPluginCompilerType();
     run(Platform::NPU5010);
@@ -95,6 +89,11 @@ class ConversionLayerTest_SCFTiling : public ConversionLayerTestCommon {
         configuration["NPU_TILES"] = "1";
     }
 };
+
+TEST_P(ConversionLayerTest_SCFTiling, NPU4000_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU4000);
+}
 
 TEST_P(ConversionLayerTest_SCFTiling, NPU5010_HW) {
     setDefaultHardwareMode();
@@ -138,6 +137,7 @@ const auto genParams = [](std::vector<ov::element::Type> srcPrec, std::vector<ov
 
 const auto configParams = genParams(netPrecisions, netPrecisions, inShape);
 const auto configParamsBF16ToF16 = genParams({bf16}, {f16}, inShape);
+const auto configParamsI32ToU64 = genParams({i32}, {u64}, inShape);
 const auto configParamsF64ToI64 = genParams({f64}, {i64}, inShape);
 const auto configParamsI64ToF64 = genParams({i64}, {f64}, inShape);
 const auto configParamsU4Tiling = genParams({u4}, {f16, u8, i8}, inShapeTiling);
@@ -151,9 +151,15 @@ const auto configParamsF16ToF8 = genParams({f16}, {f8e4m3, f8e5m2}, inShapeOdd, 
 const auto configParamsF32ToF16Tiling = genParams({f32}, {f16}, inShapeTiling);
 
 const std::vector<std::vector<ov::test::InputShape>> dynamicShapes = {
-        {generateTestShape(1, 16, 1280_Dyn, 1280)}, {generateTestShape(1, 16, 1280_Dyn, 1280_Dyn)},
-        {generateTestShape(1, 3, 1280_Dyn, 1280)},  {generateTestShape(1, 3, 1280_Dyn, 1280_Dyn)},
-        {generateTestShape(1, 1, 1280_Dyn, 1280)},  {generateTestShape(1, 1, 1280_Dyn, 1280_Dyn)},
+        {generateTestShape(std::vector<BoundedDim>{1, 16, 1280_Dyn, 1280}, hostCompileSmallShapesLimitationCallback)},
+        {generateTestShape(std::vector<BoundedDim>{1, 16, 1280_Dyn, 1280_Dyn},
+                           hostCompileSmallShapesLimitationCallback)},
+        {generateTestShape(std::vector<BoundedDim>{1, 3, 1280_Dyn, 1280}, hostCompileSmallShapesLimitationCallback)},
+        {generateTestShape(std::vector<BoundedDim>{1, 3, 1280_Dyn, 1280_Dyn},
+                           hostCompileSmallShapesLimitationCallback)},
+        {generateTestShape(std::vector<BoundedDim>{1, 1, 1280_Dyn, 1280}, hostCompileSmallShapesLimitationCallback)},
+        {generateTestShape(std::vector<BoundedDim>{1, 1, 1280_Dyn, 1280_Dyn},
+                           hostCompileSmallShapesLimitationCallback)},
 };
 const auto configParamsF32ToF16 =
         ::testing::Combine(::testing::ValuesIn({ConversionTypes::CONVERT}),  // Conversion type
@@ -161,6 +167,14 @@ const auto configParamsF32ToF16 =
                            ::testing::ValuesIn({f32}),                       // Input type
                            ::testing::ValuesIn({f16}),                       // Output type
                            ::testing::Values(test_utils::TARGET_DEVICE));
+
+const auto configParamsI32ToU64Dyn = ::testing::Combine(
+        ::testing::ValuesIn({ConversionTypes::CONVERT}),  // Conversion type
+        ::testing::ValuesIn(
+                std::vector<std::vector<ov::test::InputShape>>{{generateTestShape(1280_Dyn)}}),  // Input shapes
+        ::testing::ValuesIn({i32}),                                                              // Input type
+        ::testing::ValuesIn({u64}),                                                              // Output type
+        ::testing::Values(test_utils::TARGET_DEVICE));
 
 // ------ HW ------
 
@@ -195,6 +209,12 @@ INSTANTIATE_TEST_SUITE_P(smoke_f8_f16_Conversion, ConversionLayerTestCommon_HW, 
                          ConversionLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_f16_f8_Conversion, ConversionLayerTestCommon_HW, configParamsF16ToF8,
+                         ConversionLayerTest::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(smoke_i32_u64_Conversion, ConversionLayerTestCommon_HW, configParamsI32ToU64,
+                         ConversionLayerTest::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(smoke_i32_u64_Dynamic_Conversion, ConversionLayerTestCommon_HW, configParamsI32ToU64Dyn,
                          ConversionLayerTest::getTestCaseName);
 
 // ------ ShaveCodeGen ------

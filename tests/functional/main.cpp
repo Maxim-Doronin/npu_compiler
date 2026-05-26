@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,7 +12,7 @@
 #include "intel_npu/npu_private_properties.hpp"
 #include "vpu_test_report.hpp"
 #include "vpu_test_tool.hpp"
-#include "vpux/utils/IE/config.hpp"
+#include "vpux/utils/ov/config.hpp"
 
 namespace testing {
 namespace internal {

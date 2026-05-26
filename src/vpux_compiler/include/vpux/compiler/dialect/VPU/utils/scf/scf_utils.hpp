@@ -297,15 +297,18 @@ mlir::Operation* createTiledPaddedOperation(OpGeneratorFunc opGenerator, OpTilin
     return createOperation();
 }
 
-/** @brief Adds cast op before tile insertion
+/** @brief Adds cast ops before tile insertion for each result of the tiled operation.
 
-    @note If operation has dynamic dims that are not introduced by the current tiling (i.e. there are one or more
-   dynamic dims that are not tiling dims), a Cast operation is introduced to align the result of the tile op with the
-   insertion of the slice into the full tensor.
+    For each result, if the original operation has dynamic dims that are not introduced by the current tiling
+    (i.e. there are one or more dynamic dims that are not tiling dims), a tensor.cast operation is created to
+    align the tiled result shape with the insertion point in the full tensor.
+
+    @param outputTiles  Per-result output tile information (one entry per operation result).
+    @return A vector of (possibly casted) values, one per result.
 */
-
-mlir::Operation* castOutputForInsertion(mlir::OpBuilder& builder, const SCFTileInfo& outputTile, DimArrRef dims,
-                                        mlir::Operation* operation, mlir::Operation* tiledOperation);
+SmallVector<mlir::Value> castOutputForInsertion(mlir::OpBuilder& builder, ArrayRef<SCFTileInfo> outputTiles,
+                                                DimArrRef dims, mlir::Operation* origOperation,
+                                                mlir::Operation* tiledOperation);
 
 /** @brief adjust padded output
  * In case the PadOp has been added, but operation used to be with static output

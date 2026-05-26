@@ -4,12 +4,12 @@
 //
 
 #include "common/utils.hpp"
-#include "vpux/compiler/dialect/VPU/interfaces/singleton_initializer.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/layer_vpunn_cost.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
-#include "vpux/compiler/interfaces_registry.hpp"
+#include "vpux/compiler/init/interfaces_registry.hpp"
+#include "vpux/compiler/init/singleton_initializer.hpp"
 #include "vpux/compiler/utils/passes.hpp"
 
 #include <mlir/IR/MLIRContext.h>

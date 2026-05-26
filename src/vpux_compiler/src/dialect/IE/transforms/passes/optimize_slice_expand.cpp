@@ -610,13 +610,8 @@ mlir::LogicalResult vpux::IE::OptimizeSlicePermuteCastExpand::matchAndRewrite(IE
                                                      getIntArrayAttr(expandOp.getContext(), newPadBeginLogicShape),
                                                      getIntArrayAttr(expandOp.getContext(), newPadEndLogicShape));
 
-    const auto newExpandDstOrder = mlir::cast<vpux::NDTypeInterface>(newExpandOp.getOutput().getType()).getDimsOrder();
-    if (newExpandDstOrder != expandDstOrder) {
-        rewriter.replaceOpWithNewOp<IE::PermuteCastOp>(expandOp, newExpandOp.getOutput(),
-                                                       permuteCastOp.getDstOrderAttr(), permuteCastOp.getMemPermAttr());
-    } else {
-        rewriter.replaceOp(expandOp, newExpandOp.getOutput());
-    }
+    rewriter.replaceOpWithNewOp<IE::PermuteCastOp>(expandOp, newExpandOp.getOutput(), permuteCastOp.getDstOrderAttr(),
+                                                   permuteCastOp.getMemPermAttr());
 
     return mlir::success();
 }

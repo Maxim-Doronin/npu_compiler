@@ -12,7 +12,7 @@
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/pipelines/options_mapper.hpp"
 #include "vpux/compiler/pipelines/options_setup.hpp"
-#include "vpux/utils/IE/config.hpp"
+#include "vpux/utils/ov/config.hpp"
 
 #include "intel_npu/config/options.hpp"
 
@@ -34,6 +34,7 @@ void BackendPipelineStrategy40XX::buildELFPipeline(mlir::OpPassManager& pm, cons
     VPUX_THROW_UNLESS(backendCompilationOptions != nullptr,
                       "build ELF pipeline failed to parse BACKEND_COMPILATION_PARAMS: {0}",
                       config.get<intel_npu::BACKEND_COMPILATION_PARAMS>());
+    VPUX_THROW_UNLESS(useWlm, "WLM is not enabled.");
 
     if (compilationMode == config::CompilationMode::DefaultHW ||
         compilationMode == config::CompilationMode::HostCompile) {
@@ -60,6 +61,7 @@ void BackendPipelineStrategy40XX::buildELFPipeline(mlir::OpPassManager& pm, cons
                 options->workloadManagementBarrierProgrammingMode;
         backendCompilationOptions->workloadManagementDmaFifoType = options->workloadManagementDmaFifoType;
         backendCompilationOptions->modelIdentifier = options->modelIdentifier;
+        backendCompilationOptions->allocateDDRStackFrames = options->allocateDDRStackFrames;
     }
     arch40xx::buildLowerVPUIP2ELFPipeline(pm, *backendCompilationOptions, log.nest(), dpuDryRunMode);
 }

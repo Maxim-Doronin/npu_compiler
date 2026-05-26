@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-eltwise-layers-to-math %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --convert-eltwise-layers-to-math %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -17,8 +17,8 @@ func.func @NHWCToNHWCPaddedAxis1(%arg0: tensor<1x16x4000x200xf32, {order=#NHWC}>
   return %0 : tensor<1x16x4000x200xf32, {order=#NHWC}>
 
 // CHECK: IE.CodeGenCapsule inputs({{.+}} as [[ARG1:%.+]]: tensor<1x4000x200x16xf32>) {
+// CHECK:      [[ZERO:%.+]] = arith.constant 0.000000e+00 : f32
 // CHECK-NEXT:      [[IN_UNPAD:%.+]] = tensor.extract_slice [[ARG1]][0, 0, 0, 0] [1, 4000, 200, 12] [1, 1, 1, 1] : tensor<1x4000x200x16xf32> to tensor<1x4000x200x12xf32>
-// CHECK-NEXT:      [[ZERO:%.+]] = arith.constant 0.000000e+00 : f32
 // CHECK-NEXT:      [[EMPT:%.+]] = tensor.empty() : tensor<1x4000x200x16xf32>
 // CHECK-NEXT:      [[FILL:%.+]] = linalg.fill ins([[ZERO]] : f32) outs([[EMPT]] : tensor<1x4000x200x16xf32>) -> tensor<1x4000x200x16xf32>
 // CHECK-NEXT:      [[OUT_SLICE:%.+]] = tensor.extract_slice [[FILL]][0, 0, 0, 0] [1, 4000, 200, 12] [1, 1, 1, 1] : tensor<1x4000x200x16xf32> to tensor<1x4000x200x12xf32>
@@ -41,8 +41,8 @@ func.func @NHWCToNWCHPaddedAxis1(%arg0: tensor<1x16x4000x200xf32, {order=#NHWC}>
   return %0 : tensor<1x16x4000x200xf32, {order=#NWCH}>
 
 // CHECK: IE.CodeGenCapsule inputs({{.+}} as [[ARG1]]: tensor<1x4000x200x16xf32>) {
+// CHECK:      [[ZERO:%.+]] = arith.constant 0.000000e+00 : f32  
 // CHECK-NEXT:      [[IN_UNPAD:%.+]] = tensor.extract_slice [[ARG1]][0, 0, 0, 0] [1, 4000, 200, 12] [1, 1, 1, 1] : tensor<1x4000x200x16xf32> to tensor<1x4000x200x12xf32>
-// CHECK-NEXT:      [[ZERO:%.+]] = arith.constant 0.000000e+00 : f32
 // CHECK-NEXT:      [[EMPT:%.+]] = tensor.empty() : tensor<1x200x4000x16xf32>
 // CHECK-NEXT:      [[FILL:%.+]] = linalg.fill ins([[ZERO]] : f32) outs([[EMPT]] : tensor<1x200x4000x16xf32>) -> tensor<1x200x4000x16xf32>
 // CHECK-NEXT:      [[OUT_SLICE:%.+]] = tensor.extract_slice [[FILL]][0, 0, 0, 0] [1, 200, 4000, 12] [1, 1, 1, 1] : tensor<1x200x4000x16xf32> to tensor<1x200x4000x12xf32>
@@ -67,8 +67,8 @@ func.func @NHWCToNWCHPaddedAxis3(%arg0: tensor<1x16x4000x200xf32, {order=#NHWC}>
   return %0 : tensor<1x16x4000x200xf32, {order=#WHCN}>
 
 // CHECK: IE.CodeGenCapsule inputs({{.+}} as [[ARG1:%.+]]: tensor<1x4000x200x16xf32>) {
+// CHECK:      [[ZERO:%.+]] = arith.constant 0.000000e+00 : f32  
 // CHECK-NEXT:      [[IN_UNPAD:%.+]] = tensor.extract_slice [[ARG1]][0, 0, 0, 0] [1, 4000, 196, 16] [1, 1, 1, 1] : tensor<1x4000x200x16xf32> to tensor<1x4000x196x16xf32>
-// CHECK-NEXT:      [[ZERO:%.+]] = arith.constant 0.000000e+00 : f32
 // CHECK-NEXT:      [[EMPT:%.+]] = tensor.empty() : tensor<200x4000x16x1xf32>
 // CHECK-NEXT:      [[FILL:%.+]] = linalg.fill ins([[ZERO]] : f32) outs([[EMPT]] : tensor<200x4000x16x1xf32>) -> tensor<200x4000x16x1xf32>
 // CHECK-NEXT:      [[OUT_SLICE:%.+]] = tensor.extract_slice [[FILL]][0, 0, 0, 0] [196, 4000, 16, 1] [1, 1, 1, 1] : tensor<200x4000x16x1xf32> to tensor<196x4000x16x1xf32>

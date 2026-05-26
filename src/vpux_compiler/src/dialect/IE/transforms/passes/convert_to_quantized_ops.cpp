@@ -76,8 +76,8 @@ mlir::LogicalResult ConvertToQuantizedOpsPass::ConvertToDequantize::matchAndRewr
     }
 
     auto inputElemType = convertOp.getInput().getType().getElementType();
-    auto quantileFloatType = mlir::dyn_cast<vpux::type::QuantileFloatType>(inputElemType);
-    if (!inputElemType.isInteger() && quantileFloatType == nullptr) {
+    auto quantileType = mlir::dyn_cast<vpux::type::QuantileType>(inputElemType);
+    if (!inputElemType.isInteger() && quantileType == nullptr) {
         return mlir::failure();
     }
 
@@ -121,11 +121,14 @@ mlir::LogicalResult ConvertToQuantizedOpsPass::ConvertToDequantize::matchAndRewr
         outQuantizeElemType = mlir::quant::UniformQuantizedType::get(
                 mlir::quant::QuantizationFlags::Signed, integerType, mlir::Float16Type::get(ctx), /*scale=*/1,
                 /*zero_point=*/0, -1 * (1 << (inputElemTypeSize - 1)), (1 << (inputElemTypeSize - 1)) - 1);
-    } else if (quantileFloatType != nullptr) {
-        outQuantizeElemType = mlir::quant::QuantileQuantizedType::get(
-                0, quantileFloatType.getStorageType(), quantileFloatType.getQuantileType(), mlir::Float16Type::get(ctx),
-                quantileFloatType.getQuantiles(), /*scale=*/1,
-                /*zero_point=*/0, 0, (1 << inputElemTypeSize) - 1);
+    } else if (quantileType != nullptr) {
+        const auto newQuantileStorageType = vpux::type::QuantileType::get(
+                ctx, quantileType.getStorageType(), quantileType.getQuantileType(), quantileType.getQuantiles());
+
+        outQuantizeElemType =
+                mlir::quant::UniformQuantizedType::get(0, newQuantileStorageType, mlir::Float16Type::get(ctx),
+                                                       /*scale=*/1,
+                                                       /*zero_point=*/0, 0, (1 << inputElemTypeSize) - 1);
     } else {
         integerType = mlir::IntegerType::get(ctx, inputElemTypeSize, mlir::IntegerType::Unsigned);
         // Map integer type in max representable range; example for UINT8 [0, 255]

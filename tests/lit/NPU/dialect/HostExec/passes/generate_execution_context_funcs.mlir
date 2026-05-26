@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --vpu-arch=%arch% --mlir-elide-elementsattrs-if-larger 8 --generate-execution-context-funcs  %s | FileCheck %s
-// REQUIRES: arch-NPU40XX
+// RUN: vpux-opt --split-input-file --platform=%platform% --mlir-elide-elementsattrs-if-larger 8 --generate-execution-context-funcs  %s | FileCheck %s
+// REQUIRES: platform-NPU4000
 
 module {
   // The module can be empty; the pass should add the functions.

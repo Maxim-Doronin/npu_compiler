@@ -16,10 +16,9 @@ void IE::AdjustForVPUPipelineStrategy::registerRewriters(RewriterRegistry& regis
     IE::registerPerAxisFQConcatRewriters(registry, log);
     IE::registerConvertShuffleChannelsRewriters(registry, log);
     IE::registerFusePadOpsRewriters(registry, log);
-    IE::registerFuseActivationOpsRewriters(registry, _enableFuseClamp, log);
+    IE::registerFuseActivationOpsRewriters(registry, log);
 }
 
-std::unique_ptr<IDynamicRewriterStrategy> IE::createAdjustForVPUPipelineStrategy(mlir::func::FuncOp,
-                                                                                 bool enableFuseClamp) {
-    return std::make_unique<IE::AdjustForVPUPipelineStrategy>(enableFuseClamp);
+std::unique_ptr<IDynamicRewriterStrategy> IE::createAdjustForVPUPipelineStrategy(mlir::func::FuncOp) {
+    return std::make_unique<IE::AdjustForVPUPipelineStrategy>();
 }

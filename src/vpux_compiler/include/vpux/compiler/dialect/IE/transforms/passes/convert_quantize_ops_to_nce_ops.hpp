@@ -16,7 +16,7 @@ bool isQuantizedPerAxis(mlir::Value val);
 inline bool hasConstProducer(IE::DequantizeOp dequantOp) {
     return mlir::isa_and_nonnull<Const::DeclareOp>(dequantOp.getInput().getDefiningOp());
 }
-bool isLegalQuantizeOp(IE::QuantizeOp quantizeOp, bool canUseCMajor);
+bool shouldConvertQuantizeOp(IE::QuantizeOp quantizeOp, bool canUseCMajor);
 bool isPerChannelQuantizedType(mlir::Value val);
 bool is16BitStorageType(vpux::NDTypeInterface type);
 bool is8BitStorageType(vpux::NDTypeInterface type);

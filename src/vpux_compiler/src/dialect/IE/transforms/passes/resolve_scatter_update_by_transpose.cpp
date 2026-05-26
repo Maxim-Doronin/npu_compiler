@@ -9,7 +9,7 @@
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
-#include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Transforms/WalkPatternRewriteDriver.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_RESOLVESCATTERUPDATEBYTRANSPOSE
@@ -20,6 +20,13 @@ namespace vpux::IE {
 using namespace vpux;
 
 namespace {
+
+bool shouldConvertScatterUpdateOp(IE::ScatterUpdateOp scatterOp) {
+    VPUX_THROW_UNLESS(scatterOp.getAxisValue().has_value(), "axis_value is null");
+    const auto axis = scatterOp.getAxisValue().value();
+    return axis != 0;
+}
+
 //
 // Resolve scatter_update by transpose pass
 //
@@ -56,6 +63,10 @@ private:
 
 mlir::LogicalResult ResolveScatterUpdateByTransposePass::TransposePlanning::matchAndRewrite(
         IE::ScatterUpdateOp origOp, mlir::PatternRewriter& rewriter) const {
+    if (!shouldConvertScatterUpdateOp(origOp)) {
+        return mlir::failure();
+    }
+
     _log.trace("Found IE::ScatterUpdate Operation '{0}'", origOp->getLoc());
     IE::LayerOpInterface newOp;
 
@@ -146,26 +157,11 @@ mlir::LogicalResult ResolveScatterUpdateByTransposePass::TransposePlanning::matc
 void ResolveScatterUpdateByTransposePass::safeRunOnFunc() {
     auto& ctx = getContext();
 
-    const auto isLegalOp = [&](IE::ScatterUpdateOp scatterOp) {
-        VPUX_THROW_UNLESS(scatterOp.getAxisValue().has_value(), "axis_value is null");
-        const auto axis = scatterOp.getAxisValue().value();
-        return axis == 0;
-    };
-
-    mlir::ConversionTarget target(ctx);
-
-    target.addDynamicallyLegalOp<IE::ScatterUpdateOp>(isLegalOp);
-    target.addLegalOp<IE::TransposeOp>();
-
     mlir::RewritePatternSet patterns(&ctx);
 
     patterns.insert<ResolveScatterUpdateByTransposePass::TransposePlanning>(&ctx, _log);
 
-    auto func = getOperation();
-
-    if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
-        signalPassFailure();
-    }
+    walkAndApplyPatterns(getOperation(), std::move(patterns));
 }
 }  // namespace
 

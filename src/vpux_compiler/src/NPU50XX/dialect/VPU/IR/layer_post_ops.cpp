@@ -31,16 +31,15 @@ namespace {
 template <class MainOpType>
 class LayerWithPostOpModel : public VPU::LayerWithPostOpModelBase<LayerWithPostOpModel<MainOpType>, MainOpType> {
 public:
+    static bool isSupportedHWClampOp(mlir::Operation*, double, double, mlir::Type, const LogCb&) {
+        return true;
+    }
     static bool isSupportedHWClampOp(mlir::Operation*, IE::ClampOp, const LogCb&) {
         return true;
     }
 
     static bool isSupportedHWPostOp(mlir::Operation* mainOp, mlir::Operation* postOp, const LogCb& logCb) {
         return llvm::TypeSwitch<mlir::Operation*, bool>(postOp)
-                // TODO: remove option after E#-83187
-                .Case<IE::ClampOp>([&](auto) {
-                    return isSupportedHWClampOp(mainOp, mlir::cast<IE::ClampOp>(postOp), logCb);
-                })
                 .template Case<IE::ReLUOp, IE::LeakyReluOp>([](auto) {
                     return true;
                 })

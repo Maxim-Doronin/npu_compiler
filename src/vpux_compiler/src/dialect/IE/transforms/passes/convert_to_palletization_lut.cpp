@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/core/types/quantile_float/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/interfaces/strategies.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
@@ -38,7 +39,7 @@ void ConvertToPalletizationLUT::safeRunOnFunc() {
     mlir::RewritePatternSet patterns(&ctx);
     mlir::ConversionTarget target(ctx);
     // register platform specific rewriters using the platform specific strategy
-    auto& strategyFactory = IE::getIEStrategyFactory(&ctx);
+    const auto& strategyFactory = IE::getIEStrategyFactory(&ctx);
     auto strategy = strategyFactory->getConvertToPalletizationLUTStrategy();
     strategy->addPatterns(patterns, _log);
     strategy->markOpLegality(target, _log);

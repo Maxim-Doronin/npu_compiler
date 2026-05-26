@@ -356,23 +356,6 @@ static ClampIntersectionResult calcClampIntersection(const double currentLow, co
 }
 
 template <>
-void PpeFactory::callback<IE::ClampAttr>(IE::LayerWithPostOpInterface operation, IE::ClampAttr clamp,
-                                         AttrBuilder& builder) const {
-    // Similar to the ReLU case, but with a given clamp low-high interval.
-    // The clamping interval must be adapted to the scale (since scaling occurs before clamping), intersected with the
-    // quantization min-max interval and then shifted by the zero-point (since zero-point addition occurs before
-    // clamping).
-    const auto clampLow = clamp.getMin().getValueAsDouble();
-    const auto clampHigh = clamp.getMax().getValueAsDouble();
-
-    auto intersection = calcClampIntersection(builder.clampLow, builder.clampHigh, clampLow, clampHigh, operation);
-    builder.clampLow = intersection.low;
-    builder.clampHigh = intersection.high;
-    builder.mode = intersection.mode;
-    builder.adder = intersection.adder;
-}
-
-template <>
 void PpeFactory::callback<IE::LeakyReluAttr>(IE::LayerWithPostOpInterface operation, IE::LeakyReluAttr leakyRelu,
                                              AttrBuilder& builder) const {
     // Similar to the default case, but PPE is configured to apply the "leaky" alpha to negative values.
@@ -494,8 +477,8 @@ PpeFactory::AttrBuilder PpeFactory::retrieveNonEltwisePPEAttribute(mlir::Operati
 
     } else {
         llvm::TypeSwitch<IE::PostOpAttr, void>(layerWithPostOp.getPostOp())
-                .Case<IE::ReluAttr, IE::ClampAttr, IE::LeakyReluAttr, IE::TanhAttr, IE::SigmoidAttr, IE::SwishAttr,
-                      IE::GeluAttr, IE::ExpAttr, IE::HSwishAttr>([&](const auto postOp) {
+                .Case<IE::ReluAttr, IE::LeakyReluAttr, IE::TanhAttr, IE::SigmoidAttr, IE::SwishAttr, IE::GeluAttr,
+                      IE::ExpAttr, IE::HSwishAttr>([&](const auto postOp) {
                     this->callback(layerWithPostOp, postOp, builder);
                 })
                 .Default([](const auto postOp) {

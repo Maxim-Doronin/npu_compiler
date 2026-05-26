@@ -109,12 +109,14 @@ void InitResourcesPass::initializeFromOptions() {
 
 void InitResourcesPass::safeRunOnModule() {
     auto module = getOperation();
+    auto ctx = module.getContext();
 
     if (_platform) {
         _log.trace("Set NPU platform to {0}", stringifyEnum(_platform.value()));
     } else {
         _log.trace("Set NPU architecture to {0}", stringifyEnum(_arch));
     }
+
     config::setArch(module, _platform, _arch, _numOfDPUGroups, _numOfDMAPorts, _availableCMXMemory, _allowCustomValues);
 
     VPUX_THROW_WHEN(!_allowCustomValues && config::hasCompilationMode(module),
@@ -144,7 +146,7 @@ void InitResourcesPass::safeRunOnModule() {
     }
 
     if (config::getElfAbiVersion(module) == std::nullopt) {
-        if (const auto& baseElfAbiVersion = config::getNPUConstraints(module.getContext()).baseElfAbiVersion) {
+        if (const auto& baseElfAbiVersion = config::getNPUConstraints(ctx).baseElfAbiVersion) {
             config::setElfAbiVersion(module, baseElfAbiVersion.value());
         }
     }
@@ -154,7 +156,7 @@ void InitResourcesPass::safeRunOnModule() {
         auto revisionID = config::getRevisionID(module);
         auto freqMHz = vpux::VPU::getDpuFrequency(_arch, revisionID);
         _log.trace("Set DpuFrequency to {0}", freqMHz);
-        nceCluster.setProcessorFrequency(getFPAttr(module.getContext(), freqMHz));
+        nceCluster.setProcessorFrequency(getFPAttr(ctx, freqMHz));
     }
 }
 

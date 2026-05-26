@@ -6,6 +6,7 @@
 #include "vpux/compiler/NPU40XX/dialect/VPUIPDPU/transforms/passes/expand_dpu_config/expand_dpu_config_invariant_idu.hpp"
 #include "vpux/compiler/NPU40XX/dialect/VPUIPDPU/ops.hpp"
 #include "vpux/compiler/NPU40XX/dialect/VPUIPDPU/transforms/passes/expand_dpu_config/expand_dpu_config_invariant.hpp"
+#include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/compiler/dialect/VPUASM/ops.hpp"
 #include "vpux/compiler/dialect/VPUIPDPU/rewriters/utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
@@ -62,35 +63,31 @@ mlir::LogicalResult configureInActivations(const Logger&, IDUConfig::InActivatio
 }
 
 mlir::LogicalResult configurePalletization(const Logger& log, IDUConfig::Weights& config, mlir::Type weightsType) {
-    if (llvm::isa_and_nonnull<mlir::quant::QuantileQuantizedType>(weightsType) ||
-        llvm::isa_and_nonnull<mlir::quant::QuantileQuantizedPerAxisType>(weightsType)) {
-        auto storageType = llvm::dyn_cast<mlir::quant::QuantizedType>(weightsType).getStorageType();
+    if (mlir::isa_and_present<mlir::quant::UniformQuantizedType, mlir::quant::UniformQuantizedPerAxisType>(
+                weightsType)) {
+        auto quantized = mlir::cast<mlir::quant::QuantizedType>(weightsType);
+        if (const auto quantileStorageType =
+                    mlir::dyn_cast_if_present<vpux::type::QuantileType>(quantized.getStorageType())) {
+            const auto bitWidth = quantileStorageType.getStorageWidth();
 
-        const auto bitWidth = storageType.getIntOrFloatBitWidth();
-        if (bitWidth != 1 && bitWidth != 2 && bitWidth != 4) {
-            log.error("Unsupported palletization bitwidth {0} from type {1}. Only bitwidths of 1,2,4 are supported.",
-                      bitWidth, storageType);
-            return mlir::failure();
-        }
-        const std::map<uint32_t, IDUWeightPalletMode> palletBitWidthMap = {{1, IDUWeightPalletMode::ONE_BIT_PLT},
-                                                                           {2, IDUWeightPalletMode::TWO_BIT_PLT},
-                                                                           {4, IDUWeightPalletMode::FOUR_BIT_PLT}};
-        config.pltMode = palletBitWidthMap.at(bitWidth);
+            if (bitWidth != 1 && bitWidth != 2 && bitWidth != 4) {
+                log.error(
+                        "Unsupported palletization bitwidth {0} from type {1}. Only bitwidths of 1,2,4 are supported.",
+                        bitWidth, quantileStorageType);
+                return mlir::failure();
+            }
+            const std::map<uint32_t, IDUWeightPalletMode> palletBitWidthMap = {{1, IDUWeightPalletMode::ONE_BIT_PLT},
+                                                                               {2, IDUWeightPalletMode::TWO_BIT_PLT},
+                                                                               {4, IDUWeightPalletMode::FOUR_BIT_PLT}};
+            config.pltMode = palletBitWidthMap.at(bitWidth);
 
-        if (!config.quantileLUT) {
-            config.quantileLUT.emplace();
-        }
-
-        if (auto quantileQuantizedType = llvm::dyn_cast<mlir::quant::QuantileQuantizedType>(weightsType)) {
-            auto quantiles = quantileQuantizedType.getQuantiles();
-            config.quantileLUT->assign(quantiles.begin(), quantiles.end());
-        } else if (auto quantileQuantizedPerAxisType =
-                           llvm::dyn_cast<mlir::quant::QuantileQuantizedPerAxisType>(weightsType)) {
-            auto quantiles = quantileQuantizedPerAxisType.getQuantiles();
+            if (!config.quantileLUT) {
+                config.quantileLUT.emplace();
+            }
+            auto quantiles = quantileStorageType.getQuantiles();
             config.quantileLUT->assign(quantiles.begin(), quantiles.end());
         } else {
-            log.error("Palletization mode is enabled but weight type doesn't contain quantile LUT");
-            return mlir::failure();
+            config.pltMode = IDUWeightPalletMode::NO_PLT;
         }
     } else {
         config.pltMode = IDUWeightPalletMode::NO_PLT;
@@ -108,8 +105,16 @@ mlir::LogicalResult configureWeights(const Logger& log, IDUConfig::Weights& conf
             log.error("Missing weights data for DPU task {0}", VPUIP::stringifyNCETaskType(taskType));
             return mlir::failure();
         }
-        const bool isPalletModeEnabled = llvm::isa_and_nonnull<mlir::quant::QuantileQuantizedType>(weightsType) ||
-                                         llvm::isa_and_nonnull<mlir::quant::QuantileQuantizedPerAxisType>(weightsType);
+        auto isPalletModeEnabled = [weightsType]() -> bool {
+            if (mlir::isa_and_present<mlir::quant::UniformQuantizedType, mlir::quant::UniformQuantizedPerAxisType>(
+                        weightsType)) {
+                auto quantized = mlir::cast<mlir::quant::QuantizedType>(weightsType);
+                if (mlir::isa_and_present<vpux::type::QuantileType>(quantized.getStorageType())) {
+                    return true;
+                }
+            }
+            return false;
+        }();
         config.wMode = getBaseType(weightsType, isPalletModeEnabled);
     }
 

@@ -6,9 +6,11 @@
 #include "vpux/compiler/core/tiling.hpp"
 
 #include "vpux/compiler/dialect/VPU/IR/ops/dpu.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sibling_ops_analysis.hpp"
+#include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vertical_fusion_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
 
 #include <mlir/Parser/Parser.h>
@@ -282,6 +284,60 @@ TEST_F(MLIR_VPU_IsSupportedTileSize, UpsamlingSEP) {
     });
 }
 
+TEST_F(MLIR_VPU_IsSupportedTileSize, ShapeCast) {
+    mlir::MLIRContext ctx(registry);
+    constexpr StringLiteral inputIR = R"(
+        #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+        module @main {
+            func.func @main(%arg0: tensor<1x4x1600x2560xf16, {order = #NHWC}>) -> tensor<1x16x1600x640xf16, {order = #NHWC}> {
+                %0 = VPU.ShapeCast {shape = [1, 16, 1600, 640]} inputs(%arg0 : tensor<1x4x1600x2560xf16, {order = #NHWC}>) -> tensor<1x16x1600x640xf16, {order = #NHWC}>
+                return %0 : tensor<1x16x1600x640xf16, {order = #NHWC}>
+            }
+        }
+    )";
+    auto module = mlir::parseSourceString<mlir::ModuleOp>(inputIR, &ctx);
+    ASSERT_TRUE(module.get() != nullptr);
+
+    auto func = module.get().lookupSymbol<mlir::func::FuncOp>("main");
+    ASSERT_TRUE(func != nullptr);
+
+    func->walk([&](VPU::ShapeCastOp shapeCast) {
+        auto operationStorage = std::make_unique<VPU::TilingOperationStorage>();
+        auto outShape = getShape(shapeCast.getOutput());
+        Shape tilingOnH{1, 1, 20, 1};
+        auto tiles = fillDividedTiles(shapeCast, tilingOnH, outShape);
+        EXPECT_TRUE(mlir::succeeded(tiles));
+        auto isLegalTile = llvm::all_of(tiles.value(), [&](const TileInfo& tile) {
+            return shapeCast.isSupportedOutTile(tile);
+        });
+        EXPECT_EQ(isLegalTile, true);
+
+        Shape tilingOnC{1, 4, 1, 1};
+        tiles = fillDividedTiles(shapeCast, tilingOnC, outShape);
+        EXPECT_TRUE(mlir::succeeded(tiles));
+        isLegalTile = llvm::all_of(tiles.value(), [&](const TileInfo& tile) {
+            return shapeCast.isSupportedOutTile(tile);
+        });
+        EXPECT_EQ(isLegalTile, false);
+
+        Shape tilingOnHW{1, 1, 20, 4};
+        tiles = fillDividedTiles(shapeCast, tilingOnHW, outShape);
+        EXPECT_TRUE(mlir::succeeded(tiles));
+        isLegalTile = llvm::all_of(tiles.value(), [&](const TileInfo& tile) {
+            return shapeCast.isSupportedOutTile(tile);
+        });
+        EXPECT_EQ(isLegalTile, true);
+
+        Shape tilingOnCH{1, 4, 20, 1};
+        tiles = fillDividedTiles(shapeCast, tilingOnCH, outShape);
+        EXPECT_TRUE(mlir::succeeded(tiles));
+        isLegalTile = llvm::all_of(tiles.value(), [&](const TileInfo& tile) {
+            return shapeCast.isSupportedOutTile(tile);
+        });
+        EXPECT_EQ(isLegalTile, false);
+    });
+}
+
 using MLIR_VPU_isMultiClusterCompatibleForTiling = vpux::VPU::arch40xx::UnitTest;
 
 TEST_F(MLIR_VPU_isMultiClusterCompatibleForTiling, isSplitOverHeightCompatibleForTiling) {
@@ -416,4 +472,75 @@ TEST_F(MLIR_VPU_isMultiClusterCompatibleForTiling, isSplitOverKernelCompatibleFo
         outputTiling.push_back(secondTileInfo);
         EXPECT_EQ(isMultiClusterCompatibleForTiling(nceOp, outputTiling, vpux::Logger::global()), true);
     }
+}
+
+using MLIR_VPU_TestDividedTiles = vpux::VPU::arch40xx::UnitTest;
+
+TEST_F(MLIR_VPU_TestDividedTiles, changeRankDividedTiles) {
+    mlir::MLIRContext ctx(registry);
+    constexpr StringLiteral inputIR = R"(
+        #loc0 = loc(unknown)
+        #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+        #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+        #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
+        #NGHWC = affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d3, d4, d2)>
+        #NGCHW = affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d2, d3, d4)>
+        #NCWGH = affine_map<(d0, d1, d2, d3, d4) -> (d0, d2, d4, d1, d3)>
+        module @main {
+            func.func @main(%arg0: tensor<256x1x16x512x4xf16, {order = #NGHWC}>, %arg1: tensor<1x2048x4x256xf16, {order = #NWCH}>) -> tensor<1x16x256x512xf16, {order = #NHWC}> {
+                %0 = VPU.VerticalFusion (%arg0 as %arg2: tensor<256x1x16x512x4xf16, {order = #NGHWC}>, %arg1 as %arg3: tensor<1x2048x4x256xf16, {order = #NWCH}>) attributes {tilingStrategy = [1, 1, 1, 2]} -> tensor<1x16x256x512xf16, {order = #NHWC}> {
+                    %1 = VPU.AffineReshape(%arg2) {dim_mapping = [[0], [1], [2], [3], [3, 4]], shape_value = [256, 1, 16, 2048, 1]} : tensor<256x1x16x512x4xf16, {order = #NGHWC}> -> tensor<256x1x16x2048x1xf16, {order = #NGHWC}>
+                    %2 = VPU.PermuteCast(%1) {dst_order = #NGCHW, mem_perm = #NCWGH} : tensor<256x1x16x2048x1xf16, {order = affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d3, d4, d2)>}> -> tensor<256x2048x16x1x1xf16>
+                    %3 = VPU.AffineReshape(%2) {dim_mapping = [[0, 1], [2], [3], [3], [3]], shape_value = [1, 256, 2048, 16]} : tensor<256x2048x16x1x1xf16> -> tensor<1x256x2048x16xf16>
+                    %4 = VPU.Slice %3 [0, 0, 0, 0] [1, 256, 2048, 4] : tensor<1x256x2048x16xf16> to tensor<1x256x2048x4xf16>
+                    %5 = VPU.PermuteCast(%4) {dst_order = #NHWC, mem_perm = #NCHW} : tensor<1x256x2048x4xf16> -> tensor<1x4x256x2048xf16, {order = #NHWC}>
+                    %6 = VPU.ShapeCast {shape = [1, 16, 256, 512]} inputs(%5 : tensor<1x4x256x2048xf16, {order = #NHWC}>) -> tensor<1x16x256x512xf16, {order = #NHWC}>
+                    %7 = VPU.PermuteCast(%arg3) {dst_order = #NHWC, mem_perm = #NCHW} : tensor<1x2048x4x256xf16, {order = #NWCH}> -> tensor<1x4x256x2048xf16, {order = #NHWC}>
+                    %8 = VPU.ShapeCast {shape = [1, 16, 256, 512]} inputs(%7 : tensor<1x4x256x2048xf16, {order = #NHWC}>) -> tensor<1x16x256x512xf16, {order = #NHWC}>
+                    %9 = VPU.NCE.Eltwise(%8, %6) {is_inplace = true, multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>, 
+                    op_type = #VPU.eltwise_type<ADD>, ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = -3.4028234663852886E+38 : f64, 
+                    clamp_high = 3.4028234663852886E+38 : f64, scale = 1.000000e+00 : f64, prelu_alpha = [1.000000e+00], 
+                    bias = 0.000000e+00 : f64, adder = 0.000000e+00 : f64>} -> tensor<1x16x256x512xf16, {order = #NHWC}> 
+                VPU.Yield %9 
+              }
+              return %0 : tensor<1x16x256x512xf16, {order = #NHWC}>
+
+            }
+        }
+    )";
+
+    auto module = mlir::parseSourceString<mlir::ModuleOp>(inputIR, &ctx);
+    ASSERT_TRUE(module.get() != nullptr);
+
+    auto func = module.get().lookupSymbol<mlir::func::FuncOp>("main");
+    ASSERT_TRUE(func != nullptr);
+
+    const auto archKind = ArchKind::NPU40XX;
+
+    mlir::PassManager pm(module.get()->getName(), mlir::OpPassManager::Nesting::Implicit);
+    auto initCompilerOptions = VPU::InitCompilerOptions(archKind, config::CompilationMode::DefaultHW);
+
+    VPU::buildInitCompilerPipeline(pm, initCompilerOptions, vpux::Logger::global());
+
+    ASSERT_TRUE(mlir::succeeded(pm.run(module.get())));
+
+    const auto getOpPointer = [](auto& op) -> mlir::Operation* {
+        return &op;
+    };
+
+    // in current test dynamic alignment function is not needed
+    const auto alignFunction = [](auto*) -> bool {
+        return false;
+    };
+
+    func->walk([&](VPU::VerticalFusionOp vf) {
+        auto operations = to_small_vector(vf.getBody()->without_terminator() | transformed(getOpPointer));
+
+        auto* lastOp = operations.back();
+        auto outputShape = getShape(lastOp->getResult(0));
+        auto strategy = Shape(parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(vf.getTilingStrategy())));
+        const auto tiles = fillDividedTiles(lastOp, operations, strategy, outputShape, alignFunction);
+
+        ASSERT_TRUE(mlir::succeeded(tiles));
+    });
 }

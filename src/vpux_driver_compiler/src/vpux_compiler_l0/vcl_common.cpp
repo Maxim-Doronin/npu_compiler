@@ -17,7 +17,7 @@
 #include "npu_driver_compiler.h"
 #include "vcl_compiler.hpp"
 #include "vcl_deserializer.hpp"
-#include "vpux/utils/IE/private_properties.hpp"
+#include "vpux/utils/ov/private_properties.hpp"
 
 #include <intel_npu/ops/flash_attention_tile.hpp>
 #include <openvino/core/rt_info/weightless_caching_attributes.hpp>
@@ -55,6 +55,36 @@ using namespace vpux;
 
 namespace VPUXDriverCompiler {
 
+vcl_result_t setPlatformAndDeviceIdByDeviceId(uint32_t deviceID, std::map<std::string, std::string>& config,
+                                              VCLLogger* vclLogger) {
+    switch (deviceID) {
+    case 0x7D1D:  /// MeteorLake (MTL-P, MTL-H)
+    case 0xAD1D:  /// ArrowLake (ARL)
+        config[ov::intel_npu::platform.name()] = "3720";
+        config[ov::device::id.name()] = "3720";
+        break;
+    case 0x643E:  /// LunarLake (LNL)
+        config[ov::intel_npu::platform.name()] = "4000";
+        config[ov::device::id.name()] = "4000";
+        break;
+    case 0xB03E:  /// PantherLake Mobile (PTL-P)
+        config[ov::intel_npu::platform.name()] = "5010";
+        config[ov::device::id.name()] = "5010";
+        break;
+    case 0xFD3E:  /// Wildcatlake (WCL)
+        config[ov::intel_npu::platform.name()] = "5020";
+        config[ov::device::id.name()] = "5020";
+        break;
+    default:
+        if (vclLogger != nullptr) {
+            vclLogger->outputError(formatv("Unrecognized device ID! 0x{0:X}", deviceID));
+        }
+        return VCL_RESULT_ERROR_INVALID_ARGUMENT;
+    }
+
+    return VCL_RESULT_SUCCESS;
+}
+
 /**
  * @brief Parse single option and create map to save the key and value
  *
@@ -68,7 +98,7 @@ namespace VPUXDriverCompiler {
  */
 template <typename T>
 vcl_result_t parseSingleOption(const std::string& option, VCLLogger* vclLogger,
-                               std::unordered_map<std::string, T>& results, T (*function)(std::string, bool&)) {
+                               std::unordered_map<std::string, T>& results, T (*function)(const std::string&, bool&)) {
     /// The content of option may like --inputs_precisions="A:fp16", the final key is A, value is
     /// ov::element::Type_t::f16
     std::size_t firstDelimPos = option.find_first_of('"');
@@ -124,7 +154,7 @@ inline void myTransform<std::string>(std::string& value) {
  * @return VAL The matched value of the key in container
  */
 template <typename KEY, typename VAL>
-VAL getElementFromCon(KEY& key, bool& matched, const std::unordered_map<KEY, VAL>& con, VAL defaultValue) {
+VAL getElementFromCon(KEY key, bool& matched, const std::unordered_map<KEY, VAL>& con, VAL defaultValue) {
     myTransform<KEY>(key);
     const auto elem = con.find(key);
     if (elem == con.end()) {
@@ -208,7 +238,7 @@ void restoreWeightsOffsets(const std::shared_ptr<ov::Model> model, VCLLogger* vc
 BuildInfo::BuildInfo(VPUXCompilerL0* pvc): pvc(pvc), parsedConfig(pvc->getOptions()), logger(pvc->getLogger()) {
 }
 
-ov::element::Type_t BuildInfo::stringToOVPrecision(std::string value, bool& matched) {
+ov::element::Type_t BuildInfo::stringToOVPrecision(const std::string& value, bool& matched) {
     /// Ticket: E-88902
     /// @todo Update the map when zero backend begin to support more types
     static const std::unordered_map<std::string, ov::element::Type_t> supported_precisions = {
@@ -229,7 +259,7 @@ ov::element::Type_t BuildInfo::stringToOVPrecision(std::string value, bool& matc
                                                                ov::element::Type_t::dynamic);
 }
 
-std::string BuildInfo::checkSupportedLayout(std::string value, bool& matched) {
+std::string BuildInfo::checkSupportedLayout(const std::string& value, bool& matched) {
     /// Update map when the supported layout changed
     if (value.find('?') != std::string::npos || value.find('.') != std::string::npos) {
         /// For partial layout, use it directly
@@ -422,28 +452,10 @@ vcl_result_t BuildInfo::prepareConfig(const std::string& descOptions) {
                                         "AUTO_DETECT" == config[ov::intel_npu::platform.name()])) {
         /// Set NPU_PLATFORM and DEVICE_ID
         /// Value from VpuFamilyId.h
-        switch (deviceDesc.deviceID) {
-        case 0x7D1D:  /// MeteorLake (MTL-P, MTL-H)
-        case 0xAD1D:  /// ArrowLake (ARL)
-            config[ov::intel_npu::platform.name()] = "3720";
-            config[ov::device::id.name()] = "3720";
-            break;
-        case 0x643E:  /// LunarLake (LNL)
-            config[ov::intel_npu::platform.name()] = "4000";
-            config[ov::device::id.name()] = "4000";
-            break;
-        case 0xB03E:  /// PantherLake Mobile (PTL-P)
-            config[ov::intel_npu::platform.name()] = "5010";
-            config[ov::device::id.name()] = "5010";
-            break;
-        case 0xFD3E:  /// Wildcatlake (WCL)
-            config[ov::intel_npu::platform.name()] = "5020";
-            config[ov::device::id.name()] = "5020";
-            break;
-        default:
-            logger->outputError(formatv("Unrecognized device ID! 0x{0:X}", deviceDesc.deviceID));
+        vcl_result_t ret = setPlatformAndDeviceIdByDeviceId(deviceDesc.deviceID, config, logger);
+        if (ret != VCL_RESULT_SUCCESS) {
             return VCL_RESULT_ERROR_INVALID_ARGUMENT;
-        };
+        }
     }
 
     /// Update maxtiles config with compiler desc
@@ -479,7 +491,7 @@ vcl_result_t BuildInfo::prepareConfig(const std::string& descOptions) {
 
     /// Update default compilation config options with the new values we parsed from user descriptions
     try {
-        parsedConfig.update(config, intel_npu::OptionMode::CompileTime);
+        parsedConfig.update(config);
     } catch (const std::exception& error) {
         logger->outputError(formatv("Failed to update default config:\n{0}", error.what()));
         return VCL_RESULT_ERROR_INVALID_ARGUMENT;

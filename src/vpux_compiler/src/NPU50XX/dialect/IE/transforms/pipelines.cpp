@@ -39,7 +39,7 @@ void vpux::IE::arch50xx::buildLowPrecisionPipeline(mlir::OpPassManager& pm, cons
     pm.addPass(IE::createSwapFakeQuantWithReshapeAndStridedSlicePass(log));
     pm.addPass(IE::createSwapConvertWithReshapeKindOpsPass(log));
     if (options.enableAlignScales) {
-        pm.addPass(IE::createAlignScalesPass(isOptionEnabled(options.enableSEPtrsOperations), log));
+        pm.addPass(IE::createAlignScalesPass(log));
     }
     if (options.enableAdjustNonZeroFakeQuant) {
         pm.addPass(IE::createAdjustNonZeroFakeQuantPass(log));
@@ -53,24 +53,21 @@ void vpux::IE::arch50xx::buildLowPrecisionPipeline(mlir::OpPassManager& pm, cons
 
     pm.addPass(mlir::createCanonicalizerPass());  // Note: folds constants before convert-to-dequantize
     pm.addPass(IE::createConvertToQuantizedOpsPass(log));
-    if (options.enablePropagateQuantDequant) {
-        pm.addPass(mlir::createCanonicalizerPass(grc));
-        pm.addPass(IE::createPropagateAndFuseQuantizeDequantizePass(log));
-    }
+    pm.addPass(mlir::createCanonicalizerPass(grc));
+    pm.addPass(IE::createPropagateAndFuseQuantizeDequantizePass(log));
     pm.addPass(IE::createFuseConvertWithQDQPass(log));
     if (options.enableSwapTransposeWithFQ) {
         pm.addPass(IE::createSwapTransposeWithFQPass(log));
     }
     pm.addPass(IE::createPropagateDequantThroughConcatPass(log));
     pm.addPass(IE::createConvertWeightsToU8Pass(log));
-    pm.addPass(IE::createFuseQuantizedOpsPass(
-            /*seOpsEnabled=*/isOptionEnabled(options.enableSEPtrsOperations),
-            /*seExperimentalOpsEnabled=*/isOptionEnabled(options.enableExperimentalSEPtrsOperations), log));
+    pm.addPass(IE::createFuseQuantizedOpsPass(log));
 
     // Enable sequence FuseQuantizedOps->FuseActivationOps->FuseOutstandingDequant->ConvertToMixedPrecision->
     // ConvertQuantizeOpsToNceOps. The sequence allows Conv->Quantize->Dequantize->LeakyReLU->Quantize->Dequantize
     // fused into a single Conv.
-    pm.addPass(IE::createFuseActivationOpsPass(options.enableFuseClampOperations, log));
+    pm.addPass(IE::createFuseActivationOpsPass(log));
+
     if (options.enableConvertWeightsToU8I4) {
         pm.addPass(IE::createConvertWeightsToI8Pass(log));
     }
@@ -90,9 +87,7 @@ void vpux::IE::arch50xx::buildLowPrecisionPipeline(mlir::OpPassManager& pm, cons
     // of NCE operations to U8, condition that is necessary in rewriters like: FuseWithEltwiseConverter,
     // FloatOutAddRewriter where it required that the operands to have the same data type and this happens only after
     // execution of ConvertWeightsToU8.
-    pm.addPass(IE::createFuseQuantizedOpsPass(
-            /*seOpsEnabled=*/isOptionEnabled(options.enableSEPtrsOperations),
-            /*seExperimentalOpsEnabled=*/isOptionEnabled(options.enableExperimentalSEPtrsOperations), log));
+    pm.addPass(IE::createFuseQuantizedOpsPass(log));
     if (options.enableFuseOutstandingDequant) {
         if (!options.functionOutlining.hasValue()) {
             pm.addPass(IE::createFuseOutstandingDequant(log));
@@ -142,42 +137,28 @@ void vpux::IE::arch50xx::buildConvertToEfficientOpsPipeline(mlir::OpPassManager&
     pm.addPass(IE::createSwapTransposeConcatPass(log));
     pm.addPass(IE::createConvertSplitConcatToAffineReshapePass(log));
     pm.addPass(IE::createConvertBranchesConcatToConvPass(log));
-    pm.addPass(IE::createSwapOperationsPass(isOptionEnabled(options.enableSEPtrsOperations) ||
-                                                    isOptionEnabled(options.enableExperimentalSEPtrsOperations),
-                                            log));
+    pm.addPass(IE::createSwapOperationsPass(log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
     pm.addPass(IE::createSwapPadLayerPass(log));
     // NOTE: apply FuseStaticScale after ConvertDivideToMultiply to increase
     // the applicability
-    pm.addPass(IE::createFuseStaticScalePass(log));
-    pm.addPass(IE::createSwapOperationsPass(isOptionEnabled(options.enableSEPtrsOperations) ||
-                                                    isOptionEnabled(options.enableExperimentalSEPtrsOperations),
-                                            log));
+    pm.addPass(IE::createFuseScalePass(log));
+    pm.addPass(IE::createSwapOperationsPass(log));
     pm.addPass(IE::createBroadcastInputForAddPass(log));
     pm.addPass(IE::createConvertGRNToNormalizeL2Pass(log));
-    // E#79878: Solve eltwise single layer test failure.
-    // SwapOperations pass may generate non-4D AddOp.
-    // If AddOp appears here means that it cannot be fused into NCE task.
-    // So convert it's shape to 4D and then convert this AddOp to ScaleShift.
-    pm.addPass(IE::createConvertShapeTo4DPass(isOptionEnabled(options.forceConvertGatherTo4D), log));
-    pm.addPass(IE::createConvertToScaleShiftPass(log));
-    // NOTE: Canonicalizer required after ConvertShapeTo4DPass
+    pm.addPass(IE::createConvertToScaleShiftPass(options.enableNCEEltwiseMultiply, log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
     pm.addPass(IE::createResolveScatterUpdateByTransposePass(log));
     pm.addPass(IE::createConvertGroupConvToConvPass(log));
     // NOTE: Required to avoid performance regression related to AddOp
-    pm.addPass(IE::createSwapOperationsPass(isOptionEnabled(options.enableSEPtrsOperations) ||
-                                                    isOptionEnabled(options.enableExperimentalSEPtrsOperations),
-                                            log));
+    pm.addPass(IE::createSwapOperationsPass(log));
     if (options.enableD2SToTransposedConvConversion) {
         pm.addPass(IE::createConvertDepth2SpaceToTransposedConvPass(log));
     }
     // NOTE: SwapD2SAndScaleShift depends on ConvertDepth2SpaceToTransposedConv
     pm.addPass(IE::createSwapD2SAndScaleShiftPass(log));
     pm.addPass(IE::createConvertReverseToDWConvPass(log));
-    if (options.enableConvertDeformableConvToConv) {
-        pm.addPass(IE::createConvertDeformableConvToConvPass(log));
-    }
+    pm.addPass(IE::createConvertDeformableConvToConvPass(log));
 }
 
 void vpux::IE::arch50xx::buildFinalTransformationPipeline(mlir::OpPassManager& pm,
@@ -193,7 +174,7 @@ void vpux::IE::arch50xx::buildFinalTransformationPipeline(mlir::OpPassManager& p
 
     // Operation optimizations
     pm.addPass(IE::createPropagateShapeCastPass(log));
-    pm.addPass(IE::createPropagatePermuteCastThroughDequantizePass(log));
+    pm.addPass(IE::createPropagatePermuteCastPass(log));
     pm.addPass(IE::createMoveDynamicDequantizeToUserPass(log));
 
     // Operation Fusions
@@ -214,12 +195,15 @@ void vpux::IE::arch50xx::buildDefaultHWPipeline(mlir::OpPassManager& pm, const I
     const auto grc = getDefaultGreedyRewriteConfig();
 
     pm.addPass(locverif::createStartLocationVerifierPass(log, options.locationsVerificationMode));
+    pm.addPass(IE::createForbidFourBitOutputsPass(log));
 
-    IE::arch40xx::buildOutliningPipeline(pm, options, log);
+    IE::buildOutliningPipeline(pm, options, log);
 
     // No passes should be run before this pipeline, with very few exceptions.
     IE::buildPostImportPipeline(pm, log);
     pm.addPass(mlir::createCanonicalizerPass(grc));
+
+    pm.addPass(IE::createDumpStatisticsOfIeOpsPass("Start of IE pipeline statistics", log));
 
     if (options.enableReduceNumTilesForSmallModelsPass) {
         pm.addPass(IE::createReduceNumTilesForSmallModelsPass(log));
@@ -248,35 +232,31 @@ void vpux::IE::arch50xx::buildDefaultHWPipeline(mlir::OpPassManager& pm, const I
     IE::buildOperationConversionPipeline(pm, IE::OperationConversionOptions(options), log);
 
     IE::buildAdjustShapePipeline(pm, log);
-    IE::buildSplitLargeOpsPipeline(pm, IE::SplitLargeOpsOptions(options), log);
+    IE::buildSplitLargeOpsPipeline(pm, log);
     IE::arch50xx::buildConvertToEfficientOpsPipeline(pm, IE::ConvertToEfficientOpsOptions(options), log);
 
-    IE::buildAdjustForVPUPipeline(pm, IE::AdjustForVPUOptions(options), log);
+    IE::buildAdjustForVPUPipeline(pm, log);
     pm.addPass(mlir::createCSEPass());
 
-    IE::buildHandleHyperParametersPipeline(pm, IE::HyperParameterOptions(options), log);
+    IE::buildHandleHyperParametersPipeline(pm, log);
     IE::buildConvertToConvolutionPipeline(pm, log);
     IE::buildReorderFakeQuantizePipeline(pm, IE::ReorderFakeQuantizeOptions(options), log);
 
     // All locations unique with full verification after each pass to this point
     pm.addPass(locverif::createStopLocationVerifierPass(log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
-    if (options.enableOptimizeScaleShiftToDWConv) {
-        IE::buildScaleShiftProcessingPipeline(pm, log);
-    }
+    IE::buildScaleShiftProcessingPipeline(pm, log);
 
-    if (options.enableLowPrecision) {
-        IE::arch50xx::buildLowPrecisionPipeline(pm, IE::LowPrecisionOptions(options), log);
-        pm.addPass(IE::createConvertShapeTo4DPass(isOptionEnabled(options.forceConvertGatherTo4D), log));
-        pm.addPass(IE::createSwapViewOpAndClampPass(log));
-    }
+    IE::arch50xx::buildLowPrecisionPipeline(pm, IE::LowPrecisionOptions(options), log);
+    pm.addPass(IE::createConvertShapeTo4DPass(isOptionEnabled(options.forceConvertGatherTo4D), log));
+    pm.addPass(IE::createSwapViewOpAndClampPass(log));
+
     IE::buildOptimizeActivationsPipeline(pm, IE::OptimizeActivationsOptions(options), log);
 
     IE::buildSplitAndMapBilinearInterpolateOnDPUPipeline(pm, IE::SplitAndMapBilinearInterpolateOnDPUOptions(options),
                                                          log);
 
-    IE::buildBatchTransformationPipeline(pm, BatchUnrollOptions::create(options, log), options.enableUpstreamSlice,
-                                         log);
+    IE::buildBatchTransformationPipeline(pm, BatchUnrollOptions::create(options, log), log);
 
     IE::buildAdjustLayoutPipeline(pm, IE::AdjustLayoutOptions(options), log);
 
@@ -287,7 +267,7 @@ void vpux::IE::arch50xx::buildDefaultHWPipeline(mlir::OpPassManager& pm, const I
 
     IE::buildOptimizeSliceOpPipeline(pm, log);
 
-    IE::buildDimensionAlignmentPipeline(pm, IE::ExpandActivationChannelsOptions(options), log);
+    IE::buildDimensionAlignmentPipeline(pm, log);
 
     IE::arch50xx::buildFinalTransformationPipeline(pm, options, log);
 
@@ -301,6 +281,8 @@ void vpux::IE::arch50xx::buildDefaultHWPipeline(mlir::OpPassManager& pm, const I
     if (options.logOpOptimizations) {
         pm.addPass(IE::createLogOpOptimizationsPass());
     }
+
+    pm.addPass(IE::createDumpStatisticsOfIeOpsPass("End of IE pipeline statistics", log));
 }
 
 void vpux::IE::arch50xx::buildReferenceSWPipeline(mlir::OpPassManager& pm,
@@ -339,15 +321,13 @@ void vpux::IE::arch50xx::buildReferenceSWPipeline(mlir::OpPassManager& pm,
     pm.addPass(IE::createConvertToSpatialOpPass(false, log));
     pm.addPass(IE::createConvertGRNToNormalizeL2Pass(log));
     pm.addPass(IE::createResolveScatterUpdateByTransposePass(log));
-    IE::buildAdjustForVPUPipeline(pm, IE::AdjustForVPUOptions(options), log);
+    IE::buildAdjustForVPUPipeline(pm, log);
 
     pm.addPass(IE::createSplitFakeQuantPass(log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
     pm.addPass(IE::createDequantizeConstPass(options.runtimeDequantizationLimit,
                                              isOptionEnabled(options.enableRuntimeDequant), log));
-    if (options.enableMergeFakeQuant) {
-        pm.addPass(IE::createMergeFakeQuantPass(log));
-    }
+    pm.addPass(IE::createMergeFakeQuantPass(log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
 
     IE::buildAdjustLayoutPipeline(pm, IE::AdjustLayoutOptions(options), log);

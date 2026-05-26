@@ -4,6 +4,8 @@
 //
 
 #include "vpux/compiler/NPU40XX/dialect/IE/impl/convert_to_palletization_lut_strategy.hpp"
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"
+#include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/IE/interfaces/common_rewriters/convert_to_palletization_lut.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
@@ -11,16 +13,21 @@
 
 namespace vpux::IE::arch40xx {
 
-// Returns false when type conversion is required;
-// Only require the conversion when zp is asymmetric, per tensor.
+// Returns false when type conversion is required.
 bool isLegalTensorElem40XX(mlir::Type elementType) {
-    return IE::isLegalTensorElemForPalletization(elementType, /*convertOnlyAsymmetric=*/true,
+    return IE::isLegalTensorElemForPalletization(elementType, /*convertOnlyAsymmetric=*/false,
                                                  /*allowPerChannelZp=*/false);
 }
 
-// change quantized type to a quantile quantized type, with float quantile type and zp fully subtracted
-mlir::quant::QuantizedType changeWeightTypeToLUT(mlir::quant::QuantizedType originWeightType, mlir::Type) {
+// change quantized type to a quantile quantized type, with float/integer quantile type and zp fully subtracted
+mlir::quant::QuantizedType changeWeightTypeToLUT(mlir::quant::QuantizedType originWeightType, mlir::Type actType) {
     if (originWeightType == nullptr) {
+        return nullptr;
+    }
+
+    const bool isActFp16 = actType.isF16();
+    const bool isActInt8 = isInt8Quantized(actType);
+    if (!(isActFp16 || isActInt8)) {
         return nullptr;
     }
 
@@ -57,21 +64,31 @@ mlir::quant::QuantizedType changeWeightTypeToLUT(mlir::quant::QuantizedType orig
 
     auto ctx = originWeightType.getContext();
     const auto newStorageIntegerType = mlir::IntegerType::get(ctx, bitWidth, mlir::IntegerType::Unsigned);
-    const auto newQuantileType = mlir::Float16Type::get(ctx);
     constexpr unsigned newStorageIntegerTypeMin = 0;
     const unsigned newStorageIntegerTypeMax = (1 << bitWidth) - 1;
+    mlir::Type newQuantileType;
+    if (isActFp16) {
+        newQuantileType = mlir::Float16Type::get(ctx);
+    } else if (isActInt8) {
+        newQuantileType = mlir::IntegerType::get(ctx, 8, mlir::IntegerType::Signed);
+    } else {
+        VPUX_THROW("Unsupported activation type '{0}'", actType);
+    }
 
     if (const auto uniformType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(originWeightType)) {
-        return mlir::quant::QuantileQuantizedType::get(0, newStorageIntegerType, newQuantileType,
-                                                       uniformType.getExpressedType(),
-                                                       getShiftedLUTUniformType(uniformType), uniformType.getScale(),
-                                                       /*zp=*/0, newStorageIntegerTypeMin, newStorageIntegerTypeMax);
+        const auto newStorageQuantileType = vpux::type::QuantileType::get(ctx, newStorageIntegerType, newQuantileType,
+                                                                          getShiftedLUTUniformType(uniformType));
+
+        return mlir::quant::UniformQuantizedType::get(0, newStorageQuantileType, uniformType.getExpressedType(),
+                                                      uniformType.getScale(), 0, newStorageIntegerTypeMin,
+                                                      newStorageIntegerTypeMax);
 
     } else if (const auto perAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(originWeightType)) {
+        const auto newStorageQuantileType = vpux::type::QuantileType::get(ctx, newStorageIntegerType, newQuantileType,
+                                                                          getShiftedLUTUniformType(perAxisType));
         const SmallVector<int64_t> newZeroPoints(perAxisType.getZeroPoints().size(), 0);
-        return mlir::quant::QuantileQuantizedPerAxisType::get(
-                0, newStorageIntegerType, newQuantileType, perAxisType.getExpressedType(),
-                getShiftedLUTUniformType(perAxisType), perAxisType.getScales(), newZeroPoints,
+        return mlir::quant::UniformQuantizedPerAxisType::get(
+                0, newStorageQuantileType, perAxisType.getExpressedType(), perAxisType.getScales(), newZeroPoints,
                 perAxisType.getQuantizedDimension(), newStorageIntegerTypeMin, newStorageIntegerTypeMax);
     }
 
@@ -91,17 +108,30 @@ void ConvertToPalletizationLUTStrategy::addPatterns(mlir::RewritePatternSet& pat
 }
 
 bool isLegalOp(mlir::Operation* convOp) {
-    auto inputType = mlir::cast<vpux::NDTypeInterface>(convOp->getOperand(0).getType()).getElementType();
-    if (!inputType.isF16()) {
+    // only fp16 and quant.uniform<i8:..., ...> are supported as activations types for this pass
+    auto inputDequantOp = mlir::dyn_cast_or_null<IE::DequantizeOp>(convOp->getOperand(0).getDefiningOp());
+    const auto actType =
+            inputDequantOp == nullptr
+                    ? mlir::cast<vpux::NDTypeInterface>(convOp->getOperand(0).getType()).getElementType()
+                    : mlir::cast<vpux::NDTypeInterface>(inputDequantOp.getInput().getType()).getElementType();
+
+    const bool isActFp16 = actType.isF16();
+    const bool isActInt8 = isInt8Quantized(actType);
+
+    if (!(isActFp16 || isActInt8)) {
         return true;
     }
     auto filterOp = convOp->getOperand(1).getDefiningOp<IE::DequantizeOp>();
     if (filterOp == nullptr) {
         return true;
     }
-    auto inputOp = convOp->getOperand(0).getDefiningOp();
-    if (mlir::isa_and_nonnull<IE::FakeQuantizeOp, IE::DequantizeOp>(inputOp)) {
-        return true;
+    // For fp16 activations, FakeQuantize/Dequantize on the input path indicates the activation will be quantized
+    // by a later pass; only int8 activations may legitimately appear behind a Dequantize at this stage.
+    if (isActFp16) {
+        auto inputOp = convOp->getOperand(0).getDefiningOp();
+        if (mlir::isa_and_nonnull<IE::FakeQuantizeOp, IE::DequantizeOp>(inputOp)) {
+            return true;
+        }
     }
 
     return isLegalTensorElem40XX(mlir::cast<vpux::NDTypeInterface>(filterOp.getInput().getType()).getElementType());

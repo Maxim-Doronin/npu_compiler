@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW allow-custom-values=true enable-auto-padding-odu=true enable-auto-padding-idu=true" --mlir-elide-elementsattrs-if-larger 8 --default-hw-mode-ie %s | FileCheck %s --strict-whitespace
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW allow-custom-values=true enable-auto-padding-odu=true enable-auto-padding-idu=true" --mlir-elide-elementsattrs-if-larger 8 --default-hw-mode-ie %s | FileCheck %s --strict-whitespace
+// REQUIRES: platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -473,14 +473,14 @@ module @HandleFirstPermuteOnNCE {
 module @FuseConstDivideToMatMul {
     net.NetworkInfo entryPoint : @main
     inputsInfo : {
-        DataInfo "input" : tensor<1x64x3x24xf16>
-        DataInfo "input" : tensor<1x64x3x24xf16>
+        DataInfo "input" : tensor<1x64x3x128xf16>
+        DataInfo "input" : tensor<1x64x3x128xf16>
     } outputsInfo : {
         DataInfo "output" : tensor<1x3x64x64xf16>
     }
 
     // CHECK-LABEL: @main
-    func.func @main(%arg0: tensor<1x3x64x24xf16>, %arg1: tensor<1x3x64x24xf16>) -> tensor<1x3x64x64xf16> {
+    func.func @main(%arg0: tensor<1x3x64x128xf16>, %arg1: tensor<1x3x64x128xf16>) -> tensor<1x3x64x64xf16> {
         %cst_0 = const.Declare tensor<1xf16> = dense<0.000000e+00> : tensor<1xf16>
         %cst_1 = const.Declare tensor<1xf16> = dense<2.550000e+02> : tensor<1xf16>
         %cst_16 = const.Declare tensor<1xf16> = dense<-8.01463317> : tensor<1xf16>
@@ -491,7 +491,7 @@ module @FuseConstDivideToMatMul {
         } : tensor<1xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16>, tensor<1xf16> -> tensor<1xf16>
 
         %28 = IE.MatMul(%arg0, %arg1) {transpose_b}
-            : tensor<1x3x64x24xf16>, tensor<1x3x64x24xf16> -> tensor<1x3x64x64xf16>
+            : tensor<1x3x64x128xf16>, tensor<1x3x64x128xf16> -> tensor<1x3x64x64xf16>
 
         %29 = IE.Divide(%28, %cst_fq) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
             : tensor<1x3x64x64xf16>, tensor<1xf16> -> tensor<1x3x64x64xf16>
@@ -519,9 +519,8 @@ module @FuseConstDivideToMatMul {
 
 // -----
 
-// E#129083
-// CHECK-LABEL: @NoMultiplyFQFusion
-module @NoMultiplyFQFusion {
+// CHECK-LABEL: @MultiplyFQFusion
+module @MultiplyFQFusion {
     net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input" : tensor<1x64x250x256xf32>
@@ -549,15 +548,13 @@ module @NoMultiplyFQFusion {
         return %add2 : tensor<1x64x250x256xf32>
 
         // CHECK-DAG:   [[BIAS:%.+]] = const.Declare tensor<1x64x250x256x{{[^:]+}}, {order = #NHWC}> = dense<2.000000e+00>
-        // CHECK-DAG:   [[SCALE:%.+]] = const.Declare tensor<64x1x1x1x{{[^:]+}}, {order = #NHWC}> = dense<3.000000e+00>
         // CHECK:       [[CONVERT1:%.+]] = IE.Convert([[ARG0]])
         // CHECK-NEXT:  [[PERMUTE_QUANT:%.+]] = IE.PermuteQuantize([[CONVERT1]])
-
         // CHECK-NEXT:  [[ADD1:%.+]] = IE.Add([[PERMUTE_QUANT]], [[PERMUTE_QUANT]])
-        // CHECK-NEXT:  [[GROUP_CONV:%.+]] = IE.GroupConvolution([[ADD1]], [[SCALE]])
+        // CHECK-NEXT:  [[QUANT_CAST:%.+]] = IE.QuantizeCast([[ADD1]])
+        // CHECK-NOT:   IE.GroupConvolution
         // CHECK-NOT:   IE.AvgPool
-        // CHECK-NOT:   IE.QuantizeCast
-        // CHECK-NEXT:  [[ADD2:%.+]] = IE.Add([[GROUP_CONV]], [[BIAS]])
+        // CHECK-NEXT:  [[ADD2:%.+]] = IE.Add([[QUANT_CAST]], [[BIAS]])
         // CHECK-SAME:    -> tensor<1x64x250x256xf32>
         // CHECK-NEXT:  return [[ADD2]]
     }
@@ -568,7 +565,7 @@ module @NoMultiplyFQFusion {
 #map1 = affine_map<(d0, d1, d2, d3) -> (d1, d3, d0, d2)>
 
 // CHECK-LABEL-DAG: @MatMulWithGroupQuant
-// CHECK:   !qElemType = !quant.quantile<u4:f16:f16, {-8.000000e+00,-7.000000e+00,-6.000000e+00,-5.000000e+00,-4.000000e+00,-3.000000e+00,-2.000000e+00,-1.000000e+00,0.000000e+00,1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00,5.000000e+00,6.000000e+00,7.000000e+00}:2.000000e+00>
+// CHECK:   !qElemType = !quant.uniform<!QuantileType.quantile<ui4:f16, {-8.000000e+00,-7.000000e+00,-6.000000e+00,-5.000000e+00,-4.000000e+00,-3.000000e+00,-2.000000e+00,-1.000000e+00,0.000000e+00,1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00,5.000000e+00,6.000000e+00,7.000000e+00}>:f16, 2.000000e+00>
 // CHECK:   !qElemType1 = !quant.uniform<u4:f16, 2.000000e+00:8>
 module @MatMulWithGroupQuant {
     net.NetworkInfo entryPoint : @main

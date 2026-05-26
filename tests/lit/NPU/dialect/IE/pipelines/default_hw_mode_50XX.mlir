@@ -3,17 +3,19 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW allow-custom-values=true enable-auto-padding-odu enable-se-ptrs-operations=true" --mlir-elide-elementsattrs-if-larger 8 --default-hw-mode-ie="enable-se-ptrs-operations=true" %s | FileCheck %s --strict-whitespace
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW allow-custom-values=true enable-auto-padding-odu enable-se-ptrs-operations=true" --mlir-elide-elementsattrs-if-larger 8 --default-hw-mode-ie="enable-se-ptrs-operations=true" %s | FileCheck %s --strict-whitespace
+// REQUIRES: platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 !qElemType = !quant.uniform<u8<0:1>:f16, 1.000000e+00>
 !qElemType1 = !quant.uniform<u8:f16, 0.027773432638130938:101>
 !qElemType2 = !quant.uniform<u8:f16, 0.013886716319065469:101>
-!qElemType3 = !quant.uniform<u8:f16, 0.0069433581595327344:101>
 
 // CHECK-LABEL: @Depth2SpaceToTransConv
 module @Depth2SpaceToTransConv {
+    config.PipelineOptions @Options {
+        config.Option @config.EnableSEPtrsOperations : true
+    }
 
     net.NetworkInfo entryPoint : @main
     inputsInfo : {
@@ -85,17 +87,9 @@ module @Depth2SpaceToTransConv {
         // CHECK:           [[CONV:%.+]] = IE.TransposedConvolution([[QUANTCAST1]], [[WEIGHTS]]) {
         // CHECK-SAME:          dilations = [1, 1], operandSegmentSizes = array<i32: 1, 1, 0, 0>,
         // CHECK-SAME:          pads_begin = [0, 0], pads_end = [0, 0], spatial_output_padding = [0, 0], strides = [2, 2]
-        // CHECK-SAME:      } : tensor<1x256x16x16x!qElemType2, {order = #NHWC}>, tensor<64x256x2x2x!qElemType, {order = #NHWC}> -> tensor<1x64x32x32x!qElemType2, {order = #NHWC}>
+        // CHECK-SAME:      } : tensor<1x256x16x16x!qElemType2, {order = #NHWC}>, tensor<64x256x2x2x!qElemType, {order = #NHWC}> -> tensor<1x64x32x32xf16>
 
-        // CHECK:       [[QUANTCAST2:%.+]] = IE.QuantizeCast([[CONV]]) {
-        // CHECK-SAME:      dstElemType = !qElemType3
-        // CHECK-SAME:  } : tensor<1x64x32x32x!qElemType2, {order = #NHWC}> -> tensor<1x64x32x32x!qElemType3, {order = #NHWC}>
-
-        // CHECK:       [[ADD2:%.+]] = IE.Add([[QUANTCAST2]], [[QUANTCAST2]]) {
-        // CHECK-SAME:      auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>
-        // CHECK-SAME:  } : tensor<1x64x32x32x!qElemType3, {order = #NHWC}>, tensor<1x64x32x32x!qElemType3, {order = #NHWC}> -> tensor<1x64x32x32xf16>
-
-        // CHECK: return [[ADD2]]
+        // CHECK: return [[CONV]]
     }
 }
 
@@ -107,6 +101,10 @@ module @Depth2SpaceToTransConv {
 // It can convert GroupConv with large kernel to NCEConvolution
 // CHECK-LABEL: @HandleGroupConvWithLargeKernels
 module @HandleGroupConvWithLargeKernels {
+    config.PipelineOptions @Options {
+        config.Option @config.EnableSEPtrsOperations : true
+    }
+
     net.NetworkInfo entryPoint : @main
     inputsInfo : {
         DataInfo "input0" : tensor<1x128x1x112xf16>
@@ -177,6 +175,9 @@ module @HandleGroupConvWithLargeKernels {
 
 // CHECK-LABEL: @PropagateMemPermuteMultiplyAdd
 module @PropagateMemPermuteMultiplyAdd {
+    config.PipelineOptions @Options {
+        config.Option @config.EnableSEPtrsOperations : true
+    }
 
 net.NetworkInfo entryPoint : @main
     inputsInfo : {
@@ -214,12 +215,10 @@ net.NetworkInfo entryPoint : @main
 
         // CHECK-DAG:   [[CST:%.+]] = const.Declare tensor<64x16x1x1xf16, {order = #NHWC}>
         // CHECK-DAG:   [[CST_0:%.+]] = const.Declare tensor<4x12x1x1xf16, {order = #NHWC}> = dense<0.000000e+00>
-        // CHECK:       [[AFFINE_RESHAPE_0:%.+]] = IE.AffineReshape([[INPUT_0]]) {dim_mapping = {{\[\[}}0], [1], [2], [3]], shape_value = [1, 16, 64, 1]}
-        // CHECK-SAME:      tensor<1x4x256x1xf16, {order = #NHWC}> -> tensor<1x16x64x1xf16, {order = #NHWC}>
+        // CHECK:       [[AFFINE_RESHAPE_0:%.+]] = IE.ShapeCast {shape = [1, 16, 64, 1]} inputs([[INPUT_0]] : tensor<1x4x256x1xf16, {order = #NHWC}>) -> tensor<1x16x64x1xf16, {order = #NHWC}>
         // CHECK:       [[CONV_0:%.+]] = IE.Convolution([[AFFINE_RESHAPE_0]], [[CST]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]}
         // CHECK-SAME:      tensor<1x16x64x1xf16, {order = #NHWC}>, tensor<64x16x1x1xf16, {order = #NHWC}> -> tensor<1x64x64x1xf16, {order = #NHWC}>
-        // CHECK:       [[AFFINE_RESHAPE_1:%.+]] = IE.AffineReshape([[CONV_0]]) {dim_mapping = {{\[\[}}0], [1], [2], [3]], shape_value = [1, 16, 256, 1]}
-        // CHECK-SAME:      tensor<1x64x64x1xf16, {order = #NHWC}> -> tensor<1x16x256x1xf16, {order = #NHWC}>
+        // CHECK:       [[AFFINE_RESHAPE_1:%.+]] = IE.ShapeCast {shape = [1, 16, 256, 1]} inputs([[CONV_0]] : tensor<1x64x64x1xf16, {order = #NHWC}>) -> tensor<1x16x256x1xf16, {order = #NHWC}>
         // CHECK:       [[CONCAT:%.+]] = IE.Concat([[INPUT_1]], [[CST_0]]) {static_offsets = {{\[\[}}0, 0, 0, 0], [0, 4, 0, 0]]}
         // CHECK-SAME:      tensor<4x4x1x1xf16, {order = #NHWC}>, tensor<4x12x1x1xf16, {order = #NHWC}> -> tensor<4x16x1x1xf16, {order = #NHWC}>
         // CHECK:       [[EXPAND_0:%.+]] = IE.Expand([[CONCAT]]) {pads_begin = [0, 0, 0, 0], pads_end = [12, 0, 0, 0]}
@@ -242,11 +241,9 @@ net.NetworkInfo entryPoint : @main
         // CHECK-SAME:      tensor<1x4x256x1xf16>, tensor<1x1x256x2048xf16> -> tensor<1x4x256x2048xf16>
         // CHECK:       [[PERMUTE_CAST_1:%.+]] = IE.PermuteCast([[MULTIPLY]]) {dst_order = #NHWC, mem_perm = #NCHW}
         // CHECK-SAME:      tensor<1x4x256x2048xf16> -> tensor<1x2048x4x256xf16, {order = #NHWC}>
-        // CHECK:       [[PERMUTE_CAST_2:%.+]] = IE.PermuteCast([[INPUT_4]]) {dst_order = #NHWC, mem_perm = #map}
-        // CHECK-SAME:      tensor<1x4x256x2048xf16> -> tensor<4x2048x1x256xf16, {order = #NHWC}>
-        // CHECK:       [[SHAPE_CAST_0:%.+]] = IE.ShapeCast {shape = [1, 2048, 4, 256]} inputs([[PERMUTE_CAST_2]] : tensor<4x2048x1x256xf16, {order = #NHWC}>)
-        // CHECK-SAME:      -> tensor<1x2048x4x256xf16, {order = #NHWC}>
-        // CHECK:       [[ADD:%.+]] = IE.Add([[SHAPE_CAST_0]], [[PERMUTE_CAST_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+        // CHECK:       [[PERMUTE_CAST_2:%.+]] = IE.PermuteCast([[INPUT_4]]) {dst_order = #NHWC, mem_perm = #NCHW}
+        // CHECK-SAME:      tensor<1x4x256x2048xf16> -> tensor<1x2048x4x256xf16, {order = #NHWC}>
+        // CHECK:       [[ADD:%.+]] = IE.Add([[PERMUTE_CAST_2]], [[PERMUTE_CAST_1]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
         // CHECK-SAME:      tensor<1x2048x4x256xf16, {order = #NHWC}>, tensor<1x2048x4x256xf16, {order = #NHWC}> -> tensor<1x2048x4x256xf16, {order = #NHWC}>
         // CHECK:       [[SHAPE_CAST_1:%.+]] = IE.ShapeCast {shape = [4, 2048, 1, 256]} inputs([[ADD]] : tensor<1x2048x4x256xf16, {order = #NHWC}>)
         // CHECK-SAME:      -> tensor<4x2048x1x256xf16, {order = #NHWC}>
@@ -261,6 +258,9 @@ net.NetworkInfo entryPoint : @main
 
 // CHECK-LABEL: @DepthwiseGroupConvWithLargePadding
 module @DepthwiseGroupConvWithLargePadding {
+    config.PipelineOptions @Options {
+        config.Option @config.EnableSEPtrsOperations : true
+    }
 
 net.NetworkInfo entryPoint : @main
     inputsInfo : {

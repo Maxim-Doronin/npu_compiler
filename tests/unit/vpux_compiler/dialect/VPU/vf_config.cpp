@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2026 Intel Corporation
+// Copyright (C) 2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -205,6 +205,7 @@ TEST_F(MLIR_VPU_VFConfig, VF_ManualConfiguration) {
               "N": 1,
               "W": 1
             },
+            "VFScenario": "FULL_PREFETCHING",
             "verticalFusion": "True",
             "verticalFusionHash": "0x1111"
           },
@@ -217,6 +218,7 @@ TEST_F(MLIR_VPU_VFConfig, VF_ManualConfiguration) {
               "N": 1,
               "W": 1
             },
+            "VFScenario": "FULL_PREFETCHING",
             "verticalFusion": "True",
             "verticalFusionHash": "0x1111"
           }
@@ -334,6 +336,7 @@ TEST_F(MLIR_VPU_VFConfig, VF_ManualConfigurationForDuplicatedLoc) {
               "N": 1,
               "W": 1
             },
+            "VFScenario": "FULL_PREFETCHING",
             "verticalFusion": "True",
             "verticalFusionHash": "0x1111"
           },
@@ -346,6 +349,7 @@ TEST_F(MLIR_VPU_VFConfig, VF_ManualConfigurationForDuplicatedLoc) {
               "N": 1,
               "W": 1
             },
+            "VFScenario": "FULL_PREFETCHING",
             "verticalFusion": "True",
             "verticalFusionHash": "0x1111"
           },
@@ -358,6 +362,99 @@ TEST_F(MLIR_VPU_VFConfig, VF_ManualConfigurationForDuplicatedLoc) {
               "N": 1,
               "W": 1
             },
+            "VFScenario": "FULL_PREFETCHING",
+            "verticalFusion": "True",
+            "verticalFusionHash": "0x1111"
+          }
+        }
+    )";
+
+    auto module = mlir::parseSourceString<mlir::ModuleOp>(inputIR, &ctx);
+    ASSERT_TRUE(module.get() != nullptr);
+
+    auto func = module.get().lookupSymbol<mlir::func::FuncOp>("main");
+    ASSERT_TRUE(func != nullptr);
+
+    mlir::PassManager pm(module.get()->getName(), mlir::OpPassManager::Nesting::Implicit);
+    auto initCompilerOptions = VPU::InitCompilerOptions(ArchKind::NPU40XX, config::CompilationMode::DefaultHW);
+
+    VPU::buildInitCompilerPipeline(pm, initCompilerOptions, vpux::Logger::global());
+
+    ASSERT_TRUE(mlir::succeeded(pm.run(module.get())));
+
+    llvm::MapVector<mlir::Location, mlir::Operation*> operations;
+    llvm::MapVector<mlir::Location, mlir::Operation*> outputPipeliningOps;
+    collectAllComputeOps(func, operations, outputPipeliningOps, true);
+
+    auto manualStrategy = llvm::json::parse(manualStrategyJSON);
+    ASSERT_TRUE(manualStrategy.operator bool());
+    VPU::overwriteManualStrategy(manualStrategy.get(), operations);
+
+    auto vfOp = to_small_vector(func.getOps<VPU::VerticalFusionOp>());
+    ASSERT_EQ(vfOp.size(), 1);
+    auto tilingStrategy = parseIntArrayAttr<int64_t>(vfOp.front().getTilingStrategyAttr());
+    ASSERT_EQ(tilingStrategy[Dims4D::Act::H.ind()], 32);
+}
+
+TEST_F(MLIR_VPU_VFConfig, VF_ManualConfigurationWithViewOp) {
+    constexpr llvm::StringLiteral inputIR = R"(
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+!qtype = !quant.uniform<u8:f32, 1.000000e+00>
+
+#loc0 = loc(unknown)
+    module @main {
+    func.func @main(%arg0: tensor<1x16x800x1280x!qtype, {order = #NHWC}>, %arg1: tensor<1x4x1600x2560x!qtype, {order = #NHWC}>) -> tensor<1x16x1600x640x!qtype, {order = #NHWC}> {
+          %0 = VPU.VerticalFusion (%arg0 as %arg2: tensor<1x16x800x1280x!qtype, {order = #NHWC}>) attributes {tilingStrategy = [1, 1, 8, 1]} -> tensor<1x4x1600x2560x!qtype, {order = #NHWC}> {
+            %inner = VPU.DepthToSpace(%arg2) {
+                       block_size = 2 : i64,
+                       mode = #IE.depth_to_space_mode<BLOCKS_FIRST>,
+                       multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>} : tensor<1x16x800x1280x!qtype, {order = #NHWC}> -> tensor<1x4x1600x2560x!qtype, {order = #NHWC}> loc(fused<{name = "d2s", type = "DepthToSpace"}>["d2s", "_1"])
+            VPU.Yield %inner
+          }
+          %1 = VPU.ShapeCast {shape = [1, 16, 1600, 640]} inputs(%0 : tensor<1x4x1600x2560x!qtype, {order = #NHWC}>) -> tensor<1x16x1600x640x!qtype, {order = #NHWC}>
+          %2 = VPU.ShapeCast {shape = [1, 16, 1600, 640]} inputs(%arg1 : tensor<1x4x1600x2560x!qtype, {order = #NHWC}>) -> tensor<1x16x1600x640x!qtype, {order = #NHWC}>
+          %3 = VPU.VerticalFusion (%1 as %arg2: tensor<1x16x1600x640x!qtype, {order = #NHWC}>, %2 as %arg3: tensor<1x16x1600x640x!qtype, {order = #NHWC}>) attributes {tilingStrategy = [1, 1, 8, 1]} -> tensor<1x16x1600x640x!qtype, {order = #NHWC}> {
+            %inner = VPU.NCE.Eltwise(%arg2, %arg3) {
+                      is_inplace = true,
+                      multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
+                      op_type = #VPU.eltwise_type<ADD>,
+                      ppe = #VPU.PPEFp<mode = <NOOP>,
+                      clamp_low = -4.200000e+01 : f64,
+                      clamp_high = 2.130000e+02 : f64,
+                      scale = 2.1645799279212952E-5 : f64,
+                      prelu_alpha = [1.000000e+00], bias = 0.000000e+00 : f64, adder = 4.200000e+01 : f64, in1_mult = [1.641600e+04], in2_mult = [3.288200e+04]>} -> tensor<1x16x1600x640x!qtype, {order = #NHWC}>  loc(fused<{name = "add", type = "Add"}>["add", "_1"])
+            VPU.Yield %inner
+          }
+          return %3 : tensor<1x16x1600x640x!qtype, {order = #NHWC}>
+       }
+    }
+    )";
+
+    constexpr llvm::StringLiteral manualStrategyJSON = R"(
+        {
+          "d2s?t_DepthToSpace/_1": {
+            "layerType": "VPU.DepthToSpace",
+            "multiClusterStrategy": "SplitOverHeight",
+            "tilingStrategy": {
+              "C": 1,
+              "H": 32,
+              "N": 1,
+              "W": 1
+            },
+            "VFScenario": "FULL_PREFETCHING",
+            "verticalFusion": "True",
+            "verticalFusionHash": "0x1111"
+          },
+          "add?t_Add/_1": {
+            "layerType": "VPU.NCE.Eltwise",
+            "multiClusterStrategy": "SplitOverHeight",
+             "tilingStrategy": {
+              "C": 1,
+              "H": 32,
+              "N": 1,
+              "W": 1
+            },
+            "VFScenario": "FULL_PREFETCHING",
             "verticalFusion": "True",
             "verticalFusionHash": "0x1111"
           }

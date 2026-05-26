@@ -4,10 +4,11 @@
 //
 
 #include "vpux/compiler/utils/stable_hash.hpp"
+#include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/compiler/dialect/const/attr_interfaces.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
-#include "vpux/compiler/init.hpp"
+#include "vpux/compiler/init/dialects_registry.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/types.hpp"
 #include "vpux/utils/core/func_ref.hpp"
@@ -38,9 +39,10 @@ mlir::Type getSomeQuantilePerAxisType(mlir::MLIRContext* ctx) {
     scales[13] = 0.42;
     std::vector<int64_t> zeroPoints(100, 127);
     zeroPoints[13] = 130;
-    return mlir::quant::QuantileQuantizedPerAxisType::get(0, vpux::getUInt8Type(ctx), mlir::Float32Type::get(ctx),
-                                                          mlir::Float32Type::get(ctx), quantiles, scales, zeroPoints, 0,
-                                                          0, 255);
+    const auto newQuantileStorage =
+            vpux::type::QuantileType::get(ctx, vpux::getUInt8Type(ctx), mlir::Float32Type::get(ctx), quantiles);
+    return mlir::quant::UniformQuantizedPerAxisType::get(0, newQuantileStorage, mlir::Float32Type::get(ctx), scales,
+                                                         zeroPoints, 0, 0, 255);
 }
 }  // namespace
 

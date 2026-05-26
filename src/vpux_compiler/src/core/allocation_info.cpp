@@ -21,8 +21,9 @@ using namespace vpux;
 using LinearScanImpl = LinearScan<mlir::Value, LinearScanHandler>;
 
 std::tuple<LinearScanHandler, std::list<ScheduledOpOneResource>> vpux::runLinearScan(
-        mlir::func::FuncOp funcOp, MemLiveRangeInfo& liveRangeInfo, const AsyncDepsInfo& depsInfo,
-        VPU::MemoryKind memKind, Logger log, ArrayRef<std::pair<vpux::AddressType, vpux::AddressType>> vec) {
+        mlir::func::FuncOp funcOp, MemLiveRangeInfo& liveRangeInfo, AliasesInfo& aliasesInfo,
+        const AsyncDepsInfo& depsInfo, VPU::MemoryKind memKind, Logger log,
+        ArrayRef<std::pair<vpux::AddressType, vpux::AddressType>> vec) {
     auto module = funcOp->getParentOfType<mlir::ModuleOp>();
     auto memKindAttr = mlir::SymbolRefAttr::get(funcOp.getContext(), stringifyEnum(memKind));
     auto availableMem = config::getAvailableMemory(module, memKindAttr);
@@ -35,6 +36,13 @@ std::tuple<LinearScanHandler, std::list<ScheduledOpOneResource>> vpux::runLinear
 
 #if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
     auto memoryUsageLog = log.nest("memory-usage-info");
+    std::string funcName = "main";
+    // If location is not fused it is a test, use default funcName
+    if (auto fusedLoc = mlir::dyn_cast<mlir::FusedLoc>(funcOp.getLoc())) {
+        // Get last part of the function name for better readability in logs after outlining
+        auto funcLoc = fusedLoc.getLocations().back();
+        funcName = mlir::dyn_cast<mlir::NameLoc>(funcLoc).getName().str();
+    }
 #endif
 
     const auto getBuffersToAllocate = [&](const ValueOrderedSet& usedBufs) {
@@ -69,43 +77,39 @@ std::tuple<LinearScanHandler, std::list<ScheduledOpOneResource>> vpux::runLinear
         uint64_t sizeToAllocate = 0;
         for (auto val : buffers) {
             auto bufferSize = scan.handler().getSize(val);
-            memoryUsageLog.trace("Buffer size to allocate      {0} B", bufferSize);
+            memoryUsageLog.trace("{0}: Buffer size to allocate      {1} B", funcName, bufferSize);
             sizeToAllocate += bufferSize;
         }
         auto totalSize = scan.totalSize();
-        auto prevMaxAllocatedSize = scan.handler().maxAllocatedSize().count();
+        auto prevMaxAllocatedSize = scan.maxAllocatedSize();
         auto prevTotalFreeSize = scan.totalFreeSize();
         auto prevTotalUsedSize = totalSize - prevTotalFreeSize;
         auto prevMaxAllocatedFreeSize = prevMaxAllocatedSize - prevTotalUsedSize;
-        memoryUsageLog.trace("{0} free memory before alloc {1} B", memKind, prevMaxAllocatedFreeSize);
+        memoryUsageLog.trace("{0}: {1} free memory before alloc {2} B", funcName, memKind, prevMaxAllocatedFreeSize);
 #endif
 
         VPUX_THROW_UNLESS(scan.alloc(buffers, /*allowSpills*/ false), "Failed to statically allocate '{0}' memory",
                           memKind);
 
 #if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
-        auto newMaxAllocatedSize = scan.handler().maxAllocatedSize().count();
-        for (auto val : buffers) {
-            auto addr = scan.handler().getAddress(val);
-            auto bufferSize = scan.handler().getSize(val);
-            auto allocatedSize = static_cast<int64_t>(addr + bufferSize);
-            if (newMaxAllocatedSize > prevMaxAllocatedSize) {
-                memoryUsageLog.trace("New max allocated size for buffer '{0}'", val);
-            } else {
-                memoryUsageLog.trace("Allocated size {0} B", allocatedSize);
-            }
+        auto newMaxAllocatedSize = scan.maxAllocatedSize();
+        memoryUsageLog.trace("{0}: Max allocated size {1} B", funcName, newMaxAllocatedSize);
+
+        if (sizeToAllocate <= prevMaxAllocatedFreeSize && newMaxAllocatedSize > prevMaxAllocatedSize) {
+            memoryUsageLog.trace("{0}: Increased allocation size to {1} B due to fragmentation!", funcName,
+                                 newMaxAllocatedSize);
         }
-        if (sizeToAllocate < prevMaxAllocatedFreeSize && newMaxAllocatedSize > prevMaxAllocatedSize) {
-            memoryUsageLog.trace("Increased allocation size due to fragmentation!");
-        }
+
         auto newTotalFreeSize = scan.totalFreeSize();
+
         auto newTotalUsedSize = totalSize - newTotalFreeSize;
-        auto newMaxAllocatedFreeSize = newMaxAllocatedSize - newTotalUsedSize;
-        memoryUsageLog.trace("Max allocated size {0} B", newMaxAllocatedSize);
         auto usedMemory = static_cast<double>(newTotalUsedSize) / static_cast<double>(newMaxAllocatedSize) * 100;
-        memoryUsageLog.trace("{0} used memory    {1} {2}%", memKind, newTotalUsedSize, usedMemory);
+        memoryUsageLog.trace("{0}: {1} used memory    {2} {3}%", funcName, memKind, newTotalUsedSize, usedMemory);
+
+        auto newMaxAllocatedFreeSize = newMaxAllocatedSize - newTotalUsedSize;
         auto freeMemory = static_cast<double>(newMaxAllocatedFreeSize) / static_cast<double>(newMaxAllocatedSize) * 100;
-        memoryUsageLog.trace("{0} free memory    {1} {2}%", memKind, newMaxAllocatedFreeSize, freeMemory);
+        memoryUsageLog.trace("{0}: {1} free memory    {2} {3}%", funcName, memKind, newMaxAllocatedFreeSize,
+                             freeMemory);
 #endif
     };
 
@@ -116,7 +120,7 @@ std::tuple<LinearScanHandler, std::list<ScheduledOpOneResource>> vpux::runLinear
         for (auto val : usedBufs) {
 #if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
             auto bufferSize = scan.handler().getSize(val);
-            memoryUsageLog.trace("Free buffer of size {0} B", bufferSize);
+            memoryUsageLog.trace("{0}: Free buffer of size {1} B", funcName, bufferSize);
 #endif
             log.trace("Mark as dead buffer '{0}'", val);
             scan.handler().markAsDead(val);
@@ -200,9 +204,8 @@ std::tuple<LinearScanHandler, std::list<ScheduledOpOneResource>> vpux::runLinear
 
         // Check all operands of operation and prepare entries in scheduledOpsResources that will be used
         // by control edge algorithm to generate new dependencies
-        // TODO: Replace below call with updateScheduledOpsResourcesForControlEdge which checks also subviews (E#106837)
-        updateScheduledOpsResourcesForControlEdgeBasic(scheduledOpsResources, scan, opIndex, inputBuffers,
-                                                       outputBuffers, log);
+        updateScheduledOpsResourcesForControlEdge(scheduledOpsResources, aliasesInfo, scan, memKind, opIndex, curExecOp,
+                                                  log);
 
         // Store free buffers with cycle end
         auto consumedBuffers = getFreeBuffers(usedBufs, curExecOp);
@@ -233,11 +236,12 @@ std::tuple<LinearScanHandler, std::list<ScheduledOpOneResource>> vpux::runLinear
 
 AllocationInfo::AllocationInfo(mlir::func::FuncOp netFunc, mlir::AnalysisManager& am)
         : AllocationInfo(netFunc, am.getAnalysis<AsyncDepsInfo, mlir::func::FuncOp>(),
-                         am.getAnalysis<MemLiveRangeInfoMemType<VPU::MemoryKind::DDR>, mlir::func::FuncOp>()) {
+                         am.getAnalysis<MemLiveRangeInfoMemType<VPU::MemoryKind::DDR>, mlir::func::FuncOp>(),
+                         am.getAnalysis<AliasesInfoMemType<VPU::MemoryKind::DDR>, mlir::func::FuncOp>()) {
 }
 
 AllocationInfo::AllocationInfo(mlir::func::FuncOp netFunc, const AsyncDepsInfo& depsInfo,
-                               MemLiveRangeInfo& liveRangeInfo)
+                               MemLiveRangeInfo& liveRangeInfo, AliasesInfo& aliasesInfo)
         : _log(Logger::global().nest("allocation-info", 0)), _mainFuncName(netFunc.getName()) {
     auto module = netFunc->getParentOfType<mlir::ModuleOp>();
     auto* ctx = module->getContext();
@@ -260,8 +264,8 @@ AllocationInfo::AllocationInfo(mlir::func::FuncOp netFunc, const AsyncDepsInfo& 
         prevCycleBegin = cycleBegin;
     }
 
-    std::tie(_linearScanHandler, _scheduledOpOneResource) =
-            vpux::runLinearScan(netFunc, liveRangeInfo, depsInfo, VPU::MemoryKind::DDR, _log, _moduleReservedMemVec);
+    std::tie(_linearScanHandler, _scheduledOpOneResource) = vpux::runLinearScan(
+            netFunc, liveRangeInfo, aliasesInfo, depsInfo, VPU::MemoryKind::DDR, _log, _moduleReservedMemVec);
 }
 
 bool AllocationInfo::hasResult(VPU::MemoryKind memKind) {

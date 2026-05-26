@@ -11,7 +11,7 @@
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
-#include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Transforms/WalkPatternRewriteDriver.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_UNROLLREDUCEMINALLAXES
@@ -22,6 +22,25 @@ namespace vpux::IE {
 using namespace vpux;
 
 namespace {
+
+bool shouldConvertReduceMinOp(IE::ReduceMinOp op) {
+    // Skip if axes is empty or has only one element
+    if (parseIntArrayAttr<int64_t>(op.getAxesValue().value()).size() <= 1) {
+        return false;
+    }
+
+    // For ReduceMin, in case all axes are reduced, conversion to MaxPool on NCE shows suboptimal
+    // performance than SHAVE when the kernel size exceeds maxKernelSize.
+    // Instead, unroll it to multiple ReduceMin ops on single axis can avoid this issue
+    // when totalsize is over REDUCEMIN_DPU_THRESHOLD as profiled in E#-126141.
+    auto inputTotalSize = getShape(op->getOperand(0)).totalSize();
+    if (inputTotalSize < REDUCEMIN_DPU_THRESHOLD) {
+        return false;
+    }
+
+    const auto maxKernelSize = config::getMaxKernelSize(op);
+    return (getShape(op->getResult(0)).totalSize() == 1) && (inputTotalSize > std::pow(maxKernelSize, 2));
+}
 
 //
 // ReduceMinRewriter
@@ -40,6 +59,10 @@ private:
 };
 
 mlir::LogicalResult ReduceMinRewriter::matchAndRewrite(IE::ReduceMinOp origOp, mlir::PatternRewriter& rewriter) const {
+    if (!shouldConvertReduceMinOp(origOp)) {
+        return mlir::failure();
+    }
+
     _log.trace("[{0}] Try to unroll ReduceMin at '{1}', {2}", getDebugName(), origOp->getLoc(), origOp);
     mlir::MLIRContext* ctx = origOp->getContext();
     const auto origInput = origOp->getOperand(0);
@@ -82,40 +105,11 @@ private:
 
 void UnrollReduceMinAllAxesPass::safeRunOnFunc() {
     auto& ctx = getContext();
-    auto func = getOperation();
-
-    const auto isLegalReduceMin = [&](IE::ReduceMinOp op) {
-        // Skip if axes is empty or has only one element
-        if (parseIntArrayAttr<int64_t>(op.getAxesValue().value()).size() <= 1) {
-            return true;
-        }
-
-        // For ReduceMin, in case all axes are reduced, conversion to MaxPool on NCE shows suboptimal
-        // performance than SHAVE when the kernel size exceeds maxKernelSize.
-        // Instead, unroll it to multiple ReduceMin ops on single axis can avoid this issue
-        // when totalsize is over REDUCEMIN_DPU_THRESHOLD as profiled in E#-126141.
-        auto inputTotalSize = getShape(op->getOperand(0)).totalSize();
-        if (inputTotalSize < REDUCEMIN_DPU_THRESHOLD) {
-            return true;
-        }
-
-        const auto maxKernelSize = config::getMaxKernelSize(op);
-        if ((getShape(op->getResult(0)).totalSize() == 1) && (inputTotalSize > std::pow(maxKernelSize, 2))) {
-            return false;
-        }
-
-        return true;
-    };
-
-    mlir::ConversionTarget target(ctx);
-    target.addDynamicallyLegalOp<IE::ReduceMinOp>(isLegalReduceMin);
 
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<ReduceMinRewriter>(&ctx, _log);
 
-    if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
-        signalPassFailure();
-    }
+    walkAndApplyPatterns(getOperation(), std::move(patterns));
 }
 
 }  // namespace

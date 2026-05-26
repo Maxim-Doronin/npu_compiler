@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --tiling-strategy-assignment %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --tiling-strategy-assignment %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 module @executors {
     config.Resources 6 of @NCE at 1.700000e+03 MHz {
@@ -1286,37 +1286,6 @@ module @executors {
 
 }
 
-// -----
-
-    !qElemType = !quant.uniform<i4:f16, 1.000000e+00>
-
-module @executors {
-    config.Resources 6 of @NCE at 1.700000e+03 MHz {
-        config.MemoryResource 1326182 bytes of @CMX_NN_FragmentationAware
-        config.MemoryResource 1473536 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
-    }
-
-    // CHECK-LABEL: func.func @SplitDequantizeWithSoH
-    // CHECK-SAME:  [[INPUT:%arg[0-9]]]: tensor<1x28x4608x128x!qElemType>,
-    // CHECK-SAME:  [[SCALE:%arg[0-9]]]: tensor<1x28x4608x1xf16>
-    func.func @SplitDequantizeWithSoH(%arg0: tensor<1x28x4608x128x!qElemType>, %arg1: tensor<1x28x4608x1xf16>) -> tensor<1x28x4608x128xf16> {
-        %0 = VPU.DynamicDequantize(%arg0, %arg1) {
-            dstElemType = f16,
-            multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>
-        } : tensor<1x28x4608x128x!qElemType>, tensor<1x28x4608x1xf16> -> tensor<1x28x4608x128xf16>
-
-        return %0 : tensor<1x28x4608x128xf16>
-
-        // CHECK:       [[OUTPUT:%.+]] = VPU.DynamicDequantize([[INPUT]], [[SCALE]]) {
-        // CHECK-SAME:      dstElemType = f16,
-        // CHECK-SAME:      multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>,
-        // CHECK-SAME:      tilingStrategy = [1, 1, 6, 1]
-        // CHECK-SAME:      } : tensor<1x28x4608x128x!qElemType>, tensor<1x28x4608x1xf16> -> tensor<1x28x4608x128xf16>
-
-        // CHECK:       return [[OUTPUT]] : tensor<1x28x4608x128xf16>
-    }
-}
-
     // -----
 
     #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
@@ -1348,8 +1317,8 @@ module @executors {
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
-    !quantileFloatType = !QuantileFloat.quantileFloat<ui4:f16, {-1.000000e+00,-0.69619280099868774,-0.52507305145263672,-0.39491748809814453,-0.28444138169288635,-0.18477343022823334,-0.091050036251544952,0.000000e+00,0.07958029955625534,0.16093020141124725,0.24611230194568634,0.33791524171829224,0.44070982933044434,0.56261700391769409,0.72295683622360229,1.000000e+00}>
-    !qElemType = !quant.quantile<u4:f16:f16, {-1.000000e+00,-0.69619280099868774,-0.52507305145263672,-0.39491748809814453,-0.28444138169288635,-0.18477343022823334,-0.091050036251544952,0.000000e+00,0.07958029955625534,0.16093020141124725,0.24611230194568634,0.33791524171829224,0.44070982933044434,0.56261700391769409,0.72295683622360229,1.000000e+00}:1.000000e+00>
+    !quantileType = !QuantileType.quantile<ui4:f16, {-1.000000e+00,-0.69619280099868774,-0.52507305145263672,-0.39491748809814453,-0.28444138169288635,-0.18477343022823334,-0.091050036251544952,0.000000e+00,0.07958029955625534,0.16093020141124725,0.24611230194568634,0.33791524171829224,0.44070982933044434,0.56261700391769409,0.72295683622360229,1.000000e+00}>
+    !qElemType = !quant.uniform<!QuantileType.quantile<ui4:f16, {-1.000000e+00,-0.69619280099868774,-0.52507305145263672,-0.39491748809814453,-0.28444138169288635,-0.18477343022823334,-0.091050036251544952,0.000000e+00,0.07958029955625534,0.16093020141124725,0.24611230194568634,0.33791524171829224,0.44070982933044434,0.56261700391769409,0.72295683622360229,1.000000e+00}>:f16, 1.000000e+00>
 
 module @executors {
     config.Resources 4 of @NCE at 1.700000e+03 MHz {
@@ -1358,8 +1327,8 @@ module @executors {
     }
 
     // CHECK-LABEL: func.func @SplitConvWithLargeFilter
-    func.func @SplitConvWithLargeFilter(%arg0: tensor<1x3840x1x1xf16, {order = #NHWC}>, %arg1: tensor<1536x3840x!quantileFloatType>) -> tensor<1x1536x1x1xf16, {order = #NHWC}> {
-        %0 = VPU.QuantizeCast(%arg1) {dstElemType = !qElemType} : tensor<1536x3840x!quantileFloatType> -> tensor<1536x3840x!qElemType>
+    func.func @SplitConvWithLargeFilter(%arg0: tensor<1x3840x1x1xf16, {order = #NHWC}>, %arg1: tensor<1536x3840x!quantileType>) -> tensor<1x1536x1x1xf16, {order = #NHWC}> {
+        %0 = VPU.QuantizeCast(%arg1) {dstElemType = !qElemType} : tensor<1536x3840x!quantileType> -> tensor<1536x3840x!qElemType>
         %1 = VPU.AffineReshape(%0) {dim_mapping = [[0], [1, 2, 3]], shape_value = [1536, 3840, 1, 1]} : tensor<1536x3840x!qElemType> -> tensor<1536x3840x1x1x!qElemType>
         %2 = VPU.PermuteCast(%1) {dst_order = #NHWC, mem_perm = #NHWC} : tensor<1536x3840x1x1x!qElemType> -> tensor<1536x3840x1x1x!qElemType, {order = #NHWC}>
         %3 = VPU.NCE.Convolution(%arg0, %2) {

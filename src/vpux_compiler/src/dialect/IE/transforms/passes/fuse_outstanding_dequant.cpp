@@ -3,15 +3,20 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/dialect/IE/IR/attributes.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/activation.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/arithmetic.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/walk_utils.hpp"
 
+#include <mlir/IR/OperationSupport.h>
 #include <mlir/Transforms/GreedyPatternRewriteDriver.h>
 
 namespace vpux::IE {
@@ -72,6 +77,10 @@ private:
 
 mlir::LogicalResult DequantizeWithNCERewriter::matchAndRewrite(IE::DequantizeOp origOp,
                                                                mlir::PatternRewriter& rewriter) const {
+    const auto logCb = [&](const formatv_object_base& msg) {
+        _log.trace("{0}", msg.str());
+    };
+
     // Get the Dequantize Op input and output types
     const auto dequantInputType = origOp.getInput().getType();
     const auto elemType = mlir::cast<mlir::ShapedType>(dequantInputType).getElementType();
@@ -185,6 +194,32 @@ mlir::LogicalResult DequantizeWithNCERewriter::matchAndRewrite(IE::DequantizeOp 
         }
         if (!quantizedLayerOp.isMixPrecisionSupported(!isPerChannel)) {
             return matchFailed(rewriter, origOp, "Producer {0} is not supported", maybeQuantizedLayerOp->getName());
+        }
+        mlir::Attribute postOpAttr = llvm::TypeSwitch<mlir::Operation*, mlir::Attribute>(maybeQuantizedLayerOp)
+                                             .Case<IE::AvgPoolOp, IE::ConvolutionOp>([](auto op) {
+                                                 return op.getPostOpAttr();
+                                             })
+                                             .Default([](auto) {
+                                                 return nullptr;
+                                             });
+
+        // Check if postOp exists and is NOT ReLU - preserve Dequantize in that case
+        // postOpAttr can be IE::ReluAttr (#IE.Relu<>) or other post-op attributes
+        if (postOpAttr != nullptr && !mlir::isa<IE::ReluAttr>(postOpAttr)) {
+            return matchFailed(rewriter, origOp, "{0} has non-ReLU postOp, preserving Dequantize",
+                               maybeQuantizedLayerOp->getName().getStringRef());
+        }
+        auto layerWithPostOp = mlir::dyn_cast_or_null<IE::LayerWithPostOpInterface>(maybeQuantizedLayerOp);
+        if (layerWithPostOp != nullptr && layerWithPostOp.hasPPE()) {
+            auto clampAttr = layerWithPostOp.getClampAttr();
+            if (clampAttr != nullptr) {
+                auto minValue = clampAttr.getAs<mlir::FloatAttr>("min").getValueAsDouble();
+                auto maxValue = clampAttr.getAs<mlir::FloatAttr>("max").getValueAsDouble();
+                auto type = origOp->getResult(0).getType();
+                if (!layerWithPostOp.isSupportedClampProperties(minValue, maxValue, type, logCb)) {
+                    return matchFailed(_log, rewriter, origOp, "Layer with new clamp is not supported");
+                }
+            }
         }
 
         auto* newQuantizedLayerOp = rewriter.clone(*maybeQuantizedLayerOp);

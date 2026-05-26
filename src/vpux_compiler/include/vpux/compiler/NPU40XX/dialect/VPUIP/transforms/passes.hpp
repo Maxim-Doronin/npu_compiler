@@ -53,11 +53,6 @@ struct DefaultHWOptions :
             llvm::cl::desc("Enable barrier scheduling passes with IR split into multiple functions"),
             llvm::cl::init(false)};
 
-    BoolOption configureUpdateBarriersForSwPrefetch{
-            *this, "configure-update-barriers-for-sw-prefetch",
-            llvm::cl::desc("Configure update barrier to block shave execution until prefetch finishes"),
-            llvm::cl::init(true)};
-
     // Should only be enabled when accurate VPUNN cost is supported
     BoolOption enableMultiScheduleHeuristic{
             *this, "enable-multi-schedule-heuristic",

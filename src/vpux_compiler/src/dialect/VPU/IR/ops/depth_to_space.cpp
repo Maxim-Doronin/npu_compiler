@@ -218,6 +218,8 @@ vpux::InputTiling vpux::VPU::DepthToSpaceOp::backInferTileInfo(const vpux::TileI
     }
 
     TileInfo inputTile(origInputShape);
+    inputTile.axis = outputTile.axis;
+
     inputTile.shape[Dims4D::Act::N] = outputTile.shape[Dims4D::Act::N];
     inputTile.shape[Dims4D::Act::C] = (outputTile.shape[Dims4D::Act::C] - paddedOC) * blockSize * blockSize + paddedIC;
     inputTile.shape[Dims4D::Act::W] = outputTile.shape[Dims4D::Act::W] / blockSize;

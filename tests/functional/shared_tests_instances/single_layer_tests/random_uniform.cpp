@@ -71,7 +71,7 @@ class RandomLayerTestCommon : public RandomUniformLayerTest, virtual public VpuO
 class RandomLayerTest_F32 : public RandomLayerTestCommon {
     void configure_model() override {
         VpuOv2LayerTest::configuration[ov::intel_npu::compilation_mode_params.name()] =
-                "convert-precision-to-fp16=false";
+                "disabled-passes=convert-precision-to-fp16";
     }
 };
 

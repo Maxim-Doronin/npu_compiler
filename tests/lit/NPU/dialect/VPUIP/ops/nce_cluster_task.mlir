@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -20,7 +20,7 @@ func.func @ParsePrintClusterTask(%arg0: memref<1x32x16x16xf16, #NHWC, @CMX_NN>) 
     %t1, %r1 = async.execute
                 -> !async.value<memref<1x64x14x14xf16, #NHWC, @CMX_NN>>
                     attributes {VPUIP.executor = @DPU, VPUIP.num_units = 1 : i64, "async-deps-index" = 0 : i64} {
-        %0 = VPUIP.NCEClusterTask <{
+        %0 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
                 kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
@@ -139,7 +139,7 @@ func.func @ParsePrintDistributedBuffer(%input: !Input_DDR) -> !Output_DDR {
 
     %t3 = async.execute [%t0, %t1, %t2]
                 attributes {VPUIP.executor = @DPU, VPUIP.num_units = 4 : i64, "async-deps-index" = 3 : i64} {
-            %0 = VPUIP.NCEClusterTask <{
+            %0 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
                     kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
                     kernel_size = [1, 1],
                     kernel_strides = [1, 1],
@@ -199,7 +199,7 @@ func.func @ParsePrintDistributedBuffer(%input: !Input_DDR) -> !Output_DDR {
     // CHECK:        }
 
     // CHECK:        {{[^:]+}} = async.execute [[[TOKEN]], [[TOKEN_0]], [[TOKEN_1]]] attributes {VPUIP.executor = @DPU, VPUIP.num_units = 4 : i64, "async-deps-index" = 3 : i64} {
-    // CHECK:                VPUIP.NCEClusterTask <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
+    // CHECK:                VPUIP.NCEClusterTask <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1], kernel_strides = [1, 1]
     // CHECK-SAME:               input([[INPUT_CMX]] : !VPUIP.DistributedBuffer
     // CHECK-SAME:               weights([[WEIGHTS_CMX]] : !VPUIP.DistributedBuffer
     // CHECK-SAME:               weight_table([[WEIGHTS_TABLE_CMX]] : !VPUIP.DistributedBuffer

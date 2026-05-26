@@ -6,6 +6,7 @@
 #include <vpux/compiler/utils/func_dialect.hpp>
 #include "vpux/compiler/core/aliases_info.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/dynamic_strides_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/utils/barrier_legalization_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
@@ -20,6 +21,7 @@
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include <algorithm>
+#include <queue>
 
 namespace vpux::VPUIP {
 #define GEN_PASS_DECL_LEGALIZESTRIDEDDMAS
@@ -36,154 +38,87 @@ public:
 
 private:
     void safeRunOnModule() final;
-    void insertLegalizationInputDma(mlir::Value ioVal, mlir::Operation* incompatibleOp);
-    void legalizeOutputDmas(mlir::func::FuncOp func, mlir::Value outputArgument,
-                            SmallVector<VPUIP::DMATypeOpInterface>& dmaSet);
     bool areStridesCompatible(vpux::NDTypeInterface inType, vpux::NDTypeInterface outType);
-    void legalizeFunctionInputOutputDmas(mlir::func::FuncOp func, int operandIdx, bool isInput);
+    bool isCompatibleViewOp(mlir::ViewLikeOpInterface view);
+    llvm::DenseSet<int> visitDmasForArgument(mlir::func::FuncOp func, int operandIdx);
+    void legalizeIncompatibleReadersAndWriters(mlir::Value incompatibleVal);
+    void insertLegalizationDma(mlir::Value incompatibleVal, bool hasWrites, llvm::SmallVector<mlir::Value>& writers);
+    llvm::DenseSet<int> checkFunctionForWritesAndAliases(mlir::func::FuncOp func, int operandIdx, bool& hasWrites);
 };
 
-// Strides are considered compatible when they are the same save for difference in final dimension.
-// For example following strides are compatible
-// in [4, 2, 1] out [4, 4, 2, 1]
-// Because the second one is just an expanded shape on a final dimension.
-// Strides need to be compatible to ensure we can generate correct DMA descriptor later on
-// which can only transfer a multiples of a stride on each dimension.
-bool LegalizeStridedDmasPass::areStridesCompatible(NDTypeInterface inType, NDTypeInterface outType) {
-    auto inStrides = inType.getMemStrides();
-    auto outStrides = outType.getMemStrides();
-
-    auto iterationLimit = inStrides.size() < outStrides.size() ? outStrides.size() : inStrides.size();
-    for (size_t idx = 0; idx < iterationLimit; idx++) {
-        auto inStride = idx < inStrides.size() ? inStrides[MemDim(inStrides.size() - 1 - idx)] : inStrides[MemDim(0)];
-        auto outStride =
-                idx < outStrides.size() ? outStrides[MemDim(outStrides.size() - 1 - idx)] : outStrides[MemDim(0)];
-        if (inStride != outStride) {
+bool LegalizeStridedDmasPass::isCompatibleViewOp(mlir::ViewLikeOpInterface view) {
+    // In case of strided sub views it is not possible for areStridesCompatible to
+    // determine if strides are compatible, just skip it here.
+    if (auto subView = mlir::dyn_cast<VPUIP::SubViewOp>(view.getOperation())) {
+        if (auto staticStrides = subView.getStaticStrides()) {
             return false;
         }
     }
-    return true;
+    auto inType = mlir::cast<vpux::NDTypeInterface>(view.getViewSource().getType());
+    auto outType = mlir::cast<vpux::NDTypeInterface>(view->getResult(0).getType());
+    return areStridesCompatible(inType, outType);
 }
 
-void LegalizeStridedDmasPass::insertLegalizationInputDma(mlir::Value ioVal, mlir::Operation* incompatibleOp) {
-    auto opBuilder = mlir::OpBuilder(incompatibleOp);
-    auto newLocation = takeOpLoc(incompatibleOp, "stridedInputDmaLegalization");
-    auto newMemref =
-            opBuilder.create<mlir::memref::AllocOp>(newLocation, mlir::cast<mlir::MemRefType>(ioVal.getType()));
-    auto newStridedDmaOp = opBuilder.create<VPUIP::NNDMAOp>(newLocation, ioVal, newMemref.getMemref());
-    newStridedDmaOp->setAttr(vpux::stridedInputAttrName, mlir::UnitAttr::get(&getContext()));
-    ioVal.replaceUsesWithIf(newStridedDmaOp->getResult(0), [&](mlir::OpOperand& opOperand) {
-        return opOperand.getOwner() == incompatibleOp;
-    });
+bool LegalizeStridedDmasPass::areStridesCompatible(NDTypeInterface inType, NDTypeInterface outType) {
+    auto inStrides = inType.getMemStrides();
+    auto outStrides = outType.getMemStrides();
+    auto inElemSize = inType.getElemTypeSize();
+    auto outElemSize = outType.getElemTypeSize();
+
+    return VPUIP::areStridesCompatible(inStrides, inElemSize, outStrides, outElemSize);
 }
 
-void LegalizeStridedDmasPass::legalizeOutputDmas(mlir::func::FuncOp func, mlir::Value outputArgument,
-                                                 SmallVector<VPUIP::DMATypeOpInterface>& dmaSet) {
-    bool isLegal = true;
-    for (auto& dmaOp : dmaSet) {
-        auto dmaType = mlir::cast<vpux::NDTypeInterface>(dmaOp.getOutput().getType());
-        auto argType = mlir::cast<vpux::NDTypeInterface>(outputArgument.getType());
-        if (!areStridesCompatible(dmaType, argType)) {
-            isLegal = false;
-            break;
-        }
+void LegalizeStridedDmasPass::insertLegalizationDma(mlir::Value incompatibleVal, bool hasWrites,
+                                                    llvm::SmallVector<mlir::Value>& exitNodes) {
+    auto opBuilder = mlir::OpBuilder(&getContext());
+    if (auto parentOp = incompatibleVal.getDefiningOp()) {
+        opBuilder.setInsertionPointAfter(parentOp);
+    } else if (auto blockArg = mlir::dyn_cast<mlir::BlockArgument>(incompatibleVal)) {
+        opBuilder.setInsertionPointToStart(blockArg.getOwner());
     }
+    auto newLocation = mlir::NameLoc::get(mlir::StringAttr::get(&getContext(), "stridedDMALegalization"));
+    auto newMemref = opBuilder.create<mlir::memref::AllocOp>(newLocation,
+                                                             mlir::cast<mlir::MemRefType>(incompatibleVal.getType()));
+    auto originalViewSource = incompatibleVal;
+    auto stridedLoadDma = opBuilder.create<VPUIP::NNDMAOp>(newLocation, originalViewSource, newMemref.getMemref());
+    stridedLoadDma->setAttr(vpux::stridedInputAttrName, mlir::UnitAttr::get(&getContext()));
+    originalViewSource.replaceUsesWithIf(stridedLoadDma->getResult(0), [&](mlir::OpOperand& operand) {
+        return operand.getOwner() != stridedLoadDma &&
+               !mlir::isa<mlir::func::ReturnOp, VPUIP::ConcatViewOp>(operand.getOwner());
+    });
 
-    if (isLegal) {
-        for (auto& dmaOp : dmaSet) {
-            dmaOp->setAttr(vpux::stridedOutputAttrName, mlir::UnitAttr::get(&getContext()));
-        }
-    } else {
-        mlir::Operation* lastOutputDmaOp = nullptr;
-        SmallVector<mlir::Value> concatInputs;
-        for (auto dmaOp : dmaSet) {
-            concatInputs.push_back(dmaOp.getOutput());
-            if (lastOutputDmaOp == nullptr || !dmaOp->isBeforeInBlock(lastOutputDmaOp)) {
-                lastOutputDmaOp = dmaOp.getOperation();
+    if (hasWrites && !exitNodes.empty()) {
+        SmallVector<mlir::Value> concatInput;
+        mlir::Operation* lastExitOp = nullptr;
+        for (auto exitNode : exitNodes) {
+            concatInput.push_back(exitNode);
+            if (!mlir::isa<mlir::BlockArgument>(exitNode)) {
+                auto definingOp = exitNode.getDefiningOp();
+                if (lastExitOp == nullptr || !definingOp->isBeforeInBlock(lastExitOp)) {
+                    lastExitOp = definingOp;
+                }
             }
         }
-
-        auto opBuilder = mlir::OpBuilder(getOperation());
-        opBuilder.setInsertionPointToStart(&func.getBody().front());
-        auto newLocation = takeOpLoc(lastOutputDmaOp, "stridedOutputDmaLegalization");
-        auto newMemref = opBuilder.create<mlir::memref::AllocOp>(
-                newLocation, mlir::cast<mlir::MemRefType>(outputArgument.getType()));
-        outputArgument.replaceUsesWithIf(newMemref.getMemref(), [&](mlir::OpOperand& opOperand) {
-            return !mlir::isa<mlir::func::ReturnOp>(opOperand.getOwner());
+        concatInput.push_back(stridedLoadDma->getResult(0));
+        if (lastExitOp && !lastExitOp->isBeforeInBlock(stridedLoadDma)) {
+            opBuilder.setInsertionPointAfter(lastExitOp);
+        }
+        auto writerConcat = opBuilder.create<VPUIP::ConcatViewOp>(newLocation, concatInput, newMemref.getMemref());
+        auto stridedStoreDma =
+                opBuilder.create<VPUIP::NNDMAOp>(newLocation, writerConcat->getResult(0), originalViewSource);
+        stridedStoreDma->setAttr(vpux::stridedOutputAttrName, mlir::UnitAttr::get(&getContext()));
+        originalViewSource.replaceUsesWithIf(stridedStoreDma->getResult(0), [&](mlir::OpOperand& operand) {
+            return operand.getOwner() != writerConcat &&
+                   mlir::isa<mlir::func::ReturnOp, VPUIP::ConcatViewOp>(operand.getOwner());
         });
-
-        opBuilder.setInsertionPointAfter(lastOutputDmaOp);
-        auto newConcat = opBuilder.create<VPUIP::ConcatViewOp>(newLocation, concatInputs, newMemref.getMemref());
-        auto newStridedDmaOp = opBuilder.create<VPUIP::NNDMAOp>(newLocation, newConcat.getOutput(), outputArgument);
-        newStridedDmaOp->setAttr(vpux::stridedOutputAttrName, mlir::UnitAttr::get(&getContext()));
     }
 }
 
-/*
-  The function below traverses the graph in a BFS fashion and searches for transformations
-  incompatible with dynamic-strides DMAs.
-  The IR is assumed to meet the following constraints:
-  1. There is a DMA between a function argument and a compute layer.
-  2. There can be any number of ViewLikeOps between the DMA operation and the function argument.
-  3. There can be a function call operation between the function argument and a DMA.
-
-  The algorithm works differently for inputs and outputs.
-  For inputs, the algorithm will search for incompatible ViewLikeOps, and if one is found,
-  it will allocate a new DDR buffer and a new DMA which will transfer the ViewLikeOp source
-  to this new buffer, which will serve as the input to the incompatible op. Example:
-
-  func(%input_arg) {
-    %0 = IncompatibleViewLikeOp(%input_arg)
-    %1 = FurtherViewLikeOp(%0)
-  }
-
-  is transformed into:
-
-  func(%input_arg) {
-    %new_alloc = memref.alloc()
-    %new_dma = NNDMA {stridedInput} input(%input_arg) output(%new_alloc)
-    %0 = IncompatibleViewLikeOp(%new_dma)
-    %1 = FurtherViewLikeOp(%0)
-  }
-
-  For outputs, the algorithm will first search for all DMAs that are transferring data to
-  the function output. Once we have a DMA set, the algorithm will check if all DMAs are
-  compatible, and if even one of them isn't, a new DDR buffer is created to store compact
-  data and a new DMA is added to transfer data from this new compact buffer to the strided
-  function output.
-
-  func(%output_arg) {
-    %slice_0 = IncompatibleViewLike(%output_arg)
-    %slice_1 = IncompatibleViewLike(%output_arg)
-    %dma_0 = NNDMA inputs(%some_data) output(%slice_0)
-    %dma_1 = NNDMA inputs(%some_other_data) output(%slice_1)
-    return %output_arg
-  }
-
-  is transformed into:
-
-  func(%output_arg) {
-    %new_alloc = memref.alloc()
-    %slice_0 = IncompatibleViewLike(%new_alloc)
-    %slice_1 = IncompatibleViewLike(%new_alloc)
-    %dma_0 = NNDMA inputs(%some_data) output(%slice_0)
-    %dma_1 = NNDMA inputs(%some_other_data) output(%slice_1)
-    %concat = ConcatOp inputs(%dma_0, %dma_1)
-    %new_dma = NNDMA {stridedOutput} input(%concat) output(%output_arg)
-    return %output_arg
-  }
-
-  Function calls are handled by calling the same algorithm recursively. This means
-  that functions can't call each other (which can't happen in the current IR). The algorithm
-  will also update a function even if it is called from multiple call sites, which can be
-  inefficient in cases where the same function is later called with an input that is not
-  function I/O. Those cases should be rare, as we mostly get multiple functions from
-  vertical fusion outlining.
-*/
-void LegalizeStridedDmasPass::legalizeFunctionInputOutputDmas(mlir::func::FuncOp func, int operandIdx, bool isInput) {
+llvm::DenseSet<int> LegalizeStridedDmasPass::checkFunctionForWritesAndAliases(mlir::func::FuncOp func, int operandIdx,
+                                                                              bool& hasWrites) {
     std::queue<mlir::OpOperand*> valuesToVisit;
     llvm::DenseSet<mlir::OpOperand*> visitedValues;
-    mlir::SmallVector<VPUIP::DMATypeOpInterface> outputDmas;
+    llvm::DenseSet<int> aliasingOperands;
     auto funcArgument = func.getBlocks().front().getArguments()[operandIdx];
     for (auto& use : funcArgument.getUses()) {
         valuesToVisit.push(&use);
@@ -198,47 +133,234 @@ void LegalizeStridedDmasPass::legalizeFunctionInputOutputDmas(mlir::func::FuncOp
         mlir::Operation* user = use->getOwner();
         llvm::TypeSwitch<mlir::Operation*, void>(user)
                 .Case<VPUIP::DMATypeOpInterface>([&](VPUIP::DMATypeOpInterface dmaOp) {
-                    if (isInput) {
-                        if (mlir::isa<VPUIP::NNDMAOp, VPUIP::ConvertDMAOp, VPUIP::PermuteDMAOp>(dmaOp.getOperation())) {
-                            dmaOp->setAttr(vpux::stridedInputAttrName, mlir::UnitAttr::get(&getContext()));
-                        } else {
-                            insertLegalizationInputDma(dmaOp.getInput(), dmaOp.getOperation());
+                    if (dmaOp.getOutputBuff() == use->get()) {
+                        for (auto& dmaUse : dmaOp->getUses()) {
+                            valuesToVisit.push(&dmaUse);
                         }
-                    } else {
-                        outputDmas.push_back(dmaOp);
+                        hasWrites = true;
                     }
                 })
                 .Case<mlir::ViewLikeOpInterface>([&](mlir::ViewLikeOpInterface viewLikeOp) {
-                    if (isInput) {
-                        auto inType = mlir::cast<vpux::NDTypeInterface>(viewLikeOp.getViewSource().getType());
-                        auto outType = mlir::cast<vpux::NDTypeInterface>(viewLikeOp->getResult(0).getType());
-                        if (areStridesCompatible(inType, outType)) {
-                            for (auto& viewUse : viewLikeOp->getUses()) {
-                                valuesToVisit.push(&viewUse);
-                            }
-                        } else {
-                            insertLegalizationInputDma(viewLikeOp.getViewSource(), viewLikeOp.getOperation());
-                        }
-                    } else {
-                        for (auto& viewUse : viewLikeOp->getUses()) {
-                            valuesToVisit.push(&viewUse);
-                        }
+                    for (auto& viewUse : viewLikeOp->getUses()) {
+                        valuesToVisit.push(&viewUse);
                     }
                 })
                 .Case<mlir::func::CallOp>([&](mlir::func::CallOp callOp) {
                     auto calledFunc = getCalledFunction(callOp);
-                    legalizeFunctionInputOutputDmas(calledFunc, use->getOperandNumber(), isInput);
+                    auto aliasingOperands =
+                            checkFunctionForWritesAndAliases(calledFunc, use->getOperandNumber(), hasWrites);
+                    for (auto aliasingOperandIndex : aliasingOperands) {
+                        for (auto& use : callOp->getResult(aliasingOperandIndex).getUses()) {
+                            valuesToVisit.push(&use);
+                        }
+                    }
                 })
-                .Case<mlir::func::ReturnOp>([](mlir::func::ReturnOp) {
-                    return;
+                .Case<mlir::func::ReturnOp>([&](mlir::func::ReturnOp) {
+                    aliasingOperands.insert(use->getOperandNumber());
                 })
                 .Default([&](mlir::Operation*) {
                     VPUX_THROW("Unknown operation encountered");
                 });
     }
-    if (!isInput) {
-        legalizeOutputDmas(func, funcArgument, outputDmas);
+
+    return aliasingOperands;
+}
+
+void LegalizeStridedDmasPass::legalizeIncompatibleReadersAndWriters(mlir::Value incompatibleVal) {
+    std::queue<mlir::OpOperand*> valuesToVisit;
+    llvm::DenseSet<mlir::OpOperand*> visitedValues;
+    llvm::SmallVector<mlir::Value> exitNodes;
+    bool hasWrites = false;
+    for (auto& use : incompatibleVal.getUses()) {
+        valuesToVisit.push(&use);
     }
+    while (!valuesToVisit.empty()) {
+        auto use = valuesToVisit.front();
+        valuesToVisit.pop();
+        if (visitedValues.contains(use)) {
+            continue;
+        }
+        visitedValues.insert(use);
+        auto op = use->getOwner();
+        llvm::TypeSwitch<mlir::Operation*, void>(op)
+                .Case<VPUIP::DMATypeOpInterface>([&](VPUIP::DMATypeOpInterface dmaOp) {
+                    auto isInput = dmaOp.getInput() == use->get();
+                    if (isInput) {
+                        exitNodes.push_back(use->get());
+                        return;
+                    } else {
+                        hasWrites = true;
+                        for (auto& dmaUse : dmaOp->getUses()) {
+                            valuesToVisit.push(&dmaUse);
+                        }
+                        if (dmaOp->getUses().empty()) {
+                            exitNodes.push_back(dmaOp->getResult(0));
+                        }
+                    }
+                })
+                .Case<VPUIP::ConcatViewOp>([&](VPUIP::ConcatViewOp) {
+                    exitNodes.push_back(use->get());
+                })
+                .Case<mlir::ViewLikeOpInterface>([&](mlir::ViewLikeOpInterface viewLikeOp) {
+                    for (auto& viewUse : viewLikeOp->getUses()) {
+                        valuesToVisit.push(&viewUse);
+                    }
+                })
+                .Case<mlir::func::CallOp>([&](mlir::func::CallOp callOp) {
+                    auto calledFunc = getCalledFunction(callOp);
+                    bool nestedFuncHasWrites = false;
+                    auto aliasingOperands =
+                            checkFunctionForWritesAndAliases(calledFunc, use->getOperandNumber(), nestedFuncHasWrites);
+                    for (auto aliasingOperandIndex : aliasingOperands) {
+                        for (auto& use : callOp->getResult(aliasingOperandIndex).getUses()) {
+                            valuesToVisit.push(&use);
+                        }
+                    }
+                    if (nestedFuncHasWrites) {
+                        exitNodes.push_back(callOp->getResult(0));
+                    }
+                    hasWrites |= nestedFuncHasWrites;
+                })
+                .Case<mlir::func::ReturnOp>([&](mlir::func::ReturnOp) {
+                    exitNodes.push_back(use->get());
+                })
+                .Default([&](mlir::Operation*) {
+                    VPUX_THROW("Unknown operation encountered");
+                });
+    }
+
+    insertLegalizationDma(incompatibleVal, hasWrites, exitNodes);
+}
+
+/*
+  The function below traverses the graph in a BFS fashion and searches for transformations
+  incompatible with dynamic-strides DMAs.
+  The IR is assumed to meet the following constraints:
+  1. There is a DMA between a function argument and a compute layer.
+  2. There can be any number of ViewLikeOps between the DMA operation and the function argument.
+  3. There can be a function call operation between the function argument and a DMA. However functions
+     are not recursive.
+
+  When an incompatible view or DMA op is detected algorithm will do the following:
+  1. Allocate auxillary DDR buffer and copy argument data to it.
+  2. Replace all uses of the incompatible value with the new auxiliary DDR buffer
+  3. Check if the branch of the network writes to auxiliary buffer, if yes insert DMA
+     that will transfer data back to network IO
+
+  For example following IR:
+
+  func(%arg) {
+    ...
+    %val = SomeChainOfOps(%arg)
+    %incompatible_view = SomeIncompatibleView(%val)
+    %compatible_view = SomeCompatibleView(%val)
+    %write_compatible = DMA(%source, %compatible_view)
+    %write_incompatible = DMA(%source2, %incompatible_view)
+    ...
+  }
+
+  Is transformed into:
+
+  func(%arg) {
+    ...
+    %val = SomeChainOfOps(%arg)
+
+    // Legalization prologue
+    %auxiliary = memref.alloc()
+    %legalization = DMA {stridedInput} (%val, %auxiliary)
+
+    %incompatible_view = SomeIncompatibleView(%legalization)
+    %compatible_view = SomeCompatibleView(%legalization)
+    %write_compatible = DMA(%source, %compatible_view)
+    %write_incompatible = DMA(%source2, %incompatible_view)
+
+    // Legalization epilogue
+    %concat = ConcatView input(%write_compatible, %write_incompatible) output(%legalization)
+    %legalization_write = DMA {stridedOutput} (%concat, %val)
+
+    ...
+  }
+
+  Function calls are handled by calling the same algorithm recursively. This means
+  that functions can't call each other (which can't happen in the current IR). The algorithm
+  will also update a function even if it is called from multiple call sites, which can be
+  inefficient in cases where the same function is later called with an input that is not
+  function I/O. Those cases should be rare, as we mostly get multiple functions from
+  vertical fusion outlining.
+*/
+llvm::DenseSet<int> LegalizeStridedDmasPass::visitDmasForArgument(mlir::func::FuncOp func, int operandIdx) {
+    std::queue<mlir::Value> valuesToVisit;
+    llvm::DenseSet<mlir::Value> visitedValues;
+    llvm::DenseSet<int> aliasingOperands;
+    auto funcArgument = func.getBlocks().front().getArguments()[operandIdx];
+    valuesToVisit.push(funcArgument);
+
+    while (!valuesToVisit.empty()) {
+        auto value = valuesToVisit.front();
+        valuesToVisit.pop();
+        if (visitedValues.contains(value)) {
+            continue;
+        }
+        visitedValues.insert(value);
+        bool isLegal = true;
+        std::queue<mlir::Value> nextLevel;
+        for (auto& use : value.getUses()) {
+            mlir::Operation* user = use.getOwner();
+            llvm::TypeSwitch<mlir::Operation*, void>(user)
+                    .Case<VPUIP::DMATypeOpInterface>([&](VPUIP::DMATypeOpInterface dmaOp) {
+                        auto isInput = dmaOp.getInput() == use.get();
+                        if (mlir::isa<VPUIP::NNDMAOp, VPUIP::ConvertDMAOp, VPUIP::PermuteDMAOp>(dmaOp.getOperation())) {
+                            if (!isInput) {
+                                nextLevel.push(dmaOp->getResult(0));
+                            }
+                        } else {
+                            isLegal = false;
+                        }
+                    })
+                    .Case<mlir::ViewLikeOpInterface>([&](mlir::ViewLikeOpInterface viewLikeOp) {
+                        if (isCompatibleViewOp(viewLikeOp)) {
+                            nextLevel.push(viewLikeOp->getResult(0));
+                        } else {
+                            isLegal = false;
+                        }
+                    })
+                    .Case<mlir::func::CallOp>([&](mlir::func::CallOp callOp) {
+                        auto calledFunc = getCalledFunction(callOp);
+                        auto aliasingOperands = visitDmasForArgument(calledFunc, use.getOperandNumber());
+                        for (auto aliasingOperandIndex : aliasingOperands) {
+                            nextLevel.push(callOp->getResult(aliasingOperandIndex));
+                        }
+                    })
+                    .Case<mlir::func::ReturnOp>([&](mlir::func::ReturnOp) {
+                        aliasingOperands.insert(use.getOperandNumber());
+                    })
+                    .Default([&](mlir::Operation*) {
+                        VPUX_THROW("Unknown operation encountered");
+                    });
+        }
+
+        if (isLegal) {
+            for (auto& use : value.getUses()) {
+                mlir::Operation* user = use.getOwner();
+                if (auto dmaOp = mlir::dyn_cast<VPUIP::DMATypeOpInterface>(user)) {
+                    auto isInput = dmaOp.getInput() == use.get();
+                    if (isInput) {
+                        dmaOp->setAttr(vpux::stridedInputAttrName, mlir::UnitAttr::get(&getContext()));
+                    } else {
+                        dmaOp->setAttr(vpux::stridedOutputAttrName, mlir::UnitAttr::get(&getContext()));
+                    }
+                }
+            }
+            while (!nextLevel.empty()) {
+                valuesToVisit.push(nextLevel.front());
+                nextLevel.pop();
+            }
+        } else {
+            legalizeIncompatibleReadersAndWriters(value);
+        }
+    }
+
+    return aliasingOperands;
 }
 
 void LegalizeStridedDmasPass::safeRunOnModule() {
@@ -248,15 +370,9 @@ void LegalizeStridedDmasPass::safeRunOnModule() {
     auto funcArguments = func.getBlocks().front().getArguments();
     bool hasStridedIO = false;
 
-    auto isArgInput = [&](size_t idx) {
-        auto inputs = to_small_vector(netInfo.getInputsInfo().getOps<net::DataInfoOp>());
-        return idx < inputs.size();
-    };
-
     for (auto it : funcArguments | indexed) {
         auto argument = it.value();
         auto index = it.index();
-        auto isInput = isArgInput(index);
 
         if (!vpux::net::isArgStrided(module, index)) {
             continue;
@@ -268,7 +384,7 @@ void LegalizeStridedDmasPass::safeRunOnModule() {
         }
 
         hasStridedIO = true;
-        legalizeFunctionInputOutputDmas(func, index, isInput);
+        visitDmasForArgument(func, index);
     }
 
     if (hasStridedIO) {

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --optimize-copies="workload-management-mode=PWLM_V1_BARRIER_FIFO" %s | FileCheck %s
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --optimize-copies="workload-management-mode=FWLM_V1_PAGES" %s | FileCheck %s
+// REQUIRES: platform-NPU5010
 
 config.Resources 3 of @NCE at 1.700000e+03 MHz {
     config.MemoryResource 1326182 bytes of @CMX_NN_FragmentationAware
@@ -53,9 +53,9 @@ config.Resources 3 of @NCE at 1.700000e+03 MHz {
 !OutputDDRType = memref<1x32x800x31x!qElemType, {order = #NHWC, strides = [819200, 1, 1024, 32]}, @DDR>
 
 // CHECK-LABEL: func.func @OptimizeCopyOpSequence
-func.func @OptimizeCopyOpSequence(%arg0: !InputDistributedType, %arg1: !InputDistributedType) {
+func.func @OptimizeCopyOpSequence(%arg0: !InputDistributedType, %arg1: !InputDistributedType) -> !OutputDistributedType {
     %0 = VPURT.AllocDistributed -> !InputDistributedType
-    %1 = VPUIP.NCEClusterTask <{eltwise_type = #VPU.eltwise_type<ADD>, is_inplace = true, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}>
+    %1 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{eltwise_type = #VPU.eltwise_type<ADD>, is_inplace = true, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}>
         input(%arg0 : !InputDistributedType)
         weights(%arg1 : !InputDistributedType)
         parent_input(%arg0 : !InputDistributedType)
@@ -74,7 +74,7 @@ func.func @OptimizeCopyOpSequence(%arg0: !InputDistributedType, %arg1: !InputDis
     %5 = VPURT.AllocDistributed -> !OutputDistributedType
     %6 = VPUIP.Copy inputs(%4 : !OutputDDRType) outputs(%5 : !OutputDistributedType) -> !OutputDistributedType
 
-    return
+    return %6 : !OutputDistributedType
 
     // CHECK:      [[NCE_TASK:%.+]] = VPUIP.NCEClusterTask
 
@@ -82,6 +82,7 @@ func.func @OptimizeCopyOpSequence(%arg0: !InputDistributedType, %arg1: !InputDis
     // CHECK:      [[ALLOC:%.+]] = VPURT.AllocDistributed
     // CHECK:      [[COPY1:%.+]] = VPUIP.Copy inputs([[SUBVIEW]]
     // CHECK-NOT:  [[COPY2:%.+]] = VPUIP.Copy inputs([[COPY1]]
+    // CHECK:      return [[COPY1]]
 }
 
 // -----
@@ -121,9 +122,9 @@ config.Resources 3 of @NCE at 1.700000e+03 MHz {
 !OutputDDRType = memref<1x32x800x31x!qElemType, {order = #NHWC, strides = [819200, 1, 1024, 32]}, @DDR>
 
 // CHECK-LABEL: func.func @OptimizeCopyOpSequenceWithSubview
-func.func @OptimizeCopyOpSequenceWithSubview(%arg0: !InputDistributedType, %arg1: !InputDistributedType) {
+func.func @OptimizeCopyOpSequenceWithSubview(%arg0: !InputDistributedType, %arg1: !InputDistributedType) -> !OutputDistributedType {
     %0 = VPURT.AllocDistributed -> !InputDistributedType
-    %1 = VPUIP.NCEClusterTask <{eltwise_type = #VPU.eltwise_type<ADD>, is_inplace = true, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}>
+    %1 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{eltwise_type = #VPU.eltwise_type<ADD>, is_inplace = true, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}>
         input(%arg0 : !InputDistributedType)
         weights(%arg1 : !InputDistributedType)
         parent_input(%arg0 : !InputDistributedType)
@@ -142,7 +143,7 @@ func.func @OptimizeCopyOpSequenceWithSubview(%arg0: !InputDistributedType, %arg1
     %5 = VPURT.AllocDistributed -> !OutputDistributedType
     %6 = VPUIP.Copy inputs(%4 : !OutputDDRType) outputs(%5 : !OutputDistributedType) -> !OutputDistributedType
 
-    return
+    return %6 : !OutputDistributedType
 
     // CHECK:      [[NCE_TASK:%.+]] = VPUIP.NCEClusterTask
     // CHECK:      [[ALLOC:%.+]] = VPURT.AllocDistributed
@@ -150,6 +151,7 @@ func.func @OptimizeCopyOpSequenceWithSubview(%arg0: !InputDistributedType, %arg1
     // CHECK-NOT:  [[COPY:%.+]] = VPUIP.Copy inputs([[NCE_TASK]]
     // CHECK:      [[SUBVIEW:%.+]] = VPUIP.SubView [[NCE_TASK:%.+]] [0, 0, 0, 0] [1, 32, 800, 31]
     // CHECK:      [[COPY:%.+]] = VPUIP.Copy inputs([[SUBVIEW]]
+    // CHECK:      return [[COPY]]
 }
 
 // -----
@@ -191,7 +193,7 @@ config.Resources 3 of @NCE at 1.700000e+03 MHz {
 func.func @NotOptimizeCopyOpSequenceWithSubviewDueToLongSpilling(%arg0: !InputDistributedType, %arg1: !InputDistributedType) {
     // parent op
     %0 = VPURT.AllocDistributed -> !InputDistributedType
-    %1 = VPUIP.NCEClusterTask <{eltwise_type = #VPU.eltwise_type<ADD>, is_inplace = true, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}>
+    %1 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{eltwise_type = #VPU.eltwise_type<ADD>, is_inplace = true, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}>
         input(%arg0 : !InputDistributedType)
         weights(%arg1 : !InputDistributedType)
         parent_input(%arg0 : !InputDistributedType)
@@ -213,7 +215,7 @@ func.func @NotOptimizeCopyOpSequenceWithSubviewDueToLongSpilling(%arg0: !InputDi
     // middle op
     %7 = VPURT.AllocDistributed -> !OutputDistributedType
     %8 = VPURT.AllocDistributed -> !OutputDistributedType
-    %9 = VPUIP.NCEClusterTask <{eltwise_type = #VPU.eltwise_type<ADD>, is_inplace = true, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}>
+    %9 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{eltwise_type = #VPU.eltwise_type<ADD>, is_inplace = true, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}>
         input(%7 : !OutputDistributedType)
         weights(%8 : !OutputDistributedType)
         parent_input(%7 : !OutputDistributedType)
@@ -228,7 +230,7 @@ func.func @NotOptimizeCopyOpSequenceWithSubviewDueToLongSpilling(%arg0: !InputDi
     }
 
     // user op
-    %10 = VPUIP.NCEClusterTask <{eltwise_type = #VPU.eltwise_type<ADD>, is_inplace = true, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}>
+    %10 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{eltwise_type = #VPU.eltwise_type<ADD>, is_inplace = true, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}>
         input(%6 : !OutputDistributedType)
         weights(%9 : !OutputDistributedType)
         parent_input(%6 : !OutputDistributedType)
@@ -299,9 +301,9 @@ config.Resources 3 of @NCE at 1.700000e+03 MHz {
 !OutputDDRType = memref<1x32x800x31x!qElemType, {order = #NHWC, strides = [819200, 1, 1024, 32]}, @DDR>
 
 // CHECK-LABEL: func.func @NotOptimizeCopyOpSequenceWithSubviewDueToIncompatibleUsers
-func.func @NotOptimizeCopyOpSequenceWithSubviewDueToIncompatibleUsers(%arg0: !InputDistributedType, %arg1: !InputDistributedType) {
+func.func @NotOptimizeCopyOpSequenceWithSubviewDueToIncompatibleUsers(%arg0: !InputDistributedType, %arg1: !InputDistributedType) -> (!OutputDistributedType, !IncompatibleDistributedType) {
     %0 = VPURT.AllocDistributed -> !InputDistributedType
-    %1 = VPUIP.NCEClusterTask <{eltwise_type = #VPU.eltwise_type<ADD>, is_inplace = true, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}>
+    %1 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{eltwise_type = #VPU.eltwise_type<ADD>, is_inplace = true, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}>
         input(%arg0 : !InputDistributedType)
         weights(%arg1 : !InputDistributedType)
         parent_input(%arg0 : !InputDistributedType)
@@ -322,7 +324,7 @@ func.func @NotOptimizeCopyOpSequenceWithSubviewDueToIncompatibleUsers(%arg0: !In
     %7 = VPURT.AllocDistributed -> !IncompatibleDistributedType
     %8 = VPUIP.Copy inputs(%3 : !InputDDRType) outputs(%7 : !IncompatibleDistributedType) -> !IncompatibleDistributedType
 
-    return
+    return %6, %8 : !OutputDistributedType, !IncompatibleDistributedType
 
     // CHECK:      [[NCE_TASK:%.+]] = VPUIP.NCEClusterTask
     // CHECK-NOT:  [[SUBVIEW:%.+]] = VPUIP.SubView [[NCE_TASK:%.+]] [0, 0, 0, 0] [1, 32, 800, 31]
@@ -330,4 +332,5 @@ func.func @NotOptimizeCopyOpSequenceWithSubviewDueToIncompatibleUsers(%arg0: !In
     // CHECK:      [[SUBVIEW:%.+]] = VPUIP.SubView [[COPY_TO_DDR:%.+]] [0, 0, 0, 0] [1, 32, 800, 31]
     // CHECK:      [[COPY_TO_CMX1:%.+]] = VPUIP.Copy inputs([[SUBVIEW]]
     // CHECK:      [[COPY_TO_CMX2:%.+]] = VPUIP.Copy inputs([[COPY_TO_DDR]]
+    // CHECK:      return [[COPY_TO_CMX1]], [[COPY_TO_CMX2]]
 }

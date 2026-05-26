@@ -11,6 +11,7 @@
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/const_attributes.hpp"
+#include "vpux/compiler/dialect/IE/utils/scale_shift_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -152,6 +153,11 @@ private:
 // Add / Multiply : tensor<1xNxMxf16>, tensor<1x1xMxf16> -> tensor<1xNxMxf16>
 // Add / Multiply : tensor<Nx1xMxf16>, tensor<1x1xMxf16> -> tensor<Nx1xMxf16>
 bool isLegalEltwise(mlir::Operation* op) {
+    // Skip ops that cannot be adapted to ScaleShift (e.g. non-F16 IE.Add).
+    // Avoids reshaping ops that convert_to_scale_shift would reject anyway.
+    if (vpux::IE::isScaleShiftAdaptationSupported(op).failed()) {
+        return true;
+    }
     if (op->getNumOperands() != 2) {
         return true;
     }
@@ -329,6 +335,10 @@ mlir::LogicalResult MultiNonTrivialDimEltwiseRewriter<EltwiseOp>::matchAndRewrit
         EltwiseOp origOp, mlir::PatternRewriter& rewriter) const {
     const auto ctx = origOp->getContext();
 
+    if (vpux::IE::isScaleShiftAdaptationSupported(origOp).failed()) {
+        return mlir::failure();
+    }
+
     if (!isMultiNonTrivialDimEltwisePattern(origOp)) {
         return mlir::failure();
     }
@@ -393,6 +403,10 @@ mlir::LogicalResult TransposeEltwiseRewriter<EltwiseOp>::matchAndRewrite(Eltwise
                                                                          mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got '{1}' at '{2}'", this->getDebugName(), origOp->getName(), origOp->getLoc());
     const auto ctx = origOp->getContext();
+
+    if (vpux::IE::isScaleShiftAdaptationSupported(origOp).failed()) {
+        return mlir::failure();
+    }
 
     if (!isPotentialScaleShift(origOp.getOperation())) {
         return mlir::failure();

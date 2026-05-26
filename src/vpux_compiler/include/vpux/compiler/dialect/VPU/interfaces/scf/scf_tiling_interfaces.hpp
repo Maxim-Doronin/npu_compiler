@@ -10,9 +10,12 @@
 #include "vpux/compiler/dialect/VPU/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/dpu.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops/image.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops/recurrent.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/reduce.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
+#include "vpux/compiler/dialect/VPU/utils/scf/scf_interpolate_helpers.hpp"
 #include "vpux/compiler/dialect/VPU/utils/scf/scf_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/tiling_algorithm/scf_tiling/scf_tiling.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
@@ -40,15 +43,71 @@ protected:
         return static_cast<const ConcreteModel*>(this)->backInferSCFTileInfo(operation, builder, outputTile);
     }
 
+    // Return per-result output tiles for the given iteration offsets/sizes.
+    // Builds each result's tile from getResultTilePosition and computes bounds
+    // for dynamic tensors. Concrete models can provide their own
+    // getOutputSCFTiling to customize output tile computation;
+    mlir::FailureOr<SmallVector<SCFTileInfo>> getOutputSCFTiling(mlir::Operation* operation, mlir::OpBuilder& builder,
+                                                                 ArrayRef<mlir::OpFoldResult> offsets,
+                                                                 ArrayRef<mlir::OpFoldResult> sizes) const {
+        const auto numResults = operation->getNumResults();
+        const auto strategy =
+                Shape(parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(operation->getAttr(tilingStrategy))));
+        auto tilingDims = getSCFTilingOrderedDims(operation, strategy);
+
+        SmallVector<SmallVector<mlir::OpFoldResult>> allResultOffsets;
+        SmallVector<SmallVector<mlir::OpFoldResult>> allResultSizes;
+        SmallVector<Bounds> allResultBounds;
+        allResultOffsets.reserve(numResults);
+        allResultSizes.reserve(numResults);
+        allResultBounds.reserve(numResults);
+
+        for (auto resultNumber : irange(numResults)) {
+            allResultOffsets.emplace_back();
+            allResultSizes.emplace_back();
+            if (mlir::failed(getResultTilePosition(operation, builder, resultNumber, offsets, sizes,
+                                                   allResultOffsets.back(), allResultSizes.back()))) {
+                return mlir::failure();
+            }
+            allResultBounds.emplace_back();
+        }
+
+        if (IE::hasDynamicTensors(operation)) {
+            for (auto resultNumber : irange(numResults)) {
+                if (mlir::failed(getResultTileBounds(operation, resultNumber, tilingDims, allResultSizes[resultNumber],
+                                                     allResultBounds[resultNumber]))) {
+                    return mlir::failure();
+                }
+            }
+        }
+
+        SmallVector<SCFTileInfo> allOutputTiles;
+        allOutputTiles.reserve(numResults);
+        for (auto resultNumber : irange(numResults)) {
+            auto& resOffsets = allResultOffsets[resultNumber];
+            SmallVector<mlir::OpFoldResult> axis(resOffsets.size(), builder.getIndexAttr(1));
+            for (auto tileDim : tilingDims) {
+                const auto tileDimIdx = checked_cast<size_t>(tileDim.ind());
+                if (tileDimIdx >= axis.size()) {
+                    return mlir::failure();
+                }
+                axis[tileDimIdx] = builder.getIndexAttr(strategy[tileDim]);
+            }
+            allOutputTiles.emplace_back(allResultSizes[resultNumber], resOffsets, axis, allResultBounds[resultNumber]);
+        }
+
+        return allOutputTiles;
+    }
+
     mlir::Operation* createTiledOperation(OpGeneratorFunc opGenerator, OpTilingOperandsFunc operandsGenerator,
                                           mlir::OpBuilder& builder, SCFTilingInfo& inputTiling,
                                           const SCFTileInfo& outputTile, DimArrRef dims,
                                           SmallVector<mlir::Value>& tiledOperands, mlir::Operation* operation) const {
-        auto generatedOp = static_cast<const ConcreteModel*>(this)->createTiledOperation(
+        // Subclass creates the tiled operation; casting is applied uniformly
+        // in getTiledImplementation via castOutputForInsertion for all results.
+        return static_cast<const ConcreteModel*>(this)->createTiledOperation(
                 std::move(opGenerator), std::move(operandsGenerator), builder, inputTiling, outputTile, dims,
                 tiledOperands, operation);
-
-        return castOutputForInsertion(builder, outputTile, dims, operation, generatedOp);
     }
 
     void fillInResultTilePositions(mlir::Operation* operation, mlir::OpBuilder& builder, unsigned resultNumber,
@@ -120,38 +179,34 @@ public:
     mlir::FailureOr<mlir::TilingResult> getTiledImplementation(mlir::Operation* operation, mlir::OpBuilder& builder,
                                                                ArrayRef<mlir::OpFoldResult> offsets,
                                                                ArrayRef<mlir::OpFoldResult> sizes) const {
-        SmallVector<mlir::OpFoldResult> resultOffsets;
-        SmallVector<mlir::OpFoldResult> resultSizes;
-
-        // E-162801 extend to multiple results
-        unsigned resultNumber = 0;
-        fillInResultTilePositions(operation, builder, resultNumber, offsets, sizes, resultOffsets, resultSizes);
+        const auto numResults = operation->getNumResults();
+        if (numResults == 0) {
+            return mlir::failure();
+        }
 
         const auto strategy =
                 Shape(parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(operation->getAttr(tilingStrategy))));
         auto tilingDims = getSCFTilingOrderedDims(operation, strategy);
 
+        // Compute per-result output tiles (tile position + bounds).
+        auto allOutputTilesOrFailure =
+                static_cast<const ConcreteModel*>(this)->getOutputSCFTiling(operation, builder, offsets, sizes);
+        if (mlir::failed(allOutputTilesOrFailure)) {
+            return mlir::failure();
+        }
+        auto allOutputTiles = std::move(*allOutputTilesOrFailure);
+
         SmallVector<mlir::Operation*> results;
         SmallVector<mlir::Value> resultValues;
         SmallVector<mlir::Operation*> generatedSlices;
-        results.reserve(resultOffsets.size());
-        resultValues.reserve(resultOffsets.size());
-        SmallVector<mlir::OpFoldResult> axis(resultOffsets.size(), builder.getIndexAttr(1));
-        auto origShape = mlir::getAsIndexOpFoldResult(
-                builder.getContext(), mlir::cast<mlir::ShapedType>(operation->getResult(0).getType()).getShape());
+        resultValues.reserve(numResults);
 
-        Bounds resultBounds;
-        if (IE::hasDynamicTensors(operation)) {
-            if (mlir::failed(getResultTileBounds(operation, resultNumber, tilingDims, resultSizes, resultBounds))) {
-                return mlir::failure();
-            }
-        }
-
-        for (auto tileDim : tilingDims) {
-            axis[tileDim.ind()] = builder.getIndexAttr(strategy[tileDim]);
-        }
-        auto outputTile = SCFTileInfo(resultSizes, resultOffsets, axis, resultBounds);
-        auto inputTiling = backInferSCFTileInfo(operation, builder, outputTile);
+        // All results share the same SCF iteration space, so result 0 is used
+        // to back-infer the input tiling. Per-result output shape differences
+        // (e.g. different result ranks or non-tiling dims) are handled by
+        // getOutputSCFTiling, which is the correct override point for that.
+        auto inputTiling = backInferSCFTileInfo(operation, builder, allOutputTiles[0]);
+        const auto& outputTile = allOutputTiles[0];
         SmallVector<mlir::Value> tiledOperands;
         tiledOperands.reserve(operation->getNumOperands());
 
@@ -181,8 +236,18 @@ public:
         };
 
         OpGeneratorFunc generatorFunc = [&]() {
-            auto resultDenseTile = extractResultType(operation->getResult(0).getType(), resultSizes, resultBounds);
-            auto* tiledOp = mlir::cloneWithoutRegions(builder, operation, {resultDenseTile}, tiledOperands);
+            SmallVector<mlir::Type> resultDenseTiles;
+            resultDenseTiles.reserve(numResults);
+            for (auto resultNumber : irange(numResults)) {
+                resultDenseTiles.emplace_back(extractResultType(operation->getResult(resultNumber).getType(),
+                                                                allOutputTiles[resultNumber].shape,
+                                                                allOutputTiles[resultNumber].bounds));
+            }
+
+            auto* tiledOp = mlir::cloneWithoutRegions(builder, operation, resultDenseTiles, tiledOperands);
+            // inferReturnTypes adjusts the result types to match the tiled input shapes,
+            // including bounds for dynamic tensors. This works for multi-result ops too
+            // since TopK and LSTMGates have correct inferReturnTypes implementations.
             vpux::inferReturnTypes(tiledOp, vpux::InferShapedTypeMode::SHAPE);
             tiledOp->removeAttr(tilingStrategy);
             return tiledOp;
@@ -192,15 +257,26 @@ public:
                                               inputTiling, outputTile, tilingDims, tiledOperands, operation);
 
         results.emplace_back(resultOp);
-        resultValues.emplace_back(resultOp->getResult(0));
+        // Cast each result for insertion — handles both single and multi-result ops uniformly.
+        // For results with no non-tiling dynamic dims, the original value is returned as-is.
+        resultValues = castOutputForInsertion(builder, allOutputTiles, tilingDims, operation, resultOp);
 
         return mlir::TilingResult{std::move(results), std::move(resultValues), std::move(generatedSlices)};
     }
 
     mlir::FailureOr<mlir::TilingResult> generateResultTileValue(mlir::Operation* operation, mlir::OpBuilder& builder,
-                                                                unsigned, mlir::ArrayRef<mlir::OpFoldResult> offsets,
+                                                                unsigned resultNumber,
+                                                                mlir::ArrayRef<mlir::OpFoldResult> offsets,
                                                                 mlir::ArrayRef<mlir::OpFoldResult> sizes) const {
-        return getTiledImplementation(operation, builder, offsets, sizes);
+        auto tilingResult = getTiledImplementation(operation, builder, offsets, sizes);
+        if (mlir::failed(tilingResult)) {
+            return mlir::failure();
+        }
+        if (resultNumber >= tilingResult->tiledValues.size()) {
+            return mlir::failure();
+        }
+        tilingResult->tiledValues = {tilingResult->tiledValues[resultNumber]};
+        return tilingResult;
     }
 
     mlir::LogicalResult getResultTilePosition(mlir::Operation* operation, mlir::OpBuilder& builder,
@@ -488,6 +564,10 @@ public:
                 tilingInfo.tiles.emplace_back(
                         getWeightsTableSCFTile(nceOp.getWeightsTableOperand().getType(), builder, outputTile));
             }
+            if (nceOp != nullptr && nceOp.getWeightTableDataPtrOperand() != nullptr) {
+                tilingInfo.tiles.emplace_back(
+                        getWeightsTableSCFTile(nceOp.getWeightTableDataPtrOperand().getType(), builder, outputTile));
+            }
             if (nceOp != nullptr && nceOp.getWeightTableScaleOperand() != nullptr) {
                 tilingInfo.tiles.emplace_back(
                         getWeightsTableSCFTile(nceOp.getWeightTableScaleOperand().getType(), builder, outputTile));
@@ -756,6 +836,168 @@ public:
     }
 };
 
+class SCFInterpolateModelOp : public SCFTilingCommonModelOp<SCFInterpolateModelOp, VPU::InterpolateOp> {
+public:
+    mlir::LogicalResult getResultTilePosition(mlir::Operation* operation, mlir::OpBuilder& builder,
+                                              unsigned resultNumber, ArrayRef<mlir::OpFoldResult> offsets,
+                                              ArrayRef<mlir::OpFoldResult> sizes,
+                                              SmallVector<mlir::OpFoldResult>& resultOffsets,
+                                              SmallVector<mlir::OpFoldResult>& resultSizes) const {
+        this->fillInResultTilePositions(operation, builder, resultNumber, offsets, sizes, resultOffsets, resultSizes);
+        return mlir::success();
+    }
+
+    // Main back-inference function
+    // Mirrors: backInferInterpolateTile() in tiling.cpp
+    SCFTilingInfo backInferSCFTileInfo(mlir::Operation* operation, mlir::OpBuilder& builder,
+                                       const SCFTileInfo& outputTile) const {
+        auto interpolateOp = mlir::cast<VPU::InterpolateOp>(operation);
+        auto loc = operation->getLoc();
+
+        auto interpolateMode = interpolateOp.getAttr().getMode().getValue();
+        auto coordMode = interpolateOp.getAttr().getCoordMode().getValue();
+        auto nearestMode = interpolateOp.getAttr().getNearestMode().getValue();
+
+        // Always use getBoundedShape to resolve dynamic dims to upper bounds.
+        // The attrs may contain kDynamic values if backInferTileInfo (non-SCF path) ran earlier
+        // and set them using getShape() on dynamic tensors. Using kDynamic here would cause
+        // initialInSize == initialOutSize to be true, skipping the affine back-inference.
+        const SmallVector<int64_t> initialInputDims(getBoundedShape(interpolateOp.getInput()).raw());
+        const SmallVector<int64_t> initialOutputDims(getBoundedShape(interpolateOp.getOutput()).raw());
+
+        auto currentInputDims = getBoundedShape(interpolateOp.getInput()).raw();
+        const auto origInputShape = mlir::getAsIndexOpFoldResult(builder.getContext(), currentInputDims);
+
+        SCFTileInfo inputTile(origInputShape, builder);
+
+        inputTile.shape[Dims4D::Act::N.ind()] = outputTile.shape[Dims4D::Act::N.ind()];
+        inputTile.offsets[Dims4D::Act::N.ind()] = outputTile.offsets[Dims4D::Act::N.ind()];
+
+        inputTile.shape[Dims4D::Act::C.ind()] = outputTile.shape[Dims4D::Act::C.ind()];
+        inputTile.offsets[Dims4D::Act::C.ind()] = outputTile.offsets[Dims4D::Act::C.ind()];
+
+        if (!outputTile.bounds.raw().empty()) {
+            inputTile.bounds = outputTile.bounds;
+        }
+
+        SmallVector<mlir::OpFoldResult> outOffsetBegin;
+        SmallVector<mlir::OpFoldResult> outOffsetEnd;
+        outOffsetBegin.reserve(outputTile.offsets.size());
+        outOffsetEnd.reserve(outputTile.offsets.size());
+
+        for (size_t i = 0; i < outputTile.offsets.size(); ++i) {
+            outOffsetBegin.push_back(outputTile.offsets[i]);
+
+            mlir::AffineExpr d0, d1;
+            bindDims(builder.getContext(), d0, d1);
+            auto endMap = mlir::AffineMap::get(2, 0, {d0 + d1 - 1}, builder.getContext());
+            auto endOffset = mlir::affine::makeComposedFoldedAffineApply(
+                    builder, appendLoc(loc, "outOffsetEnd"), endMap, {outputTile.offsets[i], outputTile.shape[i]});
+            outOffsetEnd.push_back(endOffset);
+        }
+
+        auto inOffsetBegin = backInferSCFOffsetForInterpolate(builder, loc, outOffsetBegin, interpolateMode, coordMode,
+                                                              nearestMode, initialInputDims, initialOutputDims,
+                                                              currentInputDims, /*roundUp=*/false);
+        auto inOffsetEnd = backInferSCFOffsetForInterpolate(builder, loc, outOffsetEnd, interpolateMode, coordMode,
+                                                            nearestMode, initialInputDims, initialOutputDims,
+                                                            currentInputDims, /*roundUp=*/true);
+
+        for (auto index : irange(Dims4D::Act::numSpatialDims)) {
+            const auto dim = Dims4D::Act::getSpatialDim(index);
+            const int64_t initialInSize = initialInputDims[dim.ind()];
+            const int64_t initialOutSize = initialOutputDims[dim.ind()];
+
+            if (initialInSize == initialOutSize) {
+                inputTile.shape[dim.ind()] = outputTile.shape[dim.ind()];
+                inputTile.offsets[dim.ind()] = outputTile.offsets[dim.ind()];
+                continue;
+            }
+
+            inputTile.offsets[dim.ind()] = inOffsetBegin[dim.ind()];
+
+            mlir::AffineExpr d0, d1;
+            bindDims(builder.getContext(), d0, d1);
+            auto sizeMap = mlir::AffineMap::get(2, 0, {d1 - d0 + 1}, builder.getContext());
+            inputTile.shape[dim.ind()] = mlir::affine::makeComposedFoldedAffineApply(
+                    builder, appendLoc(loc, "inputSize"), sizeMap, {inOffsetBegin[dim.ind()], inOffsetEnd[dim.ind()]});
+
+            // Update bounds if present
+            if (!outputTile.bounds.raw().empty()) {
+                inputTile.bounds[dim] = (outputTile.bounds[dim] * initialInSize + initialOutSize - 1) / initialOutSize;
+            }
+        }
+
+        return SCFTilingInfo(inputTile);
+    }
+
+    mlir::Operation* createTiledOperation(OpGeneratorFunc opGenerator, OpTilingOperandsFunc operandsGenerator,
+                                          mlir::OpBuilder&, SCFTilingInfo& inputTiling, const SCFTileInfo& outputTile,
+                                          DimArrRef, SmallVector<mlir::Value>&, mlir::Operation* operation) const {
+        operandsGenerator(inputTiling);
+
+        auto generator = [&]() -> mlir::Operation* {
+            auto newOp = mlir::cast<VPU::InterpolateOp>(opGenerator());
+            auto ctx = newOp->getContext();
+            mlir::Builder attrBuilder(ctx);
+            auto origInterpolate = mlir::cast<VPU::InterpolateOp>(operation);
+
+            const auto numDims = static_cast<int64_t>(outputTile.shape.size());
+
+            SmallVector<int64_t> inputOffsets(numDims, 0);
+            SmallVector<int64_t> outputOffsets(numDims, 0);
+            for (auto i : irange(numDims)) {
+                if (auto val = mlir::getConstantIntValue(inputTiling.tiles[0].offsets[i])) {
+                    inputOffsets[i] = val.value();
+                }
+                if (auto val = mlir::getConstantIntValue(outputTile.offsets[i])) {
+                    outputOffsets[i] = val.value();
+                }
+            }
+            newOp.setInitialInputOffsetAttrAttr(attrBuilder.getI64ArrayAttr(inputOffsets));
+            newOp.setInitialOutputOffsetAttrAttr(attrBuilder.getI64ArrayAttr(outputOffsets));
+
+            SmallVector<double> zeroTileOffset(numDims, 0.0);
+            newOp.setTileOffsetAttrAttr(attrBuilder.getF64ArrayAttr(zeroTileOffset));
+
+            SmallVector<int64_t> zeroPads(numDims, 0);
+            auto calcModeAttr = IE::InterpolateCalcModeAttr::get(ctx, IE::InterpolateCalcMode::SCALES);
+            auto origAttr = newOp.getAttr();
+            auto newInterpolateAttr = IE::InterpolateAttr::get(
+                    ctx, origAttr.getMode(), calcModeAttr, origAttr.getCoordMode(), origAttr.getNearestMode(),
+                    origAttr.getAntialias(), attrBuilder.getI64ArrayAttr(zeroPads),
+                    attrBuilder.getI64ArrayAttr(zeroPads), origAttr.getCubeCoeff());
+            newOp.setAttrAttr(newInterpolateAttr);
+
+            // Use getBoundedShape to resolve dynamic dims to upper bounds, avoiding kDynamic in attrs
+            const SmallVector<int64_t> initialInputDims(getBoundedShape(origInterpolate.getInput()).raw());
+            const SmallVector<int64_t> initialOutputDims(getBoundedShape(origInterpolate.getOutput()).raw());
+            newOp.setInitialInputDimsAttrAttr(attrBuilder.getI64ArrayAttr(initialInputDims));
+            newOp.setInitialOutputDimsAttrAttr(attrBuilder.getI64ArrayAttr(initialOutputDims));
+
+            auto axesAttrOpt = origInterpolate.getAxesAttr();
+            if (axesAttrOpt.has_value()) {
+                auto axesValue = parseIntArrayAttr<int64_t>(axesAttrOpt.value());
+                SmallVector<double> scales(axesValue.size(), 1.0);
+                for (auto axis : axesValue | indexed) {
+                    const auto axisDim = Dim(axis.value());
+                    auto inDim = initialInputDims[axisDim.ind()];
+                    auto outDim = initialOutputDims[axisDim.ind()];
+                    if (inDim != 0) {
+                        scales[axis.index()] = static_cast<double>(outDim) / static_cast<double>(inDim);
+                    }
+                }
+                newOp.setScalesAttrAttr(attrBuilder.getF64ArrayAttr(scales));
+            }
+
+            vpux::inferReturnTypes(newOp, vpux::InferShapedTypeMode::SHAPE);
+            return newOp.getOperation();
+        };
+
+        return generator();
+    }
+};
+
 template <typename ConcreteModel, typename ConcreteOp>
 class SCFReduceModelOp : public SCFTilingCommonModelOp<ConcreteModel, ConcreteOp> {
 public:
@@ -808,4 +1050,233 @@ class SCFReduceSquareModelOp : public SCFReduceModelOp<SCFReduceSquareModelOp, V
 class SCFReduceMinModelOp : public SCFReduceModelOp<SCFReduceMinModelOp, VPU::ReduceMinOp> {};
 class SCFReduceMaxModelOp : public SCFReduceModelOp<SCFReduceMaxModelOp, VPU::ReduceMaxOp> {};
 class SCFReduceProdModelOp : public SCFReduceModelOp<SCFReduceProdModelOp, VPU::ReduceProdOp> {};
+
+class SCFYuvToRgbModelOp : public SCFTilingCommonModelOp<SCFYuvToRgbModelOp, VPU::YuvToRgbOp> {
+public:
+    mlir::LogicalResult getResultTilePosition(mlir::Operation* operation, mlir::OpBuilder& builder,
+                                              unsigned resultNumber, ArrayRef<mlir::OpFoldResult> offsets,
+                                              ArrayRef<mlir::OpFoldResult> sizes,
+                                              SmallVector<mlir::OpFoldResult>& resultOffsets,
+                                              SmallVector<mlir::OpFoldResult>& resultSizes) const {
+        this->fillInResultTilePositions(operation, builder, resultNumber, offsets, sizes, resultOffsets, resultSizes);
+        return mlir::success();
+    }
+
+    mlir::Operation* createTiledOperation(OpGeneratorFunc opGenerator, OpTilingOperandsFunc operandsGenerator,
+                                          mlir::OpBuilder&, SCFTilingInfo& inputTiling, const SCFTileInfo&, DimArrRef,
+                                          SmallVector<mlir::Value>&, mlir::Operation*) const {
+        operandsGenerator(inputTiling);
+        return opGenerator();
+    }
+
+    SCFTilingInfo backInferSCFTileInfo(mlir::Operation* operation, mlir::OpBuilder& builder,
+                                       const SCFTileInfo& outputTile) const {
+        auto loc = operation->getLoc();
+        auto ctx = builder.getContext();
+        const auto operands = operation->getOperands();
+        const auto numInputs = static_cast<int64_t>(operands.size());
+
+        const auto dimN = Dims4D::Act::N.ind();
+        const auto dimC = Dims4D::Act::C.ind();
+        const auto dimH = Dims4D::Act::H.ind();
+
+        auto inputTiles = SmallVector<SCFTileInfo>();
+
+        // d0 -> floor(d0 / 2) for chroma spatial halving
+        auto d0 = mlir::AffineExpr();
+        bindDims(ctx, d0);
+        auto halfMap = mlir::AffineMap::get(1, 0, {d0.floorDiv(2)}, ctx);
+
+        if (numInputs == 1) {
+            // Single-plane NV12 (1 input)
+            // Physical: [N, C*3/2, H, 1]
+            // Luma and chroma rows stacked vertically — C is NOT tileable.
+            // Tile N and H from output; C and W keep original.
+            const auto origShape = mlir::tensor::getMixedSizes(builder, loc, operands[0]);
+            auto inputTile = SCFTileInfo(origShape, builder);
+
+            inputTile.offsets[dimN] = outputTile.offsets[dimN];
+            inputTile.shape[dimN] = outputTile.shape[dimN];
+
+            inputTile.offsets[dimH] = outputTile.offsets[dimH];
+            inputTile.shape[dimH] = outputTile.shape[dimH];
+
+            if (!outputTile.bounds.raw().empty()) {
+                auto inputBoundedShape = getBoundedShape(operands[0]);
+                inputTile.bounds = Bounds(inputBoundedShape.raw());
+                inputTile.bounds[Dims4D::Act::N] = outputTile.bounds[Dims4D::Act::N];
+                inputTile.bounds[Dims4D::Act::H] = outputTile.bounds[Dims4D::Act::H];
+            }
+
+            return SCFTilingInfo{inputTile};
+        }
+
+        // Multi-plane (2 inputs = NV12, 3 inputs = I420)
+
+        // Input 0 (Y plane): [N, C, H, 1]
+        // Tile N, C, H from output; W stays original (1 vs 3)
+        {
+            const auto origShape = mlir::tensor::getMixedSizes(builder, loc, operands[0]);
+            auto yTile = SCFTileInfo(origShape, builder);
+
+            yTile.offsets[dimN] = outputTile.offsets[dimN];
+            yTile.shape[dimN] = outputTile.shape[dimN];
+
+            yTile.offsets[dimC] = outputTile.offsets[dimC];
+            yTile.shape[dimC] = outputTile.shape[dimC];
+
+            yTile.offsets[dimH] = outputTile.offsets[dimH];
+            yTile.shape[dimH] = outputTile.shape[dimH];
+
+            if (!outputTile.bounds.raw().empty()) {
+                auto yBoundedShape = getBoundedShape(operands[0]);
+                yTile.bounds = Bounds(yBoundedShape.raw());
+                yTile.bounds[Dims4D::Act::N] = outputTile.bounds[Dims4D::Act::N];
+                yTile.bounds[Dims4D::Act::C] = outputTile.bounds[Dims4D::Act::C];
+                yTile.bounds[Dims4D::Act::H] = outputTile.bounds[Dims4D::Act::H];
+            }
+
+            inputTiles.push_back(std::move(yTile));
+        }
+
+        // Inputs 1+ (chroma planes): [N, C/2, H/2, W_chroma]
+        //   NV12 input 1 (UV): W_chroma = 2
+        //   I420 input 1 (U):  W_chroma = 1
+        //   I420 input 2 (V):  W_chroma = 1
+        // Tile N from output; C and H halved from output; W stays original
+        for (auto idx : irange<int64_t>(1, numInputs)) {
+            const auto origShape = mlir::tensor::getMixedSizes(builder, loc, operands[idx]);
+            auto chromaTile = SCFTileInfo(origShape, builder);
+
+            chromaTile.offsets[dimN] = outputTile.offsets[dimN];
+            chromaTile.shape[dimN] = outputTile.shape[dimN];
+
+            chromaTile.offsets[dimC] = mlir::affine::makeComposedFoldedAffineApply(
+                    builder, appendLoc(loc, "chromaOffsetC"), halfMap, {outputTile.offsets[dimC]});
+            chromaTile.shape[dimC] = mlir::affine::makeComposedFoldedAffineApply(builder, appendLoc(loc, "chromaSizeC"),
+                                                                                 halfMap, {outputTile.shape[dimC]});
+
+            chromaTile.offsets[dimH] = mlir::affine::makeComposedFoldedAffineApply(
+                    builder, appendLoc(loc, "chromaOffsetH"), halfMap, {outputTile.offsets[dimH]});
+            chromaTile.shape[dimH] = mlir::affine::makeComposedFoldedAffineApply(builder, appendLoc(loc, "chromaSizeH"),
+                                                                                 halfMap, {outputTile.shape[dimH]});
+
+            if (!outputTile.bounds.raw().empty()) {
+                auto chromaBoundedShape = getBoundedShape(operands[idx]);
+                chromaTile.bounds = Bounds(chromaBoundedShape.raw());
+                chromaTile.bounds[Dims4D::Act::N] = outputTile.bounds[Dims4D::Act::N];
+                chromaTile.bounds[Dims4D::Act::C] = outputTile.bounds[Dims4D::Act::C] / 2;
+                chromaTile.bounds[Dims4D::Act::H] = outputTile.bounds[Dims4D::Act::H] / 2;
+            }
+
+            inputTiles.push_back(std::move(chromaTile));
+        }
+
+        return SCFTilingInfo{inputTiles};
+    }
+};
+
+template <typename ConcreteModel, typename ConcreteOp>
+class SCFTilingTopKModelOp : public SCFTilingCommonModelOp<ConcreteModel, ConcreteOp> {
+public:
+    mlir::LogicalResult getResultTilePosition(mlir::Operation* operation, mlir::OpBuilder& builder,
+                                              unsigned resultNumber, ArrayRef<mlir::OpFoldResult> offsets,
+                                              ArrayRef<mlir::OpFoldResult> sizes,
+                                              SmallVector<mlir::OpFoldResult>& resultOffsets,
+                                              SmallVector<mlir::OpFoldResult>& resultSizes) const {
+        this->fillInResultTilePositions(operation, builder, resultNumber, offsets, sizes, resultOffsets, resultSizes);
+        return mlir::success();
+    }
+    mlir::Operation* createTiledOperation(OpGeneratorFunc opGenerator, OpTilingOperandsFunc operandsGenerator,
+                                          mlir::OpBuilder&, SCFTilingInfo& tiling, const SCFTileInfo&, DimArrRef,
+                                          SmallVector<mlir::Value>&, mlir::Operation*) const {
+        operandsGenerator(tiling);
+        return opGenerator();
+    }
+
+    SCFTilingInfo backInferSCFTileInfo(mlir::Operation* operation, mlir::OpBuilder& builder,
+                                       const SCFTileInfo& outputTile) const {
+        auto topKOp = mlir::cast<ConcreteOp>(operation);
+        const auto origInputShape =
+                mlir::getAsIndexOpFoldResult(builder.getContext(), getShape(operation->getOperand(0)).raw());
+        const auto origBoundedInputShape = getBoundedShape(operation->getOperand(0));
+        const auto kAxis = Dim(topKOp.getAxis());
+
+        // Start from output tile (inherits bounds for dynamic tensors),
+        // then restore the TopK axis to full input size
+        SCFTileInfo inputTile = outputTile;
+        inputTile.shape[kAxis.ind()] = origInputShape[kAxis.ind()];
+        inputTile.offsets[kAxis.ind()] = builder.getIndexAttr(0);
+        if (!outputTile.bounds.raw().empty()) {
+            inputTile.bounds[kAxis] = origBoundedInputShape[kAxis];
+        }
+
+        SmallVector<SCFTileInfo> inputTiles;
+        inputTiles.push_back(inputTile);
+
+        // k operand (scalar) — pass through untiled
+        if (topKOp.getK()) {
+            const auto kShape = mlir::getAsIndexOpFoldResult(builder.getContext(), getShape(topKOp.getK()).raw());
+            inputTiles.emplace_back(kShape, builder);
+        }
+
+        // lineBuffer (auxiliary) — pass through untiled
+        if (topKOp.getLineBuffer()) {
+            const auto bufShape =
+                    mlir::getAsIndexOpFoldResult(builder.getContext(), getShape(topKOp.getLineBuffer()).raw());
+            inputTiles.emplace_back(bufShape, builder);
+        }
+
+        return SCFTilingInfo{std::move(inputTiles)};
+    }
+};
+class SCFTopKModelOp : public SCFTilingTopKModelOp<SCFTopKModelOp, VPU::TopKOp> {};
+
+template <typename ConcreteModel, typename ConcreteOp>
+class SCFTilingLSTMGatesModelOp : public SCFTilingCommonModelOp<ConcreteModel, ConcreteOp> {
+public:
+    mlir::LogicalResult getResultTilePosition(mlir::Operation* operation, mlir::OpBuilder& builder,
+                                              unsigned resultNumber, ArrayRef<mlir::OpFoldResult> offsets,
+                                              ArrayRef<mlir::OpFoldResult> sizes,
+                                              SmallVector<mlir::OpFoldResult>& resultOffsets,
+                                              SmallVector<mlir::OpFoldResult>& resultSizes) const {
+        this->fillInResultTilePositions(operation, builder, resultNumber, offsets, sizes, resultOffsets, resultSizes);
+        return mlir::success();
+    }
+
+    SCFTilingInfo backInferSCFTileInfo(mlir::Operation* operation, mlir::OpBuilder& builder,
+                                       const SCFTileInfo& outputTile) const {
+        auto lstmOp = mlir::cast<ConcreteOp>(operation);
+
+        // Mirror the static backInferTileInfo: tile all operands,
+        // restoring the last dimension to each operand's original size.
+        // Start from outputTile to inherit bounds for dynamic tensors.
+        SmallVector<SCFTileInfo> inputTiles;
+        for (const auto& origInput : lstmOp.getInputs()) {
+            const auto curShape = getShape(origInput);
+            const auto origInputShape = mlir::getAsIndexOpFoldResult(builder.getContext(), curShape.raw());
+            const auto origBoundedInputShape = getBoundedShape(origInput);
+            const auto lastDim = curShape.size() - 1;
+
+            // Start from outputTile (preserves bounds and dynamic dim handling)
+            SCFTileInfo curTile = outputTile;
+            // Restore the last dim to the original input size (4*hidden vs hidden)
+            curTile.shape[lastDim] = origInputShape[lastDim];
+            curTile.offsets[lastDim] = builder.getIndexAttr(0);
+            if (!outputTile.bounds.raw().empty()) {
+                curTile.bounds[Dim(lastDim)] = origBoundedInputShape[Dim(lastDim)];
+            }
+            inputTiles.push_back(curTile);
+        }
+
+        return SCFTilingInfo{std::move(inputTiles)};
+    }
+    mlir::Operation* createTiledOperation(OpGeneratorFunc opGenerator, OpTilingOperandsFunc operandsGenerator,
+                                          mlir::OpBuilder&, SCFTilingInfo& tiling, const SCFTileInfo&, DimArrRef,
+                                          SmallVector<mlir::Value>&, mlir::Operation*) const {
+        operandsGenerator(tiling);
+        return opGenerator();
+    }
+};
+class SCFLSTMGatesModelOp : public SCFTilingLSTMGatesModelOp<SCFLSTMGatesModelOp, VPU::LSTMGatesOp> {};
 }  // namespace vpux::VPU

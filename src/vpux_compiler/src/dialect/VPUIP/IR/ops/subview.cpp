@@ -33,13 +33,13 @@ void VPUIP::SubViewOp::build(mlir::OpBuilder& builder, mlir::OperationState& sta
 
 void VPUIP::SubViewOp::build(mlir::OpBuilder& builder, mlir::OperationState& state, mlir::Value input,
                              mlir::ArrayAttr static_offsets, mlir::ArrayAttr static_sizes) {
-    build(builder, state, input, static_offsets, static_sizes, nullptr, nullptr);
+    build(builder, state, input, static_offsets, static_sizes, nullptr, nullptr, nullptr);
 }
 
 void VPUIP::SubViewOp::build(mlir::OpBuilder& builder, mlir::OperationState& state, mlir::Value input,
                              mlir::ArrayAttr static_offsets, mlir::ArrayAttr static_sizes,
                              mlir::ArrayAttr static_strides) {
-    build(builder, state, input, static_offsets, static_sizes, static_strides, nullptr);
+    build(builder, state, input, static_offsets, static_sizes, static_strides, nullptr, nullptr);
 }
 
 void VPUIP::SubViewOp::build(mlir::OpBuilder& builder, mlir::OperationState& state, mlir::Value input,
@@ -52,7 +52,7 @@ void VPUIP::SubViewOp::build(mlir::OpBuilder& builder, mlir::OperationState& sta
                              ArrayRef<int64_t> static_strides) {
     build(builder, state, input, getIntArrayAttr(builder.getContext(), static_offsets),
           getIntArrayAttr(builder.getContext(), static_sizes), getIntArrayAttr(builder.getContext(), static_strides),
-          nullptr);
+          nullptr, nullptr);
 }
 
 //
@@ -96,16 +96,28 @@ mlir::LogicalResult VPUIP::SubViewOp::inferReturnTypes(mlir::MLIRContext* ctx, s
         return errorAt(loc, "Tile strides '{0}' doesn't match MemRef rank '{1}'", subViewStrides, origType.getRank());
     }
 
-    const auto hasExplcitOutputShapes = subViewOp.getExplicitOutputShapes().has_value();
+    const auto hasExplicitOutputShapes = subViewOp.getExplicitOutputShapes().has_value();
+    const auto hasExplicitOutputOffsets = subViewOp.getExplicitOutputOffsets().has_value();
 
     auto inferExplicitDistributedAttr = [&](VPU::DistributionInfoAttr origDistribution,
                                             ArrayRef<int64_t> inShape) -> VPU::DistributionInfoAttr {
         auto mode = origDistribution.getMode().getValue();
-        if (hasExplcitOutputShapes) {
+        if (hasExplicitOutputShapes && hasExplicitOutputOffsets) {
+            // When both explicit output shapes and offsets are provided (e.g. for Overlapped mode),
+            // use them directly to construct the distribution attribute
+            return VPU::DistributionInfoAttr::get(
+                    ctx, origDistribution.getMode(), origDistribution.getNumTiles(), origDistribution.getKernel(),
+                    origDistribution.getPads(), origDistribution.getStrides(), origDistribution.getNumClusters(),
+                    origDistribution.getAlignment(), origDistribution.getUniformDistributedSegments(),
+                    subViewOp.getExplicitOutputShapes().value(), subViewOp.getExplicitOutputOffsets().value(),
+                    subViewOp.getExplicitOutputShapes().value(), subViewOp.getExplicitOutputOffsets().value(),
+                    origDistribution.getEqualMemoryAndComputeView(), origDistribution.getMemoryNumTiles());
+        }
+        if (hasExplicitOutputShapes) {
             // Track #E125638
             // Other modes should be supported
-            VPUX_THROW_UNLESS(mode == VPU::DistributionMode::SEGMENTED, "Can not set explicit shapes with mode {0}",
-                              VPU::stringifyDistributionMode(mode));
+            VPUX_THROW_UNLESS(mode == VPU::DistributionMode::SEGMENTED || mode == VPU::DistributionMode::OVERLAPPED,
+                              "Can not set explicit shapes with mode {0}", VPU::stringifyDistributionMode(mode));
             auto explicitOutputShapes = subViewOp.getExplicitOutputShapes().value();
             return VPU::getSegmentedExplicitDistrAttrForSliceLikeOps(origDistribution, subViewShape,
                                                                      explicitOutputShapes, ctx);
@@ -148,7 +160,8 @@ mlir::LogicalResult VPUIP::SubViewOp::inferReturnTypes(mlir::MLIRContext* ctx, s
                               .getDistribution()
                     : nullptr;
     if (possibleDistribution != nullptr) {
-        if (hasExplcitOutputShapes || VPU::isDistributedAttrWithExplicitShapesAndOffsets(possibleDistribution)) {
+        if (hasExplicitOutputShapes || hasExplicitOutputOffsets ||
+            VPU::isDistributedAttrWithExplicitShapesAndOffsets(possibleDistribution)) {
             if (auto sparseType = mlir::dyn_cast<vpux::VPUIP::SparseBufferType>(distributedIn)) {
                 possibleDistribution = VPU::getExplicitDistrAttrForActualDataFromSparseType(sparseType);
             }
@@ -324,6 +337,11 @@ mlir::LogicalResult VPUIP::SubViewOp::verify() {
     const auto logCb = [op](const formatv_object_base& msg) {
         std::ignore = errorAt(op, "{0}", msg.str());
     };
+
+    if (getExplicitOutputShapes().has_value() != getExplicitOutputOffsets().has_value()) {
+        return errorAt(op, "explicit_output_shapes and explicit_output_offsets must be set together");
+    }
+
     mlir::SmallVector<mlir::Type> inferredTypes;
     if (inferReturnTypes(getContext(), getLoc(), op->getOperands(), op->getAttrDictionary(), op->getPropertiesStorage(),
                          op->getRegions(), inferredTypes)

@@ -103,10 +103,6 @@ TEST_F(EltwiseAddLayerTest, NPU4000_HW) {
 }
 
 TEST_P(EltwiseAddLayerTest_HostCompile, NPU4000_HC) {
-    setSkipInferenceCallback([](std::stringstream& skip) {
-        skip << "Host Pipeline does not support inference yet: C#164943";
-    });
-
     setHostCompileMode();
     setPluginCompilerType();
     run(Platform::NPU4000);
@@ -125,10 +121,6 @@ TEST_F(EltwiseSubtractLayerTest, NPU5010_HW) {
 }
 
 TEST_P(EltwiseAddLayerTest_HostCompile, NPU5010_HC) {
-    setSkipInferenceCallback([](std::stringstream& skip) {
-        skip << "Host Pipeline does not support inference yet: C#164943";
-    });
-
     setHostCompileMode();
     setPluginCompilerType();
     run(Platform::NPU5010);
@@ -145,13 +137,14 @@ TEST_F(EltwiseSubtractLayerTest, NPU5020_HW) {
 }
 
 const std::vector<std::vector<ov::test::InputShape>> dynamicShapes = {
-        {generateTestShape(1, 16, 1280_Dyn, 1280)},
-        {generateTestShape(1, 16, 1280_Dyn, 1280_Dyn)},
-        {generateTestShape(1, 3, 1280_Dyn, 1280)},
-        {generateTestShape(1, 3, 1280_Dyn, 1280_Dyn)},
+        {generateTestShape(std::vector<BoundedDim>{1, 16, 1280_Dyn, 1280}, hostCompileSmallShapesLimitationCallback)},
+        {generateTestShape(std::vector<BoundedDim>{1, 16, 1280_Dyn, 1280_Dyn},
+                           hostCompileSmallShapesLimitationCallback)},
+        {generateTestShape(std::vector<BoundedDim>{1, 3, 1280_Dyn, 1280}, hostCompileSmallShapesLimitationCallback)},
+        {generateTestShape(std::vector<BoundedDim>{1, 3, 1280_Dyn, 1280_Dyn},
+                           hostCompileSmallShapesLimitationCallback)},
 };
-
-const auto dynamicAddParams =
+auto dynamicAddParams =
         ::testing::Combine(::testing::ValuesIn(dynamicShapes), ::testing::ValuesIn({utils::EltwiseTypes::ADD}),
                            ::testing::ValuesIn({utils::InputLayerType::PARAMETER}),
                            ::testing::ValuesIn({utils::OpType::VECTOR}), ::testing::ValuesIn({ElementType::f16}),

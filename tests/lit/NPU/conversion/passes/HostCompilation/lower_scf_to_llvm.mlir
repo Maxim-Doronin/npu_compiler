@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-scf-to-cf --convert-cf-to-llvm %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --convert-scf-to-cf --convert-cf-to-llvm %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 #map = affine_map<(d0) -> (-d0 + 720, 44)>
 module {
@@ -23,11 +23,11 @@ module {
   llvm.func @npu_level_zero_append_memory_copy(i64, i64, i64, !llvm.ptr)
   llvm.mlir.global internal constant @main_func0_kernel("\7FELF\02\01\00\00\00\00\00\00\00\00") {addr_space = 0 : i32}
   llvm.mlir.global internal constant @main_func2_static_kernel("\7FELF\02\01\00\00\00\00\00\00") {addr_space = 0 : i32}
-  llvm.func @npu_level_zero_submit_commandlist(!llvm.ptr, !llvm.ptr, !llvm.ptr, !llvm.ptr)
+  llvm.func @npu_level_zero_submit_commandlist(!llvm.ptr, !llvm.ptr, !llvm.ptr, !llvm.ptr, !llvm.ptr)
   llvm.func @npu_level_zero_execute_graph(!llvm.ptr, i32, !llvm.ptr, i32, !llvm.ptr, i64, !llvm.ptr, !llvm.ptr, !llvm.ptr, !llvm.ptr, !llvm.ptr)
   llvm.mlir.global internal constant @main_func1_static_kernel("\7FELF\02\01\00\00\00\00\00\00") {addr_space = 0 : i32}
   llvm.func @npu_level_zero_alloc(i64, !llvm.ptr) -> !llvm.ptr
-  func.func @main(%arg0: memref<1x16x720x1000xf16>, %arg1: memref<1x16x720x1000xf16>, %arg2: memref<1x16x720x1000xf16>, %arg3: !llvm.ptr, %arg4: !llvm.ptr, %arg5: !llvm.ptr, %arg6: !llvm.ptr, %arg7: i64, %arg8: !llvm.ptr, %arg9: !llvm.ptr, %arg10: !llvm.ptr) {
+  func.func @main(%arg0: memref<1x16x720x1000xf16>, %arg1: memref<1x16x720x1000xf16>, %arg2: memref<1x16x720x1000xf16>, %arg3: !llvm.ptr, %arg4: !llvm.ptr, %arg5: !llvm.ptr, %arg6: !llvm.ptr, %arg7: i64, %arg8: !llvm.ptr, %arg9: !llvm.ptr, %arg10: !llvm.ptr, %arg12: !llvm.ptr) {
     %0 = builtin.unrealized_conversion_cast %arg2 : memref<1x16x720x1000xf16> to !llvm.struct<(ptr, ptr, i64, array<4 x i64>, array<4 x i64>)>
     %1 = llvm.mlir.constant(8 : i64) : i64
     %2 = llvm.mlir.constant(2 : i32) : i32
@@ -144,7 +144,7 @@ module {
       llvm.call @npu_level_zero_execute_graph(%4, %158, %5, %159, %157, %155, %arg3, %arg4, %arg5, %arg6, %arg8) : (!llvm.ptr, i32, !llvm.ptr, i32, !llvm.ptr, i64, !llvm.ptr, !llvm.ptr, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> ()
       llvm.intr.stackrestore %160 : !llvm.ptr
       %179 = llvm.mlir.zero : !llvm.ptr
-      llvm.call @npu_level_zero_submit_commandlist(%arg6, %arg8, %179, %179) : (!llvm.ptr, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> ()
+      llvm.call @npu_level_zero_submit_commandlist(%arg6, %arg8, %179, %179, %arg12) : (!llvm.ptr, !llvm.ptr, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> ()
       %subview_0 = memref.subview %arg1[0, 0, %127, 0] [1, 16, 44, 1000] [1, 1, 1, 1] : memref<1x16x720x1000xf16> to memref<1x16x44x1000xf16, strided<[11520000, 720000, 1000, 1], offset: ?>>
       %180 = builtin.unrealized_conversion_cast %subview_0 : memref<1x16x44x1000xf16, strided<[11520000, 720000, 1000, 1], offset: ?>> to memref<1x16x44x1000xf16>
       %subview_1 = memref.subview %37[0, %127, 0, 0] [1, 44, 1000, 16] [1, 1, 1, 1] : memref<1x720x1000x16xf16> to memref<1x44x1000x16xf16, strided<[11520000, 16000, 16, 1], offset: ?>>
@@ -245,7 +245,7 @@ module {
     llvm.call @npu_level_zero_execute_graph(%4, %75, %5, %76, %74, %72, %arg3, %arg4, %arg5, %71, %arg8) : (!llvm.ptr, i32, !llvm.ptr, i32, !llvm.ptr, i64, !llvm.ptr, !llvm.ptr, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> ()
     llvm.intr.stackrestore %77 : !llvm.ptr
     %96 = llvm.mlir.zero : !llvm.ptr
-    llvm.call @npu_level_zero_submit_commandlist(%71, %arg8, %96, %96) : (!llvm.ptr, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> ()
+    llvm.call @npu_level_zero_submit_commandlist(%71, %arg8, %96, %96, %arg12) : (!llvm.ptr, !llvm.ptr, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> ()
     %97 = llvm.mlir.constant(1 : index) : i64
     %98 = llvm.mlir.constant(16 : index) : i64
     %99 = llvm.mlir.constant(720 : index) : i64
@@ -273,7 +273,7 @@ module {
     %121 = llvm.inttoptr %120 : i64 to !llvm.ptr
     llvm.call @npu_level_zero_append_memory_copy(%113, %119, %107, %121) : (i64, i64, i64, !llvm.ptr) -> ()
     %122 = llvm.mlir.zero : !llvm.ptr
-    llvm.call @npu_level_zero_submit_commandlist(%121, %arg8, %arg9, %arg10) : (!llvm.ptr, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> ()
+    llvm.call @npu_level_zero_submit_commandlist(%121, %arg8, %arg9, %arg10, %arg12) : (!llvm.ptr, !llvm.ptr, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> ()
     llvm.return
   }
 }

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 // CHECK-LABEL: @OvPreprocessingInterpolateU8
 func.func @OvPreprocessingInterpolateU8(%arg0: tensor<1x10x30x30xui8>) -> tensor<1x10x40x40xui8> {

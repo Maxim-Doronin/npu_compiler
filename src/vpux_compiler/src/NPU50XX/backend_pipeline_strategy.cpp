@@ -11,7 +11,7 @@
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/pipelines/options_mapper.hpp"
 #include "vpux/compiler/pipelines/options_setup.hpp"
-#include "vpux/utils/IE/config.hpp"
+#include "vpux/utils/ov/config.hpp"
 
 #include "intel_npu/config/options.hpp"
 
@@ -31,6 +31,7 @@ void BackendPipelineStrategy50XX::buildELFPipeline(mlir::OpPassManager& pm, cons
             config.get<intel_npu::COMPILATION_MODE_PARAMS>(), getArchKind(config));
     VPUX_THROW_UNLESS(options != nullptr, "build ELF pipeline failed to parse COMPILATION_MODE_PARAMS: {0}",
                       config.get<intel_npu::COMPILATION_MODE_PARAMS>());
+    VPUX_THROW_UNLESS(useWlm, "WLM is not enabled.");
 
     if (config.get<intel_npu::TURBO>()) {
         overwriteIfUnset(options->workloadManagementMode, WorkloadManagementMode::FWLM_V1_PAGES);
@@ -47,6 +48,7 @@ void BackendPipelineStrategy50XX::buildELFPipeline(mlir::OpPassManager& pm, cons
             options->workloadManagementBarrierProgrammingMode;
     backendCompilationOptions->workloadManagementDmaFifoType = options->workloadManagementDmaFifoType;
     backendCompilationOptions->modelIdentifier = options->modelIdentifier;
+    backendCompilationOptions->allocateDDRStackFrames = options->allocateDDRStackFrames;
 
     if (getCompilationMode(config) != config::CompilationMode::ReferenceSW) {
         auto enableProfiling = config.get<intel_npu::PERF_COUNT>();

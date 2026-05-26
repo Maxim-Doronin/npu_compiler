@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --optimize-identity-pools %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --optimize-identity-pools %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL: @RemoveIdentityAvgPool
 func.func @RemoveIdentityAvgPool(%arg0 : tensor<1x64x10x13xf16>) -> (tensor<1x64x10x13xf16>) {
@@ -187,7 +187,7 @@ func.func @FuseConvIdentityAvgPoolWithPostOp(%arg0 : tensor<1x16x320x320xf16>) -
                       kernel_size = [1, 1],
                       pads_begin = [0, 0],
                       pads_end = [0, 0],
-                      post_op = #IE.Clamp<min = 0.000000e+00 : f64, max = 1.000000e+00 : f64>,
+                      post_op = #IE.Relu<>,
                       rounding_type = #IE.rounding_type<FLOOR>,
                       strides = [1, 1]
                   } :
@@ -198,7 +198,7 @@ func.func @FuseConvIdentityAvgPoolWithPostOp(%arg0 : tensor<1x16x320x320xf16>) -
     // CHECK-SAME:     dilations = [1, 1]
     // CHECK-SAME:     pads_begin = [0, 0]
     // CHECK-SAME:     pads_end = [0, 0]
-    // CHECK-SAME:     post_op = #IE.Clamp<min = 0.000000e+00 : f64, max = 1.000000e+00 : f64>
+    // CHECK-SAME:     post_op = #IE.Relu<>
     // CHECK-SAME:     strides = [1, 1]
     // CHECK-NOT:   IE.AvgPool
 }
@@ -245,26 +245,26 @@ func.func @FuseConvIdentityAvgPoolWithClamp(%arg0 : tensor<1x16x320x320xf16>) ->
 func.func @NotFuseConvIdentityAvgPoolAsExistingPostOp(%arg0 : tensor<1x16x320x320xf16>) -> (tensor<1x16x320x320xf16>) {
     %filters = const.Declare tensor<16x16x1x1xf16> = dense<1.0> : tensor<16x16x1x1xf16>
     %conv = IE.Convolution(%arg0, %filters)
-              {
-                  dilations = [1, 1],
-                  pads_begin = [0, 0],
-                  pads_end = [0, 0],
-                  post_op = #IE.Relu<>,
-                  strides = [1, 1]
-              } :
-              tensor<1x16x320x320xf16>, tensor<16x16x1x1xf16> -> tensor<1x16x320x320xf16>
+        {
+            dilations = [1, 1],
+            pads_begin = [0, 0],
+            pads_end = [0, 0],
+            post_op = #IE.Relu<>,
+            strides = [1, 1]
+        } :
+        tensor<1x16x320x320xf16>, tensor<16x16x1x1xf16> -> tensor<1x16x320x320xf16>
 
     %ave_pool = IE.AvgPool(%conv)
-                  {
-                      exclude_pads,
-                      kernel_size = [1, 1],
-                      pads_begin = [0, 0],
-                      pads_end = [0, 0],
-                      post_op = #IE.Clamp<min = 0.000000e+00 : f64, max = 1.000000e+00 : f64>,
-                      rounding_type = #IE.rounding_type<FLOOR>,
-                      strides = [1, 1]
-                  } :
-                  tensor<1x16x320x320xf16> -> tensor<1x16x320x320xf16>
+        {
+            exclude_pads,
+            kernel_size = [1, 1],
+            pads_begin = [0, 0],
+            pads_end = [0, 0],
+            post_op = #IE.Sigmoid<>,
+            rounding_type = #IE.rounding_type<FLOOR>,
+            strides = [1, 1]
+        } :
+        tensor<1x16x320x320xf16> -> tensor<1x16x320x320xf16>
 
     return %ave_pool : tensor<1x16x320x320xf16>
     // CHECK:       IE.Convolution
@@ -277,52 +277,80 @@ func.func @NotFuseConvIdentityAvgPoolAsExistingPostOp(%arg0 : tensor<1x16x320x32
     // CHECK-SAME:     kernel_size = [1, 1]
     // CHECK-SAME:     pads_begin = [0, 0]
     // CHECK-SAME:     pads_end = [0, 0]
-    // CHECK-SAME:     post_op = #IE.Clamp<min = 0.000000e+00 : f64, max = 1.000000e+00 : f64>
+    // CHECK-SAME:     post_op = #IE.Sigmoid<>
     // CHECK-SAME:     rounding_type = #IE.rounding_type<FLOOR>
     // CHECK-SAME:     strides = [1, 1]
 }
 
 // -----
 
-// CHECK-LABEL: @NotFuseConvIdentityAvgPoolAsExistingClamp
-func.func @NotFuseConvIdentityAvgPoolAsExistingClamp(%arg0 : tensor<1x16x320x320xf16>) -> (tensor<1x16x320x320xf16>) {
+// CHECK-LABEL: @FuseConvIdentityAvgPoolClampWithPostOp
+func.func @FuseConvIdentityAvgPoolClampWithPostOp(%arg0 : tensor<1x16x320x320xf16>) -> (tensor<1x16x320x320xf16>) {
     %filters = const.Declare tensor<16x16x1x1xf16> = dense<1.0> : tensor<16x16x1x1xf16>
     %conv = IE.Convolution(%arg0, %filters)
-              {
-                  clamp = {max = 1.000000e+00 : f64, min = 0.000000e+00 : f64},
-                  dilations = [1, 1],
-                  pads_begin = [0, 0],
-                  pads_end = [0, 0],
-                  strides = [1, 1]
-              } :
-              tensor<1x16x320x320xf16>, tensor<16x16x1x1xf16> -> tensor<1x16x320x320xf16>
+        {
+            dilations = [1, 1],
+            pads_begin = [0, 0],
+            pads_end = [0, 0],
+            post_op = #IE.Relu<>,
+            strides = [1, 1]
+        } : tensor<1x16x320x320xf16>, tensor<16x16x1x1xf16> -> tensor<1x16x320x320xf16>
 
     %ave_pool = IE.AvgPool(%conv)
-                  {
-                      clamp = {max = 1.000000e+00 : f64, min = 0.000000e+00 : f64},
-                      exclude_pads,
-                      kernel_size = [1, 1],
-                      pads_begin = [0, 0],
-                      pads_end = [0, 0],
-                      rounding_type = #IE.rounding_type<FLOOR>,
-                      strides = [1, 1]
-                  } :
-                  tensor<1x16x320x320xf16> -> tensor<1x16x320x320xf16>
+        {
+            exclude_pads,
+            kernel_size = [1, 1],
+            pads_begin = [0, 0],
+            pads_end = [0, 0],
+            clamp = {min = 0.000000e+00 : f64, max = 1.000000e+00 : f64},
+            rounding_type = #IE.rounding_type<FLOOR>,
+            strides = [1, 1]
+        } : tensor<1x16x320x320xf16> -> tensor<1x16x320x320xf16>
+
+    return %ave_pool : tensor<1x16x320x320xf16>
+
+    // CHECK:       IE.Convolution
+    // CHECK-SAME:     clamp = {max = 1.000000e+00 : f64, min = 0.000000e+00 : f64},
+    // CHECK-SAME:     dilations = [1, 1],
+    // CHECK-SAME:     pads_begin = [0, 0],
+    // CHECK-SAME:     pads_end = [0, 0],
+    // CHECK-SAME:     post_op = #IE.Relu<>,
+    // CHECK-SAME:     strides = [1, 1]
+}
+
+// -----
+
+// CHECK-LABEL: @FuseConvIdentityAvgPoolIntersectClamp
+func.func @FuseConvIdentityAvgPoolIntersectClamp(%arg0 : tensor<1x16x320x320xf16>) -> (tensor<1x16x320x320xf16>) {
+    %filters = const.Declare tensor<16x16x1x1xf16> = dense<1.0> : tensor<16x16x1x1xf16>
+    %conv = IE.Convolution(%arg0, %filters)
+            {
+                clamp = {max = 2.000000e+00 : f64, min = -1.000000e+00 : f64},
+                dilations = [1, 1],
+                pads_begin = [0, 0],
+                pads_end = [0, 0],
+                strides = [1, 1]
+            } : tensor<1x16x320x320xf16>, tensor<16x16x1x1xf16> -> tensor<1x16x320x320xf16>
+
+    %ave_pool = IE.AvgPool(%conv)
+                {
+                    clamp = {max = 5.000000e+00 : f64, min = 0.000000e+00 : f64},
+                    exclude_pads,
+                    kernel_size = [1, 1],
+                    pads_begin = [0, 0],
+                    pads_end = [0, 0],
+                    rounding_type = #IE.rounding_type<FLOOR>,
+                    strides = [1, 1]
+                } : tensor<1x16x320x320xf16> -> tensor<1x16x320x320xf16>
 
     return %ave_pool : tensor<1x16x320x320xf16>
     // CHECK:       IE.Convolution
-    // CHECK-SAME:     clamp = {max = 1.000000e+00 : f64, min = 0.000000e+00 : f64}
+    // CHECK-SAME:     clamp = {max = 2.000000e+00 : f64, min = 0.000000e+00 : f64}
     // CHECK-SAME:     dilations = [1, 1]
     // CHECK-SAME:     pads_begin = [0, 0]
     // CHECK-SAME:     pads_end = [0, 0]
     // CHECK-SAME:     strides = [1, 1]
-    // CHECK:       IE.AvgPool
-    // CHECK-SAME:     clamp = {max = 1.000000e+00 : f64, min = 0.000000e+00 : f64}
-    // CHECK-SAME:     kernel_size = [1, 1]
-    // CHECK-SAME:     pads_begin = [0, 0]
-    // CHECK-SAME:     pads_end = [0, 0]
-    // CHECK-SAME:     rounding_type = #IE.rounding_type<FLOOR>
-    // CHECK-SAME:     strides = [1, 1]
+    // CHECK-NOT:   IE.AvgPool
 }
 
 // -----

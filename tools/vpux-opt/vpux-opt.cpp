@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "vpux/compiler/init.hpp"
-#include "vpux/compiler/tool_registration.hpp"
+#include "vpux/compiler/init/dialects_registry.hpp"
+#include "vpux/compiler/init/tool_registration.hpp"
 #include "vpux/compiler/tools/options.hpp"
 #include "vpux/utils/logger/logger.hpp"
 
@@ -20,10 +20,9 @@ int main(int argc, char* argv[]) {
         // Ticket: E#50937
         auto registry = vpux::createDialectRegistry(vpux::DummyOpMode::ENABLED);
         vpux::registerAllPassesGlobally();
-        if (auto archKind = vpux::parseArchKind(argc, argv); archKind.has_value()) {
+        if (auto archKind = vpux::parseParamsAndDeduceArch(argc, argv); archKind.has_value()) {
             vpux::registerAllHwSpecificComponents(registry, archKind.value());
         }
-
         return mlir::asMainReturnCode(mlir::MlirOptMain(argc, argv, "NPU Optimizer Testing Tool", registry));
     } catch (const std::exception& e) {
         llvm::errs() << e.what() << '\n';

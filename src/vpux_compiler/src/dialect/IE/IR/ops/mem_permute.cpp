@@ -12,7 +12,9 @@
 #include "vpux/compiler/dialect/IE/utils/permute_utils.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
+#include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
+#include "vpux/utils/core/range.hpp"
 
 #include <mlir/IR/PatternMatch.h>
 
@@ -332,11 +334,7 @@ public:
 
 mlir::LogicalResult ConvertToPermuteCast::matchAndRewrite(IE::MemPermuteOp memPermuteOp,
                                                           mlir::PatternRewriter& rewriter) const {
-    const auto inOrder = DimsOrder::fromValue(memPermuteOp.getInput());
-    const auto inShape = getShape(memPermuteOp.getInput());
-    const auto inMemShape = inOrder.toMemoryOrder(inShape);
-
-    if (!isTrivialPermute(inMemShape, memPermuteOp.getMemPerm())) {
+    if (!isTrivialMemPermute(memPermuteOp)) {
         return mlir::failure();
     }
 
@@ -397,6 +395,288 @@ mlir::LogicalResult ConvertShapeCastToPermuteCast::matchAndRewrite(IE::ShapeCast
     return mlir::success();
 }
 
+//
+// EliminateMemPermuteThroughReshapeSlice
+//
+// Eliminates IE.MemPermute followed by IE.AffineReshape when all AffineReshape users
+// are IE.Slice ops that cut a single dimension that passes through the reshape unchanged.
+//
+// Pattern:
+//   MemPermute(src_order=NCHW, dst_order=NCHW, mem_perm=P) → AffineReshape → Slice(dim=D, size=1) × N
+//
+// Note: "src_order=NCHW, dst_order=NCHW" describes the logical layout of the input and output
+// tensors, not the mem_perm attribute. mem_perm P is deliberately non-trivial (e.g. the swap
+// (d0,d1,d2,d3)→(d0,d2,d1,d3) in the canonical test case).
+//
+// Replaced by:
+//   Slice(origSliceDim, size=1) → AffineReshape  (per original Slice)
+//
+// Matching conditions:
+//   1. MemPermute has NCHW input logical order and dst_order=#NCHW (mem_perm P may be non-trivial).
+//   2. MemPermute has a single user: AffineReshape.
+//   3. All AffineReshape users are Slice ops.
+//   4. All Slices cut the same single dim D with size=1.
+//   5. Exactly one non-trivial (size>1) AffineReshape input dim maps to output dim D,
+//      meaning D is not split or merged with other non-trivial dims by the reshape.
+
+// Validate that newDimMapping is monotonically non-decreasing, covers all output dims, and
+// that the total element count is consistent.
+bool isValidReshapeMapping(ArrayRef<SmallVector<int64_t>> newDimMapping, ArrayRef<int64_t> newInputShape,
+                           ShapeRef sliceOutShape) {
+    int64_t prevMax = -1;
+    for (size_t i = 0; i < newDimMapping.size(); ++i) {
+        if (newDimMapping[i].empty()) {
+            return false;
+        }
+        int64_t localPrev = prevMax;
+        for (auto outIdx : newDimMapping[i]) {
+            if (outIdx < localPrev) {
+                return false;
+            }
+            localPrev = outIdx;
+        }
+        prevMax = localPrev;
+    }
+
+    int64_t totalIn = 1;
+    for (auto s : newInputShape) {
+        totalIn *= s;
+    }
+    int64_t totalOut = 1;
+    for (size_t d = 0; d < sliceOutShape.size(); ++d) {
+        totalOut *= sliceOutShape[Dim(d)];
+    }
+    if (totalIn != totalOut) {
+        return false;
+    }
+
+    SmallVector<bool> outputCovered(sliceOutShape.size(), false);
+    for (size_t i = 0; i < newDimMapping.size(); ++i) {
+        for (auto outIdx : newDimMapping[i]) {
+            if (outIdx < 0 || outIdx >= static_cast<int64_t>(sliceOutShape.size())) {
+                return false;
+            }
+            outputCovered[outIdx] = true;
+        }
+    }
+    for (size_t d = 0; d < outputCovered.size(); ++d) {
+        if (!outputCovered[d]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+class EliminateMemPermuteThroughReshapeSlice final : public mlir::OpRewritePattern<IE::MemPermuteOp> {
+public:
+    using mlir::OpRewritePattern<IE::MemPermuteOp>::OpRewritePattern;
+
+private:
+    mlir::LogicalResult matchAndRewrite(IE::MemPermuteOp memPermuteOp, mlir::PatternRewriter& rewriter) const final;
+};
+
+mlir::LogicalResult EliminateMemPermuteThroughReshapeSlice::matchAndRewrite(IE::MemPermuteOp memPermuteOp,
+                                                                            mlir::PatternRewriter& rewriter) const {
+    // Step 1: Require NCHW→NCHW so that logical dims and memory dims coincide,
+    // making the permutation vector directly usable as logical dim indices.
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(memPermuteOp.getInput().getType());
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(memPermuteOp.getOutput().getType());
+    if (inType.getRank() != 4 || outType.getRank() != 4) {
+        return matchFailed(rewriter, memPermuteOp, "MemPermute input/output rank is not 4");
+    }
+    if (inType.getDimsOrder() != DimsOrder::NCHW || outType.getDimsOrder() != DimsOrder::NCHW) {
+        return matchFailed(rewriter, memPermuteOp, "MemPermute input/output order is not NCHW");
+    }
+
+    // permVec[outPos] = inputDim: maps each MemPermute output dim to its source input dim
+    // (this is the inverse/pull permutation: output[outPos] = input[permVec[outPos]])
+    const auto memPerm = DimsOrder::fromAffineMap(memPermuteOp.getMemPerm());
+    const auto permVec = to_small_vector(memPerm.toPermutation() | transformed([](Dim dim) {
+                                             return checked_cast<int64_t>(dim.ind());
+                                         }));
+
+    // Step 2: MemPermute must have exactly one user: AffineReshape
+    if (!memPermuteOp->hasOneUse()) {
+        return matchFailed(rewriter, memPermuteOp, "MemPermute has multiple users");
+    }
+    auto affineReshapeOp = mlir::dyn_cast<IE::AffineReshapeOp>(*memPermuteOp->getUsers().begin());
+    if (affineReshapeOp == nullptr) {
+        return matchFailed(rewriter, memPermuteOp, "MemPermute user is not AffineReshape");
+    }
+
+    // Steps 3 & 4: Collect Slice users and validate each cuts the same single dim D with size=1.
+    const auto reshapeOutType = mlir::cast<vpux::NDTypeInterface>(affineReshapeOp.getOutput().getType());
+    const auto reshapeOutShape = reshapeOutType.getShape();
+
+    SmallVector<IE::SliceOp> sliceOps;
+    int64_t sliceDim = -1;
+    for (auto* user : affineReshapeOp->getUsers()) {
+        auto sliceOp = mlir::dyn_cast<IE::SliceOp>(user);
+        if (sliceOp == nullptr) {
+            return matchFailed(rewriter, memPermuteOp, "AffineReshape has non-Slice user");
+        }
+        const auto staticOffsets = parseIntArrayAttr<int64_t>(sliceOp.getStaticOffsetsAttr());
+        const auto staticSizes = parseIntArrayAttr<int64_t>(sliceOp.getStaticSizesAttr());
+
+        int64_t cutDim = -1;
+        for (int64_t d = 0; d < static_cast<int64_t>(staticSizes.size()); ++d) {
+            if (staticSizes[d] != reshapeOutShape[Dim(d)]) {
+                if (cutDim != -1) {
+                    return matchFailed(rewriter, memPermuteOp, "Slice cuts more than one dim");
+                }
+                cutDim = d;
+            }
+        }
+        if (cutDim == -1) {
+            return matchFailed(rewriter, memPermuteOp, "Slice does not cut any dim");
+        }
+        if (staticSizes[cutDim] != 1) {
+            return matchFailed(rewriter, memPermuteOp, "Slice size on cutting dim is not 1");
+        }
+        for (int64_t d = 0; d < static_cast<int64_t>(staticOffsets.size()); ++d) {
+            if (d != cutDim && staticOffsets[d] != 0) {
+                return matchFailed(rewriter, memPermuteOp, "Slice has non-zero offset on non-cutting dim {0}", d);
+            }
+        }
+        if (sliceDim == -1) {
+            sliceDim = cutDim;
+        } else if (sliceDim != cutDim) {
+            return matchFailed(rewriter, memPermuteOp, "Slices cut different dims");
+        }
+        sliceOps.push_back(sliceOp);
+    }
+    if (sliceOps.empty()) {
+        return matchFailed(rewriter, memPermuteOp, "AffineReshape has no users");
+    }
+    if (sliceDim < 0) {
+        return matchFailed(rewriter, memPermuteOp, "Could not determine slice dim");
+    }
+
+    // Step 5: Slice dim D passes through the AffineReshape unchanged:
+    // exactly one non-trivial (size>1) AffineReshape input dim maps to output dim D,
+    // and that input dim maps exclusively to D (not split across other non-trivial output dims).
+    // If the input dim were split, slicing size=1 on D would correspond to a slice of size>1
+    // on the original input dim, making the rewrite incorrect.
+    const auto dimMapping = parseIntArrayOfArrayAttr<int64_t>(affineReshapeOp.getDimMapping());
+    const auto permuteOutShape = outType.getShape();  // = AffineReshape input shape
+
+    int64_t reshapeInDim = -1;
+    for (int64_t i = 0; i < static_cast<int64_t>(dimMapping.size()); ++i) {
+        for (auto outDim : dimMapping[i]) {
+            if (outDim == sliceDim && permuteOutShape[Dim(i)] > 1) {
+                if (reshapeInDim != -1) {
+                    return matchFailed(rewriter, memPermuteOp,
+                                       "More than one non-trivial input dim maps to slice dim {0}", sliceDim);
+                }
+                reshapeInDim = i;
+                break;
+            }
+        }
+    }
+    if (reshapeInDim == -1) {
+        return matchFailed(rewriter, memPermuteOp, "No non-trivial AffineReshape input dim maps to slice dim {0}",
+                           sliceDim);
+    }
+    // Require that reshapeInDim maps exclusively to sliceDim (not split across multiple output dims).
+    if (dimMapping[reshapeInDim].size() != 1) {
+        return matchFailed(rewriter, memPermuteOp, "AffineReshape input dim {0} is split across multiple output dims",
+                           reshapeInDim);
+    }
+
+    // Step 6: Back-infer origSliceDim via the inverse permutation.
+    // permVec[outPos] = inputDim, so the input dim for MemPermute output dim reshapeInDim is
+    // directly permVec[reshapeInDim].
+    const auto permuteInShape = inType.getShape();
+    const int64_t origSliceDim = permVec[reshapeInDim];
+
+    // Step 7: Build the new AffineReshape dim_mapping.
+    // For each MemPermute input dim i, find the MemPermute output dim it produces (forward perm),
+    // and use the AffineReshape mapping for that output dim.
+    // forwardPermVec[inputDim] = outputDim = inverse of permVec.
+    const auto forwardPermMap = mlir::inversePermutation(memPermuteOp.getMemPerm());
+    const auto forwardPermVec =
+            to_small_vector(DimsOrder::fromAffineMap(forwardPermMap).toPermutation() | transformed([](Dim dim) {
+                                return checked_cast<int64_t>(dim.ind());
+                            }));
+    SmallVector<SmallVector<int64_t>> newDimMapping;
+    for (size_t i = 0; i < dimMapping.size(); ++i) {
+        newDimMapping.push_back(SmallVector<int64_t>(dimMapping[forwardPermVec[i]]));
+    }
+
+    // Monotonicity fixup: origSliceDim becomes size=1 after slicing, which may break the
+    // monotonically non-decreasing requirement on dim_mapping. Since a size-1 dim is a no-op
+    // factor, we can remap it to an adjacent dim's output index.
+    // The fixup is only valid for single-entry mappings (merging, not splitting).
+    if (origSliceDim > 0) {
+        auto prevMax = newDimMapping[origSliceDim - 1].back();
+        auto curMin = newDimMapping[origSliceDim].front();
+        if (curMin < prevMax) {
+            if (newDimMapping[origSliceDim].size() != 1 || newDimMapping[origSliceDim - 1].size() != 1) {
+                return matchFailed(rewriter, memPermuteOp,
+                                   "Cannot apply monotonicity fixup to multi-entry dim mapping");
+            }
+            newDimMapping[origSliceDim] = SmallVector<int64_t>{prevMax};
+        }
+    } else if (origSliceDim == 0 && newDimMapping.size() > 1) {
+        auto nextMin = newDimMapping[1].front();
+        auto curMax = newDimMapping[0].back();
+        if (curMax > nextMin) {
+            if (newDimMapping[0].size() != 1 || newDimMapping[1].size() != 1) {
+                return matchFailed(rewriter, memPermuteOp,
+                                   "Cannot apply monotonicity fixup to multi-entry dim mapping");
+            }
+            newDimMapping[0] = SmallVector<int64_t>{nextMin};
+        }
+    }
+
+    // Validate the new mapping before emitting any ops
+    const auto sliceOutShape = getShape(sliceOps[0].getResult());
+    SmallVector<int64_t> newInputShape;
+    for (int64_t d = 0; d < static_cast<int64_t>(permuteInShape.size()); ++d) {
+        newInputShape.push_back(d == origSliceDim ? 1 : permuteInShape[Dim(d)]);
+    }
+    if (!isValidReshapeMapping(newDimMapping, newInputShape, sliceOutShape)) {
+        return matchFailed(rewriter, memPermuteOp, "New dim mapping is not valid after adjustment");
+    }
+
+    // Sort slices by their offset on sliceDim for deterministic IR output order
+    llvm::sort(sliceOps, [sliceDim](IE::SliceOp a, IE::SliceOp b) {
+        return parseIntArrayAttr<int64_t>(a.getStaticOffsetsAttr())[sliceDim] <
+               parseIntArrayAttr<int64_t>(b.getStaticOffsetsAttr())[sliceDim];
+    });
+
+    auto* ctx = rewriter.getContext();
+
+    // Step 8: Replace each Slice with Slice(origSliceDim) → AffineReshape
+    for (auto sliceOp : sliceOps) {
+        const auto origOffset = parseIntArrayAttr<int64_t>(sliceOp.getStaticOffsetsAttr());
+        const auto sliceIndex = origOffset[sliceDim];
+
+        SmallVector<int64_t> newOffsets(permuteInShape.size(), 0);
+        newOffsets[origSliceDim] = sliceIndex;
+
+        SmallVector<int64_t> newSizes;
+        for (int64_t d = 0; d < static_cast<int64_t>(permuteInShape.size()); ++d) {
+            newSizes.push_back(d == origSliceDim ? 1 : permuteInShape[Dim(d)]);
+        }
+
+        auto newSlice = rewriter.create<IE::SliceOp>(sliceOp.getLoc(), memPermuteOp.getInput(),
+                                                     getIntArrayAttr(ctx, newOffsets), getIntArrayAttr(ctx, newSizes));
+
+        auto newDimMappingAttr = getIntArrayOfArray(ctx, newDimMapping);
+        auto newShapeAttr = getIntArrayAttr(ctx, sliceOutShape.raw());
+        auto newReshape = rewriter.create<IE::AffineReshapeOp>(sliceOp.getLoc(), newSlice.getResult(),
+                                                               newDimMappingAttr, newShapeAttr);
+
+        rewriter.replaceOp(sliceOp, newReshape.getResult());
+    }
+
+    rewriter.eraseOp(affineReshapeOp);
+    rewriter.eraseOp(memPermuteOp);
+
+    return mlir::success();
+}
+
 }  // namespace
 
 void vpux::IE::MemPermuteOp::getCanonicalizationPatterns(mlir::RewritePatternSet& patterns,
@@ -408,6 +688,7 @@ void vpux::IE::MemPermuteOp::getCanonicalizationPatterns(mlir::RewritePatternSet
     patterns.add<FuseMemPermuteThroughExpand>(context);
     patterns.add<FuseMemPermuteAndPermuteQuantize>(context);
     patterns.add<ConvertShapeCastToPermuteCast>(context);
+    patterns.add<EliminateMemPermuteThroughReshapeSlice>(context);
 }
 
 void vpux::IE::registerMemPermuteOpRewriters(RewriterRegistry& registry, ArrayRef<mlir::PatternBenefit> benefitLevels,
@@ -421,6 +702,8 @@ void vpux::IE::registerMemPermuteOpRewriters(RewriterRegistry& registry, ArrayRe
                                                                 benefitLevels[index]);
     registry.registerRewriter<ConvertShapeCastToPermuteCast>("convert-shape-cast-to-permute-cast",
                                                              benefitLevels[index]);
+    registry.registerRewriter<EliminateMemPermuteThroughReshapeSlice>("eliminate-mem-permute-through-reshape-slice",
+                                                                      benefitLevels[index]);
 }
 
 mlir::OpFoldResult vpux::IE::MemPermuteOp::fold(FoldAdaptor adaptor) {

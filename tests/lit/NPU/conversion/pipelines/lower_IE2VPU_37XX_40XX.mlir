@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --lower-IE-to-VPU %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --lower-IE-to-VPU %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000
 
 // CHECK: func.func @SingleLayer([[ARG0:%.+]]: tensor<1x1000xf16>) -> tensor<1x1000xf16> {
 func.func @SingleLayer(%arg0: tensor<1x1000xf16>) -> tensor<1x1000xf16> {

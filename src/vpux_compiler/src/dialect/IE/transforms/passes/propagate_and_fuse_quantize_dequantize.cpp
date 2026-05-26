@@ -13,6 +13,7 @@
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 
+#include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -106,48 +107,41 @@ mlir::LogicalResult FuseDequantizeWithMultiplier::matchAndRewrite(IE::Dequantize
     auto inType = mlir::dyn_cast_or_null<vpux::NDTypeInterface>(dequantizeOp.getInput().getType());
     mlir::quant::QuantizedType dstType;
 
-    if (const auto perTensorQuantileQType =
-                mlir::dyn_cast<mlir::quant::QuantileQuantizedType>(inType.getElementType())) {
-        auto scale = perTensorQuantileQType.getScale();
-        scale *= multiplier;
-        dstType = mlir::quant::QuantileQuantizedType::get(
-                perTensorQuantileQType.getFlags(), perTensorQuantileQType.getStorageType(),
-                perTensorQuantileQType.getQuantileType(), perTensorQuantileQType.getExpressedType(),
-                perTensorQuantileQType.getQuantiles(), scale, perTensorQuantileQType.getZeroPoint(),
-                perTensorQuantileQType.getStorageTypeMin(), perTensorQuantileQType.getStorageTypeMax());
-    } else if (const auto perAxisQuantileQType =
-                       mlir::dyn_cast_or_null<mlir::quant::QuantileQuantizedPerAxisType>(inType.getElementType())) {
-        auto scales = perAxisQuantileQType.getScales();
+    if (const auto perTensorUniformType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(inType.getElementType())) {
+        auto scales = perTensorUniformType.getScale();
+        scales *= multiplier;
+        if (const auto quantileStorageType =
+                    mlir::dyn_cast<vpux::type::QuantileType>(perTensorUniformType.getStorageType())) {
+            dstType = mlir::quant::UniformQuantizedType::get(
+                    perTensorUniformType.getFlags(), quantileStorageType, perTensorUniformType.getExpressedType(),
+                    scales, perTensorUniformType.getZeroPoint(), perTensorUniformType.getStorageTypeMin(),
+                    perTensorUniformType.getStorageTypeMax());
+        } else {
+            dstType = mlir::quant::UniformQuantizedType::getChecked(
+                    dequantizeOp.getLoc(), perTensorUniformType.isSigned(), perTensorUniformType.getStorageType(),
+                    perTensorUniformType.getExpressedType(), scales, perTensorUniformType.getZeroPoint(),
+                    perTensorUniformType.getStorageTypeMin(), perTensorUniformType.getStorageTypeMax());
+        }
+    } else if (const auto perAxisUniformType =
+                       mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(inType.getElementType())) {
+        auto scales = perAxisUniformType.getScales();
         SmallVector<double> newScales(scales.size());
         std::transform(scales.begin(), scales.end(), newScales.begin(), [multiplier](double x) {
             return x * multiplier;
         });
-
-        dstType = mlir::quant::QuantileQuantizedPerAxisType::get(
-                perAxisQuantileQType.getFlags(), perAxisQuantileQType.getStorageType(),
-                perAxisQuantileQType.getQuantileType(), perAxisQuantileQType.getExpressedType(),
-                perAxisQuantileQType.getQuantiles(), newScales, perAxisQuantileQType.getZeroPoints(),
-                perAxisQuantileQType.getQuantizedDimension(), perAxisQuantileQType.getStorageTypeMin(),
-                perAxisQuantileQType.getStorageTypeMax());
-    } else if (const auto uniformType =
-                       mlir::dyn_cast_or_null<mlir::quant::UniformQuantizedType>(inType.getElementType())) {
-        auto scale = uniformType.getScale();
-        scale *= multiplier;
-        dstType = mlir::quant::UniformQuantizedType::getChecked(
-                dequantizeOp.getLoc(), uniformType.isSigned(), uniformType.getStorageType(),
-                uniformType.getExpressedType(), scale, uniformType.getZeroPoint(), uniformType.getStorageTypeMin(),
-                uniformType.getStorageTypeMax());
-    } else if (const auto perAxisType =
-                       mlir::dyn_cast_or_null<mlir::quant::UniformQuantizedPerAxisType>(inType.getElementType())) {
-        auto scales = perAxisType.getScales();
-        SmallVector<double> newScales(scales.size());
-        std::transform(scales.begin(), scales.end(), newScales.begin(), [multiplier](double x) {
-            return x * multiplier;
-        });
-        dstType = mlir::quant::UniformQuantizedPerAxisType::getChecked(
-                dequantizeOp.getLoc(), perAxisType.isSigned(), perAxisType.getStorageType(),
-                perAxisType.getExpressedType(), newScales, perAxisType.getZeroPoints(),
-                perAxisType.getQuantizedDimension(), perAxisType.getStorageTypeMin(), perAxisType.getStorageTypeMax());
+        if (const auto quantileStorageType =
+                    mlir::dyn_cast<vpux::type::QuantileType>(perAxisUniformType.getStorageType())) {
+            dstType = mlir::quant::UniformQuantizedPerAxisType::get(
+                    perAxisUniformType.getFlags(), quantileStorageType, perAxisUniformType.getExpressedType(),
+                    newScales, perAxisUniformType.getZeroPoints(), perAxisUniformType.getQuantizedDimension(),
+                    perAxisUniformType.getStorageTypeMin(), perAxisUniformType.getStorageTypeMax());
+        } else {
+            dstType = mlir::quant::UniformQuantizedPerAxisType::getChecked(
+                    dequantizeOp.getLoc(), perAxisUniformType.isSigned(), perAxisUniformType.getStorageType(),
+                    perAxisUniformType.getExpressedType(), newScales, perAxisUniformType.getZeroPoints(),
+                    perAxisUniformType.getQuantizedDimension(), perAxisUniformType.getStorageTypeMin(),
+                    perAxisUniformType.getStorageTypeMax());
+        }
     } else {
         return matchFailed(_log, rewriter, dequantizeOp, "unsupported quantize type");
     }

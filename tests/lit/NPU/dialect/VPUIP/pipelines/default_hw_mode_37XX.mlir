@@ -3,13 +3,13 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW allow-custom-values=true" --mlir-elide-elementsattrs-if-larger 8 --default-hw-mode-vpuip="function-outlining=\"naive='num-parts=2'\"" %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW allow-custom-values=true" --mlir-elide-elementsattrs-if-larger 8 --default-hw-mode-vpuip="function-outlining=\"naive='num-parts=2'\"" %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
 // CHECK-LABEL: @SoftMax
-module @SoftMax attributes {config.arch = #config.arch_kind<NPU37XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+module @SoftMax attributes {config.compilationMode = #config.compilation_mode<DefaultHW>} {
     // CHECK-DAG: {{  }}config.Resources
 
     VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 4096, 4096, 4096]
@@ -87,7 +87,7 @@ module @SoftMax attributes {config.arch = #config.arch_kind<NPU37XX>, config.com
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
 
 // CHECK-LABEL: @TwoFunctions
-module @TwoFunctions attributes {config.arch = #config.arch_kind<NPU37XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+module @TwoFunctions attributes {config.compilationMode = #config.compilation_mode<DefaultHW>} {
     // CHECK-DAG: {{  }}config.Resources
 
     VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 4096, 4096, 4096]
@@ -120,7 +120,7 @@ module @TwoFunctions attributes {config.arch = #config.arch_kind<NPU37XX>, confi
         %3 = VPUIP.ViewOp %2 : !VPUIP.DistributedBuffer<1x16x6x16xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
                                 to !VPUIP.DistributedBuffer<1x16x16x6xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 1, 2], num_clusters = 2 : i64}>
         %4 = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x16x16x6xf16, #NWCH, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 1, 2], num_clusters = 2 : i64}>
-        %5 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 189 : i64} <{is_permute_quantize, task_type = #VPUIP.nce_task_type<ELTWISE>}>
+        %5 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 189 : i64, resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{is_permute_quantize, task_type = #VPUIP.nce_task_type<ELTWISE>}>
                 input(%3 : !VPUIP.DistributedBuffer<1x16x16x6xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 1, 2], num_clusters = 2 : i64}>)
                 weights(%3 : !VPUIP.DistributedBuffer<1x16x16x6xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 1, 2], num_clusters = 2 : i64}>)
                 parent_input(%3 : !VPUIP.DistributedBuffer<1x16x16x6xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 1, 2], num_clusters = 2 : i64}>)
@@ -170,7 +170,7 @@ module @TwoFunctions attributes {config.arch = #config.arch_kind<NPU37XX>, confi
 
         // CONV
         %16 = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x32x4x4xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64}>
-        %17 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 651 : i64} <{is_superdense, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [3, 3], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
+        %17 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 651 : i64, resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{is_superdense, kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [3, 3], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
             input(%11 : !VPUIP.DistributedBuffer<1x16x6x6xf16, #NHWC, @CMX_NN, {mode = "SEGMENTED", num_tiles = [1, 1, 2, 1], num_clusters = 2 : i64, alignment = [1, 1, 2, 1]}>)
             weights(%13 : !VPUIP.DistributedBuffer<32x16x3x3xf16, #NHWC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
             weight_table(%15 : !VPUIP.DistributedBuffer<32x1x1x4xsi32, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
@@ -271,7 +271,7 @@ module @TwoFunctions attributes {config.arch = #config.arch_kind<NPU37XX>, confi
 // -----
 
 // CHECK-LABEL: TestCopy
-module @TestCopy attributes {config.arch = #config.arch_kind<NPU37XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+module @TestCopy attributes {config.compilationMode = #config.compilation_mode<DefaultHW>} {
   net.NetworkInfo entryPoint : @main inputsInfo : {
     DataInfo "Parameter_213" : tensor<2x4x20x20xf16>
     DataInfo "vpu_shape_Parameter_213" : tensor<4xsi32>

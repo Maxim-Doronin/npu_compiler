@@ -145,6 +145,8 @@ public:
                                                       mlir::StringAttr nearestMode, mlir::BoolAttr antialias,
                                                       mlir::ArrayAttr padsBegin, mlir::ArrayAttr padsEnd,
                                                       mlir::FloatAttr cubeCoeff);
+    [[nodiscard]] SpecializedContentSetup gatherElements(mlir::IntegerAttr axisAttr,
+                                                         mlir::DenseElementsAttr indicesAttr);
 
     // Note: this method only exists when there's an explicit "Get" method
     // provided by the user.

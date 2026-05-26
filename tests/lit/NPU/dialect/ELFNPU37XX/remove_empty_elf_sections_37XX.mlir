@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --remove-empty-ELFNPU37XX-sections %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --remove-empty-ELFNPU37XX-sections %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 module @Test  {
 

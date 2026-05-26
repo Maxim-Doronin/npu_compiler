@@ -83,8 +83,7 @@ void registerSwapOperationsRewriters(RewriterRegistry& registry, ArrayRef<mlir::
 void registerInsertIdentityPoolBeforeOpRewriters(RewriterRegistry& registry,
                                                  ArrayRef<mlir::PatternBenefit> benefitLevels, size_t index,
                                                  Logger log);
-void registerFuseActivationOpsRewriters(RewriterRegistry& registry, bool enableFuseClamp = false,
-                                        Logger log = Logger::global());
+void registerFuseActivationOpsRewriters(RewriterRegistry& registry, Logger log = Logger::global());
 
 //
 // AdjustForVPU Pipeline

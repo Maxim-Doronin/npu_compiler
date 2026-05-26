@@ -13,7 +13,7 @@ public:
     MapBilinearInterpolateOnDPUStrategy(const bool interpolateAsSEOpInStrategy)
             : IMapBilinearInterpolateOnDPUStrategy(interpolateAsSEOpInStrategy) {
     }
-    void prepareInterpolate(mlir::ConversionTarget& target, LogCb logCb) const override;
+    bool shouldConvertInterpolateOpForMapBilinear(IE::InterpolateOp op, LogCb logCb) const override;
 };
 
 }  // namespace vpux::IE::arch37xx

@@ -11,43 +11,28 @@
 namespace vpux {
 namespace type {
 
-QuantileFloatType QuantileFloatType::get(mlir::MLIRContext* ctx, mlir::Type storageType, mlir::Type quantileType,
-                                         ArrayRef<double> quantiles) {
-    if (storageType.isUnsignedInteger(4)) {
-        return getNF4(ctx, storageType, quantileType, quantiles);
-    }
-    llvm_unreachable("unexpected quantile float type");
+QuantileType QuantileType::get(mlir::MLIRContext* ctx, mlir::Type storageType, mlir::Type quantileType,
+                               ArrayRef<double> quantiles) {
+    return Base::get(ctx, storageType, quantileType, quantiles);
 }
 
-QuantileFloatType QuantileFloatType::getNF4(mlir::MLIRContext* ctx, Type storageType, Type quantileType,
-                                            ArrayRef<double> quantiles) {
-    return NF4Type::get(ctx, storageType, quantileType, quantiles);
+bool QuantileType::classof(mlir::Type type) {
+    return mlir::isa<NF4Type>(type) || type.getTypeID() == mlir::TypeID::get<QuantileType>();
 }
 
-bool QuantileFloatType::classof(mlir::Type type) {
-    return mlir::isa<NF4Type>(type);
-}
-
-unsigned QuantileFloatType::getStorageTypeIntegralWidth() const {
-    if (mlir::isa<NF4Type>(*this)) {
-        return 4;
-    }
-    llvm_unreachable("unexpected quantile float type");
-}
-
-mlir::Type QuantileFloatType::getStorageType() const {
+mlir::Type QuantileType::getStorageType() const {
     return static_cast<ImplType*>(impl)->getStorageType();
 }
 
-mlir::Type QuantileFloatType::getQuantileType() const {
+mlir::Type QuantileType::getQuantileType() const {
     return static_cast<ImplType*>(impl)->getQuantileType();
 }
 
-ArrayRef<double> QuantileFloatType::getQuantiles() const {
+ArrayRef<double> QuantileType::getQuantiles() const {
     return static_cast<ImplType*>(impl)->getQuantiles();
 }
 
-void QuantileFloatType::print(mlir::AsmPrinter& printer) const {
+void QuantileType::print(mlir::AsmPrinter& printer) const {
     printer << "<";
     printer << getStorageType();
     printer << ":";
@@ -67,7 +52,7 @@ void QuantileFloatType::print(mlir::AsmPrinter& printer) const {
     printer << ">";
 }
 
-mlir::Type QuantileFloatType::parse(mlir::AsmParser& parser) {
+mlir::Type QuantileType::parse(mlir::AsmParser& parser) {
     Type storageType;
     Type quantileType;
     SmallVector<double, 1> quantiles;
@@ -113,6 +98,72 @@ mlir::Type QuantileFloatType::parse(mlir::AsmParser& parser) {
 
     return get(parser.getContext(), storageType, quantileType, quantiles);
 }
+
+bool QuantileType::shouldDefaultToSigned() const {
+    Type storageType = getStorageType();
+    if (auto intType = mlir::dyn_cast<mlir::IntegerType>(storageType)) {
+        return !intType.isUnsigned();
+    }
+    // Always true for float types
+    return true;
+}
+
+unsigned QuantileType::getStorageWidth() const {
+    return getStorageType().getIntOrFloatBitWidth();
+}
+
+int64_t QuantileType::getDefaultMaximum([[maybe_unused]] bool isSigned) const {
+    if (isSigned) {
+        return (1LL << (getStorageWidth() - 1)) - 1;
+    }
+    return (1LL << getStorageWidth()) - 1;
+}
+
+int64_t QuantileType::getDefaultMinimum([[maybe_unused]] bool isSigned) const {
+    if (isSigned) {
+        return -(1LL << (getStorageWidth() - 1));
+    }
+    return 0;
+}
+
+std::string QuantileType::getStorageTypeName([[maybe_unused]] bool isSigned) const {
+    std::string result = "!QuantileType.quantile<";
+    llvm::raw_string_ostream os(result);
+    os << getStorageType() << ":" << getQuantileType() << ", {";
+
+    ArrayRef<double> quantiles = this->getQuantiles();
+    llvm::interleave(
+            llvm::seq<size_t>(0, quantiles.size()), os,
+            [&](size_t index) {
+                os << quantiles[index];
+            },
+            ",");
+
+    os << "}>";
+    os.flush();
+    return result;
+}
+
+bool QuantileType::isPacked() const {
+    return getStorageWidth() <= 4;
+}
+
+unsigned QuantileType::getLogicalBitWidth() const {
+    return getStorageWidth();
+}
+
+unsigned QuantileType::getElementsPerByte() const {
+    unsigned width = getStorageWidth();
+    return width > 0 ? 8 / width : 0;
+}
+
+std::optional<unsigned> QuantileType::getPreferredAlignmentBytes() const {
+    return std::nullopt;
+}
+
+//===----------------------------------------------------------------------===//
+// NF4Type
+//===----------------------------------------------------------------------===//
 
 const SmallVector<double> NF4Type::specQuantiles{-1.0,
                                                  -0.6961928009986877,

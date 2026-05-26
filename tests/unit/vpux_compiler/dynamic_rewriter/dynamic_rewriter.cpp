@@ -12,8 +12,8 @@
 #include "vpux/compiler/dialect/const/dialect.hpp"
 #include "vpux/compiler/dynamic_rewriter/dynamic_rewriter_factory.hpp"
 #include "vpux/compiler/dynamic_rewriter/passes.hpp"
-#include "vpux/compiler/init.hpp"
-#include "vpux/compiler/interfaces_registry.hpp"
+#include "vpux/compiler/init/dialects_registry.hpp"
+#include "vpux/compiler/init/interfaces_registry.hpp"
 #include "vpux/utils/logger/logger.hpp"
 
 #include <mlir/IR/MLIRContext.h>

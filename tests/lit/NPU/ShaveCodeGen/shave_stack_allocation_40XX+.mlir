@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --shave-stack-allocation %s -o - | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --shave-stack-allocation %s -o - | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 module @PromoteToAlloca {
   module @VPU.SW {

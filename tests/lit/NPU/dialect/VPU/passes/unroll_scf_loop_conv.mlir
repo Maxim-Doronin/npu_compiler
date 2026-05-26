@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=HostCompile allow-custom-values=true" --unroll-scf-loop="loop-unroll-factor=1,1,2,1 enable-cascaded-unrolling=false" --canonicalize  %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=HostCompile allow-custom-values=true" --unroll-scf-loop="loop-unroll-factor=1,1,2,1 enable-cascaded-unrolling=false" --canonicalize  %s | FileCheck %s
 
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #map = affine_map<()[s0] -> (s0 - 48)>
@@ -43,11 +43,11 @@ module @NPUModule {
     return %1 : tensor<1x16x48x1280xf16>
   }
 
-  // CHECK:   func.func @merged_vpu_func_0_1([[VAL_0:%.+]]: tensor<1x16x99x1280xf16
+  // CHECK:   func.func @merged_vpu_func_0_1([[VAL_0:%.+]]: tensor<1x16x97x1280xf16
   // CHECK:           [[VAL_1:%.+]] = VPU.Slice [[VAL_0]] [0, 0, 0, 0] [1, 16, 50, 1280]
   // CHECK:           [[VAL_2:%.+]] = VPU.NCE.Convolution([[VAL_1]]
   // CHECK-SAME:        pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 0 : i64>
-  // CHECK:           [[VAL_3:%.+]] = VPU.Slice [[VAL_0]] [0, 0, 50, 0] [1, 16, 49, 1280]
+  // CHECK:           [[VAL_3:%.+]] = VPU.Slice [[VAL_0]] [0, 0, 48, 0] [1, 16, 49, 1280]
   // CHECK:           [[VAL_4:%.+]] = VPU.NCE.Convolution([[VAL_3]]
   // CHECK-SAME:        pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 1 : i64>
   // CHECK:           [[VAL_5:%.+]] = VPU.Concat([[VAL_2]], [[VAL_4]])

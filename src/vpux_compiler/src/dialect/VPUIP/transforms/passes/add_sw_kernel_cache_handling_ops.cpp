@@ -135,6 +135,10 @@ void AddSwKernelCacheHandlingOpsPass::safeRunOnFunc() {
             return;
         }
 
+        if (isIoDmaSwKernel(origOp)) {
+            return;
+        }
+
         if (isCacheHandlingOp(origOp)) {
             return;
         }

@@ -10,7 +10,7 @@
 #include "vpux/compiler/dialect/VPU/IR/ops/recurrent.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 
-#include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Transforms/WalkPatternRewriteDriver.h>
 
 namespace vpux::VPU {
 #define GEN_PASS_DECL_SPLITGRUSEQUENCE
@@ -67,6 +67,23 @@ bool fitInCMXAfterSplit(VPU::GRUSequenceOp op, Logger log) {
     return true;
 }
 
+bool canSplitGRUSequence(VPU::GRUSequenceOp op, Logger log) {
+    // TODO Refactor when E#79282 is closed.
+    const auto origOp = op.getOperation();
+    auto outputShape = mlir::cast<vpux::NDTypeInterface>(op.getMiddleHiddenState().getType()).getShape();
+    Shape minShapeAfterTiling(outputShape.size(), 1);
+    minShapeAfterTiling[Dim(3)] = outputShape[Dim(3)];
+    auto iface = mlir::dyn_cast<VPU::TilingInfoOpInterface>(origOp);
+    if (!iface.isSupportedTiling({TileInfo(minShapeAfterTiling)}, TilingMode::ISOLATED, log.nest()) &&
+        fitInCMXAfterSplit(op, log.nest())) {
+        log.nest(1).trace("Can't still fit into CMX after tiling. The pass is used to split GRUSequence into "
+                          "two parts to meet the requirement of CMX.");
+        return true;
+    }
+
+    return false;
+}
+
 //
 // SplitGRUSequencePass
 //
@@ -105,6 +122,11 @@ mlir::LogicalResult SplitGRUSequencePass::GRUSequenceConverter::matchAndRewrite(
                                                                                 mlir::PatternRewriter& rewriter) const {
     _log.trace("Got '{0}' at '{1}'", origOp->getName(), origOp->getLoc());
 
+    if (!canSplitGRUSequence(origOp, _log)) {
+        _log.debug("Failed to split GRUSequenceOp into two parts.");
+        return mlir::failure();
+    }
+
     auto gruSequenceFirstPartOp = rewriter.create<VPU::GRUSequenceFirstPartOp>(
             origOp.getLoc(), origOp.getInputData(), origOp.getWeights(), origOp.getHiddenSizeAttr(),
             origOp.getSeqLengthAttr(), origOp.getClipAttr());
@@ -126,35 +148,12 @@ mlir::LogicalResult SplitGRUSequencePass::GRUSequenceConverter::matchAndRewrite(
 
 void SplitGRUSequencePass::safeRunOnFunc() {
     auto& ctx = getContext();
-
-    mlir::ConversionTarget target(ctx);
-
-    target.addDynamicallyLegalOp<VPU::GRUSequenceOp>([&](VPU::GRUSequenceOp op) {
-        // TODO Refactor when E#79282 is closed.
-        const auto origOp = op.getOperation();
-        auto outputShape = mlir::cast<vpux::NDTypeInterface>(op.getMiddleHiddenState().getType()).getShape();
-        Shape minShapeAfterTiling(outputShape.size(), 1);
-        minShapeAfterTiling[Dim(3)] = outputShape[Dim(3)];
-        auto iface = mlir::dyn_cast<VPU::TilingInfoOpInterface>(origOp);
-        if (!iface.isSupportedTiling({TileInfo(minShapeAfterTiling)}, TilingMode::ISOLATED, _log.nest()) &&
-            fitInCMXAfterSplit(op, _log.nest())) {
-            _log.nest(1).trace("Can't still fit into CMX after tiling. The pass is used to split GRUSequence into "
-                               "two parts to meet the requirement of CMX.");
-            return false;
-        }
-        return true;
-    });
-    target.addLegalOp<VPU::GRUSequenceFirstPartOp>();
-    target.addLegalOp<VPU::GRUSequenceLastPartOp>();
+    auto func = getOperation();
 
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<GRUSequenceConverter>(&ctx, _log);
 
-    auto func = getOperation();
-    if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
-        _log.debug("Failed to split GRUSequenceOp into two parts.");
-        signalPassFailure();
-    }
+    walkAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --vpu-arch=%arch% --split-input-file --mlir-disable-threading --finalize-compute-function-boundaries %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --platform=%platform% --split-input-file --mlir-disable-threading --finalize-compute-function-boundaries --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module @StaticEltwiseNHWC {
@@ -19,7 +19,7 @@ module @StaticEltwiseNHWC {
             -> tensor<1x16x90x1000xf16, {order = #NHWC}>
         return %0 : tensor<1x16x90x1000xf16, {order = #NHWC}>
     }
-    func.func @main(%arg0: tensor<1x16x720x1000xf16, {order = #NHWC}>, %arg1: tensor<1x16x720x1000xf16, {order = #NHWC}>) -> tensor<1x16x720x1000xf16, {order = #NHWC}> {
+    func.func @main(%arg0: tensor<1x16x720x1000xf16, {order = #NHWC}>, %arg1: tensor<1x16x720x1000xf16, {order = #NHWC}>) -> tensor<1x16x720x1000xf16, {order = #NHWC}> attributes {config.pureHostCompileFunc} {
         %c90 = arith.constant 90 : index
         %c720 = arith.constant 720 : index
         %c0 = arith.constant 0 : index
@@ -88,7 +88,7 @@ module @StaticEltwiseMultipleOps {
         return %2 : tensor<1x16x90x1000xf16, {order = #NCHW}>
     }
     func.func @main(%arg0: tensor<1x16x90x1000xf16, {order = #NHWC}>, %arg1: tensor<1x16x90x1000xf16, {order = #NHWC}>)
-              -> tensor<1x16x90x1000xf16, {order = #NCHW}> {
+              -> tensor<1x16x90x1000xf16, {order = #NCHW}> attributes {config.pureHostCompileFunc} {
         %0 = func.call @main_func0(%arg0, %arg1)
            : (tensor<1x16x90x1000xf16, {order = #NHWC}>, tensor<1x16x90x1000xf16, {order = #NHWC}>)
            -> tensor<1x16x90x1000xf16, {order = #NCHW}>
@@ -124,7 +124,7 @@ module @StaticEltwiseNCHW {
         return %0 : tensor<1x16x90x1000xf16, {order = #NCHW}>
     }
 
-    func.func @main(%arg0: tensor<1x16x90x1000xf16, {order = #NCHW}>) -> tensor<1x16x90x1000xf16, {order = #NCHW}> {
+    func.func @main(%arg0: tensor<1x16x90x1000xf16, {order = #NCHW}>) -> tensor<1x16x90x1000xf16, {order = #NCHW}> attributes {config.pureHostCompileFunc} {
         %0 = func.call @main_func0(%arg0)
            : (tensor<1x16x90x1000xf16, {order = #NCHW}>)
            -> tensor<1x16x90x1000xf16, {order = #NCHW}>
@@ -160,7 +160,7 @@ module @DynamicBoundedEltwiseNHWC {
     return %0 : tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>
   }
 
-  func.func @main(%arg0: tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>, %arg1: tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>) -> tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}> {
+  func.func @main(%arg0: tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>, %arg1: tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>) -> tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}> attributes {config.pureHostCompileFunc} {
     %c3 = arith.constant 3 : index
     %dim = tensor.dim %arg0, %c3 : tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>
     %0 = tensor.empty(%dim) : tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>
@@ -204,7 +204,7 @@ module @DynamicBoundedEltwiseNHWC {
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-func.func @TensorDimForDynamicDim(%arg0: tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>) -> index {
+func.func @TensorDimForDynamicDim(%arg0: tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>) -> index attributes {config.pureHostCompileFunc} {
     %c3 = arith.constant 3 : index
     %dim = tensor.dim %arg0, %c3 : tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>
     return %dim : index
@@ -215,25 +215,27 @@ func.func @TensorDimForDynamicDim(%arg0: tensor<1x16x256x?xf16, {bounds = #const
 }
 
 // -----
+
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-func.func @TensorDimForTwoDynamicDims(%arg0: tensor<1x16x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>) -> (index, index) {
+func.func @TensorDimForTwoDynamicDims(%arg0: tensor<1x16x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>) -> (index, index) attributes {config.pureHostCompileFunc} {
     %c2 = arith.constant 2 : index
     %c3 = arith.constant 3 : index
     %dim_0 = tensor.dim %arg0, %c2 : tensor<1x16x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>
     %dim_1 = tensor.dim %arg0, %c3 : tensor<1x16x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #NHWC}>
     return %dim_0, %dim_1 : index, index
     // CHECK: func.func @TensorDimForTwoDynamicDims([[ARG:%.+]]: tensor<1x?x?x16xf16>)
-    // CHECK:   [[C1:%.+]] = arith.constant 1 : index
+    // CHECK-DAG:   [[C2:%.+]] = arith.constant 2 : index
+    // CHECK-DAG:   [[C1:%.+]] = arith.constant 1 : index
     // CHECK:   [[DIM0:%.+]] = tensor.dim [[ARG]], [[C1]] : tensor<1x?x?x16xf16>
-    // CHECK:   [[C2:%.+]] = arith.constant 2 : index
     // CHECK:   [[DIM1:%.+]] = tensor.dim [[ARG]], [[C2]] : tensor<1x?x?x16xf16>
     // CHECK:   return [[DIM0]], [[DIM1]] : index, index
 }
+
 // -----
 
 #WHCN = affine_map<(d0, d1, d2, d3) -> (d3, d2, d1, d0)>
 
-func.func @TensorDimForDynamicDimWHCN(%arg0: tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #WHCN}>) -> index {
+func.func @TensorDimForDynamicDimWHCN(%arg0: tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #WHCN}>) -> index attributes {config.pureHostCompileFunc} {
     %c3 = arith.constant 3 : index
     %dim = tensor.dim %arg0, %c3 : tensor<1x16x256x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 256, 480]> : tensor<4xsi64>, order = #WHCN}>
     return %dim : index
@@ -263,10 +265,10 @@ module @StaticQuantizedNHWC {
             -> tensor<1x16x90x1000x!qElemType, {order = #NHWC}>
         return %0 : tensor<1x16x90x1000x!qElemType, {order = #NHWC}>
     }
-    
+
     func.func @main(%arg0: tensor<1x16x720x1000x!qElemType, {order = #NHWC}>,
                     %arg1: tensor<1x16x720x1000x!qElemType, {order = #NHWC}>)
-                    -> tensor<1x16x720x1000x!qElemType, {order = #NHWC}> {
+                    -> tensor<1x16x720x1000x!qElemType, {order = #NHWC}> attributes {config.pureHostCompileFunc}  {
         %c90 = arith.constant 90 : index
         %c720 = arith.constant 720 : index
         %c0 = arith.constant 0 : index
@@ -293,7 +295,23 @@ module @StaticQuantizedNHWC {
 // CHECK: func.func @main([[ARG0:%.+]]: tensor<1x720x1000x16xi8>, [[ARG1:%.+]]: tensor<1x720x1000x16xi8>) -> tensor<1x720x1000x16xi8>
 // CHECK:       tensor.empty() : tensor<1x720x1000x16xi8>
 // CHECK:       scf.for
-// CHECK:         tensor.extract_slice{{.*}}[0, %{{.*}}, 0, 0] [1, 90, 1000, 16] [1, 1, 1, 1]
-// CHECK:         tensor.extract_slice{{.*}}[0, %{{.*}}, 0, 0] [1, 90, 1000, 16] [1, 1, 1, 1]
+// CHECK:         tensor.extract_slice{{.*}}[0, {{%[^,]+}}, 0, 0] [1, 90, 1000, 16] [1, 1, 1, 1]
+// CHECK:         tensor.extract_slice{{.*}}[0, {{%[^,]+}}, 0, 0] [1, 90, 1000, 16] [1, 1, 1, 1]
 // CHECK:         func.call @main_func0
 // CHECK:       return{{.*}} : tensor<1x720x1000x16xi8>
+
+// -----
+
+module @InsertReinterpretCastForTypeWithEmptyTensorAttr {
+    func.func @main_static(%arg0: tensor<1x16x90x1000xf16>) -> tensor<1x16x90x1000xf16> {
+        %result = VPU.ReLU(%arg0) : tensor<1x16x90x1000xf16> -> tensor<1x16x90x1000xf16>
+        return %result: tensor<1x16x90x1000xf16>
+    }
+}
+
+// CHECK-LABEL @InsertReinterpretCastForTypeWithEmptyTensorAttr
+// CHECK: func.func @main_static([[ARG0:%.+]]: tensor<1x16x90x1000xf16>) -> tensor<1x16x90x1000xf16>
+// CHECK:   [[ARG_CAST:%.+]] = Core.ReinterpretCast([[ARG0]]) : tensor<1x16x90x1000xf16> -> tensor<1x16x90x1000xf16>
+// CHECK:   [[RELU:%.+]] = VPU.ReLU([[ARG_CAST]])
+// CHECK:   [[RETURN_CAST:%.+]] = Core.ReinterpretCast([[RELU]]) : tensor<1x16x90x1000xf16> -> tensor<1x16x90x1000xf16>
+// CHECK:   return [[RETURN_CAST]] : tensor<1x16x90x1000xf16>

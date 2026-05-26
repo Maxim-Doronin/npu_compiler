@@ -72,7 +72,7 @@ size_t getDPUTaskOpCost(VPUIP::DPUTaskOp dpuTaskOp, const std::shared_ptr<VPUNN:
 VPUNN::MemoryLocation getMemoryLocation(mlir::Type type);
 VPUNN::Swizzling getVPUNNSwizzlingKey(mlir::Type type);
 VPUNN::ActivationFunction getVPUNNActivationFunction(VPU::PPEAttr ppeAttr);
-VPUNN::SEPModeInfo getSEPModeInfo(VPUIP::SEPInfo sepInfo);
+VPUNN::SEPModeInfo getSEPModeInfo(const VPUIP::SEPInfo& sepInfo);
 
 std::string stringifyVPUNNStrategy(VPUNN::VPUTilingStrategy strategy);
 }  // namespace vpux

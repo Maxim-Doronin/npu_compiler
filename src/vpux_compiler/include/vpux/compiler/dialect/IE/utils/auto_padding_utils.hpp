@@ -14,5 +14,7 @@ namespace IE {
 
 bool anyIDUAutopadCandidate(ArrayRef<mlir::Operation*> ops);
 
+bool allIDUAutopadCandidates(ArrayRef<mlir::Operation*> ops);
+
 }  // namespace IE
 }  // namespace vpux

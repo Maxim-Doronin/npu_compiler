@@ -49,7 +49,17 @@ def HoistInputOutputs : PassBase<"hoist-input-outputs", "vpux::ModulePass"> {
 //
 
 def AddProfilingSection : PassBase<"add-profiling-section", "vpux::ModulePass"> {
-    let summary = "Adds the profiling metadata section OP";
+    let summary = "Create an ELF profiling section with architecture-aligned metadata for runtime performance analysis";
+
+    let description = [{
+        AI-generated summary
+
+        Creates an ELF ".profiling" section (with SHF_ALLOC flag, indicating the
+        section must be loaded into memory at runtime) and clones the existing
+        ProfilingMetadataOp into it. The section alignment is then updated to
+        match the metadata op's alignment requirements for the target architecture.
+        The pass is skipped when no profiling outputs are configured in the network.
+    }];
 
     let constructor = "vpux::VPUASM::createAddProfilingSectionPass()";
 

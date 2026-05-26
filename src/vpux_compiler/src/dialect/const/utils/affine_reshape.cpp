@@ -5,6 +5,7 @@
 
 #include "vpux/compiler/dialect/const/utils/affine_reshape.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
+#include "vpux/compiler/utils/quantization.hpp"
 
 #include <numeric>
 
@@ -51,20 +52,7 @@ std::optional<mlir::Type> vpux::Const::inferElemTypeAffineReshape(ShapeRef input
         return std::nullopt;
     }
 
-    if (const auto perAxisQuantileQType =
-                mlir::dyn_cast_or_null<mlir::quant::QuantileQuantizedPerAxisType>(inputElementType)) {
-        return mlir::quant::QuantileQuantizedPerAxisType::get(
-                perAxisQuantileQType.getFlags(), perAxisQuantileQType.getStorageType(),
-                perAxisQuantileQType.getQuantileType(), perAxisQuantileQType.getExpressedType(),
-                perAxisQuantileQType.getQuantiles(), perAxisQuantileQType.getScales(),
-                perAxisQuantileQType.getZeroPoints(), static_cast<int32_t>(outQAxis),
-                perAxisQuantileQType.getStorageTypeMin(), perAxisQuantileQType.getStorageTypeMax());
-    }
-
-    return mlir::quant::UniformQuantizedPerAxisType::get(
-            perAxisQType.getFlags(), perAxisQType.getStorageType(), perAxisQType.getExpressedType(),
-            perAxisQType.getScales(), perAxisQType.getZeroPoints(), static_cast<int32_t>(outQAxis),
-            perAxisQType.getStorageTypeMin(), perAxisQType.getStorageTypeMax());
+    return changeAxis(inputElementType, static_cast<int32_t>(outQAxis));
 }
 
 std::optional<mlir::Type> vpux::Const::backInferElemTypeAffineReshape(
@@ -136,20 +124,7 @@ std::optional<mlir::Type> vpux::Const::backInferElemTypeAffineReshape(
     }
 
     const auto qInAxis = inNonOneIndices.front();
-    if (const auto perAxisQuantileQType =
-                mlir::dyn_cast_or_null<mlir::quant::QuantileQuantizedPerAxisType>(outputElemType)) {
-        return mlir::quant::QuantileQuantizedPerAxisType::get(
-                perAxisQuantileQType.getFlags(), perAxisQuantileQType.getStorageType(),
-                perAxisQuantileQType.getQuantileType(), perAxisQuantileQType.getExpressedType(),
-                perAxisQuantileQType.getQuantiles(), perAxisQuantileQType.getScales(),
-                perAxisQuantileQType.getZeroPoints(), static_cast<int32_t>(qInAxis),
-                perAxisQuantileQType.getStorageTypeMin(), perAxisQuantileQType.getStorageTypeMax());
-    }
-
-    return mlir::quant::UniformQuantizedPerAxisType::get(
-            perAxisType.getFlags(), perAxisType.getStorageType(), perAxisType.getExpressedType(),
-            perAxisType.getScales(), perAxisType.getZeroPoints(), static_cast<int32_t>(qInAxis),
-            perAxisType.getStorageTypeMin(), perAxisType.getStorageTypeMax());
+    return changeAxis(outputElemType, static_cast<int32_t>(qInAxis));
 }
 
 std::optional<vpux::DimsOrder> vpux::Const::inferAffineReshapeOutputLayout(const DimArr& inPerm,

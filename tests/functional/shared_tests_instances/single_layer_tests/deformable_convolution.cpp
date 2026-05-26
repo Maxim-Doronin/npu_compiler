@@ -15,7 +15,8 @@ class DeformableConvolutionLayerTestCommon : public DeformableConvolutionLayerTe
 
 class DeformableConvolutionLayerTestTiling : public DeformableConvolutionLayerTestCommon {
     void configure_model() override {
-        configuration[ov::intel_npu::compilation_mode_params.name()] = "convert-deformable-conv-to-conv=false";
+        configuration[ov::intel_npu::compilation_mode_params.name()] =
+                "disabled-passes=convert-deformable-conv-to-conv";
     }
 };
 

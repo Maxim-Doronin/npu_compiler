@@ -76,7 +76,7 @@ elf::DType ELFNPU37XX::createDType(mlir::Type type) {
         return elf::DType::DType_BIN;
     } else if (mlir::isa<mlir::quant::QuantizedType>(type)) {
         return createDType(mlir::cast<mlir::quant::QuantizedType>(type).getStorageType());
-    } else if (mlir::isa<type::QuantileFloatType>(type)) {
+    } else if (mlir::isa<type::QuantileType>(type)) {
         return elf::DType::DType_I4X;
     } else {
         VPUX_THROW("Unsupported element type {0}", type);
@@ -189,7 +189,7 @@ elf::OVNodeType ELFNPU37XX::createOVNodeType(mlir::Type type) {
     } else if (type.isInteger(1)) {
         // Both signed and unsigned 1-bit integers are converted to U1
         return elf::OVNodeType::OVNodeType_U1;
-    } else if (mlir::isa<type::QuantileFloatType>(type)) {
+    } else if (mlir::isa<type::QuantileType>(type)) {
         // 4 bit quantile float dtype
         return elf::OVNodeType::OVNodeType_NF4;
     } else {
@@ -433,9 +433,11 @@ std::unique_ptr<elf::NetworkMetadata> ELFNPU37XX::constructMetadata(mlir::Module
 
     if (architecture >= config::ArchKind::NPU40XX) {
         if (!isLLVMMainForHostCompile) {
-            auto ioBindings = VPUASM::IOBindingsOp::getFromModule(module);
+            auto inputBindings = VPUASM::InputBindingsOp::getFromModule(module);
+            assert(inputBindings != nullptr);
+
             auto inputDeclarations =
-                    to_small_vector(ioBindings.getInputDeclarations().front().getOps<VPUASM::DeclareBufferOp>());
+                    to_small_vector(inputBindings.getInputDeclarations().front().getOps<VPUASM::DeclareBufferOp>());
 
             for (const auto& p : inputsInfo | indexed) {
                 const auto index = checked_cast<uint32_t>(p.index());
@@ -446,8 +448,11 @@ std::unique_ptr<elf::NetworkMetadata> ELFNPU37XX::constructMetadata(mlir::Module
                           p.value());
             }
 
+            auto outputBindings = VPUASM::OutputBindingsOp::getFromModule(module);
+            assert(outputBindings != nullptr);
+
             auto outDeclarations =
-                    to_small_vector(ioBindings.getOutputDeclarations().front().getOps<VPUASM::DeclareBufferOp>());
+                    to_small_vector(outputBindings.getOutputDeclarations().front().getOps<VPUASM::DeclareBufferOp>());
             for (const auto& p : outputsInfo | indexed) {
                 const auto index = p.index();
                 auto outDeclaration = outDeclarations[index];
@@ -457,9 +462,11 @@ std::unique_ptr<elf::NetworkMetadata> ELFNPU37XX::constructMetadata(mlir::Module
                           p.value());
             }
 
-            // profiling
+            auto profilingBindings = VPUASM::ProfilingBindingsOp::getFromModule(module);
+            assert(profilingBindings != nullptr);
+
             auto profilingDeclarations = to_small_vector(
-                    ioBindings.getProfilingBuffDeclarations().front().getOps<VPUASM::DeclareBufferOp>());
+                    profilingBindings.getProfilingDeclarations().front().getOps<VPUASM::DeclareBufferOp>());
             for (const auto& p : profilingOutputsInfo | indexed) {
                 const auto index = p.index();
                 auto profilingDeclaration = profilingDeclarations[index];
@@ -470,8 +477,8 @@ std::unique_ptr<elf::NetworkMetadata> ELFNPU37XX::constructMetadata(mlir::Module
                 metadata.mProfilingOutputs[index] = createTensorRef(declaredProfileBuffType, p.value().getName());
             }
         } else {
-            // Host Compile does not create IOBindingsOp in its pipeline for a entry function
-            // Will check if IOBindingsOp can be created.
+            // Host Compile does not create IO Bindings operations in its pipeline for a entry function
+            // Will check if IO Bindings operations can be created.
 
             // input
 

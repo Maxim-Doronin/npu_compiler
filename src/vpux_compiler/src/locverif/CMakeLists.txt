@@ -8,9 +8,10 @@ set(TARGET_NAME "npu_compiler_locverif")
 file(GLOB_RECURSE SRC_FILES *.cpp)
 add_npu_library(${TARGET_NAME}
     ${SRC_FILES}
-    LINK_LIBS PRIVATE
-        npu_ov_utils
-        npu_llvm_utils
+    LINK_LIBS
+      PUBLIC
+        npu_logger
+      PRIVATE
         MLIRIR
         npu_compiler_dialect_ie
         npu_compiler_dialect_vpu
@@ -19,4 +20,8 @@ add_npu_library(${TARGET_NAME}
         npu_compiler_dialect_config
         npu_compiler_dialect_const
         npu_compiler_dialect_net
+        npu_compiler_utils
+        npu_core_utils
+        npu_compiler_dialect_core
+        npu_profiling_utils
 )

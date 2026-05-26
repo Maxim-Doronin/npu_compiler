@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% enable-auto-padding-odu" --adjust-convolution-shape %s | FileCheck %s
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% enable-auto-padding-odu" --run-mem-permute-processing-rewriters="rewriter=adjust-convolution-shape-set" %s | FileCheck %s
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% enable-auto-padding-odu" --adjust-convolution-shape %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% enable-auto-padding-odu" --run-mem-permute-processing-rewriters="rewriter=adjust-convolution-shape-set" %s | FileCheck %s
+// REQUIRES: platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 // CHECK-LABEL: @FoldStrideIntoKernel

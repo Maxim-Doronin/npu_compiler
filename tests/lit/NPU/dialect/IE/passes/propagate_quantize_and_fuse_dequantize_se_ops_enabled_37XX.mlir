@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% enable-se-ptrs-operations=true" --propagate-and-fuse-quantize-dequantize %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% enable-se-ptrs-operations=true" --propagate-and-fuse-quantize-dequantize %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 !qElemType = !quant.uniform<u8:f16, 0.0024337469362745098>
 

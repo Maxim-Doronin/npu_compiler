@@ -25,6 +25,7 @@
 #include "vpux/compiler/dialect/VPU/IR/ops/reduce.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/specialized.hpp"
+#include "vpux/compiler/dialect/VPU/interfaces/strategies.hpp"
 #include "vpux/compiler/dialect/VPU/utils/ppe_version_config.hpp"
 #include "vpux/compiler/dialect/VPU/utils/singleton_cache.hpp"
 #include "vpux/compiler/dialect/const/dialect.hpp"
@@ -163,6 +164,7 @@ void vpux::VPU::VPUDialect::initialize() {
     registerTypes();
 
     addInterface<VPUInlinerInterface>();
+    addInterface<VPU::StrategyFactoryCache>();
     addInterface<SingletonCache>();
     addInterface<PPEVersionConfig>();
 }

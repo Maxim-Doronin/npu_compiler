@@ -67,7 +67,6 @@ void updateScheduledOpsResourcesForControlEdge(std::list<ScheduledOpOneResource>
                                                Logger& log);
 
 // Apply dependencies from controlEdges set into depsInfo.
-void updateControlEdgesInDepsInfo(AsyncDepsInfo& depsInfo, ControlEdgeSet& controlEdges, Logger& log,
-                                  const std::unordered_set<size_t>& modifiedOps = {});
+void updateControlEdgesInDepsInfo(AsyncDepsInfo& depsInfo, ControlEdgeSet& controlEdges, Logger& log);
 
 }  // namespace vpux

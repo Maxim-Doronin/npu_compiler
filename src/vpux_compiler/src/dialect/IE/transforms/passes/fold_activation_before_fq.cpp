@@ -122,7 +122,7 @@ mlir::LogicalResult FoldClampBeforeFQ::matchAndRewrite(IE::ClampOp clampOp, mlir
         auto inputHighVals = std::any_of(inputHighValues.begin(), inputHighValues.end(), [maxVal](float val) {
             return val > maxVal;
         });
-        if (inputLowVals && inputHighVals) {
+        if (inputLowVals || inputHighVals) {
             return mlir::failure();
         }
     }

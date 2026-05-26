@@ -7,6 +7,7 @@
 #include "vpux/compiler/dialect/VPU/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
+#include "vpux/compiler/dialect/VPU/utils/outlining_utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 #include "vpux/compiler/utils/function_outlining_splitter.hpp"
@@ -96,7 +97,7 @@ private:
                 return false;
             }
             // Constants are not included into the branch search, as they are included separately later
-            if (parentOp->hasTrait<mlir::OpTrait::ConstantLike>()) {
+            if (VPU::isConstantLikeOp(parentOp)) {
                 return false;
             }
             // Note: it is possible for an operation to have all results / uses in the branch, so this condition could
@@ -206,7 +207,7 @@ private:
             int64_t numComputeOps = 0;
             for (const auto& [level, operations] : inputBranch.value()) {
                 for (auto op : operations) {
-                    if (!op->hasTrait<mlir::OpTrait::ConstantLike>() && !VPU::isPureViewOp(op)) {
+                    if (!VPU::isConstantLikeOp(op) && !VPU::isPureViewOp(op)) {
                         ++numComputeOps;
                     }
                 }
@@ -224,7 +225,7 @@ private:
     void addInstanceInputsOutputs(IRSlice& instance) {
         SmallVector<mlir::Operation*> extraConstants;
         for (auto op : instance.operations) {
-            if (op->hasTrait<mlir::OpTrait::ConstantLike>()) {
+            if (VPU::isConstantLikeOp(op)) {
                 continue;
             }
 
@@ -245,7 +246,7 @@ private:
                 if (parentIsOutsideInstance) {
                     // Include the constants that are used by the operations into the instance as well, so that function
                     // passes are able to read their value when necessary, after outlining
-                    if (parentOp->hasTrait<mlir::OpTrait::ConstantLike>()) {
+                    if (VPU::isConstantLikeOp(parentOp)) {
                         if (llvm::find(extraConstants, parentOp) == extraConstants.end()) {
                             extraConstants.push_back(parentOp);
                         }
@@ -327,7 +328,7 @@ private:
         if (parentOp == nullptr) {
             return;
         }
-        if (parentOp->hasTrait<mlir::OpTrait::ConstantLike>()) {
+        if (VPU::isConstantLikeOp(parentOp)) {
             return;
         }
         if (outlinedOps.find(parentOp) != outlinedOps.end()) {
@@ -417,7 +418,7 @@ private:
 
         return allOutliningInstances;
     }
-};  // namespace
+};
 
 //
 // ConcatRepeatingBlocksOutliningPass
@@ -553,8 +554,7 @@ private:
                                    instanceIt.index(), sliceIt.index(), op->getName(), op->getLoc());
                         return mlir::failure();
                     }
-                    const auto isOpDuplicated =
-                            !op->hasTrait<mlir::OpTrait::ConstantLike>() && visitedOutlinedOps.contains(op);
+                    const auto isOpDuplicated = !VPU::isConstantLikeOp(op) && visitedOutlinedOps.contains(op);
                     if (isOpDuplicated) {
                         _log.debug(
                                 "Instance {0} -> slice {1}: operation {2} at {3} is also duplicated in another slice",
@@ -597,6 +597,7 @@ private:
 
         buildFuncOps(moduleOp, funcsInfo, outliningInstances);
         buildCallOps(moduleOp, funcsInfo, outliningInstances);
+        VPU::removeUnusedConstantOutputs(moduleOp, funcsInfo, outliningInstances, _log);
     }
 
     void buildFuncOps(mlir::ModuleOp moduleOp, ArrayRef<SmallVector<FuncInfo>> funcsInfo,

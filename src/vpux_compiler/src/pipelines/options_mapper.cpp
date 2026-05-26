@@ -7,12 +7,13 @@
 
 #include "vpux/compiler/compilation_options.hpp"
 #include "vpux/compiler/compiler.hpp"
+#include "vpux/compiler/dialect/HostExec/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/pipelines/options_mapper.hpp"
 #include "vpux/compiler/utils/platform_resources.hpp"
-#include "vpux/utils/IE/private_properties.hpp"
+#include "vpux/utils/ov/private_properties.hpp"
 
 #include "vpux/compiler/NPU37XX/pipeline_options.hpp"
 #include "vpux/compiler/NPU40XX/pipeline_options.hpp"
@@ -75,8 +76,10 @@ std::optional<std::string> getPerformanceHintOverride(const intel_npu::Config& c
     if (options == nullptr) {
         return std::nullopt;
     }
-
-    return options->performanceHintOverride;
+    auto& perfHint = options->performanceHintOverride;
+    VPUX_THROW_WHEN(perfHint.hasValue() && !config.has<intel_npu::MAX_TILES>(),
+                    "performance-hint-override is not supported in offline compilation");
+    return perfHint;
 }
 
 std::optional<std::string> getPerformanceHintOverride(const intel_npu::Config& config) {
@@ -523,6 +526,16 @@ std::set<std::string> getIoWithDynamicStrides(const intel_npu::Config& config) {
         dynamicStridesIos.insert(name);
     }
     return dynamicStridesIos;
+}
+
+std::optional<bool> getEnablePipelinedCmdListRecording(const intel_npu::Config& config) {
+    const auto options = parseCompilationModeParams<HostExec::HostExecOptions>(
+            config.get<intel_npu::COMPILATION_MODE_PARAMS>(), getArchKind(config));
+    if (options == nullptr) {
+        return std::nullopt;
+    }
+
+    return options->enablePipelinedCmdListRecording;
 }
 
 }  // namespace vpux

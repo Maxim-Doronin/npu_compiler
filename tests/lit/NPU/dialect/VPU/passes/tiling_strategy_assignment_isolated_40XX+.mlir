@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --tiling-strategy-assignment="tiling-mode=ISOLATED" %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --tiling-strategy-assignment="tiling-mode=ISOLATED" %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 module @Test {
 
@@ -1543,107 +1543,6 @@ module @executors {
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
-module @TilingForDWConvSEP {
-    config.Resources 4 of @NCE at 6.000000e+02 MHz
-
-// CHECK-LABEL: @DWConvWithSEPSOK
-func.func @DWConvWithSEPSOK(%arg0: tensor<1x288x1x1xf16, {order = #NHWC}>) -> tensor<1x288x2x2xf16, {order = #NHWC}> {
-    %weights = const.Declare tensor<288x16x1x1xf16, {order = #NHWC}> = dense<1.0> : tensor<288x16x1x1xf16>, [#const.Reorder<#NHWC>]
-    %sparsity_map = const.Declare tensor<1x288x2x2xi1> = dense<1> : tensor<1x288x2x2xi1>
-
-    %storage_element = VPU.StorageElementTable {
-        dataElemType = f16,
-        seDepth = 18, seSize = [16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16],
-        dataShape = [1, 288, 1, 1],
-        seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>,
-                                    scale = [1.0, 1.0, 2.0, 2.0], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 288, 2, 2]>
-    } -> tensor<1x18x2x2xi32, {order = #NHWC}>
-
-    %input = VPU.GroupSparseTensor(%arg0, %sparsity_map, %storage_element) {
-        seAttr = #VPU.SEInterpolate<
-            mode = <NEAREST>,
-            coordinate_transformation_mode = <ASYMMETRIC>,
-            scale = [1.0, 1.0, 2.0, 2.0],
-            nearest_mode = <FLOOR>,
-            offsets = [0, 0, 0, 0],
-            sizes = [1, 288, 2, 2]>
-    } -> !VPU.SparseTensor<data=tensor<1x288x1x1xf16, {order = #NHWC}>,
-                           sparsity_map=tensor<1x288x2x2xi1>,
-                           storage_element_table=tensor<1x18x2x2xi32, {order = #NHWC}>,
-                           #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>,
-                                              scale = [1.0, 1.0, 2.0, 2.0], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 288, 2, 2]>>
-
-    %interpolate = VPU.NCE.DepthConvolution(%input, %weights) {
-        multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>,
-        pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
-        ppe = #VPU.PPEStub<>,
-        rawFilterShape = [288, 1, 1, 1],
-        strides = [1, 1]
-    } -> tensor<1x288x2x2xf16, {order = #NHWC}>
-
-    return %interpolate : tensor<1x288x2x2xf16, {order = #NHWC}>
-
-    // To satisfy DW.Conv + SEP requirements for workload channels, the op is
-    // tiled into 2 slices, each with 144 channels; each individual op will then
-    // be multiclustered with [64, 32, 32, 16] channels/cluster
-
-    // CHECK:       VPU.NCE.DepthConvolution
-    // CHECK-SAME:     tilingStrategy = [1, 2, 1, 1]
-}
-}
-
-// -----
-
-#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-
-// CHECK-LABEL: @DWConvWithSEPNoMC
-func.func @DWConvWithSEPNoMC(%arg0: tensor<1x288x1x1xf16, {order = #NHWC}>) -> tensor<1x288x2x2xf16, {order = #NHWC}> {
-    %weights = const.Declare tensor<288x16x1x1xf16, {order = #NHWC}> = dense<1.0> : tensor<288x16x1x1xf16>, [#const.Reorder<#NHWC>]
-    %sparsity_map = const.Declare tensor<1x288x2x2xi1> = dense<1> : tensor<1x288x2x2xi1>
-
-    %storage_element = VPU.StorageElementTable {
-        dataElemType = f16,
-        seDepth = 18, seSize = [16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16],
-        dataShape = [1, 288, 1, 1],
-        seAttr = #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>,
-                                    scale = [1.0, 1.0, 2.0, 2.0], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 288, 2, 2]>
-    } -> tensor<1x18x2x2xi32, {order = #NHWC}>
-
-    %input = VPU.GroupSparseTensor(%arg0, %sparsity_map, %storage_element) {
-        seAttr = #VPU.SEInterpolate<
-            mode = <NEAREST>,
-            coordinate_transformation_mode = <ASYMMETRIC>,
-            scale = [1.0, 1.0, 2.0, 2.0],
-            nearest_mode = <FLOOR>,
-            offsets = [0, 0, 0, 0],
-            sizes = [1, 288, 2, 2]>
-    } -> !VPU.SparseTensor<data=tensor<1x288x1x1xf16, {order = #NHWC}>,
-                           sparsity_map=tensor<1x288x2x2xi1>,
-                           storage_element_table=tensor<1x18x2x2xi32, {order = #NHWC}>,
-                           #VPU.SEInterpolate<mode = <NEAREST>, coordinate_transformation_mode = <ASYMMETRIC>,
-                                              scale = [1.0, 1.0, 2.0, 2.0], nearest_mode = <FLOOR>, offsets = [0, 0, 0, 0], sizes = [1, 288, 2, 2]>>
-
-    %interpolate = VPU.NCE.DepthConvolution(%input, %weights) {
-        pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
-        ppe = #VPU.PPEStub<>,
-        rawFilterShape = [288, 1, 1, 1],
-        strides = [1, 1]
-    } -> tensor<1x288x2x2xf16, {order = #NHWC}>
-
-    return %interpolate : tensor<1x288x2x2xf16, {order = #NHWC}>
-
-    // To satisfy DW.Conv + SEP requirements for workload channels, the op is
-    // tiled into 5 slices on channels, with division:
-    // [64, 64, 64, 64, 32]
-
-    // CHECK:       VPU.NCE.DepthConvolution
-    // CHECK-SAME:     tilingStrategy = [1, 5, 1, 1]
-}
-
-// -----
-
-#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
-
 module @Test {
 
 config.Resources 6 of @NCE {
@@ -1933,4 +1832,91 @@ module @Test {
         // Test that multi-output DynamicQuantize doesn't fail strategy assignment pass
         // CHECK-NOT: tilingStrategy
     }
+}
+
+// -----
+
+module @Test {
+
+config.Resources 3 of @NCE {
+config.MemoryResource 1326182 bytes of @CMX_NN_FragmentationAware
+config.MemoryResource 1473536 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
+}
+
+// CHECK-LABEL: @GridSampleSplitOverBatchTilingOnNC
+// CHECK-SAME:  [[INPUT0:%.+]]: tensor<5x64x68x120xf16>
+// CHECK-SAME:  [[INPUT1:%.+]]: tensor<5x1x102400x2xf16>
+func.func @GridSampleSplitOverBatchTilingOnNC(%arg0: tensor<5x64x68x120xf16>, %arg1: tensor<5x1x102400x2xf16>) -> tensor<5x64x1x102400xf16> {
+    %0 = VPU.GridSample(%arg0, %arg1) {
+        align_corners,
+        mode = #IE.grid_sample_mode<BILINEAR>,
+        multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverBatch>,
+        padding_mode = #IE.grid_sample_padding_mode<ZEROS>
+    } : tensor<5x64x68x120xf16>, tensor<5x1x102400x2xf16> -> tensor<5x64x1x102400xf16>
+    return %0 : tensor<5x64x1x102400xf16>
+
+    // CHECK:      [[GRID_SAMPLE:%.+]] = VPU.GridSample([[INPUT0]], [[INPUT1]])
+    // CHECK-SAME:     multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverBatch>
+    // CHECK-SAME:     tilingStrategy = [2, 16, 1, 1]
+    // CHECK:      return [[GRID_SAMPLE]]
+}
+
+}
+
+// -----
+
+module @Test {
+
+config.Resources 3 of @NCE {
+config.MemoryResource 1326182 bytes of @CMX_NN_FragmentationAware
+config.MemoryResource 1473536 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
+}
+
+// CHECK-LABEL: @GridSampleSplitOverWidthTilingOnW
+// CHECK-SAME:  [[INPUT0:%.+]]: tensor<1x64x68x120xf16>
+// CHECK-SAME:  [[INPUT1:%.+]]: tensor<1x1x12288x2xf16>
+func.func @GridSampleSplitOverWidthTilingOnW(%arg0: tensor<1x64x68x120xf16>, %arg1: tensor<1x1x12288x2xf16>) -> tensor<1x64x1x12288xf16> {
+    %0 = VPU.GridSample(%arg0, %arg1) {
+        align_corners,
+        mode = #IE.grid_sample_mode<BILINEAR>,
+        multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverWidth>,
+        padding_mode = #IE.grid_sample_padding_mode<ZEROS>
+    } : tensor<1x64x68x120xf16>, tensor<1x1x12288x2xf16> -> tensor<1x64x1x12288xf16>
+    return %0 : tensor<1x64x1x12288xf16>
+
+    // CHECK:      [[GRID_SAMPLE:%.+]] = VPU.GridSample([[INPUT0]], [[INPUT1]])
+    // CHECK-SAME:     multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverWidth>
+    // CHECK-SAME:     tilingStrategy = [1, 1, 1, 2]
+    // CHECK:      return [[GRID_SAMPLE]]
+}
+
+}
+
+// -----
+
+module @Test {
+
+config.Resources 3 of @NCE {
+config.MemoryResource 1326182 bytes of @CMX_NN_FragmentationAware
+config.MemoryResource 1473536 bytes of @CMX_NN {config.bandwidth = 64 : i64, config.derateFactor = 1.000000e+00 : f64}
+}
+
+// CHECK-LABEL: @GridSampleSplitOverWidthTilingOnC
+// CHECK-SAME:  [[INPUT0:%.+]]: tensor<1x1280x68x64xf16>
+// CHECK-SAME:  [[INPUT1:%.+]]: tensor<1x34x32x2xf16>
+func.func @GridSampleSplitOverWidthTilingOnC(%arg0: tensor<1x1280x68x64xf16>, %arg1: tensor<1x34x32x2xf16>) -> tensor<1x1280x34x32xf16> {
+    %0 = VPU.GridSample(%arg0, %arg1) {
+        align_corners,
+        mode = #IE.grid_sample_mode<BILINEAR>,
+        multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverWidth>,
+        padding_mode = #IE.grid_sample_padding_mode<ZEROS>
+    } : tensor<1x1280x68x64xf16>, tensor<1x34x32x2xf16> -> tensor<1x1280x34x32xf16>
+    return %0 : tensor<1x1280x34x32xf16>
+
+    // CHECK:      [[GRID_SAMPLE:%.+]] = VPU.GridSample([[INPUT0]], [[INPUT1]])
+    // CHECK-SAME:     multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverWidth>
+    // CHECK-SAME:     tilingStrategy = [1, 9, 1, 1]
+    // CHECK:      return [[GRID_SAMPLE]]
+}
+
 }

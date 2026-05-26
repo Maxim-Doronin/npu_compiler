@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt %s --split-input-file --init-compiler="vpu-arch=%arch%" --verify-diagnostics
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt %s --split-input-file --init-compiler="platform=%platform%" --verify-diagnostics
+// REQUIRES: platform-NPU5010
 
 // CHECK-LABEL: @UnsupportedInputElemType
 func.func @UnsupportedInputElemType(%arg0: tensor<1x3x30x30xf64>) -> tensor<1x3x30x30xf32> {

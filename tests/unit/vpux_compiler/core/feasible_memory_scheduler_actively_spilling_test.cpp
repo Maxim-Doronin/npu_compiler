@@ -9,12 +9,12 @@
 #include "vpux/compiler/core/aliases_info.hpp"
 #include "vpux/compiler/core/feasible_memory_scheduler.hpp"
 #include "vpux/compiler/core/prefetch_data_ops.hpp"
-#include "vpux/compiler/dialect/VPU/interfaces/singleton_initializer.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/dialect/core/utils/declaration_utils.hpp"
+#include "vpux/compiler/init/singleton_initializer.hpp"
 #include "vpux/compiler/utils/hw_settings.hpp"
 
 #include <mlir/IR/MLIRContext.h>
@@ -85,7 +85,7 @@ module @Test attributes {config.arch = #config.arch_kind<NPU40XX>, config.compil
         }
         %token_20, %bodyResults_21 = async.execute [%token] (%bodyResults as %arg2: !async.value<memref<1x64x225x16xf16, [@CMX_NN, 0]>>) -> !async.value<memref<1x16x64x225xf16, #NWCH, [@CMX_NN, 0]>> attributes {VPUIP.executor = @DPU, "async-deps-index" = 1 : i64, cycleCost = 1 : i64} {
           %1 = VPUIP.ViewOp %arg2 : memref<1x64x225x16xf16, [@CMX_NN, 0]> to memref<1x16x64x225xf16, #NHWC, [@CMX_NN, 0]>
-          %2 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 4294967195 : i64} <{is_permute_quantize, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}> input(%1 : memref<1x16x64x225xf16, #NHWC, [@CMX_NN, 0]>) weights(%1 : memref<1x16x64x225xf16, #NHWC, [@CMX_NN, 0]>) parent_input(%1 : memref<1x16x64x225xf16, #NHWC, [@CMX_NN, 0]>) parent_output(%alloc_8 : memref<1x16x64x225xf16, #NWCH, [@CMX_NN, 0]>) outputs(%alloc_8 : memref<1x16x64x225xf16, #NWCH, [@CMX_NN, 0]>) -> memref<1x16x64x225xf16, #NWCH, [@CMX_NN, 0]> variants : {
+          %2 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 4294967195 : i64, resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{is_permute_quantize, mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<ELTWISE>}> input(%1 : memref<1x16x64x225xf16, #NHWC, [@CMX_NN, 0]>) weights(%1 : memref<1x16x64x225xf16, #NHWC, [@CMX_NN, 0]>) parent_input(%1 : memref<1x16x64x225xf16, #NHWC, [@CMX_NN, 0]>) parent_output(%alloc_8 : memref<1x16x64x225xf16, #NWCH, [@CMX_NN, 0]>) outputs(%alloc_8 : memref<1x16x64x225xf16, #NWCH, [@CMX_NN, 0]>) -> memref<1x16x64x225xf16, #NWCH, [@CMX_NN, 0]> variants : {
             DPUTask {inEnd = [224, 63, 15], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [224, 63, 15], outStart = [0, 0, 0], pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>}
           } PPE : {
             PPETask {ppe = #VPU.PPEFp<mode = <ADD>, clamp_low = -3.4028234663852886E+38 : f64, clamp_high = 3.4028234663852886E+38 : f64, scale = 5.000000e-01 : f64, prelu_alpha = [1.000000e+00], bias = 0.000000e+00 : f64, adder = 0.000000e+00 : f64>}
@@ -103,7 +103,7 @@ module @Test attributes {config.arch = #config.arch_kind<NPU40XX>, config.compil
         %token_26, %bodyResults_27 = async.execute [%token_20, %token_22, %token_24] (%bodyResults_21 as %arg2: !async.value<memref<1x16x64x225xf16, #NWCH, [@CMX_NN, 0]>>, %bodyResults_23 as %arg3: !async.value<memref<64x64x3x3xf16, #NHWC, [@CMX_NN, 0]>>, %bodyResults_25 as %arg4: !async.value<memref<64x1x1x4xsi32, [@CMX_NN, 0]>>) -> !async.value<memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]>> attributes {VPUIP.executor = @DPU, "async-deps-index" = 4 : i64, cycleCost = 75051 : i64} {
           %1 = VPUIP.ViewOp %arg2 : memref<1x16x64x225xf16, #NWCH, [@CMX_NN, 0]> to memref<1x64x225x16xf16, #NHWC, [@CMX_NN, 0]>
           %2 = VPUIP.ShapeCast {shape = [1, 64, 60, 60]} inputs(%1 : memref<1x64x225x16xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]>
-          %3 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 75051 : i64} <{is_zero_offset_weights_table, kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, kernel_size = [3, 3], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<CONV>}> input(%2 : memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]>) weights(%arg3 : memref<64x64x3x3xf16, #NHWC, [@CMX_NN, 0]>) weight_table(%arg4 : memref<64x1x1x4xsi32, [@CMX_NN, 0]>) parent_input(%2 : memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]>) parent_output(%alloc_11 : memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]>) outputs(%alloc_11 : memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]> variants : {
+          %3 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 75051 : i64, resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{is_zero_offset_weights_table, kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, kernel_size = [3, 3], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<CONV>}> input(%2 : memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]>) weights(%arg3 : memref<64x64x3x3xf16, #NHWC, [@CMX_NN, 0]>) weight_table(%arg4 : memref<64x1x1x4xsi32, [@CMX_NN, 0]>) parent_input(%2 : memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]>) parent_output(%alloc_11 : memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]>) outputs(%alloc_11 : memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]> variants : {
             DPUTask {inEnd = [59, 59, 63], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, outEnd = [59, 59, 63], outStart = [0, 0, 0], pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>}
           } PPE : {
             PPETask {ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = -3.4028234663852886E+38 : f64, clamp_high = 3.4028234663852886E+38 : f64, scale = 1.000000e+00 : f64, prelu_alpha = [1.000000e+00], bias = 0.000000e+00 : f64, adder = 0.000000e+00 : f64>}
@@ -122,7 +122,7 @@ module @Test attributes {config.arch = #config.arch_kind<NPU40XX>, config.compil
         }
         %token_32, %bodyResults_33 = async.execute [%token_26, %token_28, %token_30] (%bodyResults_27 as %arg2: !async.value<memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]>>, %bodyResults_29 as %arg3: !async.value<memref<32x64x7x7xf16, #NHWC, [@CMX_NN, 0]>>, %bodyResults_31 as %arg4: !async.value<memref<32x1x1x4xsi32, [@CMX_NN, 0]>>) -> !async.value<memref<1x32x60x60xf16, {order = #NHWC, strides = [230400, 1, 3840, 64]}, [@CMX_NN, 0]>> attributes {VPUIP.executor = @DPU, "async-deps-index" = 7 : i64, cycleCost = 202445 : i64} {
           %1 = VPUIP.SubView %alloc [0, 0, 0, 0] [1, 32, 60, 60] : memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]> to memref<1x32x60x60xf16, {order = #NHWC, strides = [230400, 1, 3840, 64]}, [@CMX_NN, 0]>
-          %2 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 202445 : i64} <{is_zero_offset_weights_table, kernel_padding = #VPU.Padding<left = 3 : i64, right = 3 : i64, top = 3 : i64, bottom = 3 : i64>, kernel_size = [7, 7], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<CONV>}> input(%arg2 : memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]>) weights(%arg3 : memref<32x64x7x7xf16, #NHWC, [@CMX_NN, 0]>) weight_table(%arg4 : memref<32x1x1x4xsi32, [@CMX_NN, 0]>) parent_input(%arg2 : memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]>) parent_output(%1 : memref<1x32x60x60xf16, {order = #NHWC, strides = [230400, 1, 3840, 64]}, [@CMX_NN, 0]>) outputs(%1 : memref<1x32x60x60xf16, {order = #NHWC, strides = [230400, 1, 3840, 64]}, [@CMX_NN, 0]>) -> memref<1x32x60x60xf16, {order = #NHWC, strides = [230400, 1, 3840, 64]}, [@CMX_NN, 0]> variants : {
+          %2 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 202445 : i64, resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{is_zero_offset_weights_table, kernel_padding = #VPU.Padding<left = 3 : i64, right = 3 : i64, top = 3 : i64, bottom = 3 : i64>, kernel_size = [7, 7], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<CONV>}> input(%arg2 : memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]>) weights(%arg3 : memref<32x64x7x7xf16, #NHWC, [@CMX_NN, 0]>) weight_table(%arg4 : memref<32x1x1x4xsi32, [@CMX_NN, 0]>) parent_input(%arg2 : memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]>) parent_output(%1 : memref<1x32x60x60xf16, {order = #NHWC, strides = [230400, 1, 3840, 64]}, [@CMX_NN, 0]>) outputs(%1 : memref<1x32x60x60xf16, {order = #NHWC, strides = [230400, 1, 3840, 64]}, [@CMX_NN, 0]>) -> memref<1x32x60x60xf16, {order = #NHWC, strides = [230400, 1, 3840, 64]}, [@CMX_NN, 0]> variants : {
             DPUTask {inEnd = [59, 59, 63], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [59, 59, 31], outStart = [0, 0, 0], pad = #VPU.Padding<left = 3 : i64, right = 3 : i64, top = 3 : i64, bottom = 3 : i64>}
           } PPE : {
             PPETask {ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = -3.4028234663852886E+38 : f64, clamp_high = 3.4028234663852886E+38 : f64, scale = 1.000000e+00 : f64, prelu_alpha = [1.000000e+00], bias = 0.000000e+00 : f64, adder = 0.000000e+00 : f64>}
@@ -135,7 +135,7 @@ module @Test attributes {config.arch = #config.arch_kind<NPU40XX>, config.compil
         }
         %token_36, %bodyResults_37 = async.execute [%token_26, %token_30, %token_34] (%bodyResults_27 as %arg2: !async.value<memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]>>, %bodyResults_31 as %arg3: !async.value<memref<32x1x1x4xsi32, [@CMX_NN, 0]>>, %bodyResults_35 as %arg4: !async.value<memref<32x64x7x7xf16, #NHWC, [@CMX_NN, 0]>>) -> !async.value<memref<1x32x60x60xf16, {order = #NHWC, strides = [230400, 1, 3840, 64]}, [@CMX_NN, 0]>> attributes {VPUIP.executor = @DPU, "async-deps-index" = 9 : i64, cycleCost = 202445 : i64} {
           %1 = VPUIP.SubView %alloc [0, 32, 0, 0] [1, 32, 60, 60] : memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]> to memref<1x32x60x60xf16, {order = #NHWC, strides = [230400, 1, 3840, 64]}, [@CMX_NN, 0]>
-          %2 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 202445 : i64} <{is_zero_offset_weights_table, kernel_padding = #VPU.Padding<left = 3 : i64, right = 3 : i64, top = 3 : i64, bottom = 3 : i64>, kernel_size = [7, 7], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<CONV>}> input(%arg2 : memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]>) weights(%arg4 : memref<32x64x7x7xf16, #NHWC, [@CMX_NN, 0]>) weight_table(%arg3 : memref<32x1x1x4xsi32, [@CMX_NN, 0]>) parent_input(%arg2 : memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]>) parent_output(%1 : memref<1x32x60x60xf16, {order = #NHWC, strides = [230400, 1, 3840, 64]}, [@CMX_NN, 0]>) outputs(%1 : memref<1x32x60x60xf16, {order = #NHWC, strides = [230400, 1, 3840, 64]}, [@CMX_NN, 0]>) -> memref<1x32x60x60xf16, {order = #NHWC, strides = [230400, 1, 3840, 64]}, [@CMX_NN, 0]> variants : {
+          %2 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 202445 : i64, resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{is_zero_offset_weights_table, kernel_padding = #VPU.Padding<left = 3 : i64, right = 3 : i64, top = 3 : i64, bottom = 3 : i64>, kernel_size = [7, 7], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<CONV>}> input(%arg2 : memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]>) weights(%arg4 : memref<32x64x7x7xf16, #NHWC, [@CMX_NN, 0]>) weight_table(%arg3 : memref<32x1x1x4xsi32, [@CMX_NN, 0]>) parent_input(%arg2 : memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]>) parent_output(%1 : memref<1x32x60x60xf16, {order = #NHWC, strides = [230400, 1, 3840, 64]}, [@CMX_NN, 0]>) outputs(%1 : memref<1x32x60x60xf16, {order = #NHWC, strides = [230400, 1, 3840, 64]}, [@CMX_NN, 0]>) -> memref<1x32x60x60xf16, {order = #NHWC, strides = [230400, 1, 3840, 64]}, [@CMX_NN, 0]> variants : {
             DPUTask {inEnd = [59, 59, 63], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_16x16>, outEnd = [59, 59, 31], outStart = [0, 0, 0], pad = #VPU.Padding<left = 3 : i64, right = 3 : i64, top = 3 : i64, bottom = 3 : i64>}
           } PPE : {
             PPETask {ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = -3.4028234663852886E+38 : f64, clamp_high = 3.4028234663852886E+38 : f64, scale = 1.000000e+00 : f64, prelu_alpha = [1.000000e+00], bias = 0.000000e+00 : f64, adder = 0.000000e+00 : f64>}
@@ -152,7 +152,7 @@ module @Test attributes {config.arch = #config.arch_kind<NPU40XX>, config.compil
         }
         %token_42, %bodyResults_43 = async.execute [%token_32, %token_36, %token_38, %token_40] (%bodyResults_33 as %arg2: !async.value<memref<1x32x60x60xf16, {order = #NHWC, strides = [230400, 1, 3840, 64]}, [@CMX_NN, 0]>>, %bodyResults_37 as %arg3: !async.value<memref<1x32x60x60xf16, {order = #NHWC, strides = [230400, 1, 3840, 64]}, [@CMX_NN, 0]>>, %bodyResults_39 as %arg4: !async.value<memref<64x64x5x5xf16, #NHWC, [@CMX_NN, 0]>>, %bodyResults_41 as %arg5: !async.value<memref<64x1x1x4xsi32, [@CMX_NN, 0]>>) -> !async.value<memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]>> attributes {VPUIP.executor = @DPU, "async-deps-index" = 12 : i64, cycleCost = 193622 : i64} {
           %1 = VPUIP.ConcatView inputs(%arg2, %arg3 : memref<1x32x60x60xf16, {order = #NHWC, strides = [230400, 1, 3840, 64]}, [@CMX_NN, 0]>, memref<1x32x60x60xf16, {order = #NHWC, strides = [230400, 1, 3840, 64]}, [@CMX_NN, 0]>) outputs(%alloc : memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]>
-          %2 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 193622 : i64} <{is_zero_offset_weights_table, kernel_padding = #VPU.Padding<left = 2 : i64, right = 2 : i64, top = 2 : i64, bottom = 2 : i64>, kernel_size = [5, 5], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<CONV>}> input(%1 : memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]>) weights(%arg4 : memref<64x64x5x5xf16, #NHWC, [@CMX_NN, 0]>) weight_table(%arg5 : memref<64x1x1x4xsi32, [@CMX_NN, 0]>) parent_input(%1 : memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]>) parent_output(%alloc_17 : memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]>) outputs(%alloc_17 : memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]> variants : {
+          %2 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 193622 : i64, resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{is_zero_offset_weights_table, kernel_padding = #VPU.Padding<left = 2 : i64, right = 2 : i64, top = 2 : i64, bottom = 2 : i64>, kernel_size = [5, 5], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<CONV>}> input(%1 : memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]>) weights(%arg4 : memref<64x64x5x5xf16, #NHWC, [@CMX_NN, 0]>) weight_table(%arg5 : memref<64x1x1x4xsi32, [@CMX_NN, 0]>) parent_input(%1 : memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]>) parent_output(%alloc_17 : memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]>) outputs(%alloc_17 : memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]> variants : {
             DPUTask {inEnd = [59, 59, 63], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, outEnd = [59, 59, 63], outStart = [0, 0, 0], pad = #VPU.Padding<left = 2 : i64, right = 2 : i64, top = 2 : i64, bottom = 2 : i64>}
           } PPE : {
             PPETask {ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = -3.4028234663852886E+38 : f64, clamp_high = 3.4028234663852886E+38 : f64, scale = 1.000000e+00 : f64, prelu_alpha = [1.000000e+00], bias = 0.000000e+00 : f64, adder = 0.000000e+00 : f64>}
@@ -164,7 +164,7 @@ module @Test attributes {config.arch = #config.arch_kind<NPU40XX>, config.compil
           async.yield %1 : memref<64x64x3x3xf16, #NHWC, [@CMX_NN, 0]>
         }
         %token_46, %bodyResults_47 = async.execute [%token_24, %token_42, %token_44] (%bodyResults_25 as %arg2: !async.value<memref<64x1x1x4xsi32, [@CMX_NN, 0]>>, %bodyResults_43 as %arg3: !async.value<memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]>>, %bodyResults_45 as %arg4: !async.value<memref<64x64x3x3xf16, #NHWC, [@CMX_NN, 0]>>) -> !async.value<memref<1x64x60x60xf32, [@CMX_NN, 0]>> attributes {VPUIP.executor = @DPU, "async-deps-index" = 14 : i64, cycleCost = 1 : i64} {
-          %1 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 89942 : i64} <{is_superdense, is_zero_offset_weights_table, kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, kernel_size = [3, 3], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<CONV>}> input(%arg3 : memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]>) weights(%arg4 : memref<64x64x3x3xf16, #NHWC, [@CMX_NN, 0]>) weight_table(%arg2 : memref<64x1x1x4xsi32, [@CMX_NN, 0]>) parent_input(%arg3 : memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]>) parent_output(%alloc_19 : memref<1x64x60x60xf32, [@CMX_NN, 0]>) outputs(%alloc_19 : memref<1x64x60x60xf32, [@CMX_NN, 0]>) -> memref<1x64x60x60xf32, [@CMX_NN, 0]> variants : {
+          %1 = VPUIP.NCEClusterTask {minimumHardwareExecutionCost = 89942 : i64, resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{is_superdense, is_zero_offset_weights_table, kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, kernel_size = [3, 3], kernel_strides = [1, 1], mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>, task_type = #VPUIP.nce_task_type<CONV>}> input(%arg3 : memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]>) weights(%arg4 : memref<64x64x3x3xf16, #NHWC, [@CMX_NN, 0]>) weight_table(%arg2 : memref<64x1x1x4xsi32, [@CMX_NN, 0]>) parent_input(%arg3 : memref<1x64x60x60xf16, #NHWC, [@CMX_NN, 0]>) parent_output(%alloc_19 : memref<1x64x60x60xf32, [@CMX_NN, 0]>) outputs(%alloc_19 : memref<1x64x60x60xf32, [@CMX_NN, 0]>) -> memref<1x64x60x60xf32, [@CMX_NN, 0]> variants : {
             DPUTask {inEnd = [59, 59, 63], inStart = [0, 0, 0], mpe_mode = #VPU.mpe_mode<CUBOID_8x16>, outEnd = [59, 59, 63], outStart = [0, 0, 0], pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>}
           } PPE : {
             PPETask {ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = -3.4028234663852886E+38 : f64, clamp_high = 3.4028234663852886E+38 : f64, scale = 1.000000e+00 : f64, prelu_alpha = [1.000000e+00], bias = 0.000000e+00 : f64, adder = 0.000000e+00 : f64>}
@@ -210,10 +210,13 @@ module @Test attributes {config.arch = #config.arch_kind<NPU40XX>, config.compil
     auto dmaCount = dmaPorts.getCount();
 
     // init schedule
+    ComputeRegionsSchedule emptyComputeRegionsSchedule;
+    ComputeRegionVec emptyLoopRegions;
     FeasibleMemoryScheduler initSchedule(memKind, secondLvlMemKind, liveRange, depsInfo, log, scan, arch, vpuDev,
                                          costModel, tileCount, dmaCount, /*enableScheduleStatistics*/ false,
                                          /*optimizeFragmentation*/ true,
-                                         /*activelySpillForPrefetching*/ false);
+                                         /*activelySpillForPrefetching*/ false, std::move(emptyComputeRegionsSchedule),
+                                         std::move(emptyLoopRegions));
     auto initScheduledOps = initSchedule.generateSchedule();
     const auto initRes = initScheduledOps.back().cycleEnd_;
 
@@ -225,20 +228,27 @@ module @Test attributes {config.arch = #config.arch_kind<NPU40XX>, config.compil
     depsInfo = AsyncDepsInfo{func};
     LinearScan<mlir::Value, LinearScanHandler> defaultPrefetchScan(maxSize.count(), reservedMemVec, alignment);
     auto defaultLiveRange = MemLiveRangeInfoMemType<VPU::MemoryKind::CMX_NN>(func, aliasesInfo);
+    ComputeRegionsSchedule emptyDefaultComputeRegionsSchedule;
+    ComputeRegionVec emptyDefaultRegions;
     FeasibleMemoryScheduler schedulerDefault(memKind, secondLvlMemKind, defaultLiveRange, depsInfo, log,
                                              defaultPrefetchScan, arch, vpuDev, costModel, tileCount, dmaCount,
                                              /*enableScheduleStatistics*/ false, /*optimizeFragmentation*/ true,
-                                             /*activelySpillForPrefetching*/ false);
+                                             /*activelySpillForPrefetching*/ false,
+                                             std::move(emptyDefaultComputeRegionsSchedule),
+                                             std::move(emptyDefaultRegions));
     const auto defaultRes = schedulerDefault.generateSchedule().back().cycleEnd_;
 
     // prefetching - actively spilling
     depsInfo = AsyncDepsInfo{func};
     LinearScan<mlir::Value, LinearScanHandler> aggressivePrefetchScan(maxSize.count(), reservedMemVec, alignment);
     auto aggressiveLiveRange = MemLiveRangeInfoMemType<VPU::MemoryKind::CMX_NN>(func, aliasesInfo);
+    ComputeRegionsSchedule emptyAggressiveComputeRegionsSchedule;
+    ComputeRegionVec emptyAggressiveRegions;
     FeasibleMemoryScheduler schedulerWithAggressivePrefetch(
             memKind, secondLvlMemKind, aggressiveLiveRange, depsInfo, log, aggressivePrefetchScan, arch, vpuDev,
             costModel, tileCount, dmaCount, /*enableScheduleStatistics*/ false, /*optimizeFragmentation*/ true,
-            /*activelySpillForPrefetching*/ true);
+            /*activelySpillForPrefetching*/ true, std::move(emptyAggressiveComputeRegionsSchedule),
+            std::move(emptyAggressiveRegions));
     const auto activelySpillRes = schedulerWithAggressivePrefetch.generateSchedule().back().cycleEnd_;
 
     // The initial scheduler, default prefetch and actively spilling prefetch should give different results

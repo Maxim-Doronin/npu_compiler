@@ -46,21 +46,19 @@ if(NOT TARGET gtest)
     endif()
 endif()
 
+target_link_libraries(${FUNCTIONAL_TARGET}
+    PRIVATE
+        openvino_intel_npu_compiler_loader
+        gtest
+        gtest_main
+        LLVMSupport
+        openvino::runtime
+)
 if(WIN32)
     # Shlwapi.lib is to check file existence.
     target_link_libraries(${FUNCTIONAL_TARGET}
-        PUBLIC
-            ${LINK_COMPILER_LIBRARY}
-            gtest
-            gtest_main
+        PRIVATE
             Shlwapi.lib
-    )
-else()
-    target_link_libraries(${FUNCTIONAL_TARGET}
-        PUBLIC
-            ${LINK_COMPILER_LIBRARY}
-            gtest
-            gtest_main
     )
 endif()
 
@@ -75,18 +73,9 @@ target_include_directories(${FUNCTIONAL_TARGET}
         ${LLVM_INCLUDE_DIRS}
 )
 
-target_link_libraries(${FUNCTIONAL_TARGET} PRIVATE LLVMSupport)
-
-target_include_directories(${FUNCTIONAL_TARGET}
-    PUBLIC
-        "${CMAKE_SOURCE_DIR}/src/core/include"
-)
-
-ov_link_system_libraries(${FUNCTIONAL_TARGET}
-    PUBLIC
-        openvino::runtime)
-
 ov_add_api_validator_post_build_step(TARGET vpuxCompilerL0Test)
 
-# Install functional test to component
-install_target_with_debug_files(vpuxCompilerL0Test ${INSTALL_DESTINATION} ${INSTALL_COMPONENT})
+# Install functional test to CiD component
+if(BUILD_COMPILER_FOR_DRIVER)
+    install_target_with_debug_files(vpuxCompilerL0Test ${INSTALL_DESTINATION} ${INSTALL_COMPONENT})
+endif()

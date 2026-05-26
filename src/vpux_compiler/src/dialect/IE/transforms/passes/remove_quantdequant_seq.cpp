@@ -6,6 +6,8 @@
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/image.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
@@ -101,15 +103,9 @@ void RemoveQuantDequantSeqPass::safeRunOnFunc() {
             if (!mlir::isa_and_nonnull<IE::QuantizeOp>(parentOp)) {
                 return;
             }
-            bool visitedParentOp = false;
-            for (auto [operand, quantOp] : quantizeOps) {
-                if (quantOp == parentOp) {
-                    visitedParentOp = true;
-                }
-            }
-            if (visitedParentOp == false) {
-                quantizeOps.push_back(std::make_pair(parentOperand, parentOp));
-            }
+            // Always add the operand-quantize pair, even if the quantize op was already seen
+            // This handles cases like Concat(%0, %0) where both inputs come from the same quantize
+            quantizeOps.push_back(std::make_pair(parentOperand, parentOp));
             nestedInterReturnTypesOps.push_back(parentOps);
         }
 
@@ -141,7 +137,10 @@ void RemoveQuantDequantSeqPass::safeRunOnFunc() {
         // Skip QuantizeOp by linking to above op
         for (auto [operand, quantOp] : quantizeOps) {
             operand->set(quantOp->getOperand(0));
-            opsToErase.push_back(quantOp);
+            // Check if already marked for erasure to avoid duplicates
+            if (std::find(opsToErase.begin(), opsToErase.end(), quantOp) == opsToErase.end()) {
+                opsToErase.push_back(quantOp);
+            }
         }
 
         // Infer return types to the chain of ElemTypeInfoOpInterface that sets between QuantizeOp and ConcatOp
@@ -186,6 +185,12 @@ void RemoveQuantDequantSeqPass::safeRunOnFunc() {
                 }
 
                 if (!mlir::isa_and_nonnull<IE::ElemTypeInfoOpInterface, IE::DequantizeOp>(user)) {
+                    return;
+                }
+
+                if (mlir::isa_and_nonnull<IE::InterpolateOp>(user)) {
+                    _log.trace("Found Interpolate user {0} at {1}, stop pattern searching", user->getName(),
+                               user->getLoc());
                     return;
                 }
 

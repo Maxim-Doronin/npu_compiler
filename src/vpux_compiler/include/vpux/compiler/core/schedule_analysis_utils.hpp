@@ -35,6 +35,6 @@ void printSpillingStatistics(Logger log, SpillStats& beforePrefetching, SpillSta
                              SpillStats& afterOptimizations);
 void createTracingJSON(mlir::func::FuncOp& netFunc, MemLiveRangeInfo& liveRangeInfo,
                        LinearScan<mlir::Value, LinearScanHandler>& scan, vpux::AddressType totalMemory,
-                       StringRef fileName = "mallocTraceRaw.json");
+                       const mlir::Location funcLoc, StringRef fileNameTemplate = "mallocTraceRaw_{0}.json");
 
 }  // namespace vpux

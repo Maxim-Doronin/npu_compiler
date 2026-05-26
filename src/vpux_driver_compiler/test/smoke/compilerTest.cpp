@@ -353,7 +353,7 @@ static bool parseCommandLine(int* argc, char*** argv) {
     return true;
 }
 
-std::map<std::string, std::string> parseConfigFile(std::string configFile, char comment = '#') {
+std::map<std::string, std::string> parseConfigFile(const std::string& configFile, char comment = '#') {
     std::map<std::string, std::string> config;
 
     std::ifstream file(configFile);

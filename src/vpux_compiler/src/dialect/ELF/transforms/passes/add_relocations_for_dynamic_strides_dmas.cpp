@@ -30,69 +30,76 @@ public:
 
 private:
     void safeRunOnFunc() final;
-    enum IoType { Input, Output };
     ELF::DmaSymbolOp createDynamicStridesDmaSymbol(ELF::RelocatableOpWithDynamicStridesInterface relocatableOp,
                                                    ELF::DmaSymbolSectionOp targetSection,
-                                                   VPUASM::DeclareBufferOp declareOp, IoType ioType);
+                                                   VPUASM::DeclareBufferOp ioDeclareOp,
+                                                   VPUASM::DeclareBufferOp declareOp, mlir::StringAttr symbolName);
+
+    using RelocItemVector = llvm::SmallVector<int64_t, elf::DMA_SYMBOL_MAX_TENSOR_DIMENSIONS>;
 };
 
 ELF::DmaSymbolOp AddRelocationsForDynamicStridesDmas::createDynamicStridesDmaSymbol(
         ELF::RelocatableOpWithDynamicStridesInterface relocatableOp, ELF::DmaSymbolSectionOp targetSection,
-        VPUASM::DeclareBufferOp declareOp, IoType ioType) {
-    llvm::SmallVector<int64_t, elf::DMA_SYMBOL_MAX_TENSOR_DIMENSIONS> tensorStridesInElements;
-    llvm::SmallVector<int64_t, elf::DMA_SYMBOL_MAX_TENSOR_DIMENSIONS> tensorShapes;
-    llvm::SmallVector<int64_t, elf::DMA_SYMBOL_MAX_TENSOR_DIMENSIONS> dmaStridesInElements;
-    llvm::SmallVector<int64_t, elf::DMA_SYMBOL_MAX_TENSOR_DIMENSIONS> dmaShapes;
-    int64_t dmaSize = 0;
-    auto elemSizeByte = Byte(1);
-
-    auto memrefType = mlir::cast<NDTypeInterface>(declareOp.getBufferType().getMemref());
-    elemSizeByte = Byte(memrefType.getElemTypeSize());
-
-    // DMA symbol defines one more shape and stride then the DMA descriptor since DMA descriptor
-    // flattens one dimension into dst/src_width field. That's why below code updates final dimension
-    // to stride 0 and shape 1.
-    for (auto strideIdx : vpux::irange(elf::DMA_SYMBOL_MAX_TENSOR_DIMENSIONS - 1)) {
-        auto strideValueInElements =
-                relocatableOp.getStrideValue(strideIdx, ioType == IoType::Input).count() / elemSizeByte.count();
-        tensorStridesInElements.push_back(strideValueInElements);
-        dmaStridesInElements.push_back(strideValueInElements);
-    }
-    tensorStridesInElements.push_back(0);
-    dmaStridesInElements.push_back(0);
-
-    for (auto shapeIdx : vpux::irange(elf::DMA_SYMBOL_MAX_TENSOR_DIMENSIONS - 1)) {
-        auto shapeValue = relocatableOp.getShapeValue(shapeIdx, ioType == IoType::Input);
-        dmaShapes.push_back(shapeValue);
-        tensorShapes.push_back(shapeValue);
-    }
-    dmaShapes.push_back(1);
-    tensorShapes.push_back(1);
-
+        VPUASM::DeclareBufferOp ioDeclareOp, VPUASM::DeclareBufferOp declareOp, mlir::StringAttr symbolName) {
     auto ioIndex = declareOp.getBufferType().getLocation().getSectionIndex();
 
-    SmallVector<int64_t> tileOffsets{0, 0, 0, 0, 0, 0};
+    auto dmaBufferType = mlir::cast<NDTypeInterface>(declareOp.getBufferType().getMemref());
+    auto argumentBufferType = mlir::cast<NDTypeInterface>(ioDeclareOp.getBufferType().getMemref());
+    auto dimsOrder = mlir::cast<NDTypeInterface>(declareOp.getBufferType().getMemref()).getDimsOrder();
+    auto dmaBufferStrides = dmaBufferType.getMemStrides();
+    auto dmaBufferShape = dimsOrder.toMemoryOrder(dmaBufferType.getShape());
+    auto argBufferStrides = argumentBufferType.getMemStrides();
+    auto argumentShape = argumentBufferType.getShape();
+    int64_t dmaSize = Byte(dmaBufferType.getElemTypeSize()).count();
+
+    for (auto& argBufferStride : argBufferStrides) {
+        argBufferStride /= argumentBufferType.getElemTypeSize().count();
+    }
+
+    for (auto& dmaBufferStride : dmaBufferStrides) {
+        dmaBufferStride /= dmaBufferType.getElemTypeSize().count();
+    }
+
+    RelocItemVector tileOffsets(elf::DMA_SYMBOL_MAX_TENSOR_DIMENSIONS, 0);
     if (auto offsetsAttr = mlir::dyn_cast_or_null<mlir::ArrayAttr>(declareOp->getAttr(vpux::viewOffsetsAttrName))) {
-        auto dimsOrder = mlir::cast<NDTypeInterface>(declareOp.getBufferType().getMemref()).getDimsOrder();
-        auto permutedStrides = dimsOrder.toMemoryOrder(Shape(parseIntArrayAttr<int64_t>(offsetsAttr)));
-        for (size_t idx = 0; idx < tileOffsets.size() && idx < permutedStrides.size(); idx++) {
-            tileOffsets[idx] = permutedStrides[MemDim(permutedStrides.size() - idx - 1)];
+        auto permutedOffsets = dimsOrder.toMemoryOrder(Shape(parseIntArrayAttr<int64_t>(offsetsAttr)));
+        for (size_t idx = 0; idx < tileOffsets.size() && idx < permutedOffsets.size(); idx++) {
+            tileOffsets[idx] = permutedOffsets[MemDim(permutedOffsets.size() - idx - 1)];
         }
     }
 
-    dmaSize = relocatableOp.getWidthValue(ioType == IoType::Input);
+    RelocItemVector canonicalTensorShapes(elf::DMA_SYMBOL_MAX_TENSOR_DIMENSIONS, 1);
+    RelocItemVector canonicalTensorStrides(elf::DMA_SYMBOL_MAX_TENSOR_DIMENSIONS, 0);
+    RelocItemVector canonicalDmaShapes(elf::DMA_SYMBOL_MAX_TENSOR_DIMENSIONS, 1);
+    RelocItemVector canonicalDmaStrides(elf::DMA_SYMBOL_MAX_TENSOR_DIMENSIONS, 0);
+    RelocItemVector canonicalOffsets(elf::DMA_SYMBOL_MAX_TENSOR_DIMENSIONS, 0);
+
+    ELF::getCanonicalDmaForm(dmaBufferShape, dmaBufferStrides, argumentShape, tileOffsets, canonicalDmaShapes,
+                             canonicalDmaStrides, canonicalOffsets);
+
+    for (size_t idx = 0; idx < argumentShape.size(); idx++) {
+        canonicalTensorShapes[idx] = argumentShape[Dim(argumentShape.size() - 1 - idx)];
+        canonicalTensorStrides[idx] = argBufferStrides[MemDim(argBufferStrides.size() - 1 - idx)].count();
+    }
 
     auto dmaSymbolSectionBuilder = mlir::OpBuilder::atBlockEnd(targetSection.getBlock());
     auto ctx = declareOp->getContext();
-    auto symbolOp = mlir::cast<mlir::SymbolOpInterface>(relocatableOp.getOperation());
     return dmaSymbolSectionBuilder.create<ELF::DmaSymbolOp>(
-            relocatableOp->getLoc(), symbolOp.getNameAttr(), ioIndex, getIntArrayAttr(ctx, tensorShapes),
-            getIntArrayAttr(ctx, tensorStridesInElements), getIntArrayAttr(ctx, tileOffsets),
-            getIntArrayAttr(ctx, dmaShapes), getIntArrayAttr(ctx, dmaStridesInElements), dmaSize);
+            relocatableOp->getLoc(), symbolName, ioIndex, getIntArrayAttr(ctx, canonicalTensorShapes),
+            getIntArrayAttr(ctx, canonicalTensorStrides), getIntArrayAttr(ctx, canonicalOffsets),
+            getIntArrayAttr(ctx, canonicalDmaShapes), getIntArrayAttr(ctx, canonicalDmaStrides), dmaSize);
 }
 
 void AddRelocationsForDynamicStridesDmas::safeRunOnFunc() {
     auto funcOp = getOperation();
+    auto moduleOp = funcOp->getParentOfType<mlir::ModuleOp>();
+    VPUX_THROW_UNLESS(moduleOp, "No module op");
+
+    auto inputBindings = to_small_vector(moduleOp.getRegion().getOps<VPUASM::InputBindingsOp>());
+    auto outputBindings = to_small_vector(moduleOp.getRegion().getOps<VPUASM::OutputBindingsOp>());
+
+    VPUX_THROW_UNLESS(inputBindings.size() == 1, "Expected exactly one InputBindings op");
+    VPUX_THROW_UNLESS(outputBindings.size() == 1, "Expected exactly one OutputBindings op");
 
     auto mainOps = to_small_vector(funcOp.getOps<ELF::MainOp>());
     VPUX_THROW_UNLESS(mainOps.size() == 1, "Expected exactly one ELF mainOp. Got {0}", mainOps.size());
@@ -106,7 +113,22 @@ void AddRelocationsForDynamicStridesDmas::safeRunOnFunc() {
             elfBuilder.getUnknownLoc(), "dmaOutputSymbolsSection",
             ELF::SectionFlagsAttr::VPU_SHF_JIT | ELF::SectionFlagsAttr::VPU_SHF_USEROUTPUT);
 
+    auto getDeclareOpForIo = [&](VPUASM::DeclareBufferOp declareOp) -> VPUASM::DeclareBufferOp {
+        auto index = declareOp.getBufferType().getLocation().getSectionIndex();
+        if (declareOp.getBufferType().getLocation().getSection() == VPURT::BufferSection::NetworkInput) {
+            auto ioDeclares = to_small_vector(inputBindings[0].getRegion().getOps<VPUASM::DeclareBufferOp>());
+            VPUX_THROW_UNLESS(index < ioDeclares.size(), "No such input");
+            return ioDeclares[index];
+        } else {
+            auto ioDeclares = to_small_vector(outputBindings[0].getRegion().getOps<VPUASM::DeclareBufferOp>());
+            VPUX_THROW_UNLESS(index < ioDeclares.size(), "No such output");
+            return ioDeclares[index];
+        }
+    };
+
     ELF::RelocManager relocManager(elfMain);
+    int inputRelocIdx = 0;
+    int outputRelocIdx = 0;
     for (auto targetSection : elfMain.getOps<ELF::ElfSectionInterface>()) {
         // TODO:  E#195185 consider to add interface dedicated for sections that are intended to hold program data, aka
         // should be relocateable?
@@ -120,11 +142,21 @@ void AddRelocationsForDynamicStridesDmas::safeRunOnFunc() {
             if (relocatableOp->getAttr(vpux::stridedInputAttrName)) {
                 auto declareOp =
                         mlir::cast<VPUASM::DeclareBufferOp>(elfMain.lookupSymbol(relocatableOp.getInputSymbol()));
-                auto inputSymbol =
-                        createDynamicStridesDmaSymbol(relocatableOp, dmaInputSymbolSection, declareOp, IoType::Input);
+                auto ioDeclareOp = getDeclareOpForIo(declareOp);
+                // Note that DMA can read from both input and output. Even though OV doesn't allow for network to read
+                // from output node it is possible that, due to compiler optimizations, DMA reading from output buffer
+                // was created. This seems to be especially popular in LLMs with KV cache
+                ELF::DmaSymbolSectionOp section =
+                        (declareOp.getBufferType().getLocation().getSection() == VPURT::BufferSection::NetworkInput)
+                                ? dmaInputSymbolSection
+                                : dmaOutputSymbolSection;
+                std::string symbolName("INPUT_RELOC_");
+                symbolName += std::to_string(inputRelocIdx);
+                inputRelocIdx++;
+                auto inputSymbol = createDynamicStridesDmaSymbol(relocatableOp, section, ioDeclareOp, declareOp,
+                                                                 mlir::StringAttr::get(&getContext(), symbolName));
                 auto newSymRef = mlir::SymbolRefAttr::get(&getContext(), inputSymbol.getSymName());
-                auto inputSymbolName =
-                        mlir::SymbolRefAttr::get(&getContext(), dmaInputSymbolSection.getSymName(), {newSymRef});
+                auto inputSymbolName = mlir::SymbolRefAttr::get(&getContext(), section.getSymName(), {newSymRef});
                 relocs.emplace_back(inputSymbolName, targetSection, 0, ELF::RelocationType::R_VPU_DMA_DESCRIPTOR_INPUT,
                                     0, "DMA descriptor relocation for strided input");
             }
@@ -132,11 +164,18 @@ void AddRelocationsForDynamicStridesDmas::safeRunOnFunc() {
             if (relocatableOp->getAttr(vpux::stridedOutputAttrName)) {
                 auto declareOp =
                         mlir::cast<VPUASM::DeclareBufferOp>(elfMain.lookupSymbol(relocatableOp.getOutputSymbol()));
-                auto outputSymbol =
-                        createDynamicStridesDmaSymbol(relocatableOp, dmaOutputSymbolSection, declareOp, IoType::Output);
+                auto ioDeclareOp = getDeclareOpForIo(declareOp);
+                ELF::DmaSymbolSectionOp section =
+                        (declareOp.getBufferType().getLocation().getSection() == VPURT::BufferSection::NetworkInput)
+                                ? dmaInputSymbolSection
+                                : dmaOutputSymbolSection;
+                std::string symbolName("OUTPUT_RELOC_");
+                symbolName += std::to_string(outputRelocIdx);
+                outputRelocIdx++;
+                auto outputSymbol = createDynamicStridesDmaSymbol(relocatableOp, section, ioDeclareOp, declareOp,
+                                                                  mlir::StringAttr::get(&getContext(), symbolName));
                 auto newSymRef = mlir::SymbolRefAttr::get(&getContext(), outputSymbol.getSymName());
-                auto outputSymbolName =
-                        mlir::SymbolRefAttr::get(&getContext(), dmaOutputSymbolSection.getSymName(), {newSymRef});
+                auto outputSymbolName = mlir::SymbolRefAttr::get(&getContext(), section.getSymName(), {newSymRef});
                 relocs.emplace_back(outputSymbolName, targetSection, 0,
                                     ELF::RelocationType::R_VPU_DMA_DESCRIPTOR_OUTPUT, 0,
                                     "DMA descriptor relocation for strided output");

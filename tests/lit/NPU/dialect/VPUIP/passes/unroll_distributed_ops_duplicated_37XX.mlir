@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --unroll-distributed-ops --canonicalize  %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --unroll-distributed-ops --canonicalize  %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 
 // SW Layer Unrolling
@@ -62,14 +62,16 @@ func.func @UnrollSWOpInterface(%input0: !Input_DDR, %output: !Output_DDR) -> !Ou
 }
 
 
-//CHECK:    VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier) {
-//CHECK:       %results = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_MVN inputs(%4 as [[ARG_2:%[^:]+]]: memref<1x4x512x1xf16, #NCWH, [@CMX_NN, 0]>) outputs(%8 as [[ARG_3:%[^:]+]]: memref<1x4x512x1xf16, #NCWH, [@CMX_NN, 0]>) on tile 0 -> memref<1x4x512x1xf16, #NCWH, [@CMX_NN, 0]>{
+//CHECK:    [[BAR_0:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+//CHECK:    [[BAR_1:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
+//CHECK:    VPURT.Task waits([[BAR_0]] : !VPURT.Barrier) updates([[BAR_1]] : !VPURT.Barrier) {
+//CHECK:       VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_MVN inputs({{%.+}} as [[ARG_2:%[^:]+]]: memref<1x4x512x1xf16, #NCWH, [@CMX_NN, 0]>) outputs({{%.+}} as [[ARG_3:%[^:]+]]: memref<1x4x512x1xf16, #NCWH, [@CMX_NN, 0]>) on tile 0 -> memref<1x4x512x1xf16, #NCWH, [@CMX_NN, 0]>{
 //CHECK:        VPUIP.SW.Kernel.run {attrs = [false, true, 1.0013580322265625E-5]}([[ARG_2]], [[ARG_3]]) : memref<1x4x512x1xf16, #NCWH, [@CMX_NN, 0]>, memref<1x4x512x1xf16, #NCWH, [@CMX_NN, 0]>
 //CHECK:      }
 //CHECK:    }
 
-//CHECK:    VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier) {
-//CHECK:       %results = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_MVN inputs(%5 as [[ARG_2:%[^:]+]]: memref<1x4x512x1xf16, #NCWH, [@CMX_NN, 1]>) outputs(%9 as [[ARG_3:%[^:]+]]: memref<1x4x512x1xf16, #NCWH, [@CMX_NN, 1]>) on tile 1 -> memref<1x4x512x1xf16, #NCWH, [@CMX_NN, 1]>{
+//CHECK:    VPURT.Task waits([[BAR_0]] : !VPURT.Barrier) updates([[BAR_1]] : !VPURT.Barrier) {
+//CHECK:       VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_MVN inputs({{%.+}} as [[ARG_2:%[^:]+]]: memref<1x4x512x1xf16, #NCWH, [@CMX_NN, 1]>) outputs({{%.+}} as [[ARG_3:%[^:]+]]: memref<1x4x512x1xf16, #NCWH, [@CMX_NN, 1]>) on tile 1 -> memref<1x4x512x1xf16, #NCWH, [@CMX_NN, 1]>{
 //CHECK:        VPUIP.SW.Kernel.run {attrs = [false, true, 1.0013580322265625E-5]}([[ARG_2]], [[ARG_3]]) : memref<1x4x512x1xf16, #NCWH, [@CMX_NN, 1]>, memref<1x4x512x1xf16, #NCWH, [@CMX_NN, 1]>
 //CHECK:      }
 //CHECK:    }

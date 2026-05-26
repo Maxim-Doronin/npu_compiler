@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --mlir-print-elementsattrs-with-hex-if-larger=-1 --init-compiler="vpu-arch=%arch%" --convert-strided-slice-to-conv %s | FileCheck %s
-// REQUIRES: arch-NPU50XX
-// COM: F8 is only supported on NPU50+, no need to run these tests on all arches.
+// RUN: vpux-opt --split-input-file --mlir-print-elementsattrs-with-hex-if-larger=-1 --init-compiler="platform=%platform%" --convert-strided-slice-to-conv %s | FileCheck %s
+// REQUIRES: platform-NPU5010
+// COM: F8 is only supported on NPU50+, no need to run these tests on all platforms.
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 

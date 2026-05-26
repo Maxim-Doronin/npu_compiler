@@ -436,17 +436,8 @@ OverlapDistributionParams vpux::VPU::getOverlappedDistributionParameters(
 
         const bool opHasConsumerWithSETable = currentNceOpHasSETable && !origTensorHasSETable;
         // E#112803 support for SEP should be added
-        // E#173578 restricting to child op DepthConvolution.
-        // For other ops, it is possible to cause WLM rollback, caused by scheduler.
-        auto isAffectingWLM = !mlir::isa_and_nonnull<VPU::NCEDepthConvolutionOp>(nceOp);
 
-        auto arch = config::getArch(nceOp.getOperation());
-        // E#173578 WLM rollback happens only for NPU4
-        if (arch >= config::ArchKind::NPU50XX) {
-            isAffectingWLM = false;
-        }
-
-        if (opHasConsumerWithSETable && (nceOpCandidates.size() != 1 || isAffectingWLM)) {
+        if (opHasConsumerWithSETable && (nceOpCandidates.size() != 1)) {
             continue;
         }
 

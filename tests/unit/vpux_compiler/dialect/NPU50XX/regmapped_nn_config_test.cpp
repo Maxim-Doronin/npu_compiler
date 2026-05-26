@@ -53,7 +53,7 @@ TEST_F(NPUReg50XX_NNRTCfgTest, NNRTDpuPerfModeTest) {
             static_cast<nn_public::VpuHWPStatMode>(actual.read<vpux::NPUReg50XX::Fields::NNRTCfg_dpu_perf_mode>());
     EXPECT_EQ(actualValue, value);
 
-    reference.shv_rt_configs.dpu_perf_mode = value;
+    reference.shv_rt_configs.dpu_perf_mode = static_cast<uint8_t>(value);
     ASSERT_TRUE(isContentEqual());
 }
 

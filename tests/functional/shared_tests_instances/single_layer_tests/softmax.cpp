@@ -11,13 +11,13 @@ namespace ov::test {
 
 class SoftMaxLayerTestCommon : public subgraph::SoftMaxLayerTest, virtual public VpuOv2LayerTest {
     void configure_model() override {
-        configuration[ov::intel_npu::compilation_mode_params.name()] = "convert-precision-to-fp16=false";
+        configuration[ov::intel_npu::compilation_mode_params.name()] = "disabled-passes=convert-precision-to-fp16";
     }
 };
 class ShaveCodeGenSoftMaxLayerTestCommon : public subgraph::SoftMaxLayerTest, virtual public VpuOv2LayerTest {
     void configure_model() override {
         configuration[ov::intel_npu::compilation_mode_params.name()] =
-                "enable-shave-code-gen=true convert-precision-to-fp16=false";
+                "enable-shave-code-gen=true disabled-passes=convert-precision-to-fp16";
     }
 };
 

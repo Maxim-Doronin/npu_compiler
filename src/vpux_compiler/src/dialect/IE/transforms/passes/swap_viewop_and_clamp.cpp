@@ -88,8 +88,7 @@ bool parentCanFuseClamp(mlir::Operation* parentOp, IE::ClampOp origOp, Logger lo
         const auto logCb = [&](const formatv_object_base& msg) {
             log.trace("{0}", msg.str());
         };
-        // TODO: #83187 use isSupportedClampOp instead
-        if (!layerWithPostOp.hasPPE() && layerWithPostOp.isSupportedPostOp(origOp, logCb)) {
+        if (layerWithPostOp.getClampAttr() == nullptr && layerWithPostOp.isSupportedClampOp(origOp, logCb)) {
             return true;
         }
     }

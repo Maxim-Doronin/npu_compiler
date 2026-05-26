@@ -245,6 +245,22 @@ VFPipelineContainer PipeliningVFScheduling::getPipelining(
         auto isolatedCost = opIndexWithCost.cost.has_value() ? opIndexWithCost.cost.value()
                                                              : costFunction->getStrategyCost(operation, costParameters);
 
+        if (auto viewOp = mlir::dyn_cast<VPU::TilingViewLikeOpInterface>(operation)) {
+            // The view op has different input and output tile size, which means it will be converted to copy
+            // after tiling. And the copy should be taken into account when calculating the cost of the VF.
+            // Currently only view ops like slice ops will meet this condition. And the Spill write and read DMA
+            // pairs will be further optimized into a single CMX2CMX DMA instead.
+            auto copyCost = getViewLikeOpDMACost(operation, config, tilingInfo, tileIdx, costFunction);
+            if (copyCost.has_value()) {
+                // The view op DMA is an intermediate copy within a tile's compute pipeline and should not be
+                // marked as isLast. Unlike output spill DMAs, subsequent tiles' input DMAs must serialize after
+                // the view DMA on the DMA engine.
+                pipelinedStructure.addDMA(operation, tileIdx, copyCost.value());
+            }
+            ++executedOpSize;
+            continue;
+        }
+
         if (isolatedCost >= VPU::INVALID_COST_BASE) {
             return VFPipelineContainer();
         }

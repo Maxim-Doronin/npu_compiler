@@ -15,17 +15,21 @@ endif()
 file(GLOB_RECURSE SRC_FILES *.cpp)
 add_npu_library(${TARGET_NAME}
     ${SRC_FILES}
-    LINK_LIBS PRIVATE
+    LINK_LIBS
+      PUBLIC
         npu_compiler_core
-        npu_compiler_utils
+        npu_compiler_dialect_ie
         npu_compiler_dialect_net
-    LINK_LIBS PUBLIC
-        openvino::npu_ops
-    INCLUDES
-        $<TARGET_PROPERTY:openvino::npu_al,INTERFACE_INCLUDE_DIRECTORIES>)
-
-target_link_libraries(${TARGET_NAME}
-    PUBLIC
+        npu_core_utils
         npu_ov_utils
-        npu_llvm_utils
+        npu_logger
+        openvino::npu_ops
+      PRIVATE
+        npu_compiler_utils
+        npu_compiler_dialect_const
+        npu_compiler_dialect_core
+        npu_compiler_dialect_ie_utils
+        npu_ov_utils
+        openvino::core::dev
+        openvino::npu_al
 )

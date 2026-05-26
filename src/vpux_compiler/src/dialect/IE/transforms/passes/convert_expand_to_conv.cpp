@@ -12,7 +12,9 @@
 #include "vpux/compiler/dialect/IE/utils/expand_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/pooling_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
+#include "vpux/compiler/dialect/IE/utils/reshape_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/const/utils/affine_reshape.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/strings.hpp"
@@ -37,24 +39,28 @@ Shape calculateWeightsShape(ShapeRef expandInShape, ShapeRef expandOutShape, con
     return Shape{kernelOutputChannels, kernelInputChannels, kernelY, kernelX};
 }
 
-IE::AffineReshapeOp buildReshape(mlir::Location loc, mlir::Value input, ArrayRef<int64_t> targetShape,
-                                 mlir::PatternRewriter& rewriter) {
+mlir::Value buildReshape(mlir::Location loc, mlir::Value input, ArrayRef<int64_t> targetShape,
+                         mlir::PatternRewriter& rewriter) {
     const auto ctx = rewriter.getContext();
     const auto srcType = mlir::cast<vpux::NDTypeInterface>(input.getType());
     const auto dstType = srcType.changeShape(ShapeRef(targetShape));
-    SmallVector<SmallVector<int64_t>> reassociationMap(targetShape.size());
-    for (const auto& dimIdx : irange(reassociationMap.size())) {
-        reassociationMap[dimIdx].push_back(dimIdx);
-    }
-    const auto reassociationMapAttr = getIntArrayOfArray(ctx, reassociationMap);
     const auto targetShapeAttr = getIntArrayAttr(ctx, targetShape);
-    auto reshapeOp = rewriter.create<IE::AffineReshapeOp>(loc, dstType, input, reassociationMapAttr, targetShapeAttr);
-
-    return reshapeOp;
+    const auto inShape = srcType.getShape().raw();
+    const auto inOrder = DimsOrder::fromValue(input);
+    const auto reassociationMap = IE::getReassociationMap(inShape, targetShape);
+    if (mlir::succeeded(reassociationMap)) {
+        const auto outputLayout = Const::inferAffineReshapeOutputLayout(
+                inOrder.toPermutation(), getIntArrayOfArray(ctx, reassociationMap.value()));
+        if (outputLayout.has_value() && outputLayout.value() == dstType.getDimsOrder()) {
+            return rewriter.create<IE::AffineReshapeOp>(
+                    loc, dstType, input, getIntArrayOfArray(ctx, reassociationMap.value()), targetShapeAttr);
+        }
+    }
+    return rewriter.create<IE::ShapeCastOp>(loc, dstType, input, targetShapeAttr);
 }
 
-IE::AffineReshapeOp reshapeInput(mlir::Location loc, mlir::Value input, ShapeRef origShape,
-                                 const int64_t channelAlignment, mlir::PatternRewriter& rewriter) {
+mlir::Value reshapeInput(mlir::Location loc, mlir::Value input, ShapeRef origShape, const int64_t channelAlignment,
+                         mlir::PatternRewriter& rewriter) {
     const auto batch = origShape[Dims4D::Act::N];
     const auto channels = origShape[Dims4D::Act::C] * channelAlignment;
     const auto height = origShape[Dims4D::Act::H];
@@ -65,8 +71,8 @@ IE::AffineReshapeOp reshapeInput(mlir::Location loc, mlir::Value input, ShapeRef
     return buildReshape(reshapedLoc, input, ArrayRef(targetShape), rewriter);
 }
 
-IE::AffineReshapeOp reshapeInputFromHeightToChannel(mlir::Location loc, mlir::Value input, ShapeRef origShape,
-                                                    const int64_t channelAlignment, mlir::PatternRewriter& rewriter) {
+mlir::Value reshapeInputFromHeightToChannel(mlir::Location loc, mlir::Value input, ShapeRef origShape,
+                                            const int64_t channelAlignment, mlir::PatternRewriter& rewriter) {
     const auto batch = 1;
     const auto channels = origShape[Dims4D::Act::C] * channelAlignment;
     const auto height = origShape[Dims4D::Act::N] * origShape[Dims4D::Act::H] / channelAlignment;
@@ -77,8 +83,8 @@ IE::AffineReshapeOp reshapeInputFromHeightToChannel(mlir::Location loc, mlir::Va
     return buildReshape(reshapedLoc, input, ArrayRef(targetShape), rewriter);
 }
 
-IE::AffineReshapeOp padHReshapeInput(mlir::Location loc, mlir::Value input, ShapeRef origShape,
-                                     const int64_t channelAlignment, mlir::PatternRewriter& rewriter) {
+mlir::Value padHReshapeInput(mlir::Location loc, mlir::Value input, ShapeRef origShape, const int64_t channelAlignment,
+                             mlir::PatternRewriter& rewriter) {
     const auto origWidth = origShape[Dims4D::Act::W];
     if (origWidth % channelAlignment == 0) {
         return reshapeInput(loc, input, origShape, channelAlignment, rewriter);
@@ -90,7 +96,7 @@ IE::AffineReshapeOp padHReshapeInput(mlir::Location loc, mlir::Value input, Shap
     // reshape as a one dimensional vector
     const auto totalElemSize = origShape.totalSize();
     const SmallVector<int64_t> targetShapeLinear = {1, 1, totalElemSize, 1};
-    auto linearReshapeOp = buildReshape(loc, input, ArrayRef(targetShapeLinear), rewriter);
+    auto linearReshaped = buildReshape(loc, input, ArrayRef(targetShapeLinear), rewriter);
 
     const auto origWidthPadded = origWidth + channelAlignment - (origWidth % channelAlignment);
     const auto totalPaddedElemSize = origBatch * origChannels * origHeight * origWidthPadded;
@@ -100,15 +106,15 @@ IE::AffineReshapeOp padHReshapeInput(mlir::Location loc, mlir::Value input, Shap
     auto padEnd = mlir::SmallVector<int64_t>(origShape.size(), 0);
     padEnd[vpux::Dims4D::Act::H.ind()] = totalPaddedElemSize - totalElemSize;
     const auto ctx = rewriter.getContext();
-    auto padExpand = rewriter.create<IE::ExpandOp>(appendLoc(loc, "pad"), linearReshapeOp.getOutput(),
+    auto padExpand = rewriter.create<IE::ExpandOp>(appendLoc(loc, "pad"), linearReshaped,
                                                    getIntArrayAttr(ctx, padBegin), getIntArrayAttr(ctx, padEnd));
 
     const SmallVector<int64_t> targetPaddedShape = {origBatch, origChannels, origHeight, origWidthPadded};
     return reshapeInput(loc, padExpand.getOutput(), ShapeRef(targetPaddedShape), channelAlignment, rewriter);
 }
 
-IE::AffineReshapeOp padWReshapeInput(mlir::Location loc, mlir::Value input, ShapeRef origShape,
-                                     const int64_t channelAlignment, mlir::PatternRewriter& rewriter) {
+mlir::Value padWReshapeInput(mlir::Location loc, mlir::Value input, ShapeRef origShape, const int64_t channelAlignment,
+                             mlir::PatternRewriter& rewriter) {
     // Expand to the padded dimension
     SmallVector<int64_t> padBegin(origShape.size(), 0);
     SmallVector<int64_t> padEnd(origShape.size(), 0);
@@ -121,14 +127,14 @@ IE::AffineReshapeOp padWReshapeInput(mlir::Location loc, mlir::Value input, Shap
     return reshapeInput(loc, expandOp, getShape(expandOp), channelAlignment, rewriter);
 }
 
-IE::AffineReshapeOp reshapeOutput(mlir::Location loc, mlir::Value convOutput, ShapeRef outShape,
-                                  mlir::PatternRewriter& rewriter) {
+mlir::Value reshapeOutput(mlir::Location loc, mlir::Value convOutput, ShapeRef outShape,
+                          mlir::PatternRewriter& rewriter) {
     const auto reshapedLoc = appendLoc(loc, "reshape output for DPU expand");
     return buildReshape(reshapedLoc, convOutput, ArrayRef(outShape.raw()), rewriter);
 }
 
-IE::AffineReshapeOp unpadHReshapeOutput(mlir::Location loc, ShapeRef origOutShape, mlir::Value convOutput,
-                                        const int64_t channelAlignment, mlir::PatternRewriter& rewriter) {
+mlir::Value unpadHReshapeOutput(mlir::Location loc, ShapeRef origOutShape, mlir::Value convOutput,
+                                const int64_t channelAlignment, mlir::PatternRewriter& rewriter) {
     const auto origWidth = origOutShape[Dims4D::Act::W];
 
     if (origWidth % channelAlignment == 0) {
@@ -143,7 +149,7 @@ IE::AffineReshapeOp unpadHReshapeOutput(mlir::Location loc, ShapeRef origOutShap
     // reshape as a one dimensional vector
     const auto totalPaddedElemSize = origBatch * origChannels * origHeight * paddedWidth;
     const SmallVector<int64_t> targetShapeLinear = {1, 1, totalPaddedElemSize, 1};
-    auto linearReshapeOp = buildReshape(loc, convOutput, ArrayRef(targetShapeLinear), rewriter);
+    auto linearReshaped = buildReshape(loc, convOutput, ArrayRef(targetShapeLinear), rewriter);
 
     // remove the padded memory allocated
     const auto totalElemSize = origBatch * origChannels * origHeight * origWidth;
@@ -151,14 +157,14 @@ IE::AffineReshapeOp unpadHReshapeOutput(mlir::Location loc, ShapeRef origOutShap
     auto staticSizes = mlir::SmallVector<int64_t>(origOutShape.size(), 1);
     staticSizes[vpux::Dims4D::Act::H.ind()] = totalElemSize;
     const auto ctx = rewriter.getContext();
-    auto sliceOp = rewriter.create<IE::SliceOp>(appendLoc(loc, "slice_out"), linearReshapeOp.getOutput(),
+    auto sliceOp = rewriter.create<IE::SliceOp>(appendLoc(loc, "slice_out"), linearReshaped,
                                                 getIntArrayAttr(ctx, staticOffsets), getIntArrayAttr(ctx, staticSizes));
 
     return reshapeOutput(loc, sliceOp.getResult(), origOutShape, rewriter);
 }
 
-IE::AffineReshapeOp unpadWReshapeOutput(mlir::Location loc, ShapeRef origOutShape, mlir::Value convOutput,
-                                        mlir::PatternRewriter& rewriter) {
+mlir::Value unpadWReshapeOutput(mlir::Location loc, ShapeRef origOutShape, mlir::Value convOutput,
+                                mlir::PatternRewriter& rewriter) {
     auto outShape = origOutShape.toValues();
     const auto convShape = getShape(convOutput);
     outShape[Dims4D::Act::W] = convShape[Dims4D::Act::C] * convShape[Dims4D::Act::W] / outShape[Dims4D::Act::C];
@@ -166,8 +172,8 @@ IE::AffineReshapeOp unpadWReshapeOutput(mlir::Location loc, ShapeRef origOutShap
     return reshapeOutput(loc, convOutput, outShape, rewriter);
 }
 
-IE::AffineReshapeOp channelToHeightReshapeOutput(mlir::Location loc, ShapeRef origOutShape, mlir::Value convOutput,
-                                                 mlir::PatternRewriter& rewriter) {
+mlir::Value channelToHeightReshapeOutput(mlir::Location loc, ShapeRef origOutShape, mlir::Value convOutput,
+                                         mlir::PatternRewriter& rewriter) {
     return reshapeOutput(loc, convOutput, origOutShape, rewriter);
 }
 
@@ -582,20 +588,19 @@ mlir::LogicalResult ExpandQuantizeSliceRewriter::matchAndRewrite(IE::ExpandOp or
                                   convolutionAlignment, rewriter);
 
     auto convOutElemType = mlir::cast<vpux::NDTypeInterface>(patternLastOp->getResult(0).getType()).getElementType();
-    auto convOp = buildConvolution(origOp, reshapeIn.getOutput(), weights, convOutElemType, rewriter);
+    auto convOp = buildConvolution(origOp, reshapeIn, weights, convOutElemType, rewriter);
     auto reshapeOut = unpadHReshapeOutput(origOp.getLoc(), expandPatternOutShape, convOp.getOutput(),
                                           convolutionAlignment, rewriter);
 
     if (!expandOutChannelsReduction) {
         // only substitute the identified pattern
-        rewriter.replaceOp(patternLastOp, reshapeOut.getOutput());
+        rewriter.replaceOp(patternLastOp, reshapeOut);
     } else {
         // Apply the reduction of expanded channels to 4 and therefore also substitute the final sliceOp
         auto staticOffsetsAttr = sliceOp.getStaticOffsetsAttr();
         auto staticSizesAttr = sliceOp.getStaticSizesAttr();
         const auto sliceLoc = appendLoc(sliceOp.getLoc(), "replace output slice op");
-        auto newSliceOp =
-                rewriter.create<IE::SliceOp>(sliceLoc, reshapeOut.getOutput(), staticOffsetsAttr, staticSizesAttr);
+        auto newSliceOp = rewriter.create<IE::SliceOp>(sliceLoc, reshapeOut, staticOffsetsAttr, staticSizesAttr);
         rewriter.replaceOp(sliceOp, newSliceOp.getResult());
     }
 
@@ -636,7 +641,7 @@ mlir::LogicalResult QuantizedExpandRewriter::matchAndRewrite(IE::ExpandOp origOp
     auto weights = composeWeights(origOp.getLoc(), expandInShape, expandOutShape, expandInType.getElementType(),
                                   convolutionAlignment, rewriter);
     auto convOutElemType = getConvolutionOutputType(origOp);
-    auto convOp = buildConvolution(origOp, reshapeIn.getOutput(), weights, convOutElemType, rewriter);
+    auto convOp = buildConvolution(origOp, reshapeIn, weights, convOutElemType, rewriter);
     auto reshapeOut =
             unpadHReshapeOutput(origOp.getLoc(), expandOutShape, convOp.getOutput(), convolutionAlignment, rewriter);
     const auto quantCastOut = quantCastOutput(origOp, reshapeOut, rewriter);
@@ -689,7 +694,7 @@ mlir::LogicalResult DPUExpandRewriter::matchAndRewrite(IE::ExpandOp origOp, mlir
                                   convolutionAlignment, rewriter);
     const auto expandOutType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
     const auto convOutElemType = expandOutType.getElementType();
-    auto convOp = buildConvolution(origOp, reshapeIn.getOutput(), weights, convOutElemType, rewriter);
+    auto convOp = buildConvolution(origOp, reshapeIn, weights, convOutElemType, rewriter);
 
     auto reshapeOut = (reshapeMode == RESHAPE_H_TO_C) ? channelToHeightReshapeOutput(origOp.getLoc(), expandOutShape,
                                                                                      convOp.getOutput(), rewriter)
@@ -698,7 +703,7 @@ mlir::LogicalResult DPUExpandRewriter::matchAndRewrite(IE::ExpandOp origOp, mlir
                               : unpadHReshapeOutput(origOp.getLoc(), expandOutShape, convOp.getOutput(),
                                                     convolutionAlignment, rewriter);
 
-    rewriter.replaceOp(origOp, reshapeOut.getOutput());
+    rewriter.replaceOp(origOp, reshapeOut);
 
     return mlir::success();
 }

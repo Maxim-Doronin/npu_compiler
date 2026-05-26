@@ -20,7 +20,7 @@
 #include <llvm/ADT/TypeSwitch.h>
 #include <mlir/IR/BuiltinTypes.h>
 #include <mlir/IR/PatternMatch.h>
-#include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Transforms/WalkPatternRewriteDriver.h>
 
 namespace vpux::VPU {
 #define GEN_PASS_DECL_CONVERTOPTODMAFORPERFORMANTEXECUTION
@@ -276,6 +276,10 @@ bool canHaveMulticlusteringToBenefitAbsAddressing(VPU::GatherDMAOp origOp) {
 mlir::LogicalResult MoveToDMAGather::matchAndRewrite(VPU::GatherOp origOp, mlir::PatternRewriter& rewriter) const {
     _log.trace("[{0}] Got '{1}' at '{2}'", this->getDebugName(), origOp->getName(), origOp.getLoc());
 
+    if (!VPU::isLegalConvertToGatherDMA(origOp, /*isElementTile*/ false, /*isIndicesTile*/ false, _log)) {
+        return mlir::failure();
+    }
+
     auto inputType = mlir::cast<NDTypeInterface>(origOp.getInput().getType());
     auto axis = Dim(origOp.getAxisValue().value());
 
@@ -370,52 +374,19 @@ void ConvertOpToDMAForPerformantExecutionPass::safeRunOnFunc() {
     auto func = getOperation();
     auto& ctx = getContext();
 
-    mlir::ConversionTarget adaptionTarget(ctx);
-
-    adaptionTarget.addDynamicallyLegalOp<VPU::GatherOp>([&](VPU::GatherOp op) {
-        if (VPU::isLegalConvertToGatherDMA(op, /*isElementTile*/ true, /*isIndicesTile*/ false, _log)) {
-            return false;
-        }
-        if (VPU::isLegalConvertToGatherDMA(op, /*isElementTile*/ false, /*isIndicesTile*/ true, _log)) {
-            return false;
-        }
-        return true;
-    });
-    adaptionTarget.addLegalOp<VPU::SliceOp>();
-    adaptionTarget.addLegalOp<VPU::ConcatOp>();
-
-    mlir::RewritePatternSet adaptionPatterns(&ctx);
-
-    adaptionPatterns.add<TileGatherElement>(&ctx, _log);
-    adaptionPatterns.add<TileGatherIndices>(&ctx, _log);
-
-    if (mlir::failed(mlir::applyPartialConversion(func, adaptionTarget, std::move(adaptionPatterns)))) {
-        signalPassFailure();
-        return;
+    {
+        mlir::RewritePatternSet adaptionPatterns(&ctx);
+        adaptionPatterns.add<TileGatherElement>(&ctx, _log);
+        adaptionPatterns.add<TileGatherIndices>(&ctx, _log);
+        walkAndApplyPatterns(func, std::move(adaptionPatterns));
     }
 
     const auto arch = config::getArch(func);
     // TODO: E#118296 Other ops and architectures will be enabled.
     if (arch >= config::ArchKind::NPU40XX) {
-        mlir::ConversionTarget target(ctx);
-        target.addDynamicallyLegalOp<VPU::GatherOp>([&](VPU::GatherOp op) {
-            if (!VPU::isLegalConvertToGatherDMA(op, /*isElementTile*/ false, /*isIndicesTile*/ false, _log)) {
-                return true;
-            }
-            return false;
-        });
-
-        target.addLegalOp<Const::DeclareOp>();
-        target.addLegalOp<VPU::GatherDMAOp>();
-        target.addLegalOp<VPU::ReshapeOp>();
-        target.addLegalOp<VPU::ConvertOp>();
-
         mlir::RewritePatternSet patterns(&ctx);
         patterns.insert<MoveToDMAGather>(&ctx, _log);
-
-        if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
-            signalPassFailure();
-        }
+        walkAndApplyPatterns(func, std::move(patterns));
     }
 }
 

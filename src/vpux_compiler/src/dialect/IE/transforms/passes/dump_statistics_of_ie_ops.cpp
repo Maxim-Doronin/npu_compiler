@@ -4,11 +4,14 @@
 //
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/IE/utils/permute_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/ops_interfaces.hpp"
+#include "vpux/compiler/utils/permute_utils.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/statistics_collection.hpp"
 
@@ -62,11 +65,16 @@ std::string stringifyElemType(mlir::Value value) {
 }
 
 struct DumpStatisticsOfIeOpsPass final : IE::impl::DumpStatisticsOfIeOpsBase<DumpStatisticsOfIeOpsPass> {
-    DumpStatisticsOfIeOpsPass(const Logger& log) {
+    DumpStatisticsOfIeOpsPass(StringRef title, const Logger& log): _title(title.str()) {
         Base::initLogger(log, Base::getArgumentName());
+        if (_title.empty()) {
+            _title = "IE dialect statistics";
+        }
     }
 
     void safeRunOnModule() final;
+
+    std::string _title;
 };
 
 struct ExternalCounterState {
@@ -127,10 +135,32 @@ std::string getOpName(mlir::Operation* op) {
     return op->getName().getStringRef().str();
 }
 
+// Returns whether the operation is "trivial" (either it is a pure view-like) or
+// it performs a trivial transformation that can be optimized out.
+bool isTrivialOp(mlir::Operation* op) {
+    if (IE::isPureViewOp(op)) {
+        return true;
+    }
+
+    return llvm::TypeSwitch<mlir::Operation*, bool>(op)
+            .Case<IE::ReorderOp>([](IE::ReorderOp reorder) {
+                return isTrivialReorder(reorder);
+            })
+            .Case<IE::TransposeOp>([](IE::TransposeOp transpose) {
+                return isTrivialTranspose(transpose);
+            })
+            .Case<IE::MemPermuteOp>([](IE::MemPermuteOp memPermute) {
+                return isTrivialMemPermute(memPermute);
+            })
+            .Default([](mlir::Operation*) {
+                return false;
+            });
+}
+
 utils::OpCounterTree collectCounters(const ExternalCounterState& state) {
     // the hierarchy:
     // IE ops
-    //  |- Non-computational ops ("isPureViewOp")
+    //  |- Non-computational ops ("is trivial")
     //  |- Computational ops
     //      |- IE.Convert - special*
     //      |- IE.AvgPool - special
@@ -140,7 +170,7 @@ utils::OpCounterTree collectCounters(const ExternalCounterState& state) {
     ieOps.emplace_back(makePercentageCounter(
             state, "Non-computational",
             [&](mlir::Operation* op) {
-                return IE::isPureViewOp(op);
+                return isTrivialOp(op);
             },
             /* unrecognized op handler = */ getOpName));
 
@@ -150,7 +180,7 @@ utils::OpCounterTree collectCounters(const ExternalCounterState& state) {
     ieOps.emplace_back(makePercentageCounter(
                                state, "Computational",
                                [&](mlir::Operation* op) {
-                                   return !IE::isPureViewOp(op);
+                                   return !isTrivialOp(op);
                                },
                                /* unrecognized op handler = */ getOpName),
                        std::move(specialComputationalOps));
@@ -187,12 +217,12 @@ void DumpStatisticsOfIeOpsPass::safeRunOnModule() {
     // Note: counters here are *always* percentage counters
     state.globalCount = static_cast<PercentageCounter*>(counters.roots().back().data().get())->getCount();
 
-    _log.info("IE dialect statistics:");
+    _log.info("{0}:", _title);
     utils::PrintOpRecordVisitor printer(_log);
     counters.apply(printer);
 }
 }  // namespace
 
-std::unique_ptr<mlir::Pass> vpux::IE::createDumpStatisticsOfIeOpsPass(Logger log) {
-    return std::make_unique<DumpStatisticsOfIeOpsPass>(log);
+std::unique_ptr<mlir::Pass> vpux::IE::createDumpStatisticsOfIeOpsPass(StringRef title, Logger log) {
+    return std::make_unique<DumpStatisticsOfIeOpsPass>(title, log);
 }

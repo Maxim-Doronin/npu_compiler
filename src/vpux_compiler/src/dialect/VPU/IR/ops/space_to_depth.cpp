@@ -150,6 +150,7 @@ vpux::InputTiling vpux::VPU::SpaceToDepthOp::backInferTileInfo(const vpux::TileI
     VPUX_THROW_WHEN(blockSize <= 0, "Unsupported block size: {0}", blockSize);
 
     TileInfo inputTile(origInputShape);
+    inputTile.axis = outputTile.axis;
 
     inputTile.shape[Dims4D::Act::N] = outputTile.shape[Dims4D::Act::N];
     inputTile.shape[Dims4D::Act::C] = outputTile.shape[Dims4D::Act::C] / (blockSize * blockSize);

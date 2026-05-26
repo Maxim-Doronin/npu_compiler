@@ -16,6 +16,7 @@ namespace vpux {
 namespace VPU {
 
 bool getShaveControlsDpu(config::ArchKind arch);
+bool getShaveDpuNeedWeightTable(config::ArchKind arch);
 size_t getDpuDebugDataSize(config::ArchKind /*arch*/);
 size_t getDPUInvariantDataSize(config::ArchKind arch);
 size_t getDPUVariantDataSize(config::ArchKind arch);

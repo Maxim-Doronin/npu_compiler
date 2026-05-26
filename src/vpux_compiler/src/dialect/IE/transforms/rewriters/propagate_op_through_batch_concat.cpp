@@ -103,7 +103,7 @@ mlir::LogicalResult PropagateSoftmax::matchAndRewrite(IE::SoftMaxOp origOp, mlir
 
     const auto isEnabledInput = [](mlir::Value input) {
         auto inputOp = input.getDefiningOp();
-        while (mlir::isa_and_nonnull<IE::ReshapeOp, IE::AffineReshapeOp>(inputOp)) {
+        while (mlir::isa_and_nonnull<IE::ReshapeOp, IE::AffineReshapeOp, IE::MultiplyOp>(inputOp)) {
             if (!inputOp->hasOneUse()) {
                 return false;
             }
@@ -306,7 +306,7 @@ mlir::LogicalResult PropagateFakeQuantize::matchAndRewrite(IE::FakeQuantizeOp or
     _log.trace("Got '{0}' at '{1}'", origOp->getName(), origOp->getLoc());
 
     if (mlir::isa<mlir::BlockArgument>(origOp.getInput())) {
-        return matchFailed(_log, rewriter, origOp, "Input of SoftmaxOp is block argument");
+        return matchFailed(_log, rewriter, origOp, "Input of FakeQuantizeOp is block argument");
     }
 
     const auto isEnabledInput = [&](mlir::Value input) {
@@ -395,27 +395,72 @@ mlir::LogicalResult PropagateMultiply::matchAndRewrite(IE::MultiplyOp origOp, ml
         return matchFailed(_log, rewriter, origOp, "Const is not splat");
     }
 
-    // All concat inputs must be RMS outputs and each RMS must have single user (the concat)
+    // All concat inputs must have single user (the concat)
     const auto inputs = concatOp.getInputs();
     if (!llvm::all_of(inputs, [&](mlir::Value v) {
-            auto rmsOp = v.getDefiningOp<IE::RMSOp>();
-            if (rmsOp == nullptr || !rmsOp->hasOneUse()) {
-                return false;
-            }
-            auto gammaConstOp = rmsOp.getGamma().getDefiningOp<Const::DeclareOp>();
-            return gammaConstOp != nullptr;
+            auto inputOp = v.getDefiningOp();
+            return inputOp != nullptr && inputOp->hasOneUse();
         })) {
-        return matchFailed(_log, rewriter, origOp, "Not all Concat inputs are single-use RMS ops");
+        return matchFailed(_log, rewriter, origOp, "Not all Concat inputs are single-use ops");
     }
 
     _log.nest().trace("Propagating MultiplyOp with splat const before ConcatOp");
 
-    // Clone multiply per input (re-use same const splat)
+    // Slice the original const along the concat axis for each Concat input
+    const auto concatAttrs = concatOp.getPerAxisAttr();
+    if (concatAttrs == nullptr) {
+        return matchFailed(_log, rewriter, origOp, "ConcatOp missing PerAxis attribute");
+    }
+
+    const auto actInput = constVal == input1 ? input2 : input1;
+    const auto actRank = mlir::cast<vpux::NDTypeInterface>(actInput.getType()).getRank();
+    auto constShape = getShape(constVal);
+    const auto constRank = static_cast<int64_t>(constShape.size());
+    if (constRank > actRank) {
+        return matchFailed(_log, rewriter, origOp, "Const rank {0} is greater than activation rank {1}", constRank,
+                           actRank);
+    }
+
+    auto ctx = rewriter.getContext();
+    // Reshape const to match activation rank by prepending 1s
+    if (constRank < actRank) {
+        SmallVector<int64_t> newConstShape(actRank - constRank, 1);
+        newConstShape.append(constShape.raw().begin(), constShape.raw().end());
+        const auto newShapeAttr = getIntArrayAttr(ctx, newConstShape);
+        constVal = rewriter.createOrFold<IE::ReshapeOp>(takeOpLoc(origOp, "reshape_const"), constVal, newShapeAttr);
+        constShape = getShape(constVal);
+    }
+
+    const auto concatAxis = getPositiveAxisInd(concatAttrs.getAxis(), actRank);
+
+    // Distribute the const to each per-slice Multiply. Slice the const along the concat axis when the const
+    // dimension is not 1; otherwise reuse the const directly via broadcast.
+    const bool needConstSlice = constShape[Dim(concatAxis)] != 1;
+
     SmallVector<mlir::Value> newConcatInputs;
     newConcatInputs.reserve(inputs.size());
-    for (auto inVal : inputs) {
-        auto newMul = rewriter.create<IE::MultiplyOp>(takeOpLoc(origOp, "slice_{0}", newConcatInputs.size()), inVal,
-                                                      constVal, origOp.getAutoBroadcastAttr(), origOp.getPostOpAttr(),
+    int64_t constSliceOffset = 0;
+    for (auto concatInput : inputs | indexed) {
+        const auto index = concatInput.index();
+        auto inVal = concatInput.value();
+        const auto inShape = getShape(inVal);
+
+        mlir::Value constInput = constVal;
+        if (needConstSlice) {
+            SmallVector<int64_t> sliceOffset(constShape.size(), 0);
+            sliceOffset[concatAxis] = constSliceOffset;
+
+            SmallVector<int64_t> sliceSize(constShape.raw());
+            sliceSize[concatAxis] = inShape[Dim(concatAxis)];
+
+            constInput = rewriter.createOrFold<IE::SliceOp>(takeOpLoc(origOp, "const_slice_{0}", index), constVal,
+                                                            getIntArrayAttr(ctx, sliceOffset),
+                                                            getIntArrayAttr(ctx, sliceSize));
+            constSliceOffset += sliceSize[concatAxis];
+        }
+
+        auto newMul = rewriter.create<IE::MultiplyOp>(takeOpLoc(origOp, "slice_{0}", index), inVal, constInput,
+                                                      origOp.getAutoBroadcastAttr(), origOp.getPostOpAttr(),
                                                       origOp.getClampAttr(), origOp.getOutputPaddingAttr(),
                                                       origOp.getInputPaddingAttr());
         newConcatInputs.push_back(newMul.getOutput());

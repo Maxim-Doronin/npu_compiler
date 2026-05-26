@@ -7,6 +7,7 @@
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
+#include "vpux/compiler/utils/infer_output_shape.hpp"
 
 using namespace vpux;
 
@@ -56,6 +57,29 @@ mlir::LogicalResult vpux::VPU::LSTMGatesOp::verify() {
     return mlir::success();
 }
 
+//
+// ReifyRankedShapedTypeOpInterface
+//
+
+mlir::LogicalResult vpux::VPU::LSTMGatesOp::reifyResultShapes(mlir::OpBuilder& builder,
+                                                              mlir::ReifiedRankedShapedTypeDims& reifiedReturnShapes) {
+    auto loc = getLoc();
+    const auto cellStateType = mlir::cast<mlir::RankedTensorType>(getInitialCellState().getType());
+    const auto rank = cellStateType.getRank();
+
+    // Both outputHiddenState and outputCellState have the same shape as initialCellState
+    SmallVector<mlir::OpFoldResult> outShape;
+    outShape.reserve(rank);
+    for (int64_t i = 0; i < rank; ++i) {
+        outShape.push_back(reifyDim(builder, getInitialCellState(), i, loc));
+    }
+    const auto numResults = getOperation()->getNumResults();
+    for (size_t r = 0; r < numResults; ++r) {
+        reifiedReturnShapes.push_back(outShape);
+    }
+    return mlir::success();
+}
+
 void vpux::VPU::LSTMGatesOp::build(::mlir::OpBuilder& odsBuilder, ::mlir::OperationState& odsState,
                                    ::mlir::Value gatesInput, ::mlir::Value initialCellState) {
     build(odsBuilder, odsState, gatesInput, initialCellState, nullptr);
@@ -88,13 +112,18 @@ void vpux::VPU::LSTMGatesOp::adjustAttrs(const TilingInfo& /*inputTiling*/, cons
 }
 
 mlir::FailureOr<OutputTiling> vpux::VPU::LSTMGatesOp::getTilingStrategy(TilingMode tilingMode, Logger log) {
+    return vpux::getSWLayerTilingStrategy(getOperation(), tilingMode, log);
+}
+
+SmallVector<int64_t> vpux::VPU::LSTMGatesOp::getMaxNumTiles() {
+    auto op = getOperation();
     SmallVector<int64_t> maxNumTiles;
     const auto outputType = mlir::cast<vpux::NDTypeInterface>(getResult(0).getType());
     const auto outputRank = outputType.getShape().size();
     SmallVector<int64_t> axes{checked_cast<int64_t>(outputRank - 1)};
-    maxNumTiles = getMaxNumTilesWithAxesExclusion(this->getOperation(), axes);
+    maxNumTiles = getMaxNumTilesWithAxesExclusion(op, axes);
 
-    return vpux::getSWLayerTilingStrategy(this->getOperation(), tilingMode, log, maxNumTiles);
+    return vpux::getMaxNumTiles(op, false, false, maxNumTiles);
 }
 
 //

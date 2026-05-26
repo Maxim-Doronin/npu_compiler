@@ -8,12 +8,11 @@
 #include "vpux/compiler/core/aliases_info.hpp"
 #include "vpux/compiler/core/async_deps_info.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/task.hpp"
-#include "vpux/compiler/dialect/config/IR/attributes.hpp"
-#include "vpux/compiler/utils/partitioner.hpp"
 #include "vpux/compiler/utils/stl_extras.hpp"
 #include "vpux/utils/core/small_vector.hpp"
 
-#include <llvm/Support/raw_os_ostream.h>
+#include <llvm/ADT/DenseMap.h>
+#include <llvm/ADT/DenseSet.h>
 #include <llvm/Support/raw_ostream.h>
 #include <mlir/IR/Value.h>
 
@@ -22,7 +21,7 @@
 namespace vpux {
 
 // It is beneficial to have at least this many operations in a loop to consider it for loop-based scheduling
-static constexpr const size_t MIN_LOOP_OPS = 4;
+static constexpr const size_t MIN_LOOP_OPS = 5;
 
 enum class AllocationType { COMPUTE = 0, DATA_IN = 1, DATA_OUT = 2 };
 inline const char* toString(AllocationType state) {
@@ -36,6 +35,17 @@ inline const char* toString(AllocationType state) {
     }
     return "Unknown";
 }
+
+// Describes a single buffer's properties for allocation and scheduling.
+struct BufferDesc {
+    BufferDesc(mlir::Value value, vpux::AddressType rawSize, vpux::AddressType rawAlignment)
+            : value(value), rawSize(rawSize), rawAlignment(rawAlignment) {
+    }
+
+    mlir::Value value;
+    vpux::AddressType rawSize;
+    vpux::AddressType rawAlignment;
+};
 
 // OpAllocationInfo represents internal scheduler representation for operation
 struct OpAllocationInfo {
@@ -76,6 +86,36 @@ struct OpAllocationInfo {
     SmallVector<mlir::Value> outBuffers;
     AllocationType allocationType;
     size_t executorDemand;
+};
+
+struct ComputeExplicitSchedule {
+    ComputeExplicitSchedule() = default;
+
+    explicit ComputeExplicitSchedule(const OpAllocationInfo& allocInfo, SmallVector<mlir::Value> deallocations,
+                                     SmallVector<std::pair<mlir::Value, vpux::AddressType>> allocations)
+            : allocInfo(allocInfo), deallocations(std::move(deallocations)), allocations(std::move(allocations)) {
+    }
+
+    OpAllocationInfo allocInfo;
+    SmallVector<mlir::Value> deallocations;
+    SmallVector<std::pair<mlir::Value, vpux::AddressType>> allocations;
+};
+
+using IterationSchedule = std::vector<ComputeExplicitSchedule>;
+using PredefinedSchedule = std::vector<IterationSchedule>;
+
+// Result of predefined schedule generation for a single compute region.
+// Contains the schedule alongside memory layout metadata (size, shared buffers, alignment)
+// that the scheduler needs for allocation during loop execution.
+struct LoopScheduleResult {
+    PredefinedSchedule schedule;
+    vpux::AddressType reservedSize = 0;
+    ValueOrderedSet sharedExternalBuffers;
+    vpux::AddressType baseAlignment = 1;
+
+    bool empty() const {
+        return schedule.empty();
+    }
 };
 
 enum class LoopType { None, Tiling, VF };
@@ -140,7 +180,7 @@ struct ComputeRegion {
 
     void printFormat(llvm::raw_ostream& os) const {
         os << "ComputeRegion {\n"
-           << ", size_ : " << size;
+           << ", size : " << size;
         os << ", dependencies: [ ";
         for (size_t dep : dependencies) {
             os << dep << " ";
@@ -234,6 +274,17 @@ public:
 
 using ComputeRegionVec = std::vector<ComputeRegion>;
 
+// Aggregates all loop scheduling data needed by FeasibleMemoryScheduler.
+// Produced externally (before scheduler construction) and passed in as a value.
+// Separates schedule generation from schedule execution.
+struct ComputeRegionsSchedule {
+    // Predefined schedules per region index (only regions with valid schedules are present)
+    llvm::DenseMap<size_t, LoopScheduleResult> scheduleResults;
+    // Operation indices wrapped in loop regions (require loop-based scheduling)
+    llvm::DenseSet<size_t> loopRegionInd;
+    // Data-in operation indices eligible for prefetching
+    llvm::DenseSet<size_t> loopPrefetchInd;
+};
 ComputeRegionVec getComputeRegionsFromAsyncExec(AliasesInfo& aliasInfo, AsyncDepsInfo& depsInfo,
                                                 Logger log = Logger::global());
 

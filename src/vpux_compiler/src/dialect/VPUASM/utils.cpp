@@ -54,9 +54,25 @@ BufferType getBufferType(ELF::SymbolReferenceMap& symRefMap, mlir::SymbolRefAttr
     VPUX_THROW("SymRef {0} does not point to a VPUASM::BufferType buffer", symRef.getLeafReference().getValue());
 }
 
+mlir::MemRefType getMinMaxDataType(VPUASM::DPUInvariantOp invOp, ELF::SymbolReferenceMap& symRefMap) {
+    mlir::MemRefType minMaxDataType;
+    if (auto maxPerXy = invOp.getMaxPerXy()) {
+        minMaxDataType = getBufferType(symRefMap, maxPerXy.value()).getMemref();
+    } else if (auto minPerXy = invOp.getMinPerXy()) {
+        minMaxDataType = getBufferType(symRefMap, minPerXy.value()).getMemref();
+    } else if (auto minMaxPerTensor = invOp.getMinMaxPerTensor()) {
+        auto minMaxRefArray = mlir::dyn_cast<mlir::ArrayAttr>(minMaxPerTensor.value());
+        auto minMaxRef = mlir::dyn_cast<mlir::SymbolRefAttr>(minMaxRefArray[0]);
+        minMaxDataType = getBufferType(symRefMap, minMaxRef).getMemref();
+    }
+
+    return minMaxDataType;
+}
+
 bool isWorkLoadManagementDMA(mlir::Operation* op) {
     return mlir::isa<VPUASM::DPUInvariantOp, VPUASM::DPUVariantOp, VPUIPDPU::DPUInvariantOp, VPUIPDPU::DPUVariantOp,
-                     VPUASM::ActKernelInvocationOp, VPUASM::ActKernelRangeOp, VPUASM::DeclareTaskBufferOp>(op);
+                     VPUASM::ActKernelInvocationOp, VPUASM::ActKernelRangeOp, VPUASM::DeclareTaskBufferOp,
+                     VPUASM::NNDMAOp>(op);
 }
 
 uint32_t getTileSelectMaskForBuffer(VPUASM::DeclareBufferOp buffer) {
@@ -133,7 +149,7 @@ SmallVector<uint32_t> getCMXStackFrames(mlir::ModuleOp moduleOp) {
     const size_t defaultStacksNum = 2;
     // Check if additional stack frames are needed
     if (auto extraStacks = shvPerTile - defaultStacksNum; extraStacks > 0) {
-        auto shaveStacksMem = config::getShaveStacksReservedMemory(moduleOp, VPU::MemoryKind::CMX_NN);
+        auto shaveStacksMem = config::getCMXStackFramesReservedMemory(moduleOp, VPU::MemoryKind::CMX_NN);
         VPUX_THROW_WHEN(shaveStacksMem == nullptr, "Missing reserved CMX memory for additional shave stack frames");
         auto shaveStacksMemOffset = shaveStacksMem.getOffset();
         VPUX_THROW_WHEN(shaveStacksMemOffset == std::nullopt,

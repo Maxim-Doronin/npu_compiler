@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/NPU37XX/dialect/VPU/impl/singleton_initializer.hpp"
+#include "vpux/compiler/NPU37XX/dialect/VPU/strategies_initializer.hpp"
 #include "vpux/compiler/core/tiling.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
@@ -60,6 +61,8 @@ vpux::VPUIP::WorkloadCostParams buildWorkloadCost(const NceOpTensorShape& tensor
 TEST(MLIR_VPU_WorkloadCost, VPUNNCostInterface) {
     mlir::MLIRContext ctx;
     ctx.loadDialect<vpux::VPU::VPUDialect>();
+    const auto initializer = std::make_unique<vpux::VPU::StrategiesInitializer37XX>();
+    initializer->initialize(&ctx);
     vpux::VPU::arch37xx::initializeSingletonCache(&ctx, std::nullopt);
     vpux::VPU::arch37xx::initializePPEVersionConfig(&ctx);
 
@@ -99,7 +102,7 @@ TEST(MLIR_VPU_WorkloadCost, VPUNNCostInterface) {
             }
 
             auto baseHardwareExecutionCost =
-                    vpux::VPUIP::computeSplitCost(singleSplit, costParams, *costModel, vpux::emptyLogCb);
+                    vpux::VPUIP::computeSplitCost(&ctx, singleSplit, costParams, *costModel, vpux::emptyLogCb);
 
             vpux::VPUIP::WorkloadSplitPool splitPool;
 
@@ -110,7 +113,7 @@ TEST(MLIR_VPU_WorkloadCost, VPUNNCostInterface) {
 
             for (auto iter = splitPool.begin(); iter != splitPool.end(); iter++) {
                 auto hardwareExecutionCost =
-                        vpux::VPUIP::computeSplitCost(*iter, costParams, *costModel, vpux::emptyLogCb);
+                        vpux::VPUIP::computeSplitCost(&ctx, *iter, costParams, *costModel, vpux::emptyLogCb);
                 EXPECT_LE(hardwareExecutionCost, baseHardwareExecutionCost);
             }
         }

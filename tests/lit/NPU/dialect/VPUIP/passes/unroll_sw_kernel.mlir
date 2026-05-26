@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --unroll-sw-kernel="enable-sw-kernel-fifo-per-shave-engine=false" %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW" --unroll-sw-kernel="enable-sw-kernel-fifo-per-shave-engine=false" %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // -----
 
@@ -45,7 +45,7 @@ func.func @UnrollSwKernel()
     // CHECK:                    VPUIP.SW.Kernel.run {attrs = [false, true, 6.0892105102539063E-4]}([[ARG_0]], [[ARG_1]]) : memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>, memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>
     // CHECK:           }
     // CHECK:   }
-    // CHECK:   VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier) {
+    // CHECK:   VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier) {
     // CHECK:           VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_MVN inputs([[TILE1]] as [[ARG_0:%[^:]+]]: memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>) outputs([[OUTPUT1]] as [[ARG_1:%[^:]+]]: memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>) on tile 0 -> memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>{
     // CHECK:                    VPUIP.SW.Kernel.run {attrs = [false, true, 6.0892105102539063E-4]}([[ARG_0]], [[ARG_1]]) : memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>, memref<1x64x64x32xf16, #NWHC, [@CMX_NN, 0]>
     // CHECK:           }
@@ -108,7 +108,7 @@ func.func @UnrollSwKernelWithProfiling()
     // CHECK:   }
 
     // CHECK:   [[PROF1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <160> -> memref<8xui32, [@CMX_NN, 0]>
-    // CHECK:   VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier) {
+    // CHECK:   VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier) {
     // CHECK:           VPUIP.SW.Kernel {
     // CHECK-SAME:                  profilingMetadata = #VPUIP.SwProfilingMetadataAttr<bufferId = 0 : i64, bufferOffset = 0 : i64, clusterSize = 2 : i64, dataIndex = 1 : i64, tileId = 1 : i64, clusterId = 0 : i64>,
     // CHECK-SAME:                  resultSegmentSizes = array<i32: 1, 0, 1>} @VPU.SW::@builtin_MVN
@@ -164,7 +164,7 @@ func.func @DistributedBufferUnrollSwKernel() -> (!DistributedT, !DistributedT) {
     // CHECK:                    VPUIP.SW.Kernel.run {attrs = [false, true, 6.0892105102539063E-4]}([[ARG_0]], [[ARG_1]]) : !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>, !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
     // CHECK:           }
     // CHECK:   }
-    // CHECK:   VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier) {
+    // CHECK:   VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier) {
     // CHECK:           VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_MVN inputs([[TILE1]] as [[ARG_0:%[^:]+]]: !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>) outputs([[OUTPUT1]] as [[ARG_1:%[^:]+]]: !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>) outputStrides({{\[\[}}131072, 1, 64, 2048], [131072, 1, 64, 2048]]) on tile 0 -> !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>{
     // CHECK:                    VPUIP.SW.Kernel.run {attrs = [false, true, 6.0892105102539063E-4]}([[ARG_0]], [[ARG_1]]) : !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>, !VPUIP.DistributedBuffer<1x64x64x32xf16, #NWHC, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
     // CHECK:           }
@@ -237,7 +237,7 @@ func.func @DistributedBufferUnrollSwKernelWithProfiling() -> (!DistributedT, !Di
     // CHECK:   }
 
     // CHECK:   [[PROF1:%.+]] = VPURT.DeclareBuffer <CMX_NN> <160> -> !VPUIP.DistributedBuffer<16xui32, #C, @CMX_NN, {mode = "SEGMENTED", num_tiles = [2], num_clusters = 2 : i64, uniform_distributed_segments}>
-    // CHECK:   VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier) {
+    // CHECK:   VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier) {
     // CHECK:           VPUIP.SW.Kernel {
     // CHECK-SAME:          profilingMetadata = #VPUIP.SwProfilingMetadataAttr<bufferId = 0 : i64, bufferOffset = 0 : i64, clusterSize = 2 : i64, dataIndex = 1 : i64, tileId = 1 : i64, clusterId = 0 : i64>,
     // CHECK-SAME:          resultSegmentSizes = array<i32: 1, 0, 1>}
@@ -352,7 +352,7 @@ func.func @UnrollDynamicSwKernel() -> (memref<1x1x35x128xf16, [@CMX_NN, 0]>, mem
     // CHECK:   [[BAR_3:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
     // CHECK:   [[BAR_4:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
     // CHECK:   [[BAR_5:%.+]] = VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
-    // CHECK:   VPURT.Task waits([[BAR_0]], [[BAR_1]], [[BAR_2:%.+]], [[BAR_3]], [[BAR_4]] : !VPURT.Barrier, !VPURT.Barrier, !VPURT.Barrier, !VPURT.Barrier, !VPURT.Barrier) updates(%15 : !VPURT.Barrier) {
+    // CHECK:   VPURT.Task waits([[BAR_0]], [[BAR_1]], [[BAR_2]], [[BAR_3]], [[BAR_4]] : !VPURT.Barrier, !VPURT.Barrier, !VPURT.Barrier, !VPURT.Barrier, !VPURT.Barrier) updates([[BAR_5]] : !VPURT.Barrier) {
     // CHECK:     [[RESULTS:%.+]]:3, [[DYN_OUT_SHAPES:%.+]] = VPUIP.SW.Kernel {dynamicInputShapesMap = array<i32: 0, -1, -1, -1, -1>, dynamicOutputShapesMap = array<i32: 0, -1, -1>, resultSegmentSizes = array<i32: 3, 1, 0>} @VPU.SW::@builtin_LSTMSequence
     // CHECK:       inputs(
     // CHECK:         [[BUFF_0]] as [[ARG_0:%[^:]+]]: memref<1x1x35x512xf16, [@CMX_NN, 0]>,

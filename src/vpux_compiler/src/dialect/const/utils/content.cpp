@@ -190,117 +190,121 @@ void vpux::Const::Content::copyTo(MutableArrayRef<char> targetData) const {
 
 void vpux::Const::Content::fillWithZero() {
     if (auto perAxisQuantileType =
-                mlir::dyn_cast_or_null<mlir::quant::QuantileQuantizedPerAxisType>(getType().getElementType())) {
-        const auto outShape = getType().getShape();
-        const auto order = getType().getDimsOrder();
-        const auto outMemShape = order.toMemoryOrder(outShape);
+                mlir::dyn_cast_if_present<mlir::quant::UniformQuantizedPerAxisType>(getType().getElementType())) {
+        if (const auto quantileStorageType =
+                    mlir::dyn_cast<vpux::type::QuantileType>(perAxisQuantileType.getStorageType())) {
+            const auto outShape = getType().getShape();
+            const auto order = getType().getDimsOrder();
+            const auto outMemShape = order.toMemoryOrder(outShape);
 
-        VPUX_THROW_UNLESS(outShape.size() == 4, "Unsupported shape size {0}", outShape.size());
-        VPUX_THROW_UNLESS(perAxisQuantileType.getQuantizedDimension() == 0,
-                          "Only per-channel quantization is supported");
+            VPUX_THROW_UNLESS(outShape.size() == 4, "Unsupported shape size {0}", outShape.size());
+            VPUX_THROW_UNLESS(perAxisQuantileType.getQuantizedDimension() == 0,
+                              "Only per-channel quantization is supported");
 
-        const auto OC = outShape[Dims4D::Filter::OC];
-        const auto IC = outShape[Dims4D::Filter::IC];
-        const auto H = outShape[Dims4D::Filter::KY];
-        const auto W = outShape[Dims4D::Filter::KX];
+            const auto OC = outShape[Dims4D::Filter::OC];
+            const auto IC = outShape[Dims4D::Filter::IC];
+            const auto H = outShape[Dims4D::Filter::KY];
+            const auto W = outShape[Dims4D::Filter::KX];
 
-        const auto storageType = perAxisQuantileType.getStorageType();
-        const auto bitWidth = storageType.getIntOrFloatBitWidth();
+            const auto bitWidth = quantileStorageType.getStorageWidth();
 
-        VPUX_THROW_UNLESS(IC * H * W * bitWidth % 128 == 0,
-                          "Padded values must align to 16 bytes for palletized types.");
+            VPUX_THROW_UNLESS(IC * H * W * bitWidth % 128 == 0,
+                              "Padded values must align to 16 bytes for palletized types.");
 
-        SmallVector<double> quantiles(perAxisQuantileType.getQuantiles());
-        const uint64_t zeroIdx = std::distance(quantiles.begin(), std::find(quantiles.begin(), quantiles.end(), 0.0));
+            SmallVector<double> quantiles(quantileStorageType.getQuantiles());
+            const uint64_t zeroIdx =
+                    std::distance(quantiles.begin(), std::find(quantiles.begin(), quantiles.end(), 0.0));
 
-        VPUX_THROW_UNLESS(zeroIdx != quantiles.size(),
-                          "Missing zero (0) value from palletization LUT, which must be present for padding.");
+            VPUX_THROW_UNLESS(zeroIdx != quantiles.size(),
+                              "Missing zero (0) value from palletization LUT, which must be present for padding.");
 
-        loop_4d(LoopExecPolicy::Parallel, getType().getContext(), OC, IC, H, W,
-                [&](int64_t i, int64_t ic, int64_t h, int64_t w) {
-                    const auto fillChannel = [&](auto buffer) {
-                        using BufferType = std::decay_t<decltype(buffer)>;
-                        using ElemType = typename BufferType::value_type;
+            loop_4d(LoopExecPolicy::Parallel, getType().getContext(), OC, IC, H, W,
+                    [&](int64_t i, int64_t ic, int64_t h, int64_t w) {
+                        const auto fillChannel = [&](auto buffer) {
+                            using BufferType = std::decay_t<decltype(buffer)>;
+                            using ElemType = typename BufferType::value_type;
 
-                        const auto inMemIndND = order.toMemoryOrder(Shape{i, ic, h, w});
-                        const auto inMemInd1D = getMemIndex1D(inMemIndND, outMemShape);
+                            const auto inMemIndND = order.toMemoryOrder(Shape{i, ic, h, w});
+                            const auto inMemInd1D = getMemIndex1D(inMemIndND, outMemShape);
 
-                        buffer[inMemInd1D] = checked_cast<ElemType>(zeroIdx);
-                    };
+                            buffer[inMemInd1D] = checked_cast<ElemType>(zeroIdx);
+                        };
 
-                    mutate(fillChannel);
-                });
+                        mutate(fillChannel);
+                    });
+        } else {
+            const auto outShape = getType().getShape();
+            const auto order = getType().getDimsOrder();
+            const auto outMemShape = order.toMemoryOrder(outShape);
+
+            VPUX_THROW_UNLESS(outShape.size() == 4, "Unsupported shape size {0}", outShape.size());
+            VPUX_THROW_UNLESS(perAxisQuantileType.getQuantizedDimension() == 0,
+                              "Only per-channel quantization is supported");
+
+            const auto OC = outShape[Dims4D::Filter::OC];
+            const auto IC = outShape[Dims4D::Filter::IC];
+            const auto H = outShape[Dims4D::Filter::KY];
+            const auto W = outShape[Dims4D::Filter::KX];
+
+            const auto zeroPoints = perAxisQuantileType.getZeroPoints();
+            loop_4d(LoopExecPolicy::Parallel, getType().getContext(), OC, IC, H, W,
+                    [&](int64_t i, int64_t ic, int64_t h, int64_t w) {
+                        const auto zp = zeroPoints[i];
+
+                        const auto fillChannel = [&](auto buffer) {
+                            using BufferType = std::decay_t<decltype(buffer)>;
+                            using ElemType = typename BufferType::value_type;
+
+                            const auto inMemIndND = order.toMemoryOrder(Shape{i, ic, h, w});
+                            const auto inMemInd1D = getMemIndex1D(inMemIndND, outMemShape);
+
+                            buffer[inMemInd1D] = checked_cast<ElemType>(zp);
+                        };
+
+                        mutate(fillChannel);
+                    });
+        }
 
     } else if (auto quantileType =
-                       mlir::dyn_cast_or_null<mlir::quant::QuantileQuantizedType>(getType().getElementType())) {
-        const auto outShape = getType().getShape();
-        const auto IC = outShape[Dims4D::Filter::IC];
-        const auto H = outShape[Dims4D::Filter::KY];
-        const auto W = outShape[Dims4D::Filter::KX];
+                       mlir::dyn_cast_if_present<mlir::quant::UniformQuantizedType>(getType().getElementType())) {
+        if (const auto quantileStorageType = mlir::dyn_cast<vpux::type::QuantileType>(quantileType.getStorageType())) {
+            const auto outShape = getType().getShape();
+            const auto IC = outShape[Dims4D::Filter::IC];
+            const auto H = outShape[Dims4D::Filter::KY];
+            const auto W = outShape[Dims4D::Filter::KX];
 
-        const auto storageType = quantileType.getStorageType();
-        const auto bitWidth = storageType.getIntOrFloatBitWidth();
+            const auto bitWidth = quantileStorageType.getStorageWidth();
 
-        VPUX_THROW_UNLESS(IC * H * W * bitWidth % 128 == 0,
-                          "Padded values must align to 16 bytes for palletized types.");
+            VPUX_THROW_UNLESS(IC * H * W * bitWidth % 128 == 0,
+                              "Padded values must align to 16 bytes for palletized types.");
 
-        SmallVector<double> quantiles(quantileType.getQuantiles());
-        const uint64_t zeroIdx = std::distance(quantiles.begin(), std::find(quantiles.begin(), quantiles.end(), 0.0));
+            SmallVector<double> quantiles(quantileStorageType.getQuantiles());
+            const uint64_t zeroIdx =
+                    std::distance(quantiles.begin(), std::find(quantiles.begin(), quantiles.end(), 0.0));
 
-        VPUX_THROW_UNLESS(zeroIdx != quantiles.size(),
-                          "Missing zero (0) value from palletization LUT, which must be present for padding.");
+            VPUX_THROW_UNLESS(zeroIdx != quantiles.size(),
+                              "Missing zero (0) value from palletization LUT, which must be present for padding.");
 
-        const auto fillBuffer = [&](auto buffer) {
-            using BufferType = std::decay_t<decltype(buffer)>;
-            using ElemType = typename BufferType::value_type;
+            const auto fillBuffer = [&](auto buffer) {
+                using BufferType = std::decay_t<decltype(buffer)>;
+                using ElemType = typename BufferType::value_type;
 
-            std::fill_n(buffer.data(), buffer.size(), checked_cast<ElemType>(zeroIdx));
-        };
+                std::fill_n(buffer.data(), buffer.size(), checked_cast<ElemType>(zeroIdx));
+            };
 
-        mutate(fillBuffer);
-    } else if (auto perAxisQType =
-                       mlir::dyn_cast_or_null<mlir::quant::UniformQuantizedPerAxisType>(getType().getElementType())) {
-        const auto outShape = getType().getShape();
-        const auto order = getType().getDimsOrder();
-        const auto outMemShape = order.toMemoryOrder(outShape);
+            mutate(fillBuffer);
+        } else {
+            const auto zp = quantileType.getZeroPoint();
 
-        VPUX_THROW_UNLESS(outShape.size() == 4, "Unsupported shape size {0}", outShape.size());
-        VPUX_THROW_UNLESS(perAxisQType.getQuantizedDimension() == 0, "Only per-channel quantization is supported");
+            const auto fillBuffer = [&](auto buffer) {
+                using BufferType = std::decay_t<decltype(buffer)>;
+                using ElemType = typename BufferType::value_type;
 
-        const auto OC = outShape[Dims4D::Filter::OC];
-        const auto IC = outShape[Dims4D::Filter::IC];
-        const auto H = outShape[Dims4D::Filter::KY];
-        const auto W = outShape[Dims4D::Filter::KX];
+                std::fill_n(buffer.data(), buffer.size(), checked_cast<ElemType>(zp));
+            };
 
-        const auto zeroPoints = perAxisQType.getZeroPoints();
-        loop_4d(LoopExecPolicy::Parallel, getType().getContext(), OC, IC, H, W,
-                [&](int64_t i, int64_t ic, int64_t h, int64_t w) {
-                    const auto zp = zeroPoints[i];
-
-                    const auto fillChannel = [&](auto buffer) {
-                        using BufferType = std::decay_t<decltype(buffer)>;
-                        using ElemType = typename BufferType::value_type;
-
-                        const auto inMemIndND = order.toMemoryOrder(Shape{i, ic, h, w});
-                        const auto inMemInd1D = getMemIndex1D(inMemIndND, outMemShape);
-
-                        buffer[inMemInd1D] = checked_cast<ElemType>(zp);
-                    };
-
-                    mutate(fillChannel);
-                });
-
-    } else if (auto qType = mlir::dyn_cast_or_null<mlir::quant::UniformQuantizedType>(getType().getElementType())) {
-        const auto zp = qType.getZeroPoint();
-
-        const auto fillBuffer = [&](auto buffer) {
-            using BufferType = std::decay_t<decltype(buffer)>;
-            using ElemType = typename BufferType::value_type;
-
-            std::fill_n(buffer.data(), buffer.size(), checked_cast<ElemType>(zp));
-        };
-
-        mutate(fillBuffer);
+            mutate(fillBuffer);
+        }
     } else {
         auto outBuf = getRawTempBuf();
         std::fill_n(outBuf.data(), outBuf.size(), char(0));

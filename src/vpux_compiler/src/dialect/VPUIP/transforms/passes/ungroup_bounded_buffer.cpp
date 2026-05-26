@@ -282,6 +282,11 @@ mlir::LogicalResult UngroupSwKernelOp::matchAndRewrite(VPUIP::SwKernelOp origOp,
                                                          origOp.getKernelFunction(), tileIndex);
     auto args = kernelArgsRange(origOp);
     auto swKernelRun = *swKernelRuns.begin();
+
+    if (isIoDmaSwKernel(origOp)) {
+        args.truncate(args.size() / swKernelRunNum);
+    }
+
     initSwKernel(swKernelOp, swKernelOperands, swKernelOutputBuffs, args, _log.nest(),
                  swKernelRunNum > 1 ? swKernelRun : nullptr);
 

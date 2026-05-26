@@ -328,64 +328,6 @@ public:
     }
 };
 
-class FlashSDPAModel : public BufferizableOpInterfaceExternalModelBase<FlashSDPAModel, VPU::FlashSDPAOp> {
-public:
-    mlir::LogicalResult bufferizeImpl(VPU::FlashSDPAOp origOp, mlir::RewriterBase& rewriter,
-                                      const mlir::bufferization::BufferizationOptions& options,
-                                      mlir::bufferization::BufferizationState& state,
-                                      VPU::FlashSDPAOp::Adaptor& adaptor) const;
-};
-
-mlir::LogicalResult FlashSDPAModel::bufferizeImpl(VPU::FlashSDPAOp flashSdpaOp, mlir::RewriterBase& rewriter,
-                                                  const mlir::bufferization::BufferizationOptions&,
-                                                  mlir::bufferization::BufferizationState& state,
-                                                  VPU::FlashSDPAOp::Adaptor&) const {
-    auto log = Logger::global().nest("one-shot-bufferize-FlashSDPAOp", 0);
-    log.trace("Got {0} at {1}", flashSdpaOp->getName(), flashSdpaOp->getLoc());
-
-    auto bufferizedOperands = vpux::bufferizeOperands(rewriter, flashSdpaOp->getOperands(), state);
-
-    auto module = flashSdpaOp->getParentOfType<mlir::ModuleOp>();
-    if (module == nullptr) {
-        return errorAt(flashSdpaOp->getLoc(), "Operation {0} has no parent Module Op", flashSdpaOp->getName());
-    }
-    VPUIP::createRuntimeKernelDefinition(module, log.nest(), config::getArch(flashSdpaOp));
-
-    SmallVector<mlir::OpOperand*> auxBuffers;
-    if (auto auxBuffOp = mlir::dyn_cast<VPU::AuxiliaryBufferOpInterface>(flashSdpaOp.getOperation())) {
-        auxBuffers = auxBuffOp.getAuxiliaryBuffers();
-    }
-
-    // The last output is aliased with the first input.
-    // It will re-use the input's buffer, instead of allocating a separate one
-    auto tensorsToBufferize = flashSdpaOp->getResults().drop_back();
-    auto outputBuffers = VPUIP::allocateBuffers(log, flashSdpaOp->getLoc(), rewriter, tensorsToBufferize,
-                                                /*individualBuffers=*/true);
-    auto queryBuffer = bufferizedOperands.front();
-    outputBuffers.push_back(queryBuffer);
-    const auto numResultsWithoutAuxBuffers = outputBuffers.size();
-    for (auto auxBuffer : auxBuffers) {
-        outputBuffers.push_back(bufferizedOperands[auxBuffer->getOperandNumber()]);
-    }
-
-    auto layerOp = mlir::cast<VPU::LayerOpInterface>(flashSdpaOp.getOperation());
-    auto swLayerOp = mlir::cast<VPUIP::SoftwareLayerOpInterface>(flashSdpaOp.getOperation());
-    auto builtInFunction = createBuiltInFunction(module, layerOp, bufferizedOperands, outputBuffers,
-                                                 swLayerOp.getKernelInfo(), log.nest());
-
-    auto tileIndexAttr = getIntAttr(flashSdpaOp->getContext(), 0);
-    auto swKernelOp = rewriter.create<VPUIP::SwKernelOp>(flashSdpaOp->getLoc(), bufferizedOperands, outputBuffers,
-                                                         builtInFunction, tileIndexAttr);
-
-    vpux::VPUIP::initSwKernel(swKernelOp, bufferizedOperands, outputBuffers, swLayerOp.getKernelInfo().args, log.nest(),
-                              /*swKernelRunOp=*/nullptr);
-
-    auto finalResults = SmallVector<mlir::Value>(swKernelOp->getResults().begin(),
-                                                 swKernelOp->getResults().begin() + numResultsWithoutAuxBuffers);
-    mlir::bufferization::replaceOpWithBufferizedValues(rewriter, flashSdpaOp, finalResults);
-    return mlir::success();
-}
-
 }  // namespace
 
 //
@@ -458,6 +400,7 @@ void vpux::registerSoftwareLayerBufferizableOpInterfaces(mlir::DialectRegistry& 
         VPU::AsinOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::AsinOp>>(*ctx);
         VPU::AcosOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::AcosOp>>(*ctx);
         VPU::AtanOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::AtanOp>>(*ctx);
+        VPU::AtanDmaOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::AtanDmaOp>>(*ctx);
         VPU::AsinhOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::AsinhOp>>(*ctx);
         VPU::AcoshOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::AcoshOp>>(*ctx);
         VPU::AtanhOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::AtanhOp>>(*ctx);
@@ -500,6 +443,7 @@ void vpux::registerSoftwareLayerBufferizableOpInterfaces(mlir::DialectRegistry& 
         VPU::EqualOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::EqualOp>>(*ctx);
         VPU::GreaterOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::GreaterOp>>(*ctx);
         VPU::IsInfOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::IsInfOp>>(*ctx);
+        VPU::IsFiniteOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::IsFiniteOp>>(*ctx);
         VPU::GreaterEqualOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::GreaterEqualOp>>(*ctx);
         VPU::LessOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::LessOp>>(*ctx);
         VPU::LessEqualOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::LessEqualOp>>(*ctx);
@@ -508,6 +452,8 @@ void vpux::registerSoftwareLayerBufferizableOpInterfaces(mlir::DialectRegistry& 
         VPU::BitwiseOrOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::BitwiseOrOp>>(*ctx);
         VPU::BitwiseXorOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::BitwiseXorOp>>(*ctx);
         VPU::BitwiseNotOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::BitwiseNotOp>>(*ctx);
+        VPU::BitwiseRightShiftOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::BitwiseRightShiftOp>>(*ctx);
+        VPU::BitwiseLeftShiftOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::BitwiseLeftShiftOp>>(*ctx);
         VPU::HSigmoidOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::HSigmoidOp>>(*ctx);
         VPU::LogicalXorOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::LogicalXorOp>>(*ctx);
         VPU::LogicalNotOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::LogicalNotOp>>(*ctx);
@@ -572,6 +518,7 @@ void vpux::registerSoftwareLayerBufferizableOpInterfaces(mlir::DialectRegistry& 
         VPU::RangeOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::RangeOp>>(*ctx);
         VPU::NonZeroOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::NonZeroOp>>(*ctx);
         VPU::DynamicReshapeOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::DynamicReshapeOp>>(*ctx);
+        VPU::InterpolateDMAOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::InterpolateDMAOp>>(*ctx);
         VPU::DynamicTileOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::DynamicTileOp>>(*ctx);
         VPU::RMSOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::RMSOp>>(*ctx);
         VPU::InverseOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::InverseOp>>(*ctx);
@@ -583,9 +530,9 @@ void vpux::registerSoftwareLayerBufferizableOpInterfaces(mlir::DialectRegistry& 
         VPU::ExternalKernelOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::ExternalKernelOp>>(*ctx);
         VPU::RoPEOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::RoPEOp>>(*ctx);
         VPU::SDPAOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::SDPAOp>>(*ctx);
-        VPU::SDPAExtendedOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::SDPAExtendedOp>>(*ctx);
+        VPU::AttentionOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::AttentionOp>>(*ctx);
         VPU::DynamicDataMaskOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::DynamicDataMaskOp>>(*ctx);
-        VPU::FlashSDPAOp::attachInterface<FlashSDPAModel>(*ctx);
+        VPU::FlashSDPAOp::attachInterface<SoftwareLayerOpBufferizeModel<VPU::FlashSDPAOp>>(*ctx);
     });
     mlir::linalg::registerBufferizableOpInterfaceExternalModels(registry);
     mlir::tensor::registerBufferizableOpInterfaceExternalModels(registry);

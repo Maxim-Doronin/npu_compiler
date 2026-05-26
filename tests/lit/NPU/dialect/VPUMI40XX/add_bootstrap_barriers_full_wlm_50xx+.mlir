@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --add-bootstrap-barriers %s | FileCheck %s
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --add-bootstrap-barriers %s | FileCheck %s
+// REQUIRES: platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module {
@@ -120,7 +120,7 @@ module {
 
 // -----
 
-module attributes {config.arch = #config.arch_kind<NPU40XX>} {
+module attributes {config.platform = #config.platform<NPU4000>} {
   config.ExecutorResource 1 of @DMA_NN
   config.Resources 1 of @NCE at 6.000000e+02 MHz
   net.NetworkInfo entryPoint : @single_hswish inputsInfo : {
@@ -176,7 +176,7 @@ module attributes {config.arch = #config.arch_kind<NPU40XX>} {
 
 // -----
 
-module attributes {config.arch = #config.arch_kind<NPU40XX>} {
+module attributes {config.platform = #config.platform<NPU4000>} {
   config.ExecutorResource 1 of @DMA_NN
   config.Resources 1 of @NCE at 6.000000e+02 MHz
   net.NetworkInfo entryPoint : @single_hswish_shave_idx1 inputsInfo : {

@@ -23,26 +23,13 @@ size_t getBarrierIndex(mlir::Operation* op);
 
 bool taskOpComparator(mlir::Operation* lhs, mlir::Operation* rhs);
 
-// Function to get the maximum barrier based on their type values(virtual id)
-mlir::Value* getMaxBarrier(SmallVector<mlir::Value>& barriers);
-
-// Function to get the minimum barrier based on their type values(virtual id)
-mlir::Value* getMinBarrier(SmallVector<mlir::Value>& barriers);
-
 void reindexEnqueueOps(llvm::SmallVector<VPURegMapped::EnqueueOp> enquOps);
-
-mlir::ValueRange getClosestProductionBarriers(VPURegMapped::TaskOpInterface taskOp);
 
 void dfs(mlir::Value val, llvm::SetVector<mlir::Value>& visited, size_t indexMax);
 
 llvm::SmallVector<mlir::Value> lca(mlir::Value lhs, mlir::Value rhs, lcaCache& cache, size_t indexMax);
 llvm::SmallVector<mlir::Value> lca(llvm::SmallVector<mlir::Value>& lhs, mlir::Value rhs, lcaCache& cache,
                                    size_t indexMax);
-mlir::Value findEnqTargetUsingLcaForBars(llvm::SmallVector<mlir::Value>& barrierVals, lcaCache& cache,
-                                         size_t indexMax = std::numeric_limits<size_t>::max());
-
-size_t getLcaSearchLimit(SmallVector<mlir::Value>& barriers);
-
 VPURegMapped::TaskOpInterface getNextOp(VPURegMapped::TaskOpInterface op);
 
 llvm::SmallVector<mlir::Value> getPreviousUsages(mlir::ValueRange barrs);

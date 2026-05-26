@@ -4,6 +4,8 @@
 //
 
 #include "vpux/compiler/dialect/ELF/IR/ops.hpp"
+#include "vpux/compiler/dialect/ELF/utils/utils.hpp"
+
 #include "vpux/compiler/utils/types.hpp"
 
 #include <vpux_elf/writer.hpp>
@@ -28,7 +30,7 @@ void ELF::SymbolOp::serialize(elf::writer::Symbol* symbol, ELF::SectionMapType& 
       The ticket E#29144 plans to handle Standalone symbols.
     */
 
-    auto referenceOp = mlir::SymbolTable::lookupNearestSymbolFrom(getOperation()->getParentOp(), getReferenceAttr());
+    auto referenceOp = ELF::lookupNearestSymbolFrom(getOperation()->getParentOp(), getReferenceAttr());
     auto parentSection = referenceOp;
     if (!mlir::isa<ELF::ElfSectionInterface>(referenceOp)) {
         parentSection = referenceOp->getParentOp();

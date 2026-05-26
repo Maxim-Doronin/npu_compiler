@@ -9,10 +9,10 @@
 #include "vpux/compiler/NPU40XX/dialect/NPUReg40XX/dialect.hpp"
 #include "vpux/compiler/NPU50XX/dialect/NPUReg50XX/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
-#include "vpux/compiler/dialect/VPU/interfaces/singleton_initializer.hpp"
 #include "vpux/compiler/dialect/VPURegMapped/utils.hpp"
-#include "vpux/compiler/init.hpp"
-#include "vpux/compiler/interfaces_registry.hpp"
+#include "vpux/compiler/init/dialects_registry.hpp"
+#include "vpux/compiler/init/interfaces_registry.hpp"
+#include "vpux/compiler/init/singleton_initializer.hpp"
 
 #include <mlir/IR/Builders.h>
 #include <mlir/IR/MLIRContext.h>

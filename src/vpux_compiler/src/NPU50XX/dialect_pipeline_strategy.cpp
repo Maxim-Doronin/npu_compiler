@@ -8,6 +8,7 @@
 
 #include "vpux/compiler/NPU37XX/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/conversion.hpp"
+#include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/pipelines/options_setup.hpp"
 
 using namespace vpux;
@@ -80,7 +81,7 @@ public:
         overwriteIfUnset(options.enableRuntimeDequant, false);
 
         overwriteIfUnset(options.enableConvertFFTToConv, false);
-        overwriteIfUnset(options.enableConvertToSdpaExtended, false);
+        overwriteIfUnset(options.enableConvertToAttention, false);
         overwriteIfUnset(options.enableFuseSoftwareSDPA, false);
         overwriteIfUnset(options.enableConvertToReduceSquare, true);
         overwriteIfUnset(options.enableDecomposeGRUSequence, false);
@@ -143,6 +144,10 @@ private:
         overwriteIfUnset(options.enablePropagateMemPermuteThroughEltwise, false);
         overwriteIfUnset(options.enableAdjustMemPermuteAroundOp, false);
         overwriteIfUnset(options.enableMovePermutePostEltwise, false);
+        overwriteIfUnset(options.enableAdjustConvShapePass, false);
+
+        // enable YUV to RGB SHAVE scale conversion
+        overwriteIfUnset(options.enableYuvToRgbShaveScale, true);
     }
 };
 
@@ -208,6 +213,10 @@ public:
         VPU::buildInitCompilerPipeline(pm, _optionsContainer->getInitCompilerOptions(), log.nest());
     }
 
+    void buildDebatcherPipeline(mlir::OpPassManager& pm, Logger log) override {
+        IE::buildDebatcherPipeline(pm, _optionsContainer->getPipelineOptions().getBatchCompileAdapter(), log);
+    }
+
     void buildIEPipeline(mlir::OpPassManager& pm, Logger log) override {
         IE::arch50xx::buildDefaultHWPipeline(pm, _optionsContainer->getPipelineOptions(), log);
     }
@@ -252,6 +261,10 @@ public:
 
     void initializePipeline(mlir::OpPassManager& pm, Logger log) override {
         VPU::buildInitCompilerPipeline(pm, _optionsContainer->getInitCompilerOptions(), log.nest());
+    }
+
+    void buildDebatcherPipeline(mlir::OpPassManager&, Logger log) override {
+        log.warning("Debatching is not supported");
     }
 
     void buildIEPipeline(mlir::OpPassManager& pm, Logger log) override {

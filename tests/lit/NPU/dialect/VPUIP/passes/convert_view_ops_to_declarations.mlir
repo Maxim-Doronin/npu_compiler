@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --convert-view-ops-to-declarations %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --convert-view-ops-to-declarations %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK: func.func @Reshape([[ARG0:%.+]]: memref<1x512xf16>, [[ARG1:%.+]]: memref<1x512xf16>)
 func.func @Reshape(%arg0: memref<1x512xf16>, %arg1: memref<1x512xf16>) -> memref<1x512xf16> {
@@ -535,7 +535,7 @@ func.func @ShapeCast(%arg0: memref<64x3x7x7xf16, #NHWC>, %arg1: memref<1x64x56x5
 
 %in = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x16x112x112xf16, #NHWC, [@CMX_NN, 0]>
 
-%1 = VPUIP.NCEClusterTask <{
+%1 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
         kernel_padding = #VPU.Padding<left = 3 : i64, right = 3 : i64, top = 3 : i64, bottom = 3 : i64>,
         kernel_size = [7, 7],
         kernel_strides = [2, 2],
@@ -559,7 +559,7 @@ return %1 : memref<1x64x56x56xf16, #NHWC, [@CMX_NN, 0]>
 //CHECK:        [[VAR1:%.+]] = VPUIP.NNDMA inputs([[ARG_0]] : memref<64x3x7x7xf16, #NHWC>) outputs([[VAR0]] : memref<64x3x7x7xf16, #NHWC, [@CMX_NN, 0]>) -> memref<64x3x7x7xf16, #NHWC, [@CMX_NN, 0]>
 //CHECK:        [[VAR2:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<64x16x7x7xf16, #NHWC, [@CMX_NN, 0]>
 //CHECK:        [[VAR4:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x16x112x112xf16, #NHWC, [@CMX_NN, 0]>
-//CHECK:        [[VAR5:%.+]] = VPUIP.NCEClusterTask <{kernel_padding = #VPU.Padding<left = 3 : i64, right = 3 : i64, top = 3 : i64, bottom = 3 : i64>, kernel_size = [7, 7], kernel_strides = [2, 2], task_type = #VPUIP.nce_task_type<CONV>}>
+//CHECK:        [[VAR5:%.+]] = VPUIP.NCEClusterTask <{kernel_padding = #VPU.Padding<left = 3 : i64, right = 3 : i64, top = 3 : i64, bottom = 3 : i64>, kernel_size = [7, 7], kernel_strides = [2, 2]
 //CHECK-SAME:           input([[VAR4]] : memref<1x16x112x112xf16, #NHWC, [@CMX_NN, 0]>)
 //CHECK-SAME:           weights([[VAR2]] : memref<64x16x7x7xf16, #NHWC, [@CMX_NN, 0]>)
 //CHECK-SAME:           parent_input([[VAR4]] : memref<1x16x112x112xf16, #NHWC, [@CMX_NN, 0]>)
@@ -745,6 +745,28 @@ func.func @StridedTensorRepeatedOffset(%arg0: memref<1x6x1x6xui8, @DDR>, %arg1: 
     %2 = VPUIP.GenericReshape inputs(%1 : memref<1x3x1x3xui8, {order = #NCHW, strides = [36, 6, 6, 1]}, @DDR>) -> memref<3x3xui8, {order = #NC, strides = [6, 1]}, @DDR>
     // CHECK: VPURT.DeclareBuffer <NetworkInput> [0] <21> {offsets = [0, 3, 0, 3]} -> memref<1x3x1x3xui8, {order = #NCHW, strides = [36, 6, 6, 1]}, @DDR>
     // CHECK-NEXT: VPURT.DeclareBuffer <NetworkInput> [0] <21> {offsets = [3, 3]} -> memref<3x3xui8, {order = #NC, strides = [6, 1]}, @DDR>
+
+    return %arg1 : memref<4x6xui8, @DDR>
+}
+
+// -----
+
+#NC = affine_map<(d0, d1) -> (d0, d1)>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+net.NetworkInfo entryPoint :  @StridedTensorFinalDimTiling inputsInfo : {
+    DataInfo "Input_1" : tensor<6x6xui8> {dynamicStrides}
+} outputsInfo : {
+    DataInfo "Outputs_1" : tensor<4x6xui8>
+}
+
+func.func @StridedTensorFinalDimTiling(%arg0: memref<6x6xui8, @DDR>, %arg1: memref<4x6xui8, @DDR>) -> memref<4x6xui8, @DDR> {
+    %0 = VPURT.DeclareBuffer <NetworkInput> [0] <0> -> memref<6x6xui8, @DDR>
+    %1 = VPUIP.SubView %0 [1, 0] [1, 6] : memref<6x6xui8, @DDR> to memref<1x6xui8, @DDR>
+    %2 = VPUIP.GenericReshape inputs(%1 : memref<1x6xui8, @DDR>) ->  memref<1x1x6x1xui8, @DDR>
+    // CHECK: VPURT.DeclareBuffer <NetworkInput> [0] <6> {offsets = [1, 0]} -> memref<1x6xui8, @DDR>
+    // CHECK: VPURT.DeclareBuffer <NetworkInput> [0] <6> {offsets = [1, 0, 0, 0]} -> memref<1x1x6x1xui8, @DDR>
 
     return %arg1 : memref<4x6xui8, @DDR>
 }

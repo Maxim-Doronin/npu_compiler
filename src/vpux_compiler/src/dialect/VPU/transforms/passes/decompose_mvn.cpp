@@ -15,7 +15,7 @@
 #include "vpux/compiler/utils/types.hpp"
 
 #include <mlir/Pass/PassManager.h>
-#include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Transforms/WalkPatternRewriteDriver.h>
 
 namespace vpux::VPU {
 #define GEN_PASS_DECL_DECOMPOSEMVN
@@ -51,6 +51,27 @@ bool checkInsertReshapeDimOrder(DimsOrder dimOrder, bool acrossChannel) {
     }
 
     return dimOrder != DimsOrder::NHCW && dimOrder != DimsOrder::NWCH && dimOrder != DimsOrder::WCHN;
+}
+
+bool canDecomposeMVN(VPU::MVNOp op, Logger log) {
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
+    if (inputType.getRank() != 4) {
+        log.nest(1).trace("Support for decompose MVN is limited to 4D tensors only");
+        return false;
+    }
+
+    if (op.getInternalReshape().has_value()) {
+        log.nest(1).trace("Real 'internal_reshape' does not fit into CMX");
+        return true;
+    }
+
+    // Can't get feasible tiling strategy for MVNOp because it will not fit into CMX.
+    if (!op.fitIntoCMX(getTiledBuffers(inputType, outputType, op.getNonNormDims()))) {
+        log.nest(1).trace("Can't still fit into CMX after tiling. The pass is used to decompose MVNOp.");
+        return true;
+    }
+    return false;
 }
 
 //
@@ -89,6 +110,11 @@ private:
 mlir::LogicalResult DecomposeMVNPass::MVNConverter::matchAndRewrite(VPU::MVNOp origOp,
                                                                     mlir::PatternRewriter& rewriter) const {
     _log.trace("Got '{0}' at '{1}'", origOp->getName(), origOp->getLoc());
+
+    if (!canDecomposeMVN(origOp, _log)) {
+        _log.debug("Failed to decompose MVNOp into 3 separate functions.");
+        return mlir::failure();
+    }
 
     const auto& ctx = origOp.getContext();
     auto module = origOp.getOperation()->getParentOfType<mlir::ModuleOp>();
@@ -141,43 +167,12 @@ mlir::LogicalResult DecomposeMVNPass::MVNConverter::matchAndRewrite(VPU::MVNOp o
 
 void DecomposeMVNPass::safeRunOnFunc() {
     auto& ctx = getContext();
-
-    mlir::ConversionTarget target(ctx);
-
-    target.addDynamicallyLegalOp<VPU::MVNOp>([&](VPU::MVNOp op) {
-        const auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
-        const auto outputType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
-        if (inputType.getRank() != 4) {
-            _log.nest(1).trace("Support for decompose MVN is limited to 4D tensors only");
-            return true;
-        }
-
-        if (op.getInternalReshape().has_value()) {
-            _log.nest(1).trace("Real 'internal_reshape' does not fit into CMX");
-            return false;
-        }
-
-        // Can't get feasible tiling strategy for MVNOp because it will not fit into CMX.
-        if (!op.fitIntoCMX(getTiledBuffers(inputType, outputType, op.getNonNormDims()))) {
-            _log.nest(1).trace("Can't still fit into CMX after tiling. The pass is used to decompose MVNOp.");
-            return false;
-        }
-        return true;
-    });
-
-    target.addLegalOp<VPU::MVN1SumOp>();
-    target.addLegalOp<VPU::MVN1MeanVarOp>();
-    target.addLegalOp<VPU::MVN1NormalizeOp>();
-    target.addLegalOp<VPU::ShapeCastOp>();
+    auto func = getOperation();
 
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<MVNConverter>(&ctx, _log);
 
-    auto func = getOperation();
-    if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
-        _log.debug("Failed to decompose MVNOp into 3 separete functions.");
-        signalPassFailure();
-    }
+    walkAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

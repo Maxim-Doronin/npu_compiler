@@ -342,6 +342,8 @@ def IE_GatherElementsOp :
     let results = (outs
         AnyRankedTensor:$output
     );
+
+    let hasFolder = 1;
 }
 
 

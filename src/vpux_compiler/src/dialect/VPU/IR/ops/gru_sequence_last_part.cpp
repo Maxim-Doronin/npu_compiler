@@ -56,19 +56,25 @@ vpux::InputTiling vpux::VPU::GRUSequenceLastPartOp::backInferTileInfo(const vpux
 
     inputTile.shape[Dim(batchSizeDim)] = outputTileY.shape[Dim(batchSizeDim)];
     inputTile.offsets[Dim(batchSizeDim)] = outputTileY.offsets[Dim(batchSizeDim)];
+    inputTile.axis[Dim(batchSizeDim)] = outputTileY.axis[Dim(batchSizeDim)];
     inputTile.shape[Dim(seqLengthDim)] = outputTileY.shape[Dim(seqLengthDim)];
     inputTile.offsets[Dim(seqLengthDim)] = outputTileY.offsets[Dim(seqLengthDim)];
+    inputTile.axis[Dim(seqLengthDim)] = outputTileY.axis[Dim(seqLengthDim)];
 
     initialHiddenStateTile.shape[Dim(batchSizeDim)] = outputTileY.shape[Dim(batchSizeDim)];
     initialHiddenStateTile.offsets[Dim(batchSizeDim)] = outputTileY.offsets[Dim(batchSizeDim)];
+    initialHiddenStateTile.axis[Dim(batchSizeDim)] = outputTileY.axis[Dim(batchSizeDim)];
     initialHiddenStateTile.shape[Dim(numDirectionDim)] = outputTileY.shape[Dim(numDirectionDim)];
     initialHiddenStateTile.offsets[Dim(numDirectionDim)] = outputTileY.offsets[Dim(numDirectionDim)];
+    initialHiddenStateTile.axis[Dim(numDirectionDim)] = outputTileY.axis[Dim(numDirectionDim)];
 
     rTile.shape[Dim(batchSizeDim)] = outputTileY.shape[Dim(numDirectionDim)];
     rTile.offsets[Dim(batchSizeDim)] = outputTileY.offsets[Dim(numDirectionDim)];
+    rTile.axis[Dim(batchSizeDim)] = outputTileY.axis[Dim(numDirectionDim)];
 
     bTile.shape[Dim(batchSizeDim)] = outputTileY.shape[Dim(numDirectionDim)];
     bTile.offsets[Dim(batchSizeDim)] = outputTileY.offsets[Dim(numDirectionDim)];
+    bTile.axis[Dim(batchSizeDim)] = outputTileY.axis[Dim(numDirectionDim)];
 
     return InputTiling{{std::move(inputTile), std::move(initialHiddenStateTile), std::move(rTile), std::move(bTile)}};
 }

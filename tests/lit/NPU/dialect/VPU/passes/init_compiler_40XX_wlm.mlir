@@ -3,10 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --init-compiler="vpu-arch=%arch% compilation-mode=ReferenceSW workload-management-enable=true" %s | FileCheck %s --strict-whitespace
-// REQUIRES: arch-NPU40XX
+// RUN: vpux-opt --init-compiler="platform=%platform% compilation-mode=ReferenceSW workload-management-enable=true" %s | FileCheck %s --strict-whitespace
+// REQUIRES: platform-NPU4000
 
-// CHECK: module @test attributes {config.arch = #config.arch_kind<NPU40XX>, config.compilationMode = #config.compilation_mode<ReferenceSW>, config.elf_version = #config.version<1 : 2 : 2>, config.revisionID = #config.revision_id<REVISION_NONE>} {
+// CHECK: module @test attributes {config.compilationMode = #config.compilation_mode<ReferenceSW>, config.elf_version = #config.version<1 : 2 : 2>, config.platform = #config.platform<NPU4000>, config.revisionID = #config.revision_id<REVISION_NONE>} {
 module @test {
 
 // CHECK-DAG:    {{  }}config.PipelineOptions @Options {

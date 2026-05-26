@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% enable-se-ptrs-operations=true" --propagate-and-fuse-quantize-dequantize %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% enable-se-ptrs-operations=true" --propagate-and-fuse-quantize-dequantize %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 !qElemType = !quant.uniform<u8:f16, 0.0016544117647058823>
 
 // CHECK-LABEL: @PropagateDequantReshape
@@ -1936,8 +1936,10 @@ func.func @FuseWithDWConvPerAxisQuant(%arg0: tensor<1x3x19x19x!qElemType>) -> te
 
 // -----
 
-!qElemType = !quant.quantile<u4:f8E4M3FN:f16, {-9.000000e+00,-8.000000e+00,-7.000000e+00,-6.000000e+00,-5.000000e+00,-4.000000e+00,-3.000000e+00,-2.000000e+00,-1.000000e+00,0.000000e+00,1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00,5.000000e+00,6.000000e+00}:3.000000e+00>
-!qElemType1 = !quant.quantile<u4:f8E4M3FN:f16, {-9.000000e+00,-8.000000e+00,-7.000000e+00,-6.000000e+00,-5.000000e+00,-4.000000e+00,-3.000000e+00,-2.000000e+00,-1.000000e+00,0.000000e+00,1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00,5.000000e+00,6.000000e+00}:6.000000e+00>
+!qElemType = !quant.uniform<!QuantileType.quantile<ui4:f8E4M3FN, {-9.000000e+00,-8.000000e+00,-7.000000e+00,-6.000000e+00,-5.000000e+00,-4.000000e+00,-3.000000e+00,-2.000000e+00,-1.000000e+00,0.000000e+00,1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00,5.000000e+00,6.000000e+00}>:f16, 3.000000e+00>
+!qElemType1 = !quant.uniform<!QuantileType.quantile<ui4:f8E4M3FN, {-9.000000e+00,-8.000000e+00,-7.000000e+00,-6.000000e+00,-5.000000e+00,-4.000000e+00,-3.000000e+00,-2.000000e+00,-1.000000e+00,0.000000e+00,1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00,5.000000e+00,6.000000e+00}>:f16, 6.000000e+00>
+// CHECK: !qElemType = !quant.uniform<!QuantileType.quantile<ui4:f8E4M3FN, {-9.000000e+00,-8.000000e+00,-7.000000e+00,-6.000000e+00,-5.000000e+00,-4.000000e+00,-3.000000e+00,-2.000000e+00,-1.000000e+00,0.000000e+00,1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00,5.000000e+00,6.000000e+00}>:f16, 3.000000e+00>
+// CHECK: !qElemType1 = !quant.uniform<!QuantileType.quantile<ui4:f8E4M3FN, {-9.000000e+00,-8.000000e+00,-7.000000e+00,-6.000000e+00,-5.000000e+00,-4.000000e+00,-3.000000e+00,-2.000000e+00,-1.000000e+00,0.000000e+00,1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00,5.000000e+00,6.000000e+00}>:f16, 6.000000e+00>
 // CHECK-LABEL: @FuseWithMultiplyPerTensorQuantile
 // CHECK-SAME: [[ARG:%.+]]: tensor<1x2x19x19x!qElemType>
 func.func @FuseWithMultiplyPerTensorQuantile(%arg0: tensor<1x2x19x19x!qElemType>) -> tensor<1x2x19x19xf16> {
@@ -1957,8 +1959,10 @@ func.func @FuseWithMultiplyPerTensorQuantile(%arg0: tensor<1x2x19x19x!qElemType>
 
 // -----
 
-!qElemType = !quant.quantile<u4:f8E4M3FN:f16:1, {-9.000000e+00,-8.000000e+00,-7.000000e+00,-6.000000e+00,-5.000000e+00,-4.000000e+00,-3.000000e+00,-2.000000e+00,-1.000000e+00,0.000000e+00,1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00,5.000000e+00,6.000000e+00}:{2.000000e+00,3.000000e+00}>
-!qElemType1 = !quant.quantile<u4:f8E4M3FN:f16:1, {-9.000000e+00,-8.000000e+00,-7.000000e+00,-6.000000e+00,-5.000000e+00,-4.000000e+00,-3.000000e+00,-2.000000e+00,-1.000000e+00,0.000000e+00,1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00,5.000000e+00,6.000000e+00}:{4.000000e+00,6.000000e+00}>
+!qElemType = !quant.uniform<!QuantileType.quantile<ui4:f8E4M3FN, {-9.000000e+00,-8.000000e+00,-7.000000e+00,-6.000000e+00,-5.000000e+00,-4.000000e+00,-3.000000e+00,-2.000000e+00,-1.000000e+00,0.000000e+00,1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00,5.000000e+00,6.000000e+00}>:f16, 2.000000e+00>
+!qElemType1 = !quant.uniform<!QuantileType.quantile<ui4:f8E4M3FN, {-9.000000e+00,-8.000000e+00,-7.000000e+00,-6.000000e+00,-5.000000e+00,-4.000000e+00,-3.000000e+00,-2.000000e+00,-1.000000e+00,0.000000e+00,1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00,5.000000e+00,6.000000e+00}>:f16, 4.000000e+00>
+// CHECK: !qElemType = !quant.uniform<!QuantileType.quantile<ui4:f8E4M3FN, {-9.000000e+00,-8.000000e+00,-7.000000e+00,-6.000000e+00,-5.000000e+00,-4.000000e+00,-3.000000e+00,-2.000000e+00,-1.000000e+00,0.000000e+00,1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00,5.000000e+00,6.000000e+00}>:f16, 2.000000e+00>
+// CHECK: !qElemType1 = !quant.uniform<!QuantileType.quantile<ui4:f8E4M3FN, {-9.000000e+00,-8.000000e+00,-7.000000e+00,-6.000000e+00,-5.000000e+00,-4.000000e+00,-3.000000e+00,-2.000000e+00,-1.000000e+00,0.000000e+00,1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00,5.000000e+00,6.000000e+00}>:f16, 4.000000e+00>
 // CHECK-LABEL: @FuseWithMultiplyPerAxisQuantile
 // CHECK-SAME: [[ARG:%.+]]: tensor<1x2x19x19x!qElemType>
 func.func @FuseWithMultiplyPerAxisQuantile(%arg0: tensor<1x2x19x19x!qElemType>) -> tensor<1x2x19x19xf16> {
@@ -2110,8 +2114,8 @@ func.func @PropagateDequantThroughMultiOps(%arg0: tensor<1x256x4x8x!qElemType>) 
 
 #NWHC = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
-// CHECK-LABEL: @PropagateDequantReshape
 
+// CHECK-LABEL: @PropagateDequantReshape
 func.func @PropagateDequantReshape() -> tensor<1x4x3x3xf16> {
   %cst = const.Declare tensor<1x3x3x4x!qElemType1> = dense<1> : tensor<1x3x3x4xsi8>, [#const.CastElemType<f16>, #const.CastElemType<!qElemType1>]
   %1 = IE.Dequantize(%cst) {dstElemType = f16} : tensor<1x3x3x4x!qElemType1> -> tensor<1x3x3x4xf16>
@@ -2313,14 +2317,14 @@ func.func @DoNotPropagateQuantPerAxisThroughAffineOrigAxisShape1(%arg0: tensor<1
 
 // -----
 
-!qElemType = !quant.quantile<u4:f8E4M3FN:f16:3, {
+!qElemType = !quant.uniform<!QuantileType.quantile<ui4:f8E4M3FN, {
   -9.000000e+00,-8.000000e+00,-7.000000e+00,-6.000000e+00,-5.000000e+00,
   -4.000000e+00,-3.000000e+00,-2.000000e+00,-1.000000e+00,0.000000e+00,
   1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00,5.000000e+00,
-  6.000000e+00}:{4.000000e+00,6.000000e+00,2.000000e+00,3.000000e+00}>
+  6.000000e+00}>:f16:3, {4.000000e+00,6.000000e+00,2.000000e+00,3.000000e+00}>
 
-// CHECK-DAG: [[IQELEMTYPE:!.+]] = !quant.quantile<u4:f8E4M3FN:f16:2, {-9.000000e+00,-8.000000e+00,-7.000000e+00,
-// CHECK-DAG: [[OQELEMTYPE:!.+]] = !quant.quantile<u4:f8E4M3FN:f16:3, {-9.000000e+00,-8.000000e+00,-7.000000e+00,
+// CHECK-DAG: [[IQELEMTYPE:!.+]] = !quant.uniform<!QuantileType.quantile<ui4:f8E4M3FN, {-9.000000e+00,-8.000000e+00,-7.000000e+00,-6.000000e+00,-5.000000e+00,-4.000000e+00,-3.000000e+00,-2.000000e+00,-1.000000e+00,0.000000e+00,1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00,5.000000e+00,6.000000e+00}>:f16:2, {4.000000e+00,6.000000e+00,2.000000e+00,3.000000e+00}>
+// CHECK-DAG: [[OQELEMTYPE:!.+]] = !quant.uniform<!QuantileType.quantile<ui4:f8E4M3FN, {-9.000000e+00,-8.000000e+00,-7.000000e+00,-6.000000e+00,-5.000000e+00,-4.000000e+00,-3.000000e+00,-2.000000e+00,-1.000000e+00,0.000000e+00,1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00,5.000000e+00,6.000000e+00}>:f16:3, {4.000000e+00,6.000000e+00,2.000000e+00,3.000000e+00}>
 
 // CHECK: @PropagateQuantilePerAxisThroughAffineReshape
 func.func @PropagateQuantilePerAxisThroughAffineReshape(%arg0: tensor<1x1x4x1xf32>) -> tensor<1x1x1x4x!qElemType> {
@@ -2373,17 +2377,16 @@ func.func @PropagateQuantAffineReshapeTransposePerAxis(%arg0: tensor<1x3x4x4xf16
 
 // -----
 
-!qElemType = !quant.quantile<u4:f8E4M3FN:f16:1, {
+!qElemType = !quant.uniform<!QuantileType.quantile<ui4:f8E4M3FN, {
   -9.000000e+00,-8.000000e+00,-7.000000e+00,-6.000000e+00,-5.000000e+00,
   -4.000000e+00,-3.000000e+00,-2.000000e+00,-1.000000e+00,0.000000e+00,
   1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00,5.000000e+00,
-  6.000000e+00}:{4.000000e+00,6.000000e+00,2.000000e+00,3.000000e+00}>
+  6.000000e+00}>:f16:1, {4.000000e+00,6.000000e+00,2.000000e+00,3.000000e+00}>
 
 #map = affine_map<(d0, d1, d2, d3) -> (d0, d2, d1, d3)>
 
-// CHECK-DAG: [[IQELEMTYPE:!.+]] = !quant.quantile<u4:f8E4M3FN:f16:2, {-9.000000e+00,-8.000000e+00,-7.000000e+00,
-// CHECK-DAG: [[OQELEMTYPE:!.+]] = !quant.quantile<u4:f8E4M3FN:f16:1, {-9.000000e+00,-8.000000e+00,-7.000000e+00,
-
+// CHECK-DAG: [[IQELEMTYPE:!.+]] = !quant.uniform<!QuantileType.quantile<ui4:f8E4M3FN, {-9.000000e+00,-8.000000e+00,-7.000000e+00,-6.000000e+00,-5.000000e+00,-4.000000e+00,-3.000000e+00,-2.000000e+00,-1.000000e+00,0.000000e+00,1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00,5.000000e+00,6.000000e+00}>:f16:2, {4.000000e+00,6.000000e+00,2.000000e+00,3.000000e+00}>
+// CHECK-DAG: [[OQELEMTYPE:!.+]] = !quant.uniform<!QuantileType.quantile<ui4:f8E4M3FN, {-9.000000e+00,-8.000000e+00,-7.000000e+00,-6.000000e+00,-5.000000e+00,-4.000000e+00,-3.000000e+00,-2.000000e+00,-1.000000e+00,0.000000e+00,1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00,5.000000e+00,6.000000e+00}>:f16:1, {4.000000e+00,6.000000e+00,2.000000e+00,3.000000e+00}>
 // CHECK: @PropagateQuantilePerAxisThroughTranspose
 func.func @PropagateQuantilePerAxisThroughTranspose(%arg0: tensor<1x3x4x1xf32>) -> tensor<1x4x3x1x!qElemType> {
   %0 = IE.Convert(%arg0) {dstElemType = f16} : tensor<1x3x4x1xf32> -> tensor<1x3x4x1xf16>

@@ -86,7 +86,7 @@ void RunF16ToF32ConvertOnDPUPass::replaceWithIdentityPool(IE::ConvertOp convert)
 
 void RunF16ToF32ConvertOnDPUPass::safeRunOnFunc() {
     auto& ctx = getContext();
-    auto& strategyFactory = IE::getIEStrategyFactory(&ctx);
+    const auto& strategyFactory = IE::getIEStrategyFactory(&ctx);
     auto parentCheck = strategyFactory->getFuseConvertToDPUChecker();
 
     auto func = getOperation();

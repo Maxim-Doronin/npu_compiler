@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --run-f16-to-f32-convert-on-dpu %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --run-f16-to-f32-convert-on-dpu %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 // CHECK-LABEL: @NotFoldConvertIntoMaxPool
@@ -34,7 +34,7 @@ func.func @NotFoldConvertIntoMaxPool(%arg0: tensor<1x64x28x28xf16, {order = #NHW
 // CHECK-SAME: ([[INPUT:%.+]]: tensor<1x64x28x28xf16, {order = #NHWC}>)
 func.func @NotFoldConvertIntoEltwiseWithClamp(%arg0: tensor<1x64x28x28xf16, {order = #NHWC}>) -> tensor<1x64x28x28xf32, {order = #NHWC}> {
   %0 = IE.Add(%arg0, %arg0) {
-    auto_broadcast = #IE.auto_broadcast_type<NUMPY>, post_op = #IE.Clamp<min = 0.000000e+00 : f64, max = 6.000000e+00 : f64>
+    auto_broadcast = #IE.auto_broadcast_type<NUMPY>, clamp = {min = 0.000000e+00 : f64, max = 6.000000e+00 : f64}
   }
       : tensor<1x64x28x28xf16, {order = #NHWC}>, tensor<1x64x28x28xf16, {order = #NHWC}>
       -> tensor<1x64x28x28xf16, {order = #NHWC}>

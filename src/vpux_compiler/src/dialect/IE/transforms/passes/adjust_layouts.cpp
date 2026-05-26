@@ -6,6 +6,7 @@
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/utils/adjust_layout_utils.hpp"
 #include "vpux/utils/core/dense_map.hpp"
 
@@ -29,11 +30,8 @@ using InputToReordersMap = DenseMap<mlir::Value, std::unordered_map<DimsOrder, I
 
 class LayerRewriter final : public mlir::OpInterfaceRewritePattern<IE::LayoutInfoOpInterface> {
 public:
-    LayerRewriter(mlir::MLIRContext* ctx, Logger log, const bool seOpsEnabled, const bool seExperimentalOpsEnabled)
-            : mlir::OpInterfaceRewritePattern<IE::LayoutInfoOpInterface>(ctx),
-              _log(log),
-              _seOpsEnabled(seOpsEnabled),
-              _seExperimentalOpsEnabled(seExperimentalOpsEnabled) {
+    LayerRewriter(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpInterfaceRewritePattern<IE::LayoutInfoOpInterface>(ctx), _log(log) {
     }
 
 public:
@@ -41,8 +39,6 @@ public:
 
 private:
     Logger _log;
-    bool _seOpsEnabled;
-    bool _seExperimentalOpsEnabled;
 };
 
 mlir::LogicalResult LayerRewriter::matchAndRewrite(IE::LayoutInfoOpInterface origOp,
@@ -50,7 +46,7 @@ mlir::LogicalResult LayerRewriter::matchAndRewrite(IE::LayoutInfoOpInterface ori
     _log.trace("Rewrite layer operation '{0}' at '{1}'", origOp->getName(), origOp->getLoc());
 
     auto orderInfo = origOp.getLayoutInfo();
-    origOp.inferLayoutInfo(orderInfo, _seOpsEnabled, _seExperimentalOpsEnabled);
+    origOp.inferLayoutInfo(orderInfo);
 
     rewriter.startOpModification(origOp);
 
@@ -92,37 +88,13 @@ mlir::LogicalResult LayerRewriter::matchAndRewrite(IE::LayoutInfoOpInterface ori
 
 class AdjustLayoutsPass final : public IE::impl::AdjustLayoutsBase<AdjustLayoutsPass> {
 public:
-    explicit AdjustLayoutsPass(const bool seOpsEnabled, const bool seExperimentalOpsEnabled, Logger log)
-            : _seOpsEnabled(seOpsEnabled), _seExperimentalOpsEnabled(seExperimentalOpsEnabled) {
+    explicit AdjustLayoutsPass(Logger log) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
-    mlir::LogicalResult initialize(mlir::MLIRContext* ctx) final;
-
 private:
     void safeRunOnFunc() final;
-
-private:
-    bool _seOpsEnabled;
-    bool _seExperimentalOpsEnabled;
 };
-
-mlir::LogicalResult AdjustLayoutsPass::initialize(mlir::MLIRContext* ctx) {
-    if (mlir::failed(Base::initialize(ctx))) {
-        return mlir::failure();
-    }
-
-    // When this parameter has a value, it probably comes from LIT test.
-    // Override the default
-    if (seOpsEnabled.hasValue()) {
-        _seOpsEnabled = seOpsEnabled.getValue();
-    }
-    if (seExperimentalOpsEnabled.hasValue()) {
-        _seExperimentalOpsEnabled = seExperimentalOpsEnabled.getValue();
-    }
-
-    return mlir::success();
-}
 
 void AdjustLayoutsPass::safeRunOnFunc() {
     auto& ctx = getContext();
@@ -135,7 +107,7 @@ void AdjustLayoutsPass::safeRunOnFunc() {
             auto orderInfo = iface.getLayoutInfo();
             _log.nest().trace("Current layouts: {0}", orderInfo);
 
-            iface.inferLayoutInfo(orderInfo, _seOpsEnabled, _seExperimentalOpsEnabled);
+            iface.inferLayoutInfo(orderInfo);
             _log.nest().trace("Required layouts: {0}", orderInfo);
 
             return !orderInfo.hasChanges();
@@ -146,7 +118,7 @@ void AdjustLayoutsPass::safeRunOnFunc() {
     target.addLegalOp<IE::ReorderOp>();
 
     mlir::RewritePatternSet patterns(&ctx);
-    patterns.add<LayerRewriter>(&ctx, _log.nest(), _seOpsEnabled, _seExperimentalOpsEnabled);
+    patterns.add<LayerRewriter>(&ctx, _log.nest());
 
     auto func = getOperation();
     if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
@@ -160,7 +132,6 @@ void AdjustLayoutsPass::safeRunOnFunc() {
 // createAdjustLayoutsPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::IE::createAdjustLayoutsPass(const bool seOpsEnabled,
-                                                              const bool seExperimentalOpsEnabled, Logger log) {
-    return std::make_unique<AdjustLayoutsPass>(seOpsEnabled, seExperimentalOpsEnabled, log);
+std::unique_ptr<mlir::Pass> vpux::IE::createAdjustLayoutsPass(Logger log) {
+    return std::make_unique<AdjustLayoutsPass>(log);
 }

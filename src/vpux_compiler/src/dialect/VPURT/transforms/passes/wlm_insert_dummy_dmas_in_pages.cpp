@@ -92,8 +92,8 @@ void WlmInsertDummyDmasInPagesPass::safeRunOnFunc() {
             // Create dummy DMA Op that will consume original barrier and produce into new barrier
             // TODO: Identify what are the users of barrier and if it is already a DMA, create a dummy DMA
             // of different type. This way number of dummy DMAs inserted in subsequent steps will reduce
-            builder.setInsertionPointAfter(
-                    barrierInfo.getTaskOpAtIndex(*std::max_element(barProducers.begin(), barProducers.end())));
+            auto insertAfter = *std::max_element(barProducers.begin(), barProducers.end());
+            builder.setInsertionPointAfter(barrierInfo.getTaskOpAtIndex(insertAfter));
             auto dummyDmaOp = VPUIP::createSyncDMA(builder, inDdrBuffer, outBuffer, 0, {}, {},
                                                    "dummy_dma_increasing_bar_count_for_wlm_page");
             dummyDmaOp.setWlmPage(pageInd);
@@ -103,6 +103,8 @@ void WlmInsertDummyDmasInPagesPass::safeRunOnFunc() {
 
             barrierInfo.removeConsumers(barInd, barConsumers);
             barrierInfo.addConsumer(barInd, dummyDmaOpTaskInd);
+            barrierPagesSplitHandler.updateTaskPageAssignmentForQueue(
+                    insertAfter + 1, pageInd, VPURT::getTaskQueueType(dummyDmaOp, false), dummyDmaOp);
         }
 
         VPURT::orderExecutionTasksAndBarriers(func, barrierInfo, _log, true);
@@ -114,6 +116,7 @@ void WlmInsertDummyDmasInPagesPass::safeRunOnFunc() {
     auto dummyDmaInsertionDataVec = barrierPagesSplitHandler.getAndLegalizeDummyDmaInsertionData();
 
     if (dummyDmaInsertionDataVec.empty()) {
+        barrierInfo.clearAttributes();
         return;
     }
 

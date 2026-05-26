@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --convert-VPUIP-to-VPUMI37XX %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW" --convert-VPUIP-to-VPUMI37XX %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module @ExpandDMA {
@@ -40,18 +40,20 @@ module @ExpandDMA {
   }
 }
 
+// CHECK: [[BUF_0:%.+]] = VPURT.DeclareBuffer <DDR> <0> -> memref<1x64x7x7xf16, #NHWC, @DDR>
+// CHECK: [[BUF_1:%.+]] = VPURT.DeclareBuffer <DDR> <3136> -> memref<1x64x7x16xf16, #NHWC, @DDR>
 // CHECK-NOT: VPUIP.NNDMA
-// CHECK: [[VAL5:%.+]] = VPUMI37XX.NNDMA <{port = 0 : i64}> inputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>) outputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:5>
+// CHECK: [[VAL5:%.+]] = VPUMI37XX.NNDMA <{port = 0 : i64}> inputs([[BUF_0]] : memref<1x64x7x7xf16, #NHWC, @DDR>) outputs([[BUF_0]] : memref<1x64x7x7xf16, #NHWC, @DDR>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:5>
 // CHECK-NOT: VPUIP.NNDMA
-// CHECK: [[VAL4:%.+]] = VPUMI37XX.NNDMA <{port = 0 : i64}> inputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>) outputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>) nextDMAIdx([[VAL5]] : !VPURegMapped.Index<0:0:5>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:4>
+// CHECK: [[VAL4:%.+]] = VPUMI37XX.NNDMA <{port = 0 : i64}> inputs([[BUF_0]] : memref<1x64x7x7xf16, #NHWC, @DDR>) outputs([[BUF_0]] : memref<1x64x7x7xf16, #NHWC, @DDR>) nextDMAIdx([[VAL5]] : !VPURegMapped.Index<0:0:5>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:4>
 // CHECK-NOT: VPUIP.ExpandDMA
-// CHECK: [[VAL3:%.+]] = VPUMI37XX.NNDMA <{dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 1 : i64, len = 6272 : i64, srcWidth = 6272 : i64, srcStride = 6272 : i64, srcPlaneStride = 0 : i64, dstWidth = 896 : i64, dstStride = 2048 : i64, dstPlaneStride = 0 : i64>, port = 0 : i64}> inputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>) outputs(%1 : memref<1x64x7x16xf16, #NHWC, @DDR>) nextDMAIdx([[VAL4]] : !VPURegMapped.Index<0:0:4>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:3>
+// CHECK: [[VAL3:%.+]] = VPUMI37XX.NNDMA <{dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 1 : i64, len = 6272 : i64, srcWidth = 6272 : i64, srcStride = 6272 : i64, srcPlaneStride = 0 : i64, dstWidth = 896 : i64, dstStride = 2048 : i64, dstPlaneStride = 0 : i64>, port = 0 : i64}> inputs([[BUF_0]] : memref<1x64x7x7xf16, #NHWC, @DDR>) outputs([[BUF_1]] : memref<1x64x7x16xf16, #NHWC, @DDR>) nextDMAIdx([[VAL4]] : !VPURegMapped.Index<0:0:4>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:3>
 // CHECK-NOT: VPUIP.ExpandDMA
-// CHECK: [[VAL2:%.+]] = VPUMI37XX.NNDMA <{dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 1 : i64, len = 6272 : i64, srcWidth = 6272 : i64, srcStride = 6272 : i64, srcPlaneStride = 0 : i64, dstWidth = 896 : i64, dstStride = 2048 : i64, dstPlaneStride = 0 : i64>, port = 0 : i64}> inputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>) outputs(%1 : memref<1x64x7x16xf16, #NHWC, @DDR>) nextDMAIdx([[VAL3]] : !VPURegMapped.Index<0:0:3>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:2>
+// CHECK: [[VAL2:%.+]] = VPUMI37XX.NNDMA <{dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 1 : i64, len = 6272 : i64, srcWidth = 6272 : i64, srcStride = 6272 : i64, srcPlaneStride = 0 : i64, dstWidth = 896 : i64, dstStride = 2048 : i64, dstPlaneStride = 0 : i64>, port = 0 : i64}> inputs([[BUF_0]] : memref<1x64x7x7xf16, #NHWC, @DDR>) outputs([[BUF_1]] : memref<1x64x7x16xf16, #NHWC, @DDR>) nextDMAIdx([[VAL3]] : !VPURegMapped.Index<0:0:3>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:2>
 // CHECK-NOT: VPUIP.NNDMA
-// CHECK: [[VAL1:%.+]] = VPUMI37XX.NNDMA <{port = 0 : i64}> inputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>) outputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>) nextDMAIdx([[VAL2]] : !VPURegMapped.Index<0:0:2>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:1>
+// CHECK: [[VAL1:%.+]] = VPUMI37XX.NNDMA <{port = 0 : i64}> inputs([[BUF_0]] : memref<1x64x7x7xf16, #NHWC, @DDR>) outputs([[BUF_0]] : memref<1x64x7x7xf16, #NHWC, @DDR>) nextDMAIdx([[VAL2]] : !VPURegMapped.Index<0:0:2>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:1>
 // CHECK-NOT: VPUIP.NNDMA
-// CHECK: [[VAL0:%.+]] = VPUMI37XX.NNDMA <{port = 0 : i64}> inputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>) outputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>) nextDMAIdx([[VAL1]] : !VPURegMapped.Index<0:0:1>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:0>
+// CHECK: [[VAL0:%.+]] = VPUMI37XX.NNDMA <{port = 0 : i64}> inputs([[BUF_0]] : memref<1x64x7x7xf16, #NHWC, @DDR>) outputs([[BUF_0]] : memref<1x64x7x7xf16, #NHWC, @DDR>) nextDMAIdx([[VAL1]] : !VPURegMapped.Index<0:0:1>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:0>
 
 // -----
 
@@ -89,18 +91,20 @@ module @ExpandDMA {
   }
 }
 
+// CHECK: [[BUF_0:%.+]] = VPURT.DeclareBuffer <DDR> <0> -> memref<1x64x7x7xf16, #NHWC, @DDR>
+// CHECK: [[BUF_1:%.+]] = VPURT.DeclareBuffer <DDR> <3136> -> memref<1x64x7x16xf16, #NHWC, @DDR>
 // CHECK-NOT: VPUIP.ExpandDMA
-// CHECK: [[VAL5:%.+]] = VPUMI37XX.NNDMA <{dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 1 : i64, len = 6272 : i64, srcWidth = 6272 : i64, srcStride = 6272 : i64, srcPlaneStride = 0 : i64, dstWidth = 896 : i64, dstStride = 2048 : i64, dstPlaneStride = 0 : i64>, port = 0 : i64}> inputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>) outputs(%1 : memref<1x64x7x16xf16, #NHWC, @DDR>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:5>
+// CHECK: [[VAL5:%.+]] = VPUMI37XX.NNDMA <{dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 1 : i64, len = 6272 : i64, srcWidth = 6272 : i64, srcStride = 6272 : i64, srcPlaneStride = 0 : i64, dstWidth = 896 : i64, dstStride = 2048 : i64, dstPlaneStride = 0 : i64>, port = 0 : i64}> inputs([[BUF_0]] : memref<1x64x7x7xf16, #NHWC, @DDR>) outputs([[BUF_1]] : memref<1x64x7x16xf16, #NHWC, @DDR>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:5>
 // CHECK-NOT: VPUIP.ExpandDMA
-// CHECK: [[VAL4:%.+]] = VPUMI37XX.NNDMA <{dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 1 : i64, len = 6272 : i64, srcWidth = 6272 : i64, srcStride = 6272 : i64, srcPlaneStride = 0 : i64, dstWidth = 896 : i64, dstStride = 2048 : i64, dstPlaneStride = 0 : i64>, port = 0 : i64}> inputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>) outputs(%1 : memref<1x64x7x16xf16, #NHWC, @DDR>) nextDMAIdx([[VAL5]] : !VPURegMapped.Index<0:0:5>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:4>
+// CHECK: [[VAL4:%.+]] = VPUMI37XX.NNDMA <{dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 1 : i64, len = 6272 : i64, srcWidth = 6272 : i64, srcStride = 6272 : i64, srcPlaneStride = 0 : i64, dstWidth = 896 : i64, dstStride = 2048 : i64, dstPlaneStride = 0 : i64>, port = 0 : i64}> inputs([[BUF_0]] : memref<1x64x7x7xf16, #NHWC, @DDR>) outputs([[BUF_1]] : memref<1x64x7x16xf16, #NHWC, @DDR>) nextDMAIdx([[VAL5]] : !VPURegMapped.Index<0:0:5>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:4>
 // CHECK-NOT: VPUIP.NNDMA
-// CHECK: [[VAL3:%.+]] = VPUMI37XX.NNDMA <{port = 0 : i64}> inputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>) outputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>) nextDMAIdx([[VAL4]] : !VPURegMapped.Index<0:0:4>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:3>
+// CHECK: [[VAL3:%.+]] = VPUMI37XX.NNDMA <{port = 0 : i64}> inputs([[BUF_0]] : memref<1x64x7x7xf16, #NHWC, @DDR>) outputs([[BUF_0]] : memref<1x64x7x7xf16, #NHWC, @DDR>) nextDMAIdx([[VAL4]] : !VPURegMapped.Index<0:0:4>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:3>
 // CHECK-NOT: VPUIP.NNDMA
-// CHECK: [[VAL2:%.+]] = VPUMI37XX.NNDMA <{port = 0 : i64}> inputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>) outputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>) nextDMAIdx([[VAL3]] : !VPURegMapped.Index<0:0:3>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:2>
+// CHECK: [[VAL2:%.+]] = VPUMI37XX.NNDMA <{port = 0 : i64}> inputs([[BUF_0]] : memref<1x64x7x7xf16, #NHWC, @DDR>) outputs([[BUF_0]] : memref<1x64x7x7xf16, #NHWC, @DDR>) nextDMAIdx([[VAL3]] : !VPURegMapped.Index<0:0:3>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:2>
 // CHECK-NOT: VPUIP.ExpandDMA
-// CHECK: [[VAL1:%.+]] = VPUMI37XX.NNDMA <{dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 1 : i64, len = 6272 : i64, srcWidth = 6272 : i64, srcStride = 6272 : i64, srcPlaneStride = 0 : i64, dstWidth = 896 : i64, dstStride = 2048 : i64, dstPlaneStride = 0 : i64>, port = 0 : i64}> inputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>) outputs(%1 : memref<1x64x7x16xf16, #NHWC, @DDR>) nextDMAIdx([[VAL2]] : !VPURegMapped.Index<0:0:2>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:1>
+// CHECK: [[VAL1:%.+]] = VPUMI37XX.NNDMA <{dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 1 : i64, len = 6272 : i64, srcWidth = 6272 : i64, srcStride = 6272 : i64, srcPlaneStride = 0 : i64, dstWidth = 896 : i64, dstStride = 2048 : i64, dstPlaneStride = 0 : i64>, port = 0 : i64}> inputs([[BUF_0]] : memref<1x64x7x7xf16, #NHWC, @DDR>) outputs([[BUF_1]] : memref<1x64x7x16xf16, #NHWC, @DDR>) nextDMAIdx([[VAL2]] : !VPURegMapped.Index<0:0:2>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:1>
 // CHECK-NOT: VPUIP.ExpandDMA
-// CHECK: [[VAL0:%.+]] = VPUMI37XX.NNDMA <{dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 1 : i64, len = 6272 : i64, srcWidth = 6272 : i64, srcStride = 6272 : i64, srcPlaneStride = 0 : i64, dstWidth = 896 : i64, dstStride = 2048 : i64, dstPlaneStride = 0 : i64>, port = 0 : i64}> inputs(%0 : memref<1x64x7x7xf16, #NHWC, @DDR>) outputs(%1 : memref<1x64x7x16xf16, #NHWC, @DDR>) nextDMAIdx([[VAL1]] : !VPURegMapped.Index<0:0:1>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:0>
+// CHECK: [[VAL0:%.+]] = VPUMI37XX.NNDMA <{dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 1 : i64, len = 6272 : i64, srcWidth = 6272 : i64, srcStride = 6272 : i64, srcPlaneStride = 0 : i64, dstWidth = 896 : i64, dstStride = 2048 : i64, dstPlaneStride = 0 : i64>, port = 0 : i64}> inputs([[BUF_0]] : memref<1x64x7x7xf16, #NHWC, @DDR>) outputs([[BUF_1]] : memref<1x64x7x16xf16, #NHWC, @DDR>) nextDMAIdx([[VAL1]] : !VPURegMapped.Index<0:0:1>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:0>
 
 // -----
 

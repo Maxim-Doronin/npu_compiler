@@ -188,3 +188,18 @@ bool config::hasSupportForFifoPerShaveEngine(config::ArchKind arch, bool enableW
 bool config::isSprLUTEnabled(mlir::Operation* op) {
     return config::getConstraint<bool>(op, SPRLUT_ENABLED);
 }
+
+// Legacy Barriers
+bool config::hasUseLegacyBarriers(mlir::Operation* op) {
+    auto module = getModuleOp(op);
+    auto pipelineOptionOp = module.lookupSymbol<config::PipelineOptionsOp>(config::PIPELINE_OPTIONS);
+    if (pipelineOptionOp == nullptr) {
+        return false;
+    }
+    auto attrValue = pipelineOptionOp.lookupSymbol<config::OptionOp>(USE_LEGACY_BARRIERS);
+    if (attrValue == nullptr) {
+        return false;
+    }
+    auto boolAttr = mlir::dyn_cast<mlir::BoolAttr>(attrValue.getOptionValue());
+    return boolAttr != nullptr && boolAttr.getValue();
+}

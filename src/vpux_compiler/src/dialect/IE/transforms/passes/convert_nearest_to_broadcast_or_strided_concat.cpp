@@ -15,7 +15,7 @@
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/types.hpp"
 
-#include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Transforms/WalkPatternRewriteDriver.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_CONVERTNEARESTTOSTRIDEDCONCAT
@@ -26,6 +26,33 @@ namespace vpux::IE {
 using namespace vpux;
 
 namespace {
+
+bool shouldConvertToStrideConcat(IE::InterpolateOp op) {
+    const auto attrs = op.getAttr();
+    const bool validAxesAttrSize = (op.getAxesAttrAttr().size() == 2 || op.getAxesAttrAttr().size() == 4);
+    const auto inputShape = getShape(op.getInput());
+    const auto outShape = getShape(op.getOutput());
+
+    return attrs.getMode().getValue() == IE::InterpolateMode::NEAREST && !attrs.getAntialias().getValue() &&
+           attrs.getCoordMode().getValue() == IE::InterpolateCoordMode::ASYMMETRIC && validAxesAttrSize &&
+           (outShape[Dims4D::Act::W] % inputShape[Dims4D::Act::W] == 0) &&
+           (outShape[Dims4D::Act::H] % inputShape[Dims4D::Act::H] == 0);
+}
+
+bool shouldConvertInterpolateOp(IE::InterpolateOp op, bool isSEPtrsEnabled, Logger log) {
+    const auto logCb = [&](const formatv_object_base& msg) {
+        log.trace("{0}", msg.str());
+    };
+
+    if (isSEPtrsEnabled) {
+        auto seOp = mlir::dyn_cast<IE::SEOpInterface>(op.getOperation());
+        if (seOp && seOp.isSupported(logCb)) {
+            return false;
+        }
+    }
+
+    return (shouldConvertToStrideConcat(op) || IE::isBroadCastInterpolate(op));
+}
 
 //
 // ConvertNearestToBroadcastOrStridedConcatPass
@@ -51,19 +78,26 @@ private:
 class ConvertNearestToBroadcastOrStridedConcatPass::NearestToBroadcastConverter final :
         public mlir::OpRewritePattern<IE::InterpolateOp> {
 public:
-    NearestToBroadcastConverter(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit, Logger log)
-            : mlir::OpRewritePattern<IE::InterpolateOp>(ctx, benefit), _log(log) {
+    NearestToBroadcastConverter(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit, bool isSEPtrsEnabled, Logger log)
+            : mlir::OpRewritePattern<IE::InterpolateOp>(ctx, benefit), _isSEPtrsEnabled(isSEPtrsEnabled), _log(log) {
     }
 
 public:
     mlir::LogicalResult matchAndRewrite(IE::InterpolateOp origOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
+    bool _isSEPtrsEnabled;
     Logger _log;
 };
 
 mlir::LogicalResult ConvertNearestToBroadcastOrStridedConcatPass::NearestToBroadcastConverter::matchAndRewrite(
         IE::InterpolateOp origOp, mlir::PatternRewriter& rewriter) const {
+    const bool shouldConvert =
+            shouldConvertInterpolateOp(origOp, _isSEPtrsEnabled, _log) && IE::isBroadCastInterpolate(origOp);
+    if (!shouldConvert) {
+        return mlir::failure();
+    }
+
     const auto& ctx = origOp.getContext();
     const auto outShape = getShape(origOp.getOutput());
 
@@ -88,19 +122,27 @@ mlir::LogicalResult ConvertNearestToBroadcastOrStridedConcatPass::NearestToBroad
 class ConvertNearestToBroadcastOrStridedConcatPass::NearestToStridedConcatConverter final :
         public mlir::OpRewritePattern<IE::InterpolateOp> {
 public:
-    NearestToStridedConcatConverter(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit, Logger log)
-            : mlir::OpRewritePattern<IE::InterpolateOp>(ctx, benefit), _log(log) {
+    NearestToStridedConcatConverter(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit, bool isSEPtrsEnabled,
+                                    Logger log)
+            : mlir::OpRewritePattern<IE::InterpolateOp>(ctx, benefit), _isSEPtrsEnabled(isSEPtrsEnabled), _log(log) {
     }
 
 public:
     mlir::LogicalResult matchAndRewrite(IE::InterpolateOp origOp, mlir::PatternRewriter& rewriter) const final;
 
 private:
+    bool _isSEPtrsEnabled;
     Logger _log;
 };
 
 mlir::LogicalResult ConvertNearestToBroadcastOrStridedConcatPass::NearestToStridedConcatConverter::matchAndRewrite(
         IE::InterpolateOp origOp, mlir::PatternRewriter& rewriter) const {
+    const bool shouldConvert =
+            shouldConvertInterpolateOp(origOp, _isSEPtrsEnabled, _log) && shouldConvertToStrideConcat(origOp);
+    if (!shouldConvert) {
+        return mlir::failure();
+    }
+
     const auto inputShape = getShape(origOp.getInput());
     const auto outShape = getShape(origOp.getOutput());
     const auto attrs = origOp.getAttr();
@@ -204,51 +246,12 @@ void ConvertNearestToBroadcastOrStridedConcatPass::safeRunOnFunc() {
     const auto moduleOp = getModuleOp(func);
     const auto isSEPtrsEnabled = config::hasEnableSEPtrsOperations(moduleOp);
 
-    const auto isLegalConvertToStrideConcat = [&](IE::InterpolateOp op) {
-        const auto attrs = op.getAttr();
-        const bool validAxesAttrSize = (op.getAxesAttrAttr().size() == 2 || op.getAxesAttrAttr().size() == 4);
-        const auto inputShape = getShape(op.getInput());
-        const auto outShape = getShape(op.getOutput());
-
-        return attrs.getMode().getValue() == IE::InterpolateMode::NEAREST && !attrs.getAntialias().getValue() &&
-               attrs.getCoordMode().getValue() == IE::InterpolateCoordMode::ASYMMETRIC && validAxesAttrSize &&
-               (outShape[Dims4D::Act::W] % inputShape[Dims4D::Act::W] == 0) &&
-               (outShape[Dims4D::Act::H] % inputShape[Dims4D::Act::H] == 0);
-    };
-
-    const auto isLegalConvertToBroadCast = [&](IE::InterpolateOp op) {
-        return IE::isBroadCastInterpolate(op);
-    };
-
-    const auto logCb = [&](const formatv_object_base& msg) {
-        _log.trace("{0}", msg.str());
-    };
-
-    mlir::ConversionTarget target(ctx);
-    target.addDynamicallyLegalOp<IE::InterpolateOp>([&](IE::InterpolateOp op) {
-        if (isSEPtrsEnabled) {
-            if (VPU::NCEInterpolateOp::isSupported(op, logCb, /*checkLayout=*/false, /*checkChannelAlignment=*/false,
-                                                   /*checkBatch=*/false)) {
-                return true;
-            }
-        }
-
-        return !(isLegalConvertToStrideConcat(op) || isLegalConvertToBroadCast(op));
-    });
-    target.addLegalOp<Const::DeclareOp>();
-    target.addLegalOp<IE::BroadcastOp>();
-    target.addLegalOp<IE::SliceOp>();
-    target.addLegalOp<IE::ConcatOp>();
-    target.addLegalOp<IE::FakeQuantizeOp>();
-
     mlir::RewritePatternSet patterns(&ctx);
     SmallVector<mlir::PatternBenefit> benefitLevels = getBenefitLevels(2);
-    patterns.add<NearestToBroadcastConverter>(&ctx, benefitLevels[0], _log);
-    patterns.add<NearestToStridedConcatConverter>(&ctx, benefitLevels[1], _log);
+    patterns.add<NearestToBroadcastConverter>(&ctx, benefitLevels[0], isSEPtrsEnabled, _log);
+    patterns.add<NearestToStridedConcatConverter>(&ctx, benefitLevels[1], isSEPtrsEnabled, _log);
 
-    if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
-        signalPassFailure();
-    }
+    walkAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

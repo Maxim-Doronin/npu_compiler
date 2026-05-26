@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL: @ConvertConstToAttr
 // CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x3x10x10xf32>)
@@ -220,4 +220,327 @@ func.func @ConvertHalfPixelToAsymmetric(%arg0: tensor<1x3x160x160xf32>) -> tenso
 
     // CHECK:       return [[INTERP]] : tensor<1x3x320x320xf32>
 
+}
+
+// -----
+
+// CHECK-LABEL: @InterpolateDynamicShapeBounded
+// CHECK-SAME:    [[ARG_0:%[^:]+]]: tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 100, 80]> : tensor<4xsi64>}>
+func.func @InterpolateDynamicShapeBounded(
+        %arg0: tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 100, 80]> : tensor<4xsi64>}>)
+            -> tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 400, 320]> : tensor<4xsi64>}> {
+
+    %0 = IE.Interpolate(%arg0) {
+        attr = #IE.Interpolate<antialias = false, coord_mode = <ASYMMETRIC>, cube_coeff = -7.500000e-01 : f64, mode = <NEAREST>, nearest_mode = <ROUND_PREFER_FLOOR>,
+            pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], shape_calc_mode = <SCALES>>,
+        axes_attr = [2, 3],
+        operandSegmentSizes = array<i32: 1, 0, 0, 0>,
+        scales_attr = [4.000000e+00, 4.000000e+00],
+        sizes_attr = [400, 320]
+    } : tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 100, 80]> : tensor<4xsi64>}>
+        -> tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 400, 320]> : tensor<4xsi64>}>
+
+    return %0 : tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 400, 320]> : tensor<4xsi64>}>
+
+    // CHECK:       [[INTERP:%.+]] = IE.Interpolate([[ARG_0]])
+    // CHECK-SAME:      attr = #IE.Interpolate<mode = <NEAREST>
+    // CHECK-SAME:      coord_mode = <ASYMMETRIC>
+    // CHECK-SAME:      nearest_mode = <ROUND_PREFER_FLOOR>
+    // CHECK-SAME:      scales_attr = [4.000000e+00, 4.000000e+00]
+    // CHECK-SAME:      -> tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 400, 320]> : tensor<4xsi64>}>
+    // CHECK:       return [[INTERP]]
+}
+
+// -----
+
+// CHECK-LABEL: @InterpolateDynamicHalfPixelLinear
+// CHECK-SAME:    [[ARG_0:%[^:]+]]: tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 100, 80]> : tensor<4xsi64>}>
+func.func @InterpolateDynamicHalfPixelLinear(
+        %arg0: tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 100, 80]> : tensor<4xsi64>}>)
+            -> tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 400, 320]> : tensor<4xsi64>}> {
+
+    %0 = IE.Interpolate(%arg0) {
+        attr = #IE.Interpolate<antialias = false, coord_mode = <HALF_PIXEL>, cube_coeff = -7.500000e-01 : f64, mode = <LINEAR>, nearest_mode = <FLOOR>,
+            pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], shape_calc_mode = <SCALES>>,
+        axes_attr = [2, 3],
+        operandSegmentSizes = array<i32: 1, 0, 0, 0>,
+        scales_attr = [4.000000e+00, 4.000000e+00],
+        sizes_attr = [400, 320]
+    } : tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 100, 80]> : tensor<4xsi64>}>
+        -> tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 400, 320]> : tensor<4xsi64>}>
+
+    return %0 : tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 400, 320]> : tensor<4xsi64>}>
+
+    // CHECK:       [[INTERP:%.+]] = IE.Interpolate([[ARG_0]])
+    // CHECK-SAME:      attr = #IE.Interpolate<mode = <LINEAR>
+    // CHECK-SAME:      coord_mode = <HALF_PIXEL>
+    // CHECK-SAME:      scales_attr = [4.000000e+00, 4.000000e+00]
+    // CHECK-SAME:      -> tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 400, 320]> : tensor<4xsi64>}>
+    // CHECK:       return [[INTERP]]
+}
+
+// -----
+
+// CHECK-LABEL: @InterpolateDynamicAlignCorners
+// CHECK-SAME:    [[ARG_0:%[^:]+]]: tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 100, 80]> : tensor<4xsi64>}>
+func.func @InterpolateDynamicAlignCorners(
+        %arg0: tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 100, 80]> : tensor<4xsi64>}>)
+            -> tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 400, 320]> : tensor<4xsi64>}> {
+
+    %0 = IE.Interpolate(%arg0) {
+        attr = #IE.Interpolate<antialias = false, coord_mode = <ALIGN_CORNERS>, cube_coeff = -7.500000e-01 : f64, mode = <LINEAR>, nearest_mode = <FLOOR>,
+            pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], shape_calc_mode = <SCALES>>,
+        axes_attr = [2, 3],
+        operandSegmentSizes = array<i32: 1, 0, 0, 0>,
+        scales_attr = [4.000000e+00, 4.000000e+00],
+        sizes_attr = [400, 320]
+    } : tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 100, 80]> : tensor<4xsi64>}>
+        -> tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 400, 320]> : tensor<4xsi64>}>
+
+    return %0 : tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 400, 320]> : tensor<4xsi64>}>
+
+    // CHECK:       [[INTERP:%.+]] = IE.Interpolate([[ARG_0]])
+    // CHECK-SAME:      attr = #IE.Interpolate<mode = <LINEAR>
+    // CHECK-SAME:      coord_mode = <ALIGN_CORNERS>
+    // CHECK-SAME:      scales_attr = [4.000000e+00, 4.000000e+00]
+    // CHECK-SAME:      -> tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 400, 320]> : tensor<4xsi64>}>
+    // CHECK:       return [[INTERP]]
+}
+
+// -----
+
+// CHECK-LABEL: @InterpolateDynamicDownscale
+// CHECK-SAME:    [[ARG_0:%[^:]+]]: tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 400, 320]> : tensor<4xsi64>}>
+func.func @InterpolateDynamicDownscale(
+        %arg0: tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 400, 320]> : tensor<4xsi64>}>)
+            -> tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 100, 80]> : tensor<4xsi64>}> {
+
+    %0 = IE.Interpolate(%arg0) {
+        attr = #IE.Interpolate<antialias = false, coord_mode = <ASYMMETRIC>, cube_coeff = -7.500000e-01 : f64, mode = <NEAREST>, nearest_mode = <FLOOR>,
+            pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], shape_calc_mode = <SCALES>>,
+        axes_attr = [2, 3],
+        operandSegmentSizes = array<i32: 1, 0, 0, 0>,
+        scales_attr = [2.500000e-01, 2.500000e-01],
+        sizes_attr = [100, 80]
+    } : tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 400, 320]> : tensor<4xsi64>}>
+        -> tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 100, 80]> : tensor<4xsi64>}>
+
+    return %0 : tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 100, 80]> : tensor<4xsi64>}>
+
+    // CHECK:       [[INTERP:%.+]] = IE.Interpolate([[ARG_0]])
+    // CHECK-SAME:      attr = #IE.Interpolate<mode = <NEAREST>
+    // CHECK-SAME:      coord_mode = <ASYMMETRIC>
+    // CHECK-SAME:      nearest_mode = <FLOOR>
+    // CHECK-SAME:      scales_attr = [2.500000e-01, 2.500000e-01]
+    // CHECK-SAME:      -> tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 100, 80]> : tensor<4xsi64>}>
+    // CHECK:       return [[INTERP]]
+}
+
+// -----
+
+// CHECK-LABEL: @InterpolateDynamicCubic
+// CHECK-SAME:    [[ARG_0:%[^:]+]]: tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 100, 80]> : tensor<4xsi64>}>
+func.func @InterpolateDynamicCubic(
+        %arg0: tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 100, 80]> : tensor<4xsi64>}>)
+            -> tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 400, 320]> : tensor<4xsi64>}> {
+
+    %0 = IE.Interpolate(%arg0) {
+        attr = #IE.Interpolate<antialias = false, coord_mode = <PYTORCH_HALF_PIXEL>, cube_coeff = -7.500000e-01 : f64, mode = <CUBIC>, nearest_mode = <FLOOR>,
+            pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], shape_calc_mode = <SCALES>>,
+        axes_attr = [2, 3],
+        operandSegmentSizes = array<i32: 1, 0, 0, 0>,
+        scales_attr = [4.000000e+00, 4.000000e+00],
+        sizes_attr = [400, 320]
+    } : tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 100, 80]> : tensor<4xsi64>}>
+        -> tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 400, 320]> : tensor<4xsi64>}>
+
+    return %0 : tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 400, 320]> : tensor<4xsi64>}>
+
+    // CHECK:       [[INTERP:%.+]] = IE.Interpolate([[ARG_0]])
+    // CHECK-SAME:      attr = #IE.Interpolate<mode = <CUBIC>
+    // CHECK-SAME:      coord_mode = <PYTORCH_HALF_PIXEL>
+    // CHECK-SAME:      cube_coeff = -7.500000e-01
+    // CHECK-SAME:      scales_attr = [4.000000e+00, 4.000000e+00]
+    // CHECK-SAME:      -> tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 400, 320]> : tensor<4xsi64>}>
+    // CHECK:       return [[INTERP]]
+}
+
+// -----
+
+// CHECK-LABEL: @InterpolateDynamicTfHalfPixel
+// CHECK-SAME:    [[ARG_0:%[^:]+]]: tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 100, 80]> : tensor<4xsi64>}>
+func.func @InterpolateDynamicTfHalfPixel(
+        %arg0: tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 100, 80]> : tensor<4xsi64>}>)
+            -> tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 400, 320]> : tensor<4xsi64>}> {
+
+    %0 = IE.Interpolate(%arg0) {
+        attr = #IE.Interpolate<antialias = false, coord_mode = <TF_HALF_PIXEL_FOR_NN>, cube_coeff = -7.500000e-01 : f64, mode = <NEAREST>, nearest_mode = <CEIL>,
+            pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], shape_calc_mode = <SCALES>>,
+        axes_attr = [2, 3],
+        operandSegmentSizes = array<i32: 1, 0, 0, 0>,
+        scales_attr = [4.000000e+00, 4.000000e+00],
+        sizes_attr = [400, 320]
+    } : tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 100, 80]> : tensor<4xsi64>}>
+        -> tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 400, 320]> : tensor<4xsi64>}>
+
+    return %0 : tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 400, 320]> : tensor<4xsi64>}>
+
+    // CHECK:       [[INTERP:%.+]] = IE.Interpolate([[ARG_0]])
+    // CHECK-SAME:      attr = #IE.Interpolate<mode = <NEAREST>
+    // CHECK-SAME:      coord_mode = <TF_HALF_PIXEL_FOR_NN>
+    // CHECK-SAME:      nearest_mode = <CEIL>
+    // CHECK-SAME:      scales_attr = [4.000000e+00, 4.000000e+00]
+    // CHECK-SAME:      -> tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 400, 320]> : tensor<4xsi64>}>
+    // CHECK:       return [[INTERP]]
+}
+
+// -----
+
+// CHECK-LABEL: @InterpolateDynamicSingleAxis
+// CHECK-SAME:    [[ARG_0:%[^:]+]]: tensor<1x32x?x80xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 100, 80]> : tensor<4xsi64>}>
+func.func @InterpolateDynamicSingleAxis(
+        %arg0: tensor<1x32x?x80xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 100, 80]> : tensor<4xsi64>}>)
+            -> tensor<1x32x?x80xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 400, 80]> : tensor<4xsi64>}> {
+
+    %0 = IE.Interpolate(%arg0) {
+        attr = #IE.Interpolate<antialias = false, coord_mode = <ASYMMETRIC>, cube_coeff = -7.500000e-01 : f64, mode = <NEAREST>, nearest_mode = <FLOOR>,
+            pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], shape_calc_mode = <SCALES>>,
+        axes_attr = [2],
+        operandSegmentSizes = array<i32: 1, 0, 0, 0>,
+        scales_attr = [4.000000e+00],
+        sizes_attr = [400]
+    } : tensor<1x32x?x80xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 100, 80]> : tensor<4xsi64>}>
+        -> tensor<1x32x?x80xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 400, 80]> : tensor<4xsi64>}>
+
+    return %0 : tensor<1x32x?x80xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 400, 80]> : tensor<4xsi64>}>
+
+    // CHECK:       [[INTERP:%.+]] = IE.Interpolate([[ARG_0]])
+    // CHECK-SAME:      attr = #IE.Interpolate<mode = <NEAREST>
+    // CHECK-SAME:      coord_mode = <ASYMMETRIC>
+    // CHECK-SAME:      axes_attr = [2]
+    // CHECK-SAME:      scales_attr = [4.000000e+00]
+    // CHECK-SAME:      -> tensor<1x32x?x80xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 400, 80]> : tensor<4xsi64>}>
+    // CHECK:       return [[INTERP]]
+}
+
+// -----
+
+// CHECK-LABEL: @InterpolateDynamicHeightStaticWidth
+// CHECK-SAME:    [[ARG_0:%[^:]+]]: tensor<1x32x?x80xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 100, 80]> : tensor<4xsi64>}>
+func.func @InterpolateDynamicHeightStaticWidth(
+        %arg0: tensor<1x32x?x80xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 100, 80]> : tensor<4xsi64>}>)
+            -> tensor<1x32x?x320xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 400, 320]> : tensor<4xsi64>}> {
+
+    %0 = IE.Interpolate(%arg0) {
+        attr = #IE.Interpolate<antialias = false, coord_mode = <ASYMMETRIC>, cube_coeff = -7.500000e-01 : f64, mode = <NEAREST>, nearest_mode = <FLOOR>,
+            pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], shape_calc_mode = <SCALES>>,
+        axes_attr = [2, 3],
+        operandSegmentSizes = array<i32: 1, 0, 0, 0>,
+        scales_attr = [4.000000e+00, 4.000000e+00],
+        sizes_attr = [400, 320]
+    } : tensor<1x32x?x80xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 100, 80]> : tensor<4xsi64>}>
+        -> tensor<1x32x?x320xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 400, 320]> : tensor<4xsi64>}>
+
+    return %0 : tensor<1x32x?x320xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 400, 320]> : tensor<4xsi64>}>
+
+    // CHECK:       [[INTERP:%.+]] = IE.Interpolate([[ARG_0]])
+    // CHECK-SAME:      attr = #IE.Interpolate<mode = <NEAREST>
+    // CHECK-SAME:      coord_mode = <ASYMMETRIC>
+    // CHECK-SAME:      axes_attr = [2, 3]
+    // CHECK-SAME:      scales_attr = [4.000000e+00, 4.000000e+00]
+    // CHECK-SAME:      -> tensor<1x32x?x320xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 400, 320]> : tensor<4xsi64>}>
+    // CHECK:       return [[INTERP]]
+}
+
+// -----
+
+// CHECK-LABEL: @InterpolateDynamicLinearOnnx
+// CHECK-SAME:    [[ARG_0:%[^:]+]]: tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 100, 80]> : tensor<4xsi64>}>
+func.func @InterpolateDynamicLinearOnnx(
+        %arg0: tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 100, 80]> : tensor<4xsi64>}>)
+            -> tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 400, 320]> : tensor<4xsi64>}> {
+
+    %0 = IE.Interpolate(%arg0) {
+        attr = #IE.Interpolate<antialias = false, coord_mode = <ASYMMETRIC>, cube_coeff = -7.500000e-01 : f64, mode = <LINEAR_ONNX>, nearest_mode = <FLOOR>,
+            pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], shape_calc_mode = <SCALES>>,
+        axes_attr = [2, 3],
+        operandSegmentSizes = array<i32: 1, 0, 0, 0>,
+        scales_attr = [4.000000e+00, 4.000000e+00],
+        sizes_attr = [400, 320]
+    } : tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 100, 80]> : tensor<4xsi64>}>
+        -> tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 400, 320]> : tensor<4xsi64>}>
+
+    return %0 : tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 400, 320]> : tensor<4xsi64>}>
+
+    // CHECK:       [[INTERP:%.+]] = IE.Interpolate([[ARG_0]])
+    // CHECK-SAME:      attr = #IE.Interpolate<mode = <LINEAR_ONNX>
+    // CHECK-SAME:      coord_mode = <ASYMMETRIC>
+    // CHECK-SAME:      scales_attr = [4.000000e+00, 4.000000e+00]
+    // CHECK-SAME:      -> tensor<1x32x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 400, 320]> : tensor<4xsi64>}>
+    // CHECK:       return [[INTERP]]
+}
+
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+// CHECK-LABEL: @InterpolateDynamicConvertInputsToAttr
+// CHECK-SAME:    [[ARG_0:%[^:]+]]: tensor<1x2x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 2, 720, 1280]> : tensor<4xsi64>, order = #NCHW}>
+func.func @InterpolateDynamicConvertInputsToAttr(%arg0: tensor<1x2x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 2, 720, 1280]> : tensor<4xsi64>, order = #NCHW}>) -> tensor<1x2x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 2, 1440, 2560]> : tensor<4xsi64>, order = #NCHW}> {
+    %cst_0 = const.Declare tensor<4xsi32> = dense<1> : tensor<4xsi32>
+    %cst_1 = const.Declare tensor<4xf32> = dense<[1.000000e+00, 1.000000e+00, 2.000000e+00, 2.000000e+00]> : tensor<4xf32>
+
+    %0 = IE.Interpolate(%arg0, %cst_0, %cst_1) {
+        attr = #IE.Interpolate<mode = <NEAREST>,
+        shape_calc_mode = <SCALES>,
+        coord_mode = <ASYMMETRIC>,
+        nearest_mode = <FLOOR>,
+        antialias = false,
+        pads_begin = [0, 0, 0, 0],
+        pads_end = [0, 0, 0, 0],
+        cube_coeff = -7.500000e-01 : f64>,
+        operandSegmentSizes = array<i32: 1, 1, 1, 0>
+    } : tensor<1x2x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 2, 720, 1280]> : tensor<4xsi64>, order = #NCHW}>, tensor<4xsi32>, tensor<4xf32>
+        -> tensor<1x2x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 2, 1440, 2560]> : tensor<4xsi64>, order = #NCHW}>
+
+    return %0 : tensor<1x2x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 2, 1440, 2560]> : tensor<4xsi64>, order = #NCHW}>
+
+    // CHECK-NOT:   const.Declare
+    // CHECK:       [[INTERP:%.+]] = IE.Interpolate([[ARG_0]])
+    // CHECK-SAME:      attr = #IE.Interpolate<mode = <NEAREST>,
+    // CHECK-SAME:      shape_calc_mode = <SIZES>,
+    // CHECK-SAME:      coord_mode = <ASYMMETRIC>,
+    // CHECK-SAME:      nearest_mode = <FLOOR>,
+    // CHECK-SAME:      antialias = false,
+    // CHECK-SAME:      pads_begin = [0, 0, 0, 0],
+    // CHECK-SAME:      pads_end = [0, 0, 0, 0],
+    // CHECK-SAME:      cube_coeff = -7.500000e-01 : f64>,
+    // CHECK-SAME:      axes_attr = [2, 3],
+    // CHECK-SAME:      operandSegmentSizes = array<i32: 1, 0, 0, 0>,
+    // CHECK-SAME:      scales_attr = [2.000000e+00, 2.000000e+00],
+    // CHECK-SAME:      sizes_attr = [1440, 2560]
+    // CHECK-SAME:      -> tensor<1x2x?x?xf32, {bounds = #const.OpaqueI64Elements<[1, 2, 1440, 2560]> : tensor<4xsi64>, order = #NCHW}>
+    // CHECK:       return [[INTERP]]
+}
+
+// -----
+
+// CHECK-LABEL: @ConvertAxesToAttrScaleAsParam
+// CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x3x10x10xf16>, [[ARG_1:%[^:]+]]: tensor<2xf32>)
+func.func @ConvertAxesToAttrScaleAsParam(%arg0: tensor<1x3x10x10xf16>, %arg1: tensor<2xf32>) -> tensor<?x?x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 80, 80]> : tensor<4xsi64>, order = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>}> {
+    %0 = const.Declare tensor<2xsi64> = dense<[2, 3]> : tensor<2xsi64>
+    %1 = IE.Interpolate(%arg0, %arg1, %0) {
+        attr = #IE.Interpolate<antialias = false, coord_mode = <HALF_PIXEL>, cube_coeff = -7.500000e-01, mode = <LINEAR_ONNX>, nearest_mode = <FLOOR>, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], shape_calc_mode = <SCALES>>,
+        operandSegmentSizes = array<i32: 1, 0, 1, 1>
+    } : tensor<1x3x10x10xf16>, tensor<2xf32>, tensor<2xsi64> -> tensor<?x?x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 80, 80]> : tensor<4xsi64>, order = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>}>
+
+    return %1 : tensor<?x?x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 3, 80, 80]> : tensor<4xsi64>, order = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>}>
+
+    // CHECK-NOT:   const.Declare
+    // CHECK:       [[VAL0:%.+]] = IE.Interpolate([[ARG_0]], [[ARG_1]]) {attr = #IE.Interpolate<mode = <LINEAR_ONNX>, shape_calc_mode = <SCALES>, coord_mode = <HALF_PIXEL>, nearest_mode = <FLOOR>, antialias = false, pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], cube_coeff = -7.500000e-01 : f64>,
+    // CHECK-SAME:      axes_attr = [2, 3],
+    // CHECK-SAME:      operandSegmentSizes = array<i32: 1, 0, 1, 0>, sizes_attr = []}
+    // CHECK-SAME:      tensor<1x3x10x10xf16>, tensor<2xf32> -> tensor<?x?x?x?xf16
+    // CHECK:       return [[VAL0]]
 }

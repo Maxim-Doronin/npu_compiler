@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-async-ops-to-tasks --canonicalize --move-declarations-to-top %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --convert-async-ops-to-tasks --canonicalize --move-declarations-to-top %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 // CHECK-LABEL: @WithProfiling
 // CHECK-SAME: ([[ARG_0:%[^:]+]]: memref<1x512xf16>, [[ARG_1:%[^:]+]]: memref<1x512xf16>)

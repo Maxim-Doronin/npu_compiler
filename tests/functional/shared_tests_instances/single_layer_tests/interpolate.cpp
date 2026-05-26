@@ -24,6 +24,14 @@ class InterpolateSELayerTest_NPU3720 : public InterpolateLayerTestCommon {
     }
 };
 
+class InterpolateLayerTest_SCFTiling : public InterpolateLayerTestCommon {
+    void configure_model() override {
+        configuration[ov::intel_npu::compilation_mode_params.name()] = "scf-tiling=true";
+        // E-190336 for MC support
+        configuration["NPU_TILES"] = "1";
+    }
+};
+
 TEST_P(InterpolateLayerTest_NPU3720, HW) {
     setDefaultHardwareMode();
     run(Platform::NPU3720);
@@ -46,6 +54,19 @@ TEST_P(InterpolateLayerTest_NPU5010, HW) {
 
 TEST_P(InterpolateLayerTest_NPU5020, HW) {
     setDefaultHardwareMode();
+    run(Platform::NPU5020);
+}
+
+// SCF Tiling tests
+TEST_P(InterpolateLayerTest_SCFTiling, NPU5010_SW) {
+    rel_threshold = 0.02;
+    setReferenceSoftwareMode();
+    run(Platform::NPU5010);
+}
+
+TEST_P(InterpolateLayerTest_SCFTiling, NPU5020_SW) {
+    rel_threshold = 0.02;
+    setReferenceSoftwareMode();
     run(Platform::NPU5020);
 }
 
@@ -1659,5 +1680,152 @@ INSTANTIATE_TEST_SUITE_P(smoke_precommit_Interpolate_NoTiling_LinearONNX, Interp
                          interpolateLinearONNXNCHWUpscale, InterpolateLayerTest_NPU5020::getTestCaseName);
 INSTANTIATE_TEST_SUITE_P(smoke_precommit_Interpolate_NoTiling_Cubic, InterpolateLayerTest_NPU5020,
                          interpolateCubicNCHWUpscale, InterpolateLayerTest_NPU5020::getTestCaseName);
+
+// ------ SCF Tiling Tests ------
+
+const std::vector<std::vector<ov::Shape>> inShapesSCFTiling = {
+        {{1, 32, 128, 128}},
+};
+
+const std::vector<ov::Shape> targetShapesSCFTilingUpscale = {
+        {256, 256},  // 2x upscale
+};
+
+const std::vector<ov::Shape> targetShapesSCFTilingDownscale = {
+        {64, 64},  // 0.5x downscale
+};
+
+const std::vector<std::vector<float>> scalesSCFUpscale = {{2.0f, 2.0f}};
+const std::vector<std::vector<float>> scalesSCFDownscale = {{0.5f, 0.5f}};
+
+const std::vector<InterpolateBase::ShapeCalcMode> shapeCalculationModeSCF = {
+        InterpolateBase::ShapeCalcMode::SCALES,
+};
+
+const std::vector<InterpolateBase::CoordinateTransformMode> coordinateTransformModesSCF = {
+        InterpolateBase::CoordinateTransformMode::ASYMMETRIC,
+        InterpolateBase::CoordinateTransformMode::HALF_PIXEL,
+};
+
+const std::vector<InterpolateBase::NearestMode> nearestModesSCF = {
+        InterpolateBase::NearestMode::FLOOR,
+        InterpolateBase::NearestMode::ROUND_PREFER_FLOOR,
+};
+
+auto interpolateSCFNearestUpscale = ::testing::Combine(
+        ::testing::ValuesIn(nearestMode), ::testing::ValuesIn(shapeCalculationModeSCF),
+        ::testing::ValuesIn(coordinateTransformModesSCF), ::testing::ValuesIn(nearestModesSCF),
+        ::testing::ValuesIn(antialias), ::testing::ValuesIn(pads), ::testing::ValuesIn(pads),
+        ::testing::ValuesIn(cubeCoefs), ::testing::ValuesIn(nchwAxes), ::testing::ValuesIn(scalesSCFUpscale));
+
+auto interpolateSCFNearestDownscale = ::testing::Combine(
+        ::testing::ValuesIn(nearestMode), ::testing::ValuesIn(shapeCalculationModeSCF),
+        ::testing::ValuesIn(coordinateTransformModesSCF), ::testing::ValuesIn(nearestModesSCF),
+        ::testing::ValuesIn(antialias), ::testing::ValuesIn(pads), ::testing::ValuesIn(pads),
+        ::testing::ValuesIn(cubeCoefs), ::testing::ValuesIn(nchwAxes), ::testing::ValuesIn(scalesSCFDownscale));
+
+auto interpolateSCFTilingNearestUpscaleParams =
+        ::testing::Combine(interpolateSCFNearestUpscale, ::testing::ValuesIn(modelTypes),
+                           ::testing::ValuesIn(static_shapes_to_test_representation(inShapesSCFTiling)),
+                           ::testing::ValuesIn(targetShapesSCFTilingUpscale),
+                           ::testing::Values(test_utils::TARGET_DEVICE), ::testing::Values(additional_config));
+
+auto interpolateSCFTilingNearestDownscaleParams =
+        ::testing::Combine(interpolateSCFNearestDownscale, ::testing::ValuesIn(modelTypes),
+                           ::testing::ValuesIn(static_shapes_to_test_representation(inShapesSCFTiling)),
+                           ::testing::ValuesIn(targetShapesSCFTilingDownscale),
+                           ::testing::Values(test_utils::TARGET_DEVICE), ::testing::Values(additional_config));
+
+// SCF Tiling - Nearest mode
+INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_SCFTiling_Nearest_Upscale, InterpolateLayerTest_SCFTiling,
+                         interpolateSCFTilingNearestUpscaleParams, InterpolateLayerTest_SCFTiling::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_SCFTiling_Nearest_Downscale, InterpolateLayerTest_SCFTiling,
+                         interpolateSCFTilingNearestDownscaleParams, InterpolateLayerTest_SCFTiling::getTestCaseName);
+
+//
+// Extreme downscale — reproduces interpLinearCHW stack buffer overflow (R > 32)
+// Bug: splitting loop cannot converge when downscale ratio exceeds stack buffer capacity
+//
+
+const std::vector<InterpolateBase::CoordinateTransformMode> coordinateTransformModePytorchHP = {
+        InterpolateBase::CoordinateTransformMode::PYTORCH_HALF_PIXEL,
+};
+
+auto interpolateCasesLinearOnnxExtremeDownscale = []() {
+    return ::testing::Combine(
+            ::testing::Values(InterpolateBase::InterpolateMode::LINEAR_ONNX), ::testing::ValuesIn(shapeCalculationMode),
+            ::testing::ValuesIn(coordinateTransformModePytorchHP), ::testing::ValuesIn(defaultNearestMode),
+            ::testing::ValuesIn(antialias), ::testing::ValuesIn(pads), ::testing::ValuesIn(pads),
+            ::testing::ValuesIn(cubeCoefs), ::testing::ValuesIn(nchwAxes), ::testing::ValuesIn(defaultScales));
+};
+
+// 320x downscale on W axis
+const auto interpolateExtremeDownscale320x = ::testing::Combine(
+        interpolateCasesLinearOnnxExtremeDownscale(), ::testing::ValuesIn(modelTypes),
+        ::testing::ValuesIn(
+                static_shapes_to_test_representation(std::vector<std::vector<ov::Shape>>({{{1, 1, 4, 3200}}}))),
+        ::testing::Values(ov::Shape{4, 10}), ::testing::Values(test_utils::TARGET_DEVICE),
+        ::testing::Values(additional_config));
+
+// 160x downscale on W axis with multiple channels
+const auto interpolateExtremeDownscale160x = ::testing::Combine(
+        interpolateCasesLinearOnnxExtremeDownscale(), ::testing::ValuesIn(modelTypes),
+        ::testing::ValuesIn(
+                static_shapes_to_test_representation(std::vector<std::vector<ov::Shape>>({{{1, 2, 4, 1600}}}))),
+        ::testing::Values(ov::Shape{4, 10}), ::testing::Values(test_utils::TARGET_DEVICE),
+        ::testing::Values(additional_config));
+
+// 64x downscale — just above the R>32 threshold for NPU4000
+const auto interpolateExtremeDownscale64x = ::testing::Combine(
+        interpolateCasesLinearOnnxExtremeDownscale(), ::testing::ValuesIn(modelTypes),
+        ::testing::ValuesIn(
+                static_shapes_to_test_representation(std::vector<std::vector<ov::Shape>>({{{1, 1, 4, 640}}}))),
+        ::testing::Values(ov::Shape{4, 10}), ::testing::Values(test_utils::TARGET_DEVICE),
+        ::testing::Values(additional_config));
+
+// 34x downscale — boundary case just above R=32 threshold
+const auto interpolateExtremeDownscale34x = ::testing::Combine(
+        interpolateCasesLinearOnnxExtremeDownscale(), ::testing::ValuesIn(modelTypes),
+        ::testing::ValuesIn(
+                static_shapes_to_test_representation(std::vector<std::vector<ov::Shape>>({{{1, 1, 4, 340}}}))),
+        ::testing::Values(ov::Shape{4, 10}), ::testing::Values(test_utils::TARGET_DEVICE),
+        ::testing::Values(additional_config));
+
+INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_LinearONNX_ExtremeDownscale_320x, InterpolateLayerTest_NPU3720,
+                         interpolateExtremeDownscale320x, InterpolateLayerTest_NPU3720::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_LinearONNX_ExtremeDownscale_320x, InterpolateLayerTest_NPU4000,
+                         interpolateExtremeDownscale320x, InterpolateLayerTest_NPU4000::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_LinearONNX_ExtremeDownscale_320x, InterpolateLayerTest_NPU5010,
+                         interpolateExtremeDownscale320x, InterpolateLayerTest_NPU5010::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_LinearONNX_ExtremeDownscale_320x, InterpolateLayerTest_NPU5020,
+                         interpolateExtremeDownscale320x, InterpolateLayerTest_NPU5020::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_LinearONNX_ExtremeDownscale_160x, InterpolateLayerTest_NPU3720,
+                         interpolateExtremeDownscale160x, InterpolateLayerTest_NPU3720::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_LinearONNX_ExtremeDownscale_160x, InterpolateLayerTest_NPU4000,
+                         interpolateExtremeDownscale160x, InterpolateLayerTest_NPU4000::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_LinearONNX_ExtremeDownscale_160x, InterpolateLayerTest_NPU5010,
+                         interpolateExtremeDownscale160x, InterpolateLayerTest_NPU5010::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_LinearONNX_ExtremeDownscale_160x, InterpolateLayerTest_NPU5020,
+                         interpolateExtremeDownscale160x, InterpolateLayerTest_NPU5020::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_LinearONNX_ExtremeDownscale_64x, InterpolateLayerTest_NPU3720,
+                         interpolateExtremeDownscale64x, InterpolateLayerTest_NPU3720::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_LinearONNX_ExtremeDownscale_64x, InterpolateLayerTest_NPU4000,
+                         interpolateExtremeDownscale64x, InterpolateLayerTest_NPU4000::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_LinearONNX_ExtremeDownscale_64x, InterpolateLayerTest_NPU5010,
+                         interpolateExtremeDownscale64x, InterpolateLayerTest_NPU5010::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_LinearONNX_ExtremeDownscale_64x, InterpolateLayerTest_NPU5020,
+                         interpolateExtremeDownscale64x, InterpolateLayerTest_NPU5020::getTestCaseName);
+
+INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_LinearONNX_ExtremeDownscale_34x, InterpolateLayerTest_NPU3720,
+                         interpolateExtremeDownscale34x, InterpolateLayerTest_NPU3720::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_LinearONNX_ExtremeDownscale_34x, InterpolateLayerTest_NPU4000,
+                         interpolateExtremeDownscale34x, InterpolateLayerTest_NPU4000::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_LinearONNX_ExtremeDownscale_34x, InterpolateLayerTest_NPU5010,
+                         interpolateExtremeDownscale34x, InterpolateLayerTest_NPU5010::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(smoke_Interpolate_LinearONNX_ExtremeDownscale_34x, InterpolateLayerTest_NPU5020,
+                         interpolateExtremeDownscale34x, InterpolateLayerTest_NPU5020::getTestCaseName);
 
 }  // namespace

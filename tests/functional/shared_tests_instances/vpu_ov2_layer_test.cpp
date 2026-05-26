@@ -4,7 +4,9 @@
 //
 
 #include "vpu_ov2_layer_test.hpp"
+#include "ci_compliant_name.hpp"
 #include "common/npu_test_env_cfg.hpp"
+#include "common/tensor_comparison.hpp"
 #include "vpu_test_report.hpp"
 
 #include <gtest/internal/gtest-internal.h>
@@ -16,9 +18,9 @@
 
 #include <intel_npu/npu_private_properties.hpp>
 
-#include <vpux/utils/IE/config.hpp>
 #include <vpux/utils/core/error.hpp>
 #include <vpux/utils/core/range.hpp>
+#include <vpux/utils/ov/config.hpp>
 
 #include <sstream>
 
@@ -178,6 +180,13 @@ VpuOv2LayerTest::ErrorMessage VpuOv2LayerTest::runTest() {
         const auto testInfo = testing::UnitTest::GetInstance()->current_test_info();
         report.run(testInfo);
 
+        if (!ensureCICompliantName()) {
+            return ErrorMessage{"Test name is not CI compliant. Single layer test class name must contain "
+                                "\"LayerTest\" (EltwiseLayerTest). Subgraph test name must contain "
+                                "\"TestKindSubgraph\" (NPU4000_TestKindSubgraph). Behavior test name must "
+                                "contain \"BehaviorTest\" (smoke_BehaviorTest)."};
+        }
+
         printNetworkConfig();
 
         if (skipCompilationImpl()) {
@@ -289,6 +298,32 @@ void VpuOv2LayerTest::validate() {
     }
 }
 
+void VpuOv2LayerTest::compare(const std::vector<ov::Tensor>& expected, const std::vector<ov::Tensor>& actual) {
+    init_thresholds();
+
+    ASSERT_EQ(expected.size(), actual.size()) << "Number of output tensors mismatch";
+
+    std::ostringstream failures;
+    size_t failureCount = 0;
+
+    for (size_t i = 0; i < expected.size(); ++i) {
+        const auto name = "output_" + std::to_string(i);
+        auto result = ov::test::utils::compareTensors(expected[i], actual[i], abs_threshold, rel_threshold);
+
+        auto warning = ov::test::utils::formatExpectedAnomalyWarning(result, name);
+        if (!warning.empty()) {
+            _log.warning("{0}", warning);
+        }
+
+        if (!result.passed()) {
+            ++failureCount;
+            failures << "\n" << ov::test::utils::formatComparisonResult(result, name);
+        }
+    }
+
+    ASSERT_EQ(failureCount, 0u) << "Tensor comparison failed for " << failureCount << " output(s):" << failures.str();
+}
+
 void VpuOv2LayerTest::setSkipCompilationCallback(SkipCallback skipCallback) {
     skipCompilationCallback = skipCallback;
 }
@@ -335,6 +370,11 @@ VpuOv2LayerTest::ErrorMessage VpuOv2LayerTest::skipInferenceImpl() {
     }
 
     return std::nullopt;
+}
+
+bool VpuOv2LayerTest::ensureCICompliantName() const {
+    const auto testInfo = testing::UnitTest::GetInstance()->current_test_info();
+    return isCICompliantTestName(testInfo->test_case_name(), testInfo->name());
 }
 
 void VpuOv2LayerTest::printNetworkConfig() const {

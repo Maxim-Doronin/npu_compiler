@@ -98,10 +98,12 @@ def OptimizeMemRefCopies : PassBase<"optimize-memref-copies", "vpux::FunctionPas
     let summary = "Optimize MemRef copies";
 
     let description = [{
-        The pass optimizes memref.copy operations by removing unnecessary copies. Two patterns are supported:
-            1. memref.copy copies data from a call argument to a subview
-            2. memref.copy copies data from an scf.index_switch to a subview
-            3. memref.copy copies data from an alloc to a function argument
+        The pass optimizes memref.copy operations by removing unnecessary copies.
+        Each pattern eliminates the copy by having the producer write directly into the
+        target buffer. Three patterns are supported:
+            - memref.copy copies data from a call result to a subview
+            - memref.copy copies data from an scf.index_switch to a subview
+            - memref.copy copies data from an alloc to a function argument
     }];
 
     let constructor = "vpux::HostExec::createOptimizeMemRefCopiesPass()";

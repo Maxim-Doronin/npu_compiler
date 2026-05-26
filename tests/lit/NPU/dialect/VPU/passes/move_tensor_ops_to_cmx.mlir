@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --move-tensor-ops-to-cmx %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --move-tensor-ops-to-cmx %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 
 config.PipelineOptions @Options {

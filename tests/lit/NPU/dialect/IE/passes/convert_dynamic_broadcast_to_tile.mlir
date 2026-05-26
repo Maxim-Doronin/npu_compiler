@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=NPU37XX" --convert-broadcast-to-tile %s --canonicalize | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --convert-broadcast-to-tile %s --canonicalize | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 #C = affine_map<(d0) -> (d0)>
 #CHW = affine_map<(d1, d2, d3) -> (d1, d2, d3)>

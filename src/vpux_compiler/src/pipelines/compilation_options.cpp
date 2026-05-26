@@ -8,7 +8,7 @@
 #include "vpux/compiler/NPU40XX/pipeline_options.hpp"
 #include "vpux/compiler/NPU50XX/pipeline_options.hpp"
 #include "vpux/compiler/pipelines/options_mapper.hpp"
-#include "vpux/utils/IE/config.hpp"
+#include "vpux/utils/ov/config.hpp"
 
 #include <intel_npu/config/options.hpp>
 

@@ -6,7 +6,7 @@
 #pragma once
 
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
-#include "vpux/compiler/init.hpp"
+#include "vpux/compiler/init/dialects_registry.hpp"
 #include "vpux/utils/core/mem_size.hpp"
 
 #include <intel_npu/config/config.hpp>
@@ -31,6 +31,7 @@ std::optional<bool> getCompilerDynamicQuantization(const intel_npu::Config& conf
 std::optional<bool> getPerfCount(const intel_npu::Config& config);
 std::optional<bool> getEnableDecomposeSDPA(const intel_npu::Config& config);
 std::set<std::string> getIoWithDynamicStrides(const intel_npu::Config& config);
+std::optional<bool> getEnablePipelinedCmdListRecording(const intel_npu::Config& config);
 
 #ifdef BACKGROUND_FOLDING_ENABLED
 struct ConstantFoldingConfig {

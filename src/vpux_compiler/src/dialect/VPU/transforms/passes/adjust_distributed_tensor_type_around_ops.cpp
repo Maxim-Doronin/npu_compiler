@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation
+// Copyright (C) 2024-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,7 +8,9 @@
 #include "vpux/compiler/dialect/VPU/IR/ops/dpu.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/manual_strategy_utils.hpp"
 
+#include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/compiler/utils/walk_utils.hpp"
@@ -196,6 +198,408 @@ bool DistributedInputTypeRewriter::fitIntoCMX(VPU::NCEOpInterface origOp, VPU::D
 }
 
 //
+// HaloAssistedSliceOptimization
+//
+// When a VPU.Slice sits between two CopyOps, check whether the input distributed
+// tensor's per-cluster data range covers the output distributed tensor's per-cluster data
+// range (taking the Slice offset into account). If the input cannot cover the output only
+// on the H or W dimension, make a minimum increase to the input's per-cluster memory offset and
+// memory shape so that it covers the output on every cluster. This optimization leverages
+// NCE ODU halo capability to reduce intermediate copies.
+//
+// Currently restricted to ops that share the same VF loop layer index
+// (vf_loop_layer_index attribute). Cross-layer and non-VF subgraphs are skipped.
+// TODO: E#211950 — lift the VF-only restriction once the cross-layer performance regression is root-caused and fixed.
+//
+//    CopyOp (parentCopy)                   CopyOp (parentCopy) [updated input type]
+//          |                                      |
+//        Slice                =>                Slice
+//          |                                      |
+//    CopyOp (userCopy)                     CopyOp (userCopy)
+//
+class HaloAssistedSliceOptimization final : public mlir::OpRewritePattern<VPU::SliceOp> {
+public:
+    HaloAssistedSliceOptimization(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpRewritePattern<VPU::SliceOp>(ctx), _log(log) {
+        this->setDebugName("HaloAssistedSliceOptimization");
+    }
+
+private:
+    mlir::LogicalResult matchAndRewrite(VPU::SliceOp sliceOp, mlir::PatternRewriter& rewriter) const final;
+
+private:
+    Logger _log;
+};
+
+mlir::LogicalResult HaloAssistedSliceOptimization::matchAndRewrite(VPU::SliceOp sliceOp,
+                                                                   mlir::PatternRewriter& rewriter) const {
+    _log.trace("[{0}] Got '{1}' at '{2}'", getDebugName(), sliceOp->getName(), sliceOp.getLoc());
+
+    // Check that the parent op is CopyOp
+    auto parentCopy = sliceOp.getInput().getDefiningOp<VPU::CopyOp>();
+    if (parentCopy == nullptr) {
+        return matchFailed(_log, rewriter, sliceOp, "Parent is not CopyOp at '{0}'", sliceOp.getLoc());
+    }
+
+    // Check that the slice has exactly one user and it is CopyOp
+    if (!sliceOp.getResult().hasOneUse()) {
+        return matchFailed(_log, rewriter, sliceOp, "Slice does not have exactly one user at '{0}'", sliceOp.getLoc());
+    }
+    auto userCopy = mlir::dyn_cast<VPU::CopyOp>(*sliceOp.getResult().getUsers().begin());
+    if (userCopy == nullptr) {
+        return matchFailed(_log, rewriter, sliceOp, "User is not CopyOp at '{0}'", sliceOp.getLoc());
+    }
+
+    // Temporary scope guard: apply halo-assisted optimization only inside one VF region layer.
+    // Compare vf_loop_layer_index between parentCopy producer and all userCopy consumers.
+    auto parentProducerOp = parentCopy.getInput().getDefiningOp();
+    if (parentProducerOp == nullptr) {
+        return matchFailed(_log, rewriter, sliceOp, "Parent CopyOp input is not defined by an op at '{0}'",
+                           sliceOp.getLoc());
+    }
+
+    auto parentVFLoopLayerIndex = parentProducerOp->getAttr(VF_LOOP_LAYER_INDEX_ATTR_NAME);
+    if (parentVFLoopLayerIndex == nullptr) {
+        return matchFailed(_log, rewriter, sliceOp, "Parent producer op does not have '{0}' attr at '{1}'",
+                           VF_LOOP_LAYER_INDEX_ATTR_NAME, parentProducerOp->getLoc());
+    }
+
+    if (userCopy.getResult().use_empty()) {
+        return matchFailed(_log, rewriter, sliceOp, "userCopy has no users at '{0}'", userCopy.getLoc());
+    }
+
+    // All consumers must stay in the same VF layer as parentProducerOp.
+    // If any consumer is outside the layer, skip to avoid cross-region rewrites.
+    for (auto* userOp : userCopy.getResult().getUsers()) {
+        auto userVFLoopLayerIndex = userOp->getAttr(VF_LOOP_LAYER_INDEX_ATTR_NAME);
+        if (userVFLoopLayerIndex == nullptr) {
+            return matchFailed(_log, rewriter, sliceOp, "userCopy user op does not have '{0}' attr at '{1}'",
+                               VF_LOOP_LAYER_INDEX_ATTR_NAME, userOp->getLoc());
+        }
+
+        if (userVFLoopLayerIndex != parentVFLoopLayerIndex) {
+            return matchFailed(
+                    _log, rewriter, sliceOp, "'{0}' mismatch between parent producer '{1}' and user '{2}' at '{3}'",
+                    VF_LOOP_LAYER_INDEX_ATTR_NAME, parentVFLoopLayerIndex, userVFLoopLayerIndex, sliceOp.getLoc());
+        }
+    }
+
+    // Get the input of the parent CopyOp (the distributed input)
+    auto inputDistType = mlir::dyn_cast<VPU::DistributedTensorType>(parentCopy.getInput().getType());
+    if (inputDistType == nullptr) {
+        return matchFailed(_log, rewriter, sliceOp, "Input of parent CopyOp is not DistributedTensorType at '{0}'",
+                           sliceOp.getLoc());
+    }
+
+    // Get the output of the user CopyOp (the distributed output)
+    auto outputDistType = mlir::dyn_cast<VPU::DistributedTensorType>(userCopy.getOutput().getType());
+    if (outputDistType == nullptr) {
+        return matchFailed(_log, rewriter, sliceOp, "Output of user CopyOp is not DistributedTensorType at '{0}'",
+                           sliceOp.getLoc());
+    }
+
+    // Both must have explicit shapes and offsets
+    auto inputDist = inputDistType.getDistribution();
+    auto outputDist = outputDistType.getDistribution();
+    if (!VPU::isDistributedAttrWithExplicitShapesAndOffsets(inputDist) ||
+        !VPU::isDistributedAttrWithExplicitShapesAndOffsets(outputDist)) {
+        return matchFailed(_log, rewriter, sliceOp,
+                           "Input or output distribution does not have explicit shapes and offsets at '{0}'",
+                           sliceOp.getLoc());
+    }
+
+    // DUPLICATED output means every cluster holds the full slice, so there is no per-cluster
+    // locality to exploit. Expanding the input per-cluster memory to cover the destination
+    // range would bloat every cluster's footprint to nearly the whole tensor.
+    // (SEGMENTED|DUPLICATED is a SOK output mode and does not appear as an NCE activation
+    // input in this pattern, but the check handles it defensively as well.)
+    const auto outputMode = outputDist.getMode().getValue();
+    if (bitEnumContainsAny(outputMode, VPU::DistributionMode::DUPLICATED)) {
+        return matchFailed(_log, rewriter, sliceOp,
+                           "Output distributed type has DUPLICATED mode at '{0}'; "
+                           "halo-assisted slice optimization is not applicable",
+                           sliceOp.getLoc());
+    }
+
+    const auto sliceOffsets = parseIntArrayAttr<int64_t>(sliceOp.getStaticOffsets());
+
+    auto inputPerClusterMemShapes = inputDistType.getPerClusterMemoryShapes();
+    auto inputPerClusterMemOffsets = inputDistType.getPerClusterMemoryShapeOffsets();
+    auto outputPerClusterMemShapes = outputDistType.getPerClusterMemoryShapes();
+    auto outputPerClusterMemOffsets = outputDistType.getPerClusterMemoryShapeOffsets();
+
+    const auto numClusters = inputPerClusterMemShapes.size();
+    if (numClusters != outputPerClusterMemShapes.size()) {
+        return matchFailed(_log, rewriter, sliceOp, "Cluster count mismatch at '{0}'", sliceOp.getLoc());
+    }
+
+    const auto rank = inputDistType.getShape().size();
+    if (rank != 4) {
+        return matchFailed(_log, rewriter, sliceOp, "Expected 4D tensor, got rank {0} at '{1}'", rank,
+                           sliceOp.getLoc());
+    }
+
+    const auto hDim = Dims4D::Act::H.ind();
+    const auto wDim = Dims4D::Act::W.ind();
+
+    // Verify that the slice output range (mapped back to the producer's coordinate space via
+    // sliceOffsets) actually overlaps with every cluster's compute range on H and W.
+    // If a cluster has no overlap with the slice on an expandable dimension, that cluster
+    // contributes nothing to this slice. Expanding its memory to cover the slice range would
+    // be wasteful and is the root cause of the inflated memory shapes observed at the OVERLAPPED output.
+    auto inputPerClusterComputeShapes = inputDistType.getPerClusterComputeShapes();
+    auto inputPerClusterComputeOffsets = inputDistType.getPerClusterComputeShapeOffsets();
+    for (auto clusterIdx : irange(numClusters)) {
+        const auto inComputeOffset = to_small_vector(inputPerClusterComputeOffsets[clusterIdx]);
+        const auto inComputeShape = to_small_vector(inputPerClusterComputeShapes[clusterIdx]);
+        const auto outMemOffset = to_small_vector(outputPerClusterMemOffsets[clusterIdx]);
+        const auto outMemShape = to_small_vector(outputPerClusterMemShapes[clusterIdx]);
+
+        for (const auto expandDim : {hDim, wDim}) {
+            const auto adjustedOutStart = outMemOffset[expandDim] + sliceOffsets[expandDim];
+            const auto adjustedOutEnd = adjustedOutStart + outMemShape[expandDim];
+            const auto inComputeStart = inComputeOffset[expandDim];
+            const auto inComputeEnd = inComputeStart + inComputeShape[expandDim];
+
+            if (adjustedOutEnd <= inComputeStart || adjustedOutStart >= inComputeEnd) {
+                return matchFailed(_log, rewriter, sliceOp,
+                                   "Slice output dim-{0} range [{1}, {2}) does not overlap with cluster {3} compute "
+                                   "dim-{0} range [{4}, {5}) at '{6}'; skipping to avoid unnecessary memory expansion",
+                                   expandDim, adjustedOutStart, adjustedOutEnd, clusterIdx, inComputeStart,
+                                   inComputeEnd, sliceOp.getLoc());
+            }
+        }
+    }
+
+    bool needsAdjustment = false;
+    bool nonHWDimMismatch = false;
+
+    // First pass: detect whether adjustment is needed and whether it's only on H or W
+    for (auto clusterIdx : irange(numClusters)) {
+        const auto inMemOffset = to_small_vector(inputPerClusterMemOffsets[clusterIdx]);
+        const auto inMemShape = to_small_vector(inputPerClusterMemShapes[clusterIdx]);
+        const auto outMemOffset = to_small_vector(outputPerClusterMemOffsets[clusterIdx]);
+        const auto outMemShape = to_small_vector(outputPerClusterMemShapes[clusterIdx]);
+
+        for (size_t dim = 0; dim < inMemShape.size(); dim++) {
+            // The output is in the sliced coordinate space. To compare with input,
+            // we need to shift the output offset by the slice offset.
+            const auto adjustedOutStart = outMemOffset[dim] + sliceOffsets[dim];
+            const auto adjustedOutEnd = adjustedOutStart + outMemShape[dim];
+            const auto inStart = inMemOffset[dim];
+            const auto inEnd = inStart + inMemShape[dim];
+
+            if (adjustedOutStart >= inStart && adjustedOutEnd <= inEnd) {
+                continue;
+            }
+
+            // There's a coverage gap on this dimension
+            if (dim == static_cast<size_t>(hDim) || dim == static_cast<size_t>(wDim)) {
+                needsAdjustment = true;
+            } else {
+                nonHWDimMismatch = true;
+            }
+        }
+    }
+
+    if (!needsAdjustment || nonHWDimMismatch) {
+        return matchFailed(_log, rewriter, sliceOp, "No H/W-only adjustment needed or non-H/W mismatch found at '{0}'",
+                           sliceOp.getLoc());
+    }
+
+    // Only NCE ops can adjust output memory shape via ODU halo, so the producer must be an NCE op
+    auto nceOp = parentCopy.getInput().getDefiningOp<VPU::NCEOpInterface>();
+    if (nceOp == nullptr) {
+        return matchFailed(_log, rewriter, sliceOp, "Producer of input distributed type is not an NCE op at '{0}'",
+                           sliceOp.getLoc());
+    }
+
+    // Second pass: compute the minimum expansion on H for each cluster
+    auto newMemShapes = SmallVector<SmallVector<int64_t>>();
+    auto newMemOffsets = SmallVector<SmallVector<int64_t>>();
+    newMemShapes.reserve(numClusters);
+    newMemOffsets.reserve(numClusters);
+
+    for (auto clusterIdx : irange(numClusters)) {
+        auto inMemOffset = to_small_vector(inputPerClusterMemOffsets[clusterIdx]);
+        auto inMemShape = to_small_vector(inputPerClusterMemShapes[clusterIdx]);
+        const auto outMemOffset = to_small_vector(outputPerClusterMemOffsets[clusterIdx]);
+        const auto outMemShape = to_small_vector(outputPerClusterMemShapes[clusterIdx]);
+
+        for (const auto expandDim : {hDim, wDim}) {
+            const auto adjustedOutStart = outMemOffset[expandDim] + sliceOffsets[expandDim];
+            const auto adjustedOutEnd = adjustedOutStart + outMemShape[expandDim];
+            auto inStart = inMemOffset[expandDim];
+            auto inEnd = inStart + inMemShape[expandDim];
+
+            // Expand the input range to cover the output range on this dimension
+            if (adjustedOutStart < inStart) {
+                inStart = adjustedOutStart;
+            }
+            if (adjustedOutEnd > inEnd) {
+                inEnd = adjustedOutEnd;
+            }
+
+            inMemOffset[expandDim] = inStart;
+            inMemShape[expandDim] = inEnd - inStart;
+        }
+
+        newMemOffsets.push_back(inMemOffset);
+        newMemShapes.push_back(inMemShape);
+    }
+
+    auto* ctx = sliceOp.getContext();
+    const auto newMemShapesAttr = vpux::getIntArrayOfArray(ctx, newMemShapes);
+    const auto newMemOffsetsAttr = vpux::getIntArrayOfArray(ctx, newMemOffsets);
+
+    // Compute shapes also need to be read; keep them unchanged
+    auto computeShapesAttr = inputDist.getComputeShapes();
+    auto computeOffsetsAttr = inputDist.getComputeOffsets();
+
+    auto newDistribution = VPU::DistributionInfoAttr::get(
+            ctx, inputDist.getMode(), inputDist.getNumTiles(), inputDist.getKernel(), inputDist.getPads(),
+            inputDist.getStrides(), inputDist.getNumClusters(), inputDist.getAlignment(),
+            inputDist.getUniformDistributedSegments(), computeShapesAttr, computeOffsetsAttr, newMemShapesAttr,
+            newMemOffsetsAttr, inputDist.getEqualMemoryAndComputeView(), inputDist.getMemoryNumTiles());
+
+    // Compute the new overall shape for the input distributed type.
+    // The overall shape stays the same; only the per-cluster distribution changes.
+    auto newInputDistType =
+            VPU::DistributedTensorType::get(ctx, inputDistType.getShape().raw(), inputDistType.getElementType(),
+                                            inputDistType.getOrder(), inputDistType.getMemSpace(), newDistribution);
+
+    _log.trace("Adjusting input distributed type from {0} to {1} at '{2}'", inputDistType, newInputDistType,
+               sliceOp.getLoc());
+
+    // Verify that other users of parentCopy that are CopyOps only have NCE consumers.
+    // NCE ops can consume the adjusted type by adding offset to workload access,
+    // but other ops (e.g. Shave kernel) cannot, so the adjustment could break other optimizations.
+    for (auto* user : parentCopy.getResult().getUsers()) {
+        if (user == sliceOp.getOperation()) {
+            continue;
+        }
+        if (mlir::isa<VPU::ConcatOp>(user)) {
+            return matchFailed(_log, rewriter, sliceOp,
+                               "parentCopy has a Concat user at '{0}', adjustment could break CMX concat optimization",
+                               user->getLoc());
+        }
+        auto copyUser = mlir::dyn_cast<VPU::CopyOp>(user);
+        if (copyUser == nullptr) {
+            continue;
+        }
+        for (auto* copyConsumer : copyUser.getResult().getUsers()) {
+            if (!mlir::isa<VPU::NCEOpInterface>(copyConsumer)) {
+                return matchFailed(
+                        _log, rewriter, sliceOp,
+                        "parentCopy has a CopyOp user with non-NCE consumer '{0}' at '{1}', cannot adjust type",
+                        copyConsumer->getName(), copyConsumer->getLoc());
+            }
+        }
+    }
+
+    // Check fitIntoCMX for the producer NCE op with the adjusted output type
+    auto fitsIntoCMX =
+            llvm::TypeSwitch<mlir::Operation*, bool>(nceOp.getOperation())
+                    .Case<VPU::NCEConvolutionOp, VPU::NCECompressConvolutionOp, VPU::NCEDepthConvolutionOp>(
+                            [&](auto convOp) {
+                                return convOp.fitIntoCMX(convOp.getInput().getType(), convOp.getFilter().getType(),
+                                                         newInputDistType);
+                            })
+                    .Case<VPU::NCEInterpolateOp, VPU::NCEMatMulOp>([&](auto op) {
+                        return op.fitIntoCMX(op.getInput().getType(), op.getWeights().getType(), newInputDistType);
+                    })
+                    .Case<VPU::NCEMaxPoolOp, VPU::NCEAveragePoolOp, VPU::NCEPermuteOp>([&](auto op) {
+                        return op.fitIntoCMX(op.getInput().getType(), newInputDistType);
+                    })
+                    .Case<VPU::NCEEltwiseOp>([&](auto eltwiseOp) {
+                        return eltwiseOp.fitIntoCMX(eltwiseOp.getInput1().getType(), eltwiseOp.getInput2().getType(),
+                                                    newInputDistType);
+                    })
+                    .Default([&](mlir::Operation* op) {
+                        _log.trace("Unrecognized NCE op type '{0}' at '{1}', cannot verify fitIntoCMX", op->getName(),
+                                   op->getLoc());
+                        return false;
+                    });
+    if (!fitsIntoCMX) {
+        return matchFailed(_log, rewriter, sliceOp, "Adjusted distributed type does not fit into CMX at '{0}'",
+                           sliceOp.getLoc());
+    }
+
+    // If the value we modified is the output of an inplace NCEEltwiseOp,
+    // check whether inplace must be removed and whether non-inplace still fits CMX.
+    bool removeEltwiseInplaceAttr = false;
+    if (auto eltwiseOp = parentCopy.getInput().getDefiningOp<VPU::NCEEltwiseOp>()) {
+        if (eltwiseOp.getIsInplace().value_or(false)) {
+            const auto input1NDType = mlir::cast<vpux::NDTypeInterface>(eltwiseOp.getInput1().getType());
+            const auto input2NDType = mlir::cast<vpux::NDTypeInterface>(eltwiseOp.getInput2().getType());
+            const auto newOutputNDType = mlir::cast<vpux::NDTypeInterface>(newInputDistType);
+
+            auto isInputDistributionCompatibleWithOutput = [&](mlir::Value input) {
+                auto inputDistType = mlir::dyn_cast<VPU::DistributedTensorType>(input.getType());
+                if (inputDistType == nullptr) {
+                    return false;
+                }
+
+                auto inputDistribution = VPU::DistributionInfo::getClassFromAttr(inputDistType.getDistribution());
+                auto outputDistribution = VPU::DistributionInfo::getClassFromAttr(newInputDistType.getDistribution());
+
+                return mlir::succeeded(VPU::areDistributionsCompatible(
+                        mlir::cast<vpux::NDTypeInterface>(inputDistType), inputDistribution,
+                        mlir::cast<vpux::NDTypeInterface>(newInputDistType), outputDistribution,
+                        /*allowDifferentPerClusterMemoryView=*/false));
+            };
+
+            const auto outputTotalSize = newOutputNDType.getTotalAllocSize().count();
+            const auto requiresInplaceRemovalBySize = input1NDType.getTotalAllocSize().count() < outputTotalSize ||
+                                                      input2NDType.getTotalAllocSize().count() < outputTotalSize;
+
+            const auto input1Compatible = isInputDistributionCompatibleWithOutput(eltwiseOp.getInput1());
+            const auto input2Compatible = isInputDistributionCompatibleWithOutput(eltwiseOp.getInput2());
+            const auto requiresInplaceRemovalByDistribution = !input1Compatible && !input2Compatible;
+
+            if (requiresInplaceRemovalBySize || requiresInplaceRemovalByDistribution) {
+                removeEltwiseInplaceAttr = true;
+
+                const auto origIsInplaceAttr = eltwiseOp.getIsInplaceAttr();
+
+                rewriter.startOpModification(eltwiseOp);
+                eltwiseOp.removeIsInplaceAttr();
+                rewriter.finalizeOpModification(eltwiseOp);
+
+                const auto fitIntoCMXWithoutInplace = eltwiseOp.fitIntoCMX(input1NDType, input2NDType, newOutputNDType);
+
+                rewriter.startOpModification(eltwiseOp);
+                if (origIsInplaceAttr != nullptr) {
+                    eltwiseOp.setIsInplaceAttr(origIsInplaceAttr);
+                }
+                rewriter.finalizeOpModification(eltwiseOp);
+
+                if (!fitIntoCMXWithoutInplace) {
+                    return matchFailed(
+                            _log, rewriter, sliceOp,
+                            "Removing inplace for eltwise exceeds CMX; skip HaloAssistedSliceOptimization at '{0}'",
+                            sliceOp.getLoc());
+                }
+            }
+        }
+    }
+
+    // Update the parent CopyOp's input type
+    rewriter.startOpModification(parentCopy);
+    parentCopy.getInput().setType(newInputDistType);
+    rewriter.finalizeOpModification(parentCopy);
+
+    if (removeEltwiseInplaceAttr) {
+        auto eltwiseOp = parentCopy.getInput().getDefiningOp<VPU::NCEEltwiseOp>();
+        rewriter.startOpModification(eltwiseOp);
+        eltwiseOp.removeIsInplaceAttr();
+        rewriter.finalizeOpModification(eltwiseOp);
+    }
+
+    return mlir::success();
+}
+
+//
 // AdjustDistributedTensorAroundOpsPass
 //
 
@@ -216,9 +620,23 @@ void AdjustDistributedTensorAroundOpsPass::safeRunOnFunc() {
     auto func = getOperation();
     auto& ctx = getContext();
 
-    mlir::RewritePatternSet patterns(&ctx);
-    patterns.add<DistributedInputTypeRewriter>(&ctx, _log);
-    collectOpsAndApplyPatterns(func, std::move(patterns));
+    // MTL lacks halo hardware support; LNL has halo hardware but exhibits performance scaling
+    // issues that cause full-model regression when this optimization is applied.
+    // TODO: E#211948 — remove guard once regression is root-caused and fixed.
+    if (VPU::isHaloAssistedSliceOptimizationSupported(func)) {
+        mlir::RewritePatternSet slicePatterns(&ctx);
+        slicePatterns.add<HaloAssistedSliceOptimization>(&ctx, _log);
+        collectOpsAndApplyPatterns(func, std::move(slicePatterns));
+    }
+
+    // DistributedInputTypeRewriter runs after HaloAssistedSliceOptimization so that the
+    // per-cluster distributed types produced by the halo rewrite are already settled before
+    // the input-widening rewriter runs. Running them in the opposite order could widen the
+    // NCE input type first and then miss HaloAssistedSliceOptimization opportunities created
+    // by that widening.
+    mlir::RewritePatternSet inputPatterns(&ctx);
+    inputPatterns.add<DistributedInputTypeRewriter>(&ctx, _log);
+    collectOpsAndApplyPatterns(func, std::move(inputPatterns));
 }
 
 }  // namespace

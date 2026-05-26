@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/utils/infer_output_shape.hpp"
+#include "vpux/compiler/dialect/IE/utils/interpolate_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
 #include "vpux/compiler/dialect/IE/utils/transposed_convolution_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/type_padding.hpp"
@@ -24,6 +25,7 @@
 #include <openvino/op/strided_slice.hpp>
 #include "openvino/op/parameter.hpp"
 
+#include <mlir/Dialect/Affine/IR/AffineOps.h>
 #include <mlir/Dialect/Arith/IR/Arith.h>
 #include <mlir/Dialect/Arith/Utils/Utils.h>
 #include <mlir/Dialect/Tensor/IR/Tensor.h>
@@ -562,6 +564,127 @@ SmallVector<mlir::OpFoldResult> vpux::reifyTrivialTensor(mlir::OpBuilder builder
     return dims;
 }
 
+mlir::LogicalResult vpux::reifyInterpolateResultShape(mlir::OpBuilder& builder, mlir::Location loc, mlir::Value input,
+                                                      mlir::Value scales,
+                                                      const std::optional<mlir::ArrayAttr>& scalesAttr,
+                                                      ArrayRef<int64_t> axesVal, mlir::ShapedType outputShapedType,
+                                                      mlir::ReifiedRankedShapedTypeDims& reifiedReturnShapes) {
+    llvm::DenseMap<int64_t, double> staticScaleForAxis;
+    llvm::DenseMap<int64_t, mlir::Value> runtimeScaleForAxis;
+
+    const auto scalesAreStatic = !IE::isScalesAsParameter(scales, scalesAttr);
+    if (scalesAreStatic) {
+        const auto scalesResult = IE::extractFPVector(loc, scales, scalesAttr);
+        if (mlir::failed(scalesResult)) {
+            return mlir::failure();
+        }
+
+        const auto scalesValues = scalesResult.value();
+        for (auto [i, axis] : llvm::enumerate(axesVal)) {
+            if (i < scalesValues.size()) {
+                staticScaleForAxis[axis] = scalesValues[i];
+            }
+        }
+    } else {
+        if (scales == nullptr) {
+            return mlir::failure();
+        }
+
+        const auto scalesType = mlir::dyn_cast<mlir::RankedTensorType>(scales.getType());
+        if (scalesType == nullptr || scalesType.getRank() != 1) {
+            return mlir::failure();
+        }
+
+        const auto scalesSize = scalesType.getDimSize(0);
+        if (scalesSize != mlir::ShapedType::kDynamic && scalesSize < checked_cast<int64_t>(axesVal.size())) {
+            return mlir::failure();
+        }
+
+        auto toF64 = [&](mlir::Location castLoc, mlir::Value value) -> mlir::FailureOr<mlir::Value> {
+            const auto valueType = value.getType();
+            if (auto floatType = mlir::dyn_cast<mlir::FloatType>(valueType)) {
+                if (floatType.isF64()) {
+                    return value;
+                }
+                if (floatType.getWidth() < 64) {
+                    return builder.createOrFold<mlir::arith::ExtFOp>(castLoc, builder.getF64Type(), value);
+                }
+                return builder.createOrFold<mlir::arith::TruncFOp>(castLoc, builder.getF64Type(), value);
+            }
+
+            if (valueType.isIndex()) {
+                auto asI64 = builder.createOrFold<mlir::arith::IndexCastOp>(castLoc, builder.getI64Type(), value);
+                return builder.createOrFold<mlir::arith::SIToFPOp>(castLoc, builder.getF64Type(), asI64);
+            }
+
+            if (auto intType = mlir::dyn_cast<mlir::IntegerType>(valueType)) {
+                mlir::Value asI64 = value;
+                if (intType.getWidth() < 64) {
+                    asI64 = builder.createOrFold<mlir::arith::ExtSIOp>(castLoc, builder.getI64Type(), value);
+                } else if (intType.getWidth() > 64) {
+                    asI64 = builder.createOrFold<mlir::arith::TruncIOp>(castLoc, builder.getI64Type(), value);
+                }
+                return builder.createOrFold<mlir::arith::SIToFPOp>(castLoc, builder.getF64Type(), asI64);
+            }
+
+            return mlir::failure();
+        };
+
+        for (auto [i, axis] : llvm::enumerate(axesVal)) {
+            if (axis < 0 || axis >= outputShapedType.getRank()) {
+                return mlir::failure();
+            }
+
+            auto extractLoc = appendLoc(loc, "scale_extract_{0}", axis);
+            auto idx = builder.createOrFold<mlir::arith::ConstantIndexOp>(extractLoc, i);
+            auto scaleValue = builder.createOrFold<mlir::tensor::ExtractOp>(extractLoc, scales, mlir::ValueRange{idx});
+
+            auto scaleValueF64 = toF64(extractLoc, scaleValue);
+            if (mlir::failed(scaleValueF64)) {
+                return mlir::failure();
+            }
+            runtimeScaleForAxis[axis] = scaleValueF64.value();
+        }
+    }
+
+    auto computeShapeForDim = [&](int64_t idx) -> mlir::OpFoldResult {
+        auto dimLoc = appendLoc(loc, "dim_{0}", idx);
+
+        if (!staticScaleForAxis.count(idx) && !runtimeScaleForAxis.count(idx)) {
+            return reifyDim(builder, input, idx, dimLoc);
+        }
+
+        auto inputDim = reifyDim(builder, input, idx, dimLoc);
+        auto inputDimValue = mlir::getValueOrCreateConstantIndexOp(builder, dimLoc, inputDim);
+
+        auto inputDimI64 = builder.createOrFold<mlir::arith::IndexCastOp>(dimLoc, builder.getI64Type(), inputDimValue);
+        auto inputDimF64 = builder.createOrFold<mlir::arith::SIToFPOp>(dimLoc, builder.getF64Type(), inputDimI64);
+
+        mlir::Value scaleF64;
+        if (const auto it = runtimeScaleForAxis.find(idx); it != runtimeScaleForAxis.end()) {
+            scaleF64 = it->second;
+        } else {
+            scaleF64 = builder.createOrFold<mlir::arith::ConstantOp>(dimLoc,
+                                                                     builder.getF64FloatAttr(staticScaleForAxis[idx]));
+        }
+
+        auto scaledDimF64 = builder.createOrFold<mlir::arith::MulFOp>(dimLoc, inputDimF64, scaleF64);
+        auto scaledDimI64 = builder.createOrFold<mlir::arith::FPToSIOp>(dimLoc, builder.getI64Type(), scaledDimF64);
+        return builder.createOrFold<mlir::arith::IndexCastOp>(dimLoc, builder.getIndexType(), scaledDimI64);
+    };
+
+    SmallVector<mlir::OpFoldResult> outShape;
+    for (const auto dim : llvm::seq<int64_t>(0, outputShapedType.getRank())) {
+        if (outputShapedType.isDynamicDim(dim)) {
+            outShape.push_back(mlir::getValueOrCreateConstantIndexOp(builder, loc, computeShapeForDim(dim)));
+            continue;
+        }
+        outShape.push_back(builder.getIndexAttr(outputShapedType.getDimSize(dim)));
+    }
+    reifiedReturnShapes.emplace_back(std::move(outShape));
+    return mlir::success();
+}
+
 mlir::FailureOr<SmallVector<mlir::OpFoldResult>> vpux::reifyMatMulTensors(mlir::OpBuilder& builder, mlir::Value input1,
                                                                           mlir::Value input2, bool transposeA,
                                                                           bool transposeB, mlir::Location loc) {
@@ -869,4 +992,34 @@ ShapeInfo vpux::inferEltwiseOutputShapeInfo(const ShapeInfo& in1ShapeInfo, const
 ShapeInfo vpux::inferEltwiseOutputShapeInfo(const ShapeInfo& in1ShapeInfo, const ShapeInfo& in2ShapeInfo,
                                             IE::AutoBroadcastType broadcastType, mlir::Location loc) {
     return inferEltwiseOutputShapeInfo(in1ShapeInfo, in2ShapeInfo, broadcastType, {}, {}, loc);
+}
+
+mlir::LogicalResult vpux::reifyYuvToRgbTensors(mlir::Operation* op, mlir::OpBuilder& builder,
+                                               mlir::ReifiedRankedShapedTypeDims& reifiedReturnShapes) {
+    const auto loc = op->getLoc();
+    const auto inputs = op->getOperands();
+    const auto firstInput = inputs[0];
+    auto inDims = mlir::tensor::getMixedSizes(builder, loc, firstInput);
+
+    // YuvToRgb has NHWC physical tensor order
+    enum { N = 0, H = 1, W = 2, C = 3 };
+
+    SmallVector<mlir::OpFoldResult> outDims;
+    outDims.push_back(inDims[N]);
+
+    if (inputs.size() > 1) {
+        outDims.push_back(inDims[H]);
+    } else {
+        auto ctx = builder.getContext();
+        auto expr = (getAffineDimExpr(0, ctx) * 2).floorDiv(3);
+        auto map = mlir::AffineMap::get(/*dimCount=*/1, /*symbolCount=*/0, expr);
+        auto outH = mlir::affine::makeComposedFoldedAffineApply(builder, loc, map, {inDims[H]});
+        outDims.push_back(outH);
+    }
+
+    outDims.push_back(inDims[W]);
+    outDims.push_back(builder.getIndexAttr(C));
+
+    reifiedReturnShapes.push_back(std::move(outDims));
+    return mlir::success();
 }

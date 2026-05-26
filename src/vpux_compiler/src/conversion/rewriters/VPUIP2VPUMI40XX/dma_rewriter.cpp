@@ -563,12 +563,13 @@ mlir::LogicalResult GatherDMARewriter::matchAndRewrite(VPUIP::GatherDMAOp gather
             adaptor.getDmaHwpIdAttr(), adaptor.getProfilingMetadataAttr(),
             true,  // allowDifferentInOutShapes
             adaptor.getIndices(),
-            nullptr,                             // enqueueBarrier
-            origOp.getWlmPageAttr(),             // wlmPageAttr
-            nullptr,                             // physicalBarrierRangeAttr
-            nullptr,                             // enqueueDMAAttr
-            nullptr,                             // fetchDmaAttr
-            gatherDMAOp.getAddressingModeAttr()  // addressingMode
+            nullptr,                              // enqueueBarrier
+            origOp.getWlmPageAttr(),              // wlmPageAttr
+            nullptr,                              // physicalBarrierRangeAttr
+            nullptr,                              // enqueueDMAAttr
+            nullptr,                              // fetchDmaAttr
+            gatherDMAOp.getAddressingModeAttr(),  // addressingMode
+            nullptr                               // skipDmaAttr
     );
 
     if (auto stridedInput = gatherDMAOp->getAttr(vpux::stridedInputAttrName)) {
@@ -715,7 +716,8 @@ mlir::LogicalResult BarrierProgDMARewriter::matchAndRewrite(VPUIP::BarProgDMAOp 
             barProgDmaOp.getPhysicalBarrierRangeAttr(),  // physicalBarrierRangeAttr
             nullptr,                                     // enqueueDMAAttr
             nullptr,                                     // fetchDMAAttr
-            nullptr                                      // addressingMode
+            nullptr,                                     // addressingMode
+            nullptr                                      // skipDmaAttr
     );
 
     return mlir::success();
@@ -768,7 +770,8 @@ mlir::LogicalResult FetchDMARewriter::matchAndRewrite(VPUIP::FetchDMAOp fetchDMA
             nullptr,                       // physicalBarrierRangeAttr
             nullptr,                       // enqueueDMAAttr
             fetchDMAOp.getFetchDmaAttr(),  // fetchDmaAttr
-            nullptr                        // addressingMode
+            nullptr,                       // addressingMode
+            nullptr                        // skipDmaAttr
     );
 
     return mlir::success();
@@ -821,7 +824,62 @@ mlir::LogicalResult EnqueueDMARewriter::matchAndRewrite(VPUIP::EnqueueDMAOp enqu
             nullptr,                           // physicalBarrierRangeAttr
             enqueueDMAOp.getEnqueueDmaAttr(),  // enqueueDMAAttr
             nullptr,                           // fetchDmaAttr
-            nullptr                            // addressingMode
+            nullptr,                           // addressingMode
+            nullptr                            // skipDmaAttr
+    );
+
+    return mlir::success();
+}
+
+mlir::LogicalResult SkipDMARewriter::matchAndRewrite(VPUIP::SkipDMAOp skipDMAOp, OpAdaptor adaptor,
+                                                     mlir::ConversionPatternRewriter& rewriter) const {
+    auto ctx = skipDMAOp.getContext();
+
+    auto inputType = mlir::cast<NDTypeInterface>(adaptor.getInput().getType());
+    auto outputType = mlir::cast<NDTypeInterface>(adaptor.getOutputBuff().getType());
+
+    const auto tileIdx = adaptor.getPort().value();
+    auto indexType = VPURegMapped::IndexType::get(ctx, tileIdx, getListIndex(inputType.getMemoryKind()), 0);
+
+    auto zeroAttr = getIntAttr(ctx, 0);
+    auto dmaDescriptorAttr = VPUIP::DMADescriptorAttr::get(ctx,
+                                                           zeroAttr,  // numPlane
+                                                           zeroAttr,  // len
+                                                           zeroAttr,  // srcWidth
+                                                           zeroAttr,  // srcStride
+                                                           zeroAttr,  // srcPlaneStride
+                                                           zeroAttr,  // dstWidth
+                                                           zeroAttr,  // dstStride
+                                                           zeroAttr   // dstPlaneStride
+    );
+
+    auto dmaResults = convertOrUnrollBuffer(rewriter, adaptor.getOutputBuff());
+    auto origOp = skipDMAOp->getParentOfType<VPURT::TaskOp>();
+    rewriter.replaceOpWithNewOp<VPUMI40XX::NNDMAOp>(
+            skipDMAOp, indexType,
+            nullptr,  // taskLocation
+            adaptor.getInput(), dmaResults,
+            nullptr,             // previousTask
+            mlir::ValueRange(),  // waitBarriers
+            mlir::ValueRange(),  // updateBarriers
+            0,                   // startAfter
+            0,                   // cleanAfter
+            adaptor.getIsOutOfOrder(), adaptor.getIsCritical(),
+            _isMemorySideCacheEnabled && enableMemorySideCache(inputType, outputType), tileIdx,
+            VPUIP::DMAAccMode::DISABLE,
+            nullptr,  // actCompressionSizeEntry
+            nullptr,  // actCompressionSparsityMap
+            nullptr,  // dmaTransaction
+            dmaDescriptorAttr, adaptor.getDmaHwpIdAttr(), adaptor.getProfilingMetadataAttr(),
+            false,                      // allowDifferentInOutShapes
+            nullptr,                    // indices
+            nullptr,                    // enqueueBarrier
+            origOp.getWlmPageAttr(),    // wlmPageAttr
+            nullptr,                    // physicalBarrierRangeAttr
+            nullptr,                    // enqueueDMAAttr
+            nullptr,                    // fetchDmaAttr
+            nullptr,                    // addressingMode
+            skipDMAOp.getSkipDmaAttr()  // skipDmaAttr
     );
 
     return mlir::success();

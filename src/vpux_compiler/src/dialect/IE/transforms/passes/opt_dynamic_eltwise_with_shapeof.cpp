@@ -15,7 +15,7 @@
 
 #include <mlir/IR/Builders.h>
 #include <mlir/IR/PatternMatch.h>
-#include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Transforms/WalkPatternRewriteDriver.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_OPTDYNAMICELTWISEWITHSHAPEOF
@@ -53,6 +53,27 @@ mlir::Value getDynamicOperand(mlir::Operation* origOp) {
         }
     }
     return nullptr;
+}
+
+bool shouldConvertShapeOfOp(IE::ShapeOfOp op) {
+    const auto isNonDynamicDimsAllOnes = [](mlir::Value value) {
+        auto shape = getShape(value);
+        return std::all_of(shape.begin(), shape.end(), [](int64_t dim) {
+            return dim == mlir::ShapedType::kDynamic || dim == 1;
+        });
+    };
+
+    auto definingOp = op->getOperand(0).getDefiningOp();
+    if (definingOp == nullptr || !definingOp->hasTrait<IE::EltwiseOp>()) {
+        return false;
+    }
+
+    if (findOperandMatchingOutput(definingOp) != -1) {
+        return true;
+    }
+
+    auto output = definingOp->getResult(0);
+    return isDynamicShape(output) && isNonDynamicDimsAllOnes(output);
 }
 
 //
@@ -116,6 +137,10 @@ private:
 
 mlir::LogicalResult OptDynamicEltwiseWithShapeOf::matchAndRewrite(IE::ShapeOfOp shapeOfOp,
                                                                   mlir::PatternRewriter& rewriter) const {
+    if (!shouldConvertShapeOfOp(shapeOfOp)) {
+        return mlir::failure();
+    }
+
     auto definingOp = shapeOfOp.getInput().getDefiningOp();
     const auto outElemType = mlir::cast<vpux::NDTypeInterface>(shapeOfOp.getOutput().getType()).getElementType();
     const auto output = definingOp->getResult(0);
@@ -179,36 +204,11 @@ private:
 
 void OptDynamicEltwiseWithShapeOfPass::safeRunOnFunc() {
     auto& ctx = getContext();
-    const auto isOptimizableShapeOf = [](IE::ShapeOfOp op) {
-        const auto isNonDynamicDimsAllOnes = [](mlir::Value value) {
-            auto shape = getShape(value);
-            return std::all_of(shape.begin(), shape.end(), [](int64_t dim) {
-                return dim == mlir::ShapedType::kDynamic || dim == 1;
-            });
-        };
-
-        auto definingOp = op->getOperand(0).getDefiningOp();
-        if (definingOp == nullptr || !definingOp->hasTrait<IE::EltwiseOp>()) {
-            return true;
-        } else if (findOperandMatchingOutput(definingOp) != -1) {
-            return false;
-        }
-        auto output = definingOp->getResult(0);
-        return !(isDynamicShape(output) && isNonDynamicDimsAllOnes(output));
-    };
-
-    mlir::ConversionTarget target(ctx);
-    target.addLegalDialect<Const::ConstDialect>();
-    target.addDynamicallyLegalOp<IE::ShapeOfOp>(isOptimizableShapeOf);
-    target.addLegalOp<IE::DynamicReshapeOp>();
 
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<OptDynamicEltwiseWithShapeOf>(&ctx, _log);
 
-    auto func = getOperation();
-    if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
-        signalPassFailure();
-    }
+    walkAndApplyPatterns(getOperation(), std::move(patterns));
 }
 
 }  // namespace

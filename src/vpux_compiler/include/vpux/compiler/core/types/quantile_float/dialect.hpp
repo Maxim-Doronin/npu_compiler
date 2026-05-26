@@ -13,7 +13,7 @@ using namespace mlir::detail;
 namespace vpux {
 namespace type {
 
-class QuantileFloatDialect : public mlir::Dialect {
+class QuantileDialect : public mlir::Dialect {
 private:
     void registerTypes();
     void initialize();
@@ -23,14 +23,14 @@ private:
     static mlir::LogicalResult generatedTypePrinter(mlir::Type def, mlir::AsmPrinter& printer);
 
 public:
-    explicit QuantileFloatDialect(mlir::MLIRContext* ctx)
-            : mlir::Dialect(getDialectNamespace(), ctx, mlir::TypeID::get<QuantileFloatDialect>()) {
+    explicit QuantileDialect(mlir::MLIRContext* ctx)
+            : mlir::Dialect(getDialectNamespace(), ctx, mlir::TypeID::get<QuantileDialect>()) {
         initialize();
     }
 
-    ~QuantileFloatDialect() override;
+    ~QuantileDialect() override;
     static constexpr ::llvm::StringLiteral getDialectNamespace() {
-        return ::llvm::StringLiteral("QuantileFloat");
+        return ::llvm::StringLiteral("QuantileType");
     }
 
     mlir::Type parseType(mlir::DialectAsmParser& parser) const override;

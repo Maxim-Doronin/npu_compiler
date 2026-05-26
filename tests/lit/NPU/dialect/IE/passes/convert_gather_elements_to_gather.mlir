@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-gather-elements-to-gather %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --convert-gather-elements-to-gather %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL: @ConvertGatherElementsOnHAndTileToGather
 // CHECK-SAME:    ([[INPUT0:%.+]]: tensor<1x1x5376x80xf16>, [[INPUT1:%.+]]: tensor<1x1x300x1xsi32>)

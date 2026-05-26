@@ -537,18 +537,22 @@ DistributionMode vpux::VPU::getSWInputTensorDistributionMode(VPU::RoPEOp op, VPU
     auto cOperand = operandOrigShape[Dims4D::Act::C];
     auto cIn = inputOrigShape[Dims4D::Act::C];
     auto isSameChannelsSinCos = cOperand == cIn && isInputSinOrCosTensor;
+    auto isSingleChannelSinCos = cOperand == 1 && isInputSinOrCosTensor;
 
     auto hOperand = operandOrigShape[Dims4D::Act::H];
     auto hIn = inputOrigShape[Dims4D::Act::H];
     auto isSameHeightSinCos = hOperand == hIn && isInputSinOrCosTensor;
+    auto isSingleHeightSinCos = hOperand == 1 && isInputSinOrCosTensor;
 
     switch (strategy) {
     case VPU::MultiClusterStrategy::Clustering:
         return DistributionMode::DUPLICATED;
     case VPU::MultiClusterStrategy::SplitOverHeight:
-        return isInputTensor || isSameHeightSinCos ? DistributionMode::SEGMENTED : DistributionMode::DUPLICATED;
+        return isInputTensor || (isSameHeightSinCos && !isSingleHeightSinCos) ? DistributionMode::SEGMENTED
+                                                                              : DistributionMode::DUPLICATED;
     case VPU::MultiClusterStrategy::SplitOverKernel:
-        return isInputTensor || isSameChannelsSinCos ? DistributionMode::SEGMENTED : DistributionMode::DUPLICATED;
+        return isInputTensor || (isSameChannelsSinCos && !isSingleChannelSinCos) ? DistributionMode::SEGMENTED
+                                                                                 : DistributionMode::DUPLICATED;
     default:
         VPUX_THROW("{0} is an invalid multi-cluster strategy, unable to determine the distribution mode for the "
                    "activation tensor",
@@ -625,12 +629,19 @@ DistributionMode vpux::VPU::getSWInputTensorDistributionMode(VPU::FlashSDPAOp op
     }
 }
 
-DistributionMode vpux::VPU::getSWInputTensorDistributionMode(VPU::SDPAExtendedOp op, VPU::MultiClusterStrategy strategy,
+DistributionMode vpux::VPU::getSWInputTensorDistributionMode(VPU::AttentionOp op, VPU::MultiClusterStrategy strategy,
                                                              mlir::Value operand) {
     const auto isInputQTensor = operand == op.getInputQ();
     const auto isInputKTensor = operand == op.getInputK();
     const auto isInputVTensor = operand == op.getInputV();
     const auto isDataStorageTensor = operand == op.getDataStorage();
+
+    // MQA configurations require DUPLICATED for Keys and Values when strategy is over kernel
+    const auto qHeads = getShape(op.getInputQ())[Dims4D::Act::C];
+    const auto kHeads = getShape(op.getInputK())[Dims4D::Act::C];
+    const auto vHeads = getShape(op.getInputV())[Dims4D::Act::C];
+    const auto isKSegmentableOnC = isInputKTensor && (qHeads == kHeads);
+    const auto isVSegmentableOnC = isInputVTensor && (qHeads == vHeads);
 
     auto is2DScaleTensor = operand == op.getInputScale() && getShape(op.getInputScale())[Dims4D::Act::H] != 1;
     auto is3DScaleTensor = operand == op.getInputScale() && getShape(op.getInputScale())[Dims4D::Act::C] != 1;
@@ -646,19 +657,26 @@ DistributionMode vpux::VPU::getSWInputTensorDistributionMode(VPU::SDPAExtendedOp
     auto is3DBiasTensor = operand == op.getInputBias() && getShape(op.getInputBias())[Dims4D::Act::C] != 1;
     auto is4DBiasTensor = operand == op.getInputBias() && getShape(op.getInputBias())[Dims4D::Act::N] != 1;
 
+    auto is2DSinkTensor = operand == op.getInputSink() && getShape(op.getInputSink())[Dims4D::Act::H] != 1;
+    auto is3DSinkTensor = operand == op.getInputSink() && getShape(op.getInputSink())[Dims4D::Act::C] != 1;
+    auto is4DSinkTensor = operand == op.getInputSink() && getShape(op.getInputSink())[Dims4D::Act::N] != 1;
+
     switch (strategy) {
     case VPU::MultiClusterStrategy::Clustering:
         return DistributionMode::DUPLICATED;
     case VPU::MultiClusterStrategy::SplitOverBatch:
-        return isInputQTensor || isInputKTensor || isInputVTensor || is4DMaskTensor || is4DBiasTensor || is4DScaleTensor
+        return isInputQTensor || isInputKTensor || isInputVTensor || is4DMaskTensor || is4DBiasTensor ||
+                               is4DScaleTensor || is4DSinkTensor
                        ? DistributionMode::SEGMENTED
                        : DistributionMode::DUPLICATED;
     case VPU::MultiClusterStrategy::SplitOverKernel:
-        return isInputQTensor || isInputKTensor || isInputVTensor || is3DMaskTensor || is3DBiasTensor || is3DScaleTensor
+        return isInputQTensor || isKSegmentableOnC || isVSegmentableOnC || is3DMaskTensor || is3DBiasTensor ||
+                               is3DScaleTensor || is3DSinkTensor
                        ? DistributionMode::SEGMENTED
                        : DistributionMode::DUPLICATED;
     case VPU::MultiClusterStrategy::SplitOverHeight:
-        return isInputQTensor || isDataStorageTensor || is2DMaskTensor || is2DBiasTensor || is2DScaleTensor
+        return isInputQTensor || isDataStorageTensor || is2DMaskTensor || is2DBiasTensor || is2DScaleTensor ||
+                               is2DSinkTensor
                        ? DistributionMode::SEGMENTED
                        : DistributionMode::DUPLICATED;
     default:
@@ -773,10 +791,11 @@ DistributionMode vpux::VPU::getSWInputTensorDistributionMode(VPU::ClusteredOpInt
             })
             .Case<VPU::MultiplyOp, VPU::DivideOp, VPU::PowerOp, VPU::MaximumOp, VPU::MinimumOp, VPU::GreaterOp,
                   VPU::GreaterEqualOp, VPU::LessOp, VPU::EqualOp, VPU::NotEqualOp, VPU::LessEqualOp, VPU::IsInfOp,
-                  VPU::AndOp, VPU::SubtractOp, VPU::AddOp, VPU::FloorOp, VPU::CeilingOp, VPU::FakeQuantizeOp,
-                  VPU::SelectOp, VPU::RoundOp, VPU::SinOp, VPU::CosOp, VPU::ExpOp, VPU::MishOp, VPU::NegativeOp,
-                  VPU::LogicalNotOp, VPU::SoftPlusOp, VPU::BitwiseOrOp, VPU::BitwiseAndOp, VPU::BitwiseNotOp,
-                  VPU::BitwiseXorOp>([&](mlir::Operation* eltwiseOp) {
+                  VPU::IsFiniteOp, VPU::AndOp, VPU::SubtractOp, VPU::AddOp, VPU::FloorOp, VPU::CeilingOp,
+                  VPU::FakeQuantizeOp, VPU::SelectOp, VPU::RoundOp, VPU::SinOp, VPU::CosOp, VPU::ExpOp, VPU::MishOp,
+                  VPU::NegativeOp, VPU::LogicalNotOp, VPU::SoftPlusOp, VPU::BitwiseOrOp, VPU::BitwiseAndOp,
+                  VPU::BitwiseNotOp, VPU::BitwiseXorOp, VPU::BitwiseRightShiftOp, VPU::BitwiseLeftShiftOp,
+                  VPU::SquaredDifferenceOp>([&](mlir::Operation* eltwiseOp) {
                 return getSWInputTensorDistributionMode(eltwiseOp, strategy, inputType);
             })
             .Case<VPU::PReluOp>([&](VPU::PReluOp preluOp) {
@@ -860,7 +879,7 @@ DistributionMode vpux::VPU::getSWInputTensorDistributionMode(VPU::ClusteredOpInt
             .Case<VPU::YuvToRgbOp>([&](VPU::YuvToRgbOp op) {
                 return getSWInputTensorDistributionMode(op, strategy, operand);
             })
-            .Case<VPU::SDPAExtendedOp>([&](VPU::SDPAExtendedOp op) {
+            .Case<VPU::AttentionOp>([&](VPU::AttentionOp op) {
                 return getSWInputTensorDistributionMode(op, strategy, operand);
             })
             .Case<VPU::ScatterElementsUpdateOp>([&](VPU::ScatterElementsUpdateOp op) {
@@ -1482,7 +1501,7 @@ SmallVector<int64_t> vpux::VPU::getSWInputTensorNumTiles(VPU::SDPAOp op, int64_t
     }
 }
 
-SmallVector<int64_t> vpux::VPU::getSWInputTensorNumTiles(VPU::SDPAExtendedOp op,
+SmallVector<int64_t> vpux::VPU::getSWInputTensorNumTiles(VPU::AttentionOp op,
                                                          int64_t numClustersAvailableForCompilation,
                                                          VPU::MultiClusterStrategy strategy, mlir::Value operand,
                                                          vpux::NDTypeInterface inputType) {
@@ -1684,10 +1703,11 @@ SmallVector<int64_t> vpux::VPU::getSWInputTensorNumTiles(VPU::ClusteredOpInterfa
             })
             .Case<VPU::MultiplyOp, VPU::DivideOp, VPU::PowerOp, VPU::MaximumOp, VPU::MinimumOp, VPU::PReluOp,
                   VPU::GreaterOp, VPU::GreaterEqualOp, VPU::LessOp, VPU::EqualOp, VPU::NotEqualOp, VPU::LessEqualOp,
-                  VPU::IsInfOp, VPU::AndOp, VPU::SubtractOp, VPU::AddOp, VPU::FloorOp, VPU::CeilingOp,
+                  VPU::IsInfOp, VPU::IsFiniteOp, VPU::AndOp, VPU::SubtractOp, VPU::AddOp, VPU::FloorOp, VPU::CeilingOp,
                   VPU::FakeQuantizeOp, VPU::SelectOp, VPU::RoundOp, VPU::SinOp, VPU::CosOp, VPU::ExpOp, VPU::MishOp,
                   VPU::NegativeOp, VPU::LogicalNotOp, VPU::SoftPlusOp, VPU::BitwiseOrOp, VPU::BitwiseAndOp,
-                  VPU::BitwiseNotOp, VPU::BitwiseXorOp, VPU::ReLUOp>([&](mlir::Operation* eltwiseOp) {
+                  VPU::BitwiseNotOp, VPU::BitwiseXorOp, VPU::BitwiseRightShiftOp, VPU::BitwiseLeftShiftOp, VPU::ReLUOp,
+                  VPU::SquaredDifferenceOp>([&](mlir::Operation* eltwiseOp) {
                 return getSWInputTensorNumTiles(eltwiseOp, numClustersAvailableForCompilation, strategy, inputType);
             })
             .Case<VPU::MaxPool8Op>([&](VPU::MaxPool8Op maxpool8Op) {
@@ -1764,7 +1784,7 @@ SmallVector<int64_t> vpux::VPU::getSWInputTensorNumTiles(VPU::ClusteredOpInterfa
             .Case<VPU::SDPAOp>([&](VPU::SDPAOp op) {
                 return getSWInputTensorNumTiles(op, numClustersAvailableForCompilation, strategy, operand, inputType);
             })
-            .Case<VPU::SDPAExtendedOp>([&](VPU::SDPAExtendedOp op) {
+            .Case<VPU::AttentionOp>([&](VPU::AttentionOp op) {
                 return getSWInputTensorNumTiles(op, numClustersAvailableForCompilation, strategy, operand, inputType);
             })
             .Case<VPU::DynamicQuantizeOp>([&](VPU::DynamicQuantizeOp op) {
@@ -1875,6 +1895,27 @@ std::optional<SmallVector<int64_t>> vpux::VPU::getSWAlignment(mlir::Operation* o
         }
     }
     return optionalAlignment;
+}
+
+bool vpux::VPU::opHasAccurateCost(mlir::Operation* op) {
+    auto vfOp = mlir::dyn_cast_or_null<VPU::VerticalFusionOp>(op);
+    auto getFirstInnerComputeOpFromVF = [](VPU::VerticalFusionOp vfOp) -> mlir::Operation* {
+        auto iter = llvm::find_if(vfOp.getBody()->without_terminator(), [](mlir::Operation& nestedOp) {
+            return mlir::isa<VPU::VerticalFusionOpInterface>(nestedOp);
+        });
+        VPUX_THROW_WHEN(iter == vfOp.getBody()->without_terminator().end(),
+                        "No inner compute op found in VerticalFusionOp");
+        return &*iter;
+    };
+    auto actualOp = vfOp != nullptr ? getFirstInnerComputeOpFromVF(vfOp) : op;
+    return llvm::TypeSwitch<mlir::Operation*, bool>(actualOp)
+            // E#154343: Inaccurate VPUNN cost for those ops when the size is small.
+            .Case<VPU::InterpolateOp, VPU::MultiplyOp>([](auto) {
+                return false;
+            })
+            .Default([](mlir::Operation*) {
+                return true;
+            });
 }
 
 // Check if DepthToSpace satisfies the condition of optimal SW implementation which is fused with convert op

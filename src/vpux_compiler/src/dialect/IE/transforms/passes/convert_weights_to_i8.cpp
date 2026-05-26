@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
@@ -53,39 +54,29 @@ bool isLegalTensor(vpux::NDTypeInterface tensorType, mlir::ModuleOp moduleOp, in
         return false;
     };
 
-    const auto isQuantileQuantizedTypeLegal = [isSymmetricalZeroPoint](auto quantizedType,
-                                                                       const int64_t symmetricalZeroPoint) -> bool {
-        auto quantileTypeInt = mlir::dyn_cast<mlir::IntegerType>(quantizedType.getQuantileType());
-        const bool isConversionRequired = quantileTypeInt && quantileTypeInt.isUnsigned() &&
-                                          quantileTypeInt.getWidth() == 8 &&
-                                          isSymmetricalZeroPoint(quantizedType, symmetricalZeroPoint);
-        // mark tensor as illegal when conversion has to happen
-        return !isConversionRequired;
-    };
+    const auto isQuantizedTypeLegal = [isSymmetricalZeroPoint](auto quantizedType, const int64_t symmetricalZeroPoint,
+                                                               bool isAsymmetricZeroPointSupported) -> bool {
+        bool isConversionRequired = false;
 
-    const auto isUniformQuantizedTypeLegal = [isSymmetricalZeroPoint](auto quantizedType,
-                                                                      const int64_t symmetricalZeroPoint,
-                                                                      bool isAsymmetricZeroPointSupported) -> bool {
-        const bool isConversionRequired =
-                !quantizedType.isSigned() && quantizedType.getStorageTypeIntegralWidth() == 8 &&
-                (isAsymmetricZeroPointSupported || isSymmetricalZeroPoint(quantizedType, symmetricalZeroPoint));
+        if (const auto quantileStorage = mlir::dyn_cast<vpux::type::QuantileType>(quantizedType.getStorageType())) {
+            const auto quantileTypeInt = mlir::dyn_cast<mlir::IntegerType>(quantileStorage.getQuantileType());
+            isConversionRequired = quantileTypeInt && quantileTypeInt.isUnsigned() && quantileTypeInt.getWidth() == 8 &&
+                                   isSymmetricalZeroPoint(quantizedType, symmetricalZeroPoint);
+        } else {
+            isConversionRequired =
+                    !quantizedType.isSigned() && quantizedType.getStorageTypeIntegralWidth() == 8 &&
+                    (isAsymmetricZeroPointSupported || isSymmetricalZeroPoint(quantizedType, symmetricalZeroPoint));
+        }
         return !isConversionRequired;
     };
 
     // only handle U8 type with zero point of 128
     const auto elementType = tensorType.getElementType();
-    if (const auto uniformQuantileType = mlir::dyn_cast_or_null<mlir::quant::QuantileQuantizedType>(elementType)) {
-        return isQuantileQuantizedTypeLegal(uniformQuantileType, symmetricalZeroPoint);
-
-    } else if (const auto perAxisQuantileType =
-                       mlir::dyn_cast_or_null<mlir::quant::QuantileQuantizedPerAxisType>(elementType)) {
-        return isQuantileQuantizedTypeLegal(perAxisQuantileType, symmetricalZeroPoint);
-
-    } else if (const auto uniformType = mlir::dyn_cast_or_null<mlir::quant::UniformQuantizedType>(elementType)) {
-        return isUniformQuantizedTypeLegal(uniformType, symmetricalZeroPoint, isAsymmetricPerTensorZeroPointSupported);
-
-    } else if (const auto perAxisType = mlir::dyn_cast_or_null<mlir::quant::UniformQuantizedPerAxisType>(elementType)) {
-        return isUniformQuantizedTypeLegal(perAxisType, symmetricalZeroPoint, isAsymmetricPerChannelZeroPointSupported);
+    if (const auto uniformType = mlir::dyn_cast_if_present<mlir::quant::UniformQuantizedType>(elementType)) {
+        return isQuantizedTypeLegal(uniformType, symmetricalZeroPoint, isAsymmetricPerTensorZeroPointSupported);
+    }
+    if (const auto perAxisType = mlir::dyn_cast_if_present<mlir::quant::UniformQuantizedPerAxisType>(elementType)) {
+        return isQuantizedTypeLegal(perAxisType, symmetricalZeroPoint, isAsymmetricPerChannelZeroPointSupported);
     }
     return true;
 };
@@ -161,71 +152,65 @@ mlir::LogicalResult ConvolutionRewriter::matchAndRewrite(IE::ConvolutionOp origO
 
 // change storage type to I8 and shift zp, min, max attributes by the value of storage type max
 mlir::quant::QuantizedType changeStorageTypeToI8(mlir::quant::QuantizedType originQType) {
-    const auto GetNewQuantileQuantizedType = [](auto quantileQuantizedType) -> mlir::quant::QuantizedType {
-        // in QuantileQuantizedType we modify the type of the elements in the LUT from u8 to i8 while the
+    const auto changeQuantileStorageToI8 = [](auto uniformType) -> mlir::quant::QuantizedType {
+        // in QuantileType we modify the type of the elements in the LUT from u8 to i8 while the
         // storageType and its limits remain the same
+        const auto quantileStorage = mlir::dyn_cast<vpux::type::QuantileType>(uniformType.getStorageType());
+
         constexpr unsigned u8BitWidth = 8;
         const unsigned quantileTypeMax = llvm::maxUIntN(u8BitWidth);
         auto offset = (quantileTypeMax + 1) / 2;
-        SmallVector<double> quantileLUT(quantileQuantizedType.getQuantiles());
+        SmallVector<double> quantileLUT(quantileStorage.getQuantiles());
         for (auto& q : quantileLUT) {
             q -= offset;
         }
 
-        if (const auto uniformQuantileType =
-                    mlir::dyn_cast<mlir::quant::QuantileQuantizedType>(quantileQuantizedType)) {
-            return mlir::quant::QuantileQuantizedType::get(
-                    uniformQuantileType.getFlags(), uniformQuantileType.getStorageType(),
-                    getSInt8Type(uniformQuantileType.getContext()), uniformQuantileType.getExpressedType(), quantileLUT,
+        const auto newQuantileStorageType =
+                vpux::type::QuantileType::get(quantileStorage.getContext(), quantileStorage.getStorageType(),
+                                              getSInt8Type(quantileStorage.getContext()), quantileLUT);
+
+        if (const auto uniformQuantileType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(uniformType)) {
+            return mlir::quant::UniformQuantizedType::get(
+                    uniformType.getFlags(), newQuantileStorageType, uniformQuantileType.getExpressedType(),
                     uniformQuantileType.getScale(), /*zp=*/0, uniformQuantileType.getStorageTypeMin(),
                     uniformQuantileType.getStorageTypeMax());
+        } else if (const auto perAxisQuantileType =
+                           mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(uniformType)) {
+            const auto zeroPoints = perAxisQuantileType.getZeroPoints();
+            const SmallVector<int64_t> newZeroPoints(zeroPoints.size(), 0);
+            return mlir::quant::UniformQuantizedPerAxisType::get(
+                    perAxisQuantileType.getFlags(), newQuantileStorageType, perAxisQuantileType.getExpressedType(),
+                    perAxisQuantileType.getScales(), newZeroPoints, perAxisQuantileType.getQuantizedDimension(),
+                    perAxisQuantileType.getStorageTypeMin(), perAxisQuantileType.getStorageTypeMax());
         }
-
-        const auto perAxisQuantileType =
-                mlir::dyn_cast<mlir::quant::QuantileQuantizedPerAxisType>(quantileQuantizedType);
-        VPUX_THROW_UNLESS(perAxisQuantileType != nullptr,
-                          "quantizedType should be either a QuantileQuantizedType or a QuantileQuantizedPerAxisType!");
-
-        const auto zeroPoints = perAxisQuantileType.getZeroPoints();
-        const SmallVector<int64_t> newZeroPoints(zeroPoints.size(), 0);
-        return mlir::quant::QuantileQuantizedPerAxisType::get(
-                perAxisQuantileType.getFlags(), perAxisQuantileType.getStorageType(),
-                getSInt8Type(perAxisQuantileType.getContext()), perAxisQuantileType.getExpressedType(), quantileLUT,
-                perAxisQuantileType.getScales(), newZeroPoints, perAxisQuantileType.getQuantizedDimension(),
-                perAxisQuantileType.getStorageTypeMin(), perAxisQuantileType.getStorageTypeMax());
+        VPUX_THROW("Unsupported Quantized Type '{0}'", uniformType);
     };
 
-    if (const auto uniformQuantileType = mlir::dyn_cast<mlir::quant::QuantileQuantizedType>(originQType)) {
-        return GetNewQuantileQuantizedType(uniformQuantileType);
-
-    } else if (const auto perAxisQuantileType =
-                       mlir::dyn_cast<mlir::quant::QuantileQuantizedPerAxisType>(originQType)) {
-        return GetNewQuantileQuantizedType(perAxisQuantileType);
-
-    } else if (const auto uniformType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(originQType)) {
-        auto offset = (uniformType.getStorageTypeMax() + 1) / 2;
-        auto zeroPoint = uniformType.getZeroPoint();
-        auto newZeroPoint = zeroPoint - offset;
+    if (const auto uniformType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(originQType)) {
+        if (mlir::isa<vpux::type::QuantileType>(uniformType.getStorageType())) {
+            return changeQuantileStorageToI8(uniformType);
+        }
+        const auto offset = (uniformType.getStorageTypeMax() + 1) / 2;
         return mlir::quant::UniformQuantizedType::get(
                 mlir::quant::QuantizationFlags::Signed, getSInt8Type(uniformType.getContext()),
-                uniformType.getExpressedType(), uniformType.getScale(),
-                /*zp=*/newZeroPoint, /*min=*/uniformType.getStorageTypeMin() - offset,
-                /*max=*/uniformType.getStorageTypeMax() - offset);
+                uniformType.getExpressedType(), uniformType.getScale(), uniformType.getZeroPoint() - offset,
+                uniformType.getStorageTypeMin() - offset, uniformType.getStorageTypeMax() - offset);
+    }
 
-    } else if (const auto perAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(originQType)) {
-        const auto zeroPoints = perAxisType.getZeroPoints();
-
-        SmallVector<int64_t> newZeroPoints(zeroPoints.size(), 0);
-        auto offset = (perAxisType.getStorageTypeMax() + 1) / 2;
-        std::transform(zeroPoints.begin(), zeroPoints.end(), newZeroPoints.begin(), [&](int64_t oldZP) {
-            return oldZP - offset;
+    if (const auto perAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(originQType)) {
+        if (mlir::isa<vpux::type::QuantileType>(perAxisType.getStorageType())) {
+            return changeQuantileStorageToI8(perAxisType);
+        }
+        const auto offset = (perAxisType.getStorageTypeMax() + 1) / 2;
+        SmallVector<int64_t> newZeroPoints;
+        llvm::transform(perAxisType.getZeroPoints(), std::back_inserter(newZeroPoints), [offset](int64_t zp) {
+            return zp - offset;
         });
-        return mlir::quant::UniformQuantizedPerAxisType::get(mlir::quant::QuantizationFlags::Signed,
-                                                             getSInt8Type(perAxisType.getContext()),
-                                                             perAxisType.getExpressedType(), perAxisType.getScales(),
-                                                             newZeroPoints, perAxisType.getQuantizedDimension(),
-                                                             /*min=*/perAxisType.getStorageTypeMin() - offset,
-                                                             /*max=*/perAxisType.getStorageTypeMax() - offset);
+        return mlir::quant::UniformQuantizedPerAxisType::get(
+                mlir::quant::QuantizationFlags::Signed, getSInt8Type(perAxisType.getContext()),
+                perAxisType.getExpressedType(), perAxisType.getScales(), newZeroPoints,
+                perAxisType.getQuantizedDimension(), perAxisType.getStorageTypeMin() - offset,
+                perAxisType.getStorageTypeMax() - offset);
     }
 
     VPUX_THROW("Unsupported Quantized Type '{0}'", originQType);
@@ -291,15 +276,18 @@ void ConvertWeightsToI8Pass::safeRunOnFunc() {
             }
             const auto outputType = mlir::cast<vpux::NDTypeInterface>(constantOp.getOutput().getType());
             const auto outputElemType = outputType.getElementType();
-            if (const auto uniformQuantileType = mlir::dyn_cast<mlir::quant::QuantileQuantizedType>(outputElemType)) {
-                auto outputQuantileType = uniformQuantileType.getQuantileType();
-                if (!outputQuantileType.isUnsignedInteger(8) && !outputQuantileType.isSignlessInteger(8)) {
-                    return false;
-                }
-            } else if (auto outputQType = mlir::dyn_cast<mlir::quant::QuantizedType>(outputElemType)) {
-                auto outputStorageType = outputQType.getStorageType();
-                if (!outputStorageType.isUnsignedInteger(8) && !outputStorageType.isSignlessInteger(8)) {
-                    return false;
+            if (auto outputQType = mlir::dyn_cast<mlir::quant::QuantizedType>(outputElemType)) {
+                if (const auto quantileStorage =
+                            mlir::dyn_cast<vpux::type::QuantileType>(outputQType.getStorageType())) {
+                    auto outputQuantileType = quantileStorage.getQuantileType();
+                    if (!outputQuantileType.isUnsignedInteger(8) && !outputQuantileType.isSignlessInteger(8)) {
+                        return false;
+                    }
+                } else {
+                    auto outputStorageType = outputQType.getStorageType();
+                    if (!outputStorageType.isUnsignedInteger(8) && !outputStorageType.isSignlessInteger(8)) {
+                        return false;
+                    }
                 }
             }
             return true;

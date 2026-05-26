@@ -17,6 +17,7 @@
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/async_dialect_utils.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/loop_schedule_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/IR/ops.hpp"
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
@@ -28,12 +29,11 @@
 #include "vpux/compiler/utils/hw_settings.hpp"
 #include "vpux/compiler/utils/linear_scan.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/compiler/utils/strings.hpp"
 #include "vpux/utils/core/checked_cast.hpp"
 
-#include "vpux/compiler/core/loop_allocator.hpp"
-
 #if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
-#include "vpux/compiler/core/developer_build_utils.hpp"
+#include "vpux/utils/core/developer_build_utils.hpp"
 #endif  // defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
 
 #include <vpu_cost_model.h>
@@ -217,8 +217,8 @@ private:
     void updateAsyncExecuteOpPositionOfSpillOps(AsyncDepsInfo& depsInfo,
                                                 FeasibleMemoryScheduler::ScheduledOpInfoVec& scheduledOps);
     void assignCyclesToExecOps(AsyncDepsInfo& depsInfo, FeasibleMemoryScheduler::ScheduledOpInfoVec& scheduledOps);
-    void linearizeComputeOps(bool linearizeSchedule, bool enablePipelining, mlir::func::FuncOp& netFunc,
-                             AsyncDepsInfo& depsInfo);
+    void linearizeScheduledComputeOps(const FeasibleMemoryScheduler::ScheduledOpInfoVec& scheduledOps,
+                                      AsyncDepsInfo& depsInfo);
     void updateCycleAfterAllScheduleOptimizations(AsyncDepsInfo& depsInfo,
                                                   FeasibleMemoryScheduler::ScheduledOpInfoVec& scheduledOps);
 
@@ -608,36 +608,27 @@ void FeasibleAllocationPass::updateCycleAfterAllScheduleOptimizations(
     scheduledOps = std::move(newOrder);
 }
 
-// This method will inject dependencies between operations based on linearization option
-void FeasibleAllocationPass::linearizeComputeOps(bool linearizeSchedule, bool enablePipelining,
-                                                 mlir::func::FuncOp& netFunc, AsyncDepsInfo& depsInfo) {
-    // various linearization options
-    mlir::async::ExecuteOp prevExecOp = nullptr;
-    llvm::DenseMap<config::ExecutorKind, mlir::async::ExecuteOp> prevExecOpMap;
-    netFunc->walk([&](mlir::async::ExecuteOp execOp) {
-        const auto currExecutor = VPUIP::VPUIPDialect::getExecutorKind(execOp);
-        if (!linearizeSchedule && !VPUIP::VPUIPDialect::isComputeExecutorKind(currExecutor)) {
-            return;
-        }
+void FeasibleAllocationPass::linearizeScheduledComputeOps(
+        const FeasibleMemoryScheduler::ScheduledOpInfoVec& scheduledOps, AsyncDepsInfo& depsInfo) {
+    llvm::DenseMap<config::ExecutorKind, size_t> prevExecOpMap;
 
-        if (linearizeSchedule || !enablePipelining) {
-            if (prevExecOp != nullptr) {
-                depsInfo.addDependency(prevExecOp, execOp);
-            }
-            prevExecOp = execOp;
-        } else {
-            if (prevExecOpMap.find(currExecutor) != prevExecOpMap.end()) {
-                depsInfo.addDependency(prevExecOpMap[currExecutor], execOp);
-            }
-            prevExecOpMap[currExecutor] = execOp;
+    for (const auto& schedOp : scheduledOps) {
+        const auto currExecutor = schedOp.queueType.execKind;
+        if (!VPUIP::VPUIPDialect::isComputeExecutorKind(currExecutor)) {
+            continue;
         }
-    });
+        if (prevExecOpMap.find(currExecutor) != prevExecOpMap.end()) {
+            depsInfo.addDependency(prevExecOpMap[currExecutor], schedOp.op_);
+        }
+        prevExecOpMap[currExecutor] = schedOp.op_;
+    }
 }
 
 void FeasibleAllocationPass::safeRunOnFunc() {
 #if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
 
     parseEnv("IE_NPU_ENABLE_SCHEDULE_STATISTICS", _enableScheduleStatistics);
+    _enableScheduleStatistics = _enableScheduleStatistics || isPerfDebugMode();
 
 #endif  // defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
 
@@ -674,56 +665,38 @@ void FeasibleAllocationPass::safeRunOnFunc() {
     auto maybeCostModelAnalysis = getCachedParentAnalysis<VPU::CostModelAnalysis>(module);
     auto costModel = VPU::CostModelAnalysis::getOrCreateCostModel(maybeCostModelAnalysis, &getContext(), _log);
 
-    const auto availableSize = scan.totalFreeSize();
-
     // If schedule analysis is enabled dynamic spilling stats will be gathered
     vpux::SpillStats dynamicSpillingBeforePrefetching;
     vpux::SpillStats dynamicSpillingAfterPrefetching;
     vpux::SpillStats dynamicSpillingAfterSpillOptimizations;
 
     // Helper lambda to generate compute regions and perform loop-based allocation
-    auto generateComputeRegionsAndAllocate = [&](AsyncDepsInfo& taskDepsInfo,
-                                                 llvm::StringLiteral allocatorName) -> ComputeRegionVec {
-        ComputeRegionVec regions;
+    auto generateComputeRegions = [&](AsyncDepsInfo& taskDepsInfo) -> ComputeRegionVec {
         if (!_enableLoopAllocation) {
-            return regions;
+            return {};
         }
 
         // Build aliases info for current function state
         auto taskAliasesInfo = AliasesInfoMemType<VPU::MemoryKind::CMX_NN>{func};
 
-        // Build consumer map and extract compute regions from async operations
-        taskDepsInfo.buildConsMap();
-        regions = getComputeRegionsFromAsyncExec(taskAliasesInfo, taskDepsInfo, _log);
-
-        // Allocate memory for detected loop tiling regions
-        if (!regions.empty()) {
-            LoopAllocator loopAllocator(regions, availableSize, _log, allocatorName);
-            loopAllocator.allocateLoopTilingRegions();
-        }
-
-        return regions;
+        return getComputeRegionsFromAsyncExec(taskAliasesInfo, taskDepsInfo, _log);
     };
 
     // Generate compute regions for initial schedule
-    auto computeRegionVec = generateComputeRegionsAndAllocate(depsInfo, "loop-allocator");
-    if (_enableLoopAllocation) {
-        if (computeRegionVec.empty()) {
-            _log.info("No compute regions found for loop-based allocation.");
-        } else {
-            _log.info("Found {0} compute region(s) for loop-based allocation.", computeRegionVec.size());
-        }
-    }
+    auto computeRegionVec = generateComputeRegions(depsInfo);
 
-    linearizeComputeOps(_linearizeSchedule, _enablePipelining, func, depsInfo);
+    // Generate predefined loop schedules before constructing the scheduler
+    auto predefinedRegionSchedules = VPUIP::generateLoopSchedules(computeRegionVec, scan.totalFreeSize(), _log);
 
     // feasible memory scheduler - list scheduler
     FeasibleMemoryScheduler scheduler(_memKind, _secondLvlMemKind, liveRangeInfo, depsInfo, _log, scan, arch, vpuDevice,
                                       costModel, tileCount, dmaCount, _enableScheduleStatistics, _optimizeFragmentation,
-                                      /*activelySpillForPrefetching*/ false, std::move(computeRegionVec));
+                                      /*activelySpillForPrefetching*/ false, std::move(predefinedRegionSchedules),
+                                      std::move(computeRegionVec));
 
     // 1. initial schedule
     auto scheduledOps = scheduler.generateSchedule();
+    linearizeScheduledComputeOps(scheduledOps, depsInfo);
 
     if (_enableScheduleStatistics) {
         dynamicSpillingBeforePrefetching = vpux::getDynamicSpillingStats(scheduledOps);
@@ -737,9 +710,6 @@ void FeasibleAllocationPass::safeRunOnFunc() {
             // prefetching logic has reordered IR, depsInfo needs to be regenerated since
             // scheduling depends on incrementing value of async-deps-info along IR
             depsInfo = AsyncDepsInfo{func};
-            if (!_enablePipelining) {
-                linearizeComputeOps(_linearizeSchedule, _enablePipelining, func, depsInfo);
-            }
 
             ConcurrentMemorySchedulerRunner runner{&ctx, _log};
             std::vector<ConcurrentMemorySchedulerRunner::SchedulerTask> tasks;
@@ -753,12 +723,15 @@ void FeasibleAllocationPass::safeRunOnFunc() {
                                         MemLiveRangeInfoMemType<VPU::MemoryKind::CMX_NN>& liveRange)
                     -> FeasibleMemoryScheduler::ScheduledOpInfoVec {
                 // Re-generate compute regions after IR modification
-                auto regions = generateComputeRegionsAndAllocate(taskDepsInfo, "loop-allocator-prefetch");
+                auto regions = generateComputeRegions(taskDepsInfo);
+                auto taskPredefinedRegionSchedules =
+                        VPUIP::generateLoopSchedules(regions, taskScan.totalFreeSize(), _log);
 
                 FeasibleMemoryScheduler schedulerWithPrefetch(
                         _memKind, _secondLvlMemKind, liveRange, taskDepsInfo, _log, taskScan, arch, vpuDevice,
                         costModel, tileCount, dmaCount, _enableScheduleStatistics, _optimizeFragmentation,
-                        /*activelySpillForPrefetching*/ false, std::move(regions));
+                        /*activelySpillForPrefetching*/ false, std::move(taskPredefinedRegionSchedules),
+                        std::move(regions));
                 return schedulerWithPrefetch.generateSchedule();
             };
             tasks.emplace_back(scheduleFuncBase, depsInfo, prefetchScan, liveRange);
@@ -774,12 +747,15 @@ void FeasibleAllocationPass::safeRunOnFunc() {
                                                   MemLiveRangeInfoMemType<VPU::MemoryKind::CMX_NN>& liveRange)
                         -> FeasibleMemoryScheduler::ScheduledOpInfoVec {
                     // Re-generate compute regions after IR modification
-                    auto regions = generateComputeRegionsAndAllocate(taskDepsInfo, "loop-allocator-aggressive");
+                    auto regions = generateComputeRegions(taskDepsInfo);
+                    auto taskPredefinedRegionSchedules =
+                            VPUIP::generateLoopSchedules(regions, taskScan.totalFreeSize(), _log);
 
                     FeasibleMemoryScheduler schedulerWithAggressivePrefetch(
                             _memKind, _secondLvlMemKind, liveRange, taskDepsInfo, _log, taskScan, arch, vpuDevice,
                             costModel, tileCount, dmaCount, _enableScheduleStatistics, _optimizeFragmentation,
-                            /*activelySpillForPrefetching*/ true, std::move(regions));
+                            /*activelySpillForPrefetching*/ true, std::move(taskPredefinedRegionSchedules),
+                            std::move(regions));
                     const auto& res = schedulerWithAggressivePrefetch.generateSchedule();
                     if (_enableScheduleStatistics) {
                         schedulerWithAggressivePrefetch.printFragmentFixCountLog();
@@ -805,6 +781,7 @@ void FeasibleAllocationPass::safeRunOnFunc() {
             scheduledOps = std::move(bestSchedule.result.value().scheduledOps);
             depsInfo = std::move(bestSchedule.result.value().depsInfo);
             scheduler.cleanUpAndLogSchedule(scheduledOps);
+            linearizeScheduledComputeOps(scheduledOps, depsInfo);
         }
     }
 
@@ -847,7 +824,6 @@ void FeasibleAllocationPass::safeRunOnFunc() {
     if (dmaCount == 1) {
         controlEdges.insertScheduleOrderDepsForExecutor(scheduledOps, config::ExecutorKind::DMA_NN);
     }
-    linearizeComputeOps(_linearizeSchedule, _enablePipelining, func, depsInfo);
     controlEdges.updateDependenciesInIR();
 
     // 7. After dependencies are determined, location of spill operations should be updated
@@ -881,7 +857,7 @@ void FeasibleAllocationPass::safeRunOnFunc() {
         // create a tracing JSON
         aliasesInfo = AliasesInfoMemType<VPU::MemoryKind::CMX_NN>(func);
         auto traceLiveRangeInfo = MemLiveRangeInfoMemType<VPU::MemoryKind::CMX_NN>{func, aliasesInfo};
-        createTracingJSON(func, traceLiveRangeInfo, scan, maxSize.count());
+        createTracingJSON(func, traceLiveRangeInfo, scan, maxSize.count(), func->getLoc());
     }
 
     // 7. convert to allocated ops

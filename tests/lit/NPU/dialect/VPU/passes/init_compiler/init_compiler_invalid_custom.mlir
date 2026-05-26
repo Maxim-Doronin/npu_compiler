@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW allow-custom-values=false" -verify-diagnostics %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW allow-custom-values=false" -verify-diagnostics %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // expected-error@+1 {{CompilationMode is already defined, probably you run '--init-compiler' twice}}
 module @mode attributes {config.compilationMode = #config.compilation_mode<ReferenceSW>} {
@@ -13,7 +13,7 @@ module @mode attributes {config.compilationMode = #config.compilation_mode<Refer
 // -----
 
 // expected-error@+1 {{Target platform is already set, probably you run '--init-compiler' twice}}
-module @arch attributes {config.arch = #config.arch_kind<NPU37XX>} {
+module @arch attributes {config.platform = #config.platform<NPU3720>} {
 }
 
 // -----

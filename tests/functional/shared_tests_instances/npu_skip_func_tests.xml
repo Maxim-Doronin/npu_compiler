@@ -20,6 +20,14 @@ Example:
 -->
 <skip_configs>
 
+    <!-- E#210236 -->
+    <skip_config>
+        <message>Sporadic failure</message>
+        <filters>
+            <filter>smoke_BehaviorTest/TestCompiledModelNPU.samePlatformProduceTheSameBlobCacheEnabled.*</filter>
+        </filters>
+    </skip_config>
+
     <!-- E###### -->
     <skip_config>
         <message>Tests break due to starting infer on IA side</message>
@@ -606,6 +614,16 @@ Example:
         </filters>
     </skip_config>
 
+    <skip_config>
+        <message>Output I4 / U4 precision is not currently supported.</message>
+        <filters>
+            <filter>.*smoke.*OVInferRequestCheckTensorPrecision.*type=i4.*</filter>
+            <filter>.*smoke.*OVInferRequestCheckTensorPrecision.*type=u4.*</filter>
+            <filter>.*smoke.*OVInferRequestIOTensorSetPrecisionTestNPU.*type=i4.*</filter>
+            <filter>.*smoke.*OVInferRequestIOTensorSetPrecisionTestNPU.*type=u4.*</filter>
+        </filters>
+    </skip_config>
+
     <!-- E#109040 -->
     <skip_config>
         <message>Disabled tests for NPU3720 and NPU4000</message>
@@ -872,13 +890,21 @@ Example:
 
     <!-- E#205075 -->
     <skip_config>
-        <message>Tests fail on private platforms. Unskip after tests updated with E#205075.</message>
+        <message>Test fails on private platforms: compilation is expected to fail, but it passes (E#205075).</message>
         <enable_rules>
-            <device>5020</device>
         </enable_rules>
         <filters>
-            <filter>.*ClassExecutableNetworkInvalidDeviceIDTestSuite.InvalidNPUdeviceIDTest.*</filter>
             <filter>.*OVCompiledModelIncorrectDevice.CanNotCompileModelWithIncorrectDeviceID.*</filter>
+        </filters>
+    </skip_config>
+
+    <!-- C#181730 -->
+    <skip_config>
+        <message>Test fails on private platforms: unrecognized device ID (C#181730).</message>
+        <enable_rules>
+        </enable_rules>
+        <filters>
+            <filter>.*BooleanPrecisionInferRequestRunTests.BooleanTensorDataTypesForBooleanModelsWork.*COMPILER_TYPE.*PLUGIN.*</filter>
         </filters>
     </skip_config>
 
@@ -886,7 +912,6 @@ Example:
     <skip_config>
         <message>LSTM Sequence accuracy fails</message>
         <enable_rules>
-            <device>5020</device>
         </enable_rules>
         <filters>
             <filter>.*smoke_precommit_LSTMSequencePt/LSTMSequenceLayerTestCommon.*</filter>
@@ -928,15 +953,6 @@ Example:
         <message>NPU_DPU_GROUPS is a deprecated property</message>
         <filters>
             <filter>.*NPU_DPU_GROUPS.*</filter>
-        </filters>
-    </skip_config>
-
-    <!-- E#172890 -->
-    <skip_config>
-        <message>Pipeline does not support 4 DMA engines, thus exceeding link agent limit</message>
-        <enable_rules>
-        </enable_rules>
-        <filters>
         </filters>
     </skip_config>
 
@@ -1002,42 +1018,51 @@ Example:
         </filters>
     </skip_config>
 
-    <!-- E#190990-->
+    <!-- E#206393 -->
     <skip_config>
-        <message>Skip test-cases failing with Win Drv.9368 </message>
+        <message>Skip memory standard allocation tests for Win NPU3720 due to OS issue, E#206393.</message>
         <enable_rules>
             <operating_system>windows</operating_system>
+            <device>3720</device>
         </enable_rules>
         <filters>
-            <filter>.*NpuDeviceAllocMemSizeSameAfterDestroyInferRequestGetTensor.*</filter>
+            <filter>.*ZeroGraphTest.SetAlignedBlob.*zeGraphNpuExtVersion=(1.13|1.14|1.15|1.16).*</filter>
+            <filter>.*CpuVaTensorsTests.checkResultsAfterRawMemoryIsDestroyedAndReallocatedAfterEachRun.*</filter>
+            <filter>.*CpuVaTensorsTests.checkResultsAfterRunningWithSameRawMemoryMultipleTimes.*</filter>
+            <filter>.*CpuVaTensorsTests.checkResultsAfterRunningWithSameZeroTensorMultipleTimes.*</filter>
         </filters>
     </skip_config>
 
-    <!-- E#202890-->
+    <!-- C#164943 -->
     <skip_config>
-        <message>Strided tensor tests fail with current Linux driver. Investigation: E#202890</message>
+        <message>Test is expected to throw, but it does not throw in vpux-plugin where the npu_mlir_runtime library is available.</message>
+        <filters>
+            <filter>.*InferWithHostCompileTests.Compile\/targetDevice=NPU.*</filter>
+        </filters>
+    </skip_config>
+
+    <!-- E#208928 -->
+    <skip_config>
+        <message>smoke_DynamicShapes_SCF_AutoUnroll fails on Linux.</message>
         <enable_rules>
             <operating_system>linux</operating_system>
         </enable_rules>
         <filters>
-            <filter>.*RoiTensorsTestsRun.*</filter>
+            <filter>.*smoke_DynamicShapes_SCF_AutoUnroll.*</filter>
         </filters>
     </skip_config>
-
-    <!-- E#199510-->
+    <!-- E#211625-->
     <skip_config>
-        <message>Shave Code Gen ActivationLayerTest failing</message>
-        <enable_rules>
-            <operating_system>linux</operating_system>
-            <device>4000</device>
-            <device>5010</device>
-        </enable_rules>
+        <message>Interpreter does not support mutable command list.</message>
         <filters>
-            <filter>.*ShaveCodeGenActivationLayerTest.*Elu_constants.*</filter>
-            <filter>.*ShaveCodeGenActivationLayerTest.*Selu_constants.*</filter>
+            <filter>.*interpreter_runtime/NPUVMRuntimeCAPITest.UpdateMutableCommandList.*</filter>
         </filters>
     </skip_config>
-
-    <!-- E#203214-->
-    <!-- E#203897-->
+    <!-- E#211620-->
+    <skip_config>
+        <message>Interpreter does not support shape prediction.</message>
+        <filters>
+            <filter>.*interpreter_runtime/NPUVMRuntimeCAPITest.PredictShape.*</filter>
+        </filters>
+    </skip_config>
 </skip_configs>

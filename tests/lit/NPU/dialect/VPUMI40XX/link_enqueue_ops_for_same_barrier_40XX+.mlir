@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --link-enqueue-ops-for-same-barrier %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --link-enqueue-ops-for-same-barrier %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
@@ -83,6 +83,7 @@ module @Convolution attributes {config.compilationMode = #config.compilation_mod
   }
 }
 
+//CHECK: [[VAL10:%.+]] = VPUMI40XX.ConfigureBarrier
 //CHECK: [[VAL15:%.+]] = VPUMI40XX.DeclareTaskBuffer <DPUInvariant> -> !VPURegMapped.Index<0:0:0>
 //CHECK: [[VAL16:%.+]] = VPUMI40XX.DeclareTaskBuffer <DPUInvariant> -> !VPURegMapped.Index<0:0:1>
 //CHECK: [[VAL17:%.+]] = VPUMI40XX.DeclareTaskBuffer <DPUVariant> -> !VPURegMapped.Index<0:0:0>
@@ -91,7 +92,7 @@ module @Convolution attributes {config.compilationMode = #config.compilation_mod
 //CHECK: [[VAL20:%.+]] = VPUMI40XX.DPUInvariant
 //CHECK: [[VAL21:%.+]] = VPUMI40XX.DPUVariant taskLocation([[VAL17]] : !VPURegMapped.Index<0:0:0>) calls([[VAL19]] : <0:0:0>)
 //CHECK: [[VAL22:%.+]] = VPUMI40XX.DPUVariant taskLocation([[VAL18]] : !VPURegMapped.Index<0:0:1>) previousTask([[VAL21]] : !VPURegMapped.Index<0:0:0>) calls([[VAL20]] : <0:0:1>)
-//CHECK: [[VAL35:%.+]] = VPURegMapped.Enqueue at(%10 : !VPURegMapped.Index<0:0:0>) (%21 -> %21 : <0:0:0> -> <0:0:0>) -> !VPURegMapped.Index<0:0:0> {taskType = #VPURegMapped.task_type<DPUVariant>}
-//CHECK: VPURegMapped.Enqueue previousTaskIdx([[VAL35]] : !VPURegMapped.Index<0:0:0>) at(%10 : !VPURegMapped.Index<0:0:0>) previousTaskIdxOnSameBarrier([[VAL35]] : !VPURegMapped.Index<0:0:0>) (%22 -> %22 : <0:0:1> -> <0:0:1>) -> !VPURegMapped.Index<0:0:1> {taskType = #VPURegMapped.task_type<DPUVariant>}
+//CHECK: [[VAL35:%.+]] = VPURegMapped.Enqueue at([[VAL10]] : !VPURegMapped.Index<0:0:0>) ([[VAL21]] -> [[VAL21]] : <0:0:0> -> <0:0:0>) -> !VPURegMapped.Index<0:0:0> {taskType = #VPURegMapped.task_type<DPUVariant>}
+//CHECK: VPURegMapped.Enqueue previousTaskIdx([[VAL35]] : !VPURegMapped.Index<0:0:0>) at([[VAL10]] : !VPURegMapped.Index<0:0:0>) previousTaskIdxOnSameBarrier([[VAL35]] : !VPURegMapped.Index<0:0:0>) ([[VAL22]] -> [[VAL22]] : <0:0:1> -> <0:0:1>) -> !VPURegMapped.Index<0:0:1> {taskType = #VPURegMapped.task_type<DPUVariant>}
 //CHECK: workItemTasks([[VAL35]] : !VPURegMapped.Index<0:0:0>)
 //CHECK-SAME: workItemCount(2)

@@ -79,7 +79,7 @@ if(build_kernels)
       set(mv_tools_llvm_ar "llvm-ar")
     endif()
   elseif(WIN32)
-    set(mv_tools_compile "${MV_TOOLS_PATH}/win32/bin/moviCompile.exe")
+    set(mv_tools_compile "${MV_TOOLS_PATH}/win64/bin/moviCompile.exe")
     set(mv_tools_link "${MV_TOOLS_PATH}/win64/bin/moviLLD.exe")
     if(build_bitcode)
       # Assume these are in the environment until they can be shipped
@@ -494,9 +494,15 @@ if(build_kernels)
   # If building kernels update prebuilt kernels unconditionally to ensure the
   # prebuilt kernels are up to date even after git operations
   # No output or byproducts to avoid removing these during clean
+  # Use per-file copy commands to avoid exceeding Windows command-line length limit
+  set(update_prebuilt_commands)
+  foreach(kernel_file IN LISTS kernels_to_build)
+    list(APPEND update_prebuilt_commands
+      COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${kernel_file}" "${prebuild_binary_dir}")
+  endforeach()
   add_custom_target(update_prebuilt_binaries
     DEPENDS act_shave_kernels_build
-    COMMAND "${CMAKE_COMMAND}" -E copy_if_different ${kernels_to_build} "${prebuild_binary_dir}"
+    ${update_prebuilt_commands}
     COMMENT "Updating prebuilt kernels"
   )
 else()

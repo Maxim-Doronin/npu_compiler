@@ -15,8 +15,6 @@ using namespace vpux;
 
 namespace vpux::VPU::arch40xx {
 
-bool hasAnyChannelSupportedByKernelOptimization(ArrayRef<int64_t> supportedChannels, int64_t KX, int64_t SX);
 SmallVector<int64_t> getChannelsSupportedByKernelOptimization(ArrayRef<int64_t> workloadsChannels, int64_t maxSlotsSum);
-bool isNCEPermuteOffsetsCorrectionNeeded(VPU::NCEOpInterface nceOp);
 
 }  // namespace vpux::VPU::arch40xx

@@ -18,19 +18,16 @@ namespace vpux::IE {
 
 class OptimizeActivationsPipelineStrategy final : public IDynamicRewriterStrategy {
 public:
-    explicit OptimizeActivationsPipelineStrategy(bool enableSEOps, bool enableFuseClamp)
-            : _enableSEOps(enableSEOps), _enableFuseClamp(enableFuseClamp) {
+    explicit OptimizeActivationsPipelineStrategy(bool enableSEOps): _enableSEOps(enableSEOps) {
     }
 
     void registerRewriters(RewriterRegistry& registry, Logger& log) const override;
 
 private:
     bool _enableSEOps = false;
-    bool _enableFuseClamp = false;
 };
 
 std::unique_ptr<IDynamicRewriterStrategy> createOptimizeActivationsPipelineStrategy(mlir::func::FuncOp funcOp,
-                                                                                    bool enableSEOps = false,
-                                                                                    bool enableFuseClamp = false);
+                                                                                    bool enableSEOps = false);
 
 }  // namespace vpux::IE

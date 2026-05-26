@@ -18,22 +18,16 @@ using namespace vpux;
 
 void vpux::VPURT::buildBarrierLegalizationPipeline(mlir::OpPassManager& pm,
                                                    std::optional<bool> workloadManagementEnabled,
-                                                   std::optional<WorkloadManagementMode> workloadManagementMode,
                                                    const bool unevenVariantSplitFlag, Logger log) {
     bool wlmEnabled = workloadManagementEnabled.has_value() && workloadManagementEnabled.value() == true;
 
-    if (!wlmEnabled || !workloadManagementMode.has_value() ||
-        (workloadManagementMode.value() < WorkloadManagementMode::FWLM_V1_PAGES &&
-         workloadManagementMode.value() != WorkloadManagementMode::PWLM_V0_1_PAGES)) {
+    if (!wlmEnabled) {
         pm.addPass(VPURT::createSplitExceedingBarrierSlotCountPass(log));
     }
-    pm.addPass(VPURT::createSatisfyOneWaitBarrierPerTaskPass(unevenVariantSplitFlag, workloadManagementMode, log));
+    pm.addPass(VPURT::createSatisfyOneWaitBarrierPerTaskPass(unevenVariantSplitFlag, log));
 
-    if (!wlmEnabled || !workloadManagementMode.has_value() ||
-        (workloadManagementMode.value() < WorkloadManagementMode::FWLM_V1_PAGES &&
-         workloadManagementMode.value() != WorkloadManagementMode::PWLM_V0_1_PAGES)) {
-        pm.addPass(VPURT::createReduceExceedingActiveCountBarriersPass(workloadManagementMode, unevenVariantSplitFlag,
-                                                                       log));
+    if (!wlmEnabled) {
+        pm.addPass(VPURT::createReduceExceedingActiveCountBarriersPass(unevenVariantSplitFlag, log));
     }
 }
 

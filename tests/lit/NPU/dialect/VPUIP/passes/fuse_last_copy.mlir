@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --fuse-last-copy %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --fuse-last-copy %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
@@ -291,11 +291,11 @@ func.func @FuseLastCopyWithConcatAndGenericReshape(%arg0: memref<1x16x56x56x!qEl
     // CHECK:   [[VAL0:%.+]] = VPUIP.GenericReshape inputs([[OUTPUT]] : memref<1x64x28x56x!qElemType, #NHWC>) -> memref<1x32x56x56x!qElemType, #NHWC, @DDR>
     // CHECK:   [[VAL1:%.+]] = VPUIP.SubView [[VAL0]] [0, 0, 0, 0] [1, 16, 56, 56] : memref<1x32x56x56x!qElemType, #NHWC, @DDR> to memref<1x16x56x56x!qElemType, {order = #NHWC, strides = [100352, 1, 1792, 32]}, @DDR>
     // CHECK:   [[VAL2:%.+]] = VPUIP.Copy inputs([[INPUT]] : memref<1x16x56x56x!qElemType, #NHWC, @CMX_NN>)
-    // CHECK-SAME:      outputs(%1 : memref<1x16x56x56x!qElemType, {order = #NHWC, strides = [100352, 1, 1792, 32]}, @DDR>) -> memref<1x16x56x56x!qElemType, {order = #NHWC, strides = [100352, 1, 1792, 32]}, @DDR>
+    // CHECK-SAME:      outputs([[VAL1]] : memref<1x16x56x56x!qElemType, {order = #NHWC, strides = [100352, 1, 1792, 32]}, @DDR>) -> memref<1x16x56x56x!qElemType, {order = #NHWC, strides = [100352, 1, 1792, 32]}, @DDR>
 
     // CHECK:   [[VAL3:%.+]] = VPUIP.SubView [[VAL0]] [0, 16, 0, 0] [1, 16, 56, 56] : memref<1x32x56x56x!qElemType, #NHWC, @DDR> to memref<1x16x56x56x!qElemType, {order = #NHWC, strides = [100352, 1, 1792, 32]}, @DDR>
     // CHECK:   [[VAL4:%.+]] = VPUIP.Copy inputs([[INPUT]] : memref<1x16x56x56x!qElemType, #NHWC, @CMX_NN>)
-    // CHECK-SAME:      outputs(%3 : memref<1x16x56x56x!qElemType, {order = #NHWC, strides = [100352, 1, 1792, 32]}, @DDR>) -> memref<1x16x56x56x!qElemType, {order = #NHWC, strides = [100352, 1, 1792, 32]}, @DDR>
+    // CHECK-SAME:      outputs([[VAL3]] : memref<1x16x56x56x!qElemType, {order = #NHWC, strides = [100352, 1, 1792, 32]}, @DDR>) -> memref<1x16x56x56x!qElemType, {order = #NHWC, strides = [100352, 1, 1792, 32]}, @DDR>
 
     // CHECK-NOT:   VPUIP.ConcatView
     // CHECK-NOT:   VPUIP.GenericReshape
@@ -583,7 +583,8 @@ func.func @NoChangesDifferentMemSpace(%arg0: memref<1x16x4x4xf16, #NHWC>, %arg1 
     %1 = VPUIP.Copy inputs(%arg0 : memref<1x16x4x4xf16, #NHWC>) outputs(%0 : memref<1x16x4x4xf16, #NHWC, @CMX_NN>) -> memref<1x16x4x4xf16, #NHWC, @CMX_NN>
 
     %2 = memref.alloc() : memref<1x16x2x2xf16, #NHWC, @CMX_NN>
-    %3 = VPUIP.NCEClusterTask <{
+    %3 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>}
+     <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [2, 2],
             kernel_strides = [2, 2],
@@ -797,4 +798,44 @@ func.func @NotFuseLastStridedCopy(%arg0: memref<1x196x49x49xf16, {order = #NCHW,
     // CHECK:   [[VAL0:%.+]] = VPUIP.ShapeCast
     // CHECK:   [[VAL1:%.+]] = VPUIP.Copy
     // CHECK:   return [[VAL1]]
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+!DistributedBuffer = !VPUIP.DistributedBuffer<1x16x48x640xf16, #NCHW, @CMX_NN,
+                      {mode = "SEGMENTED", num_tiles = [1, 1, 3, 1],
+                       num_clusters = 3 : i64, uniform_distributed_segments}>
+
+// CHECK-LABEL: func.func @FuseLastCopyThroughReinterpretCast
+// CHECK-SAME: [[OUTPUT:%.+]]: memref<1x16x48x640xf16, strided<[?, ?, ?, ?], offset: ?>>)
+func.func @FuseLastCopyThroughReinterpretCast(
+        %output: memref<1x16x48x640xf16, strided<[?, ?, ?, ?], offset: ?>>)
+        -> memref<1x16x48x640xf16, strided<[?, ?, ?, ?], offset: ?>> {
+    %cmx_buf = VPURT.AllocDistributed -> !DistributedBuffer
+
+    %ddr_alloc = memref.alloc() : memref<1x16x48x640xf16, @DDR>
+    %cmx_to_ddr = VPUIP.Copy
+        inputs(%cmx_buf : !DistributedBuffer)
+        outputs(%ddr_alloc : memref<1x16x48x640xf16, @DDR>)
+        -> memref<1x16x48x640xf16, @DDR>
+
+    %ddr_to_strided = Core.ReinterpretCast(%cmx_to_ddr) : memref<1x16x48x640xf16, @DDR>
+                    -> memref<1x16x48x640xf16, strided<[?, ?, ?, ?], offset: ?>>
+
+    %last_copy = VPUIP.Copy
+        inputs(%ddr_to_strided : memref<1x16x48x640xf16, strided<[?, ?, ?, ?], offset: ?>>)
+        outputs(%output : memref<1x16x48x640xf16, strided<[?, ?, ?, ?], offset: ?>>)
+        -> memref<1x16x48x640xf16, strided<[?, ?, ?, ?], offset: ?>>
+    return %last_copy : memref<1x16x48x640xf16, strided<[?, ?, ?, ?], offset: ?>>
+
+    // CHECK-NOT:   memref.alloc
+    // CHECK:       [[CMX_BUF:%.+]] = VPURT.AllocDistributed
+    // CHECK:       [[REINTERP:%.+]] = Core.ReinterpretCast([[OUTPUT]])
+    // CHECK-SAME:                   -> memref<1x16x48x640xf16, @DDR>
+    // CHECK:       VPUIP.Copy
+    // CHECK-SAME:      inputs([[CMX_BUF]]
+    // CHECK-SAME:      outputs([[REINTERP]]
+    // CHECK:       return [[OUTPUT]]
 }

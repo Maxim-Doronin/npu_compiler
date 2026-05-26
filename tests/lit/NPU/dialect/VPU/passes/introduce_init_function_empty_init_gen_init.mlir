@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --introduce-init-function="ws-extraction-mode=gen-init" --verify-diagnostics %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --construct-ws-analysis --introduce-init-function="ws-extraction-mode=gen-init" --verify-diagnostics %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // Note: this tests that empty init is rejected by the pass - otherwise - in
 // gen-init - a no-input, no-output entry point is generated

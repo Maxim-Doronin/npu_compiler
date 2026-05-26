@@ -63,15 +63,14 @@ protected:
     virtual bool canMergeVFOpsWithoutCostCheck(VFCaseType& mergedCase) const = 0;
     virtual bool canSkipMergeVF(VFConfigType& vfConfig, bool opsNeedTiling) const = 0;
     virtual IVFSchedulingPtr detectScenario(VFConfigType& vfConfig) const = 0;
-    virtual std::optional<VFCaseType> findVFTiling(VPU::VerticalFusionOp mergedOp, VPU::VerticalFusionOp prevOp,
-                                                   VPU::VerticalFusionOp currentOp) const = 0;
+
+    virtual std::optional<VFCaseType> findVFCase(VPU::VerticalFusionOp prevOp, VPU::VerticalFusionOp currentOp,
+                                                 VPU::VerticalFusionOp mergedOp) const = 0;
+    bool isLegalFusion(VPU::VerticalFusionOp currentOp, VPU::VerticalFusionOp prevOp) const;
     bool checkOtherVFInput(VPU::VerticalFusionOp currentOp, VPU::VerticalFusionOp prevOp) const;
     bool checkVFCostFunction(VPU::VerticalFusionOp prevOp, VPU::VerticalFusionOp currentOp,
                              VFCaseType& mergedCase) const;
     bool waitOtherUsers(VPU::VerticalFusionOp newBlock, VPU::VerticalFusionOp parentVFOp) const;
-    std::optional<VFCaseType> findVFCase(VPU::VerticalFusionOp newBlock, VPU::VerticalFusionOp parentVFOp,
-                                         VPU::VerticalFusionOp mergedVFOp) const;
-    bool alignMCTiling(VPU::VerticalFusionOp currentOp, VPU::VerticalFusionOp prevOp) const;
     void fuseBlocks(mlir::PatternRewriter& rewriter, VPU::VerticalFusionOp currentOp,
                     VPU::VerticalFusionOp mergedOp) const;
 

@@ -212,6 +212,29 @@ def VPU_SWOpInterface : OpInterface<"SWOpInterface"> {
     ];
 }
 
+def VPU_SwIoDmaOpInterface : OpInterface<"SwIoDmaOpInterface"> {
+    let description = "Interface for SW operations using DMA exclusively to access IOs";
+
+    let cppNamespace = "vpux::VPU";
+
+    let methods = [
+        InterfaceMethod<
+            "Returns optimal number of DUPLICATED clusters",
+            "int64_t", "getDuplicatedNumClusters", (ins "int64_t":$maxClusters),
+            [{
+                return maxClusters;
+            }]
+            >,
+        InterfaceMethod<
+            "Returns optimal number of DUPLICATED Shaves per clusters",
+            "int64_t", "getDuplicatedNumShaves", (ins),
+            [{
+                return vpux::config::getNumOfEnginesOnTile($_op, config::ExecutorKind::SHAVE_ACT);
+            }]
+            >
+    ];
+}
+
 //
 // AuxiliaryBufferOpInterface
 //
@@ -398,6 +421,16 @@ def VPU_NCEOpInterface : OpInterface<"NCEOpInterface"> {
             "vpux::VPU::MPEMode", "getMpeMode",
             (ins "mlir::Type":$inElemType, "mlir::Type":$outElemType, "ShapeRef":$shape)
         >,
+
+        InterfaceMethod<
+            "Get S2D_D2S supported",
+            "bool", "getS2DD2SSupported",
+            (ins),
+            [{}],
+            [{
+                return false;
+            }]
+        >,
     ];
 }
 
@@ -484,6 +517,26 @@ def VPU_TilingViewLikeOpInterface : OpInterface<"TilingViewLikeOpInterface"> {
             [{}],
             [{
                 return outputDim;
+            }]
+        >,
+
+        InterfaceMethod<
+            "Infer output tiling dims from the input tiling dim",
+            "mlir::SmallVector<vpux::Dim>", "inferTilingDim",
+            (ins "vpux::Dim":$inputDim),
+            [{}],
+            [{
+                return {inputDim};
+            }]
+        >,
+
+        InterfaceMethod<
+            "Infer output tiling strategy from the input tiling strategy",
+            "mlir::FailureOr<mlir::SmallVector<int64_t>>", "inferTilingStrategy",
+            (ins "mlir::ArrayRef<int64_t>":$inputTilingStrategy),
+            [{}],
+            [{
+                return mlir::SmallVector<int64_t>(inputTilingStrategy);
             }]
         >,
 

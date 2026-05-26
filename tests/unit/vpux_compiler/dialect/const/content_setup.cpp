@@ -175,6 +175,14 @@ public:
         ASSERT_TRUE(actualInterpAttr == expectedAttr);
     }
 
+    void checkGatherElementsAttr(Const::TransformAttrInterface actualTransformation, int64_t expectedAxis,
+                                 mlir::DenseElementsAttr expectedIndicesAttr) {
+        auto actualGatherElementsAttr = mlir::dyn_cast<Const::GatherElementsAttr>(actualTransformation);
+        ASSERT_TRUE(actualGatherElementsAttr != nullptr);
+        EXPECT_EQ(actualGatherElementsAttr.getAxis().getInt(), expectedAxis);
+        EXPECT_EQ(actualGatherElementsAttr.getIndices(), expectedIndicesAttr);
+    }
+
     void checkFuseAttr(Const::TransformAttrInterface actualTransformation) {
         auto actualFuse = mlir::dyn_cast<Const::FuseWeightsAttr>(actualTransformation);
         ASSERT_TRUE(actualFuse != nullptr);
@@ -985,8 +993,8 @@ TEST_F(MLIR_ContentSetupTest, FuseCastElemType_Quantized) {
     checkCastElemTypeAttr(actualTransformations[1], quantizedType);
 }
 
-TEST_F(MLIR_ContentSetupTest, FuseCastElemType_QuantileFloat) {
-    ctx.loadDialect<vpux::type::QuantileFloatDialect>();
+TEST_F(MLIR_ContentSetupTest, FuseCastElemType_QuantileType) {
+    ctx.loadDialect<vpux::type::QuantileDialect>();
 
     const int64_t IC = 4;
     const int64_t IH = 8;
@@ -1035,6 +1043,22 @@ TEST_F(MLIR_ContentSetupTest, FuseInterpolate) {
             getIntArrayAttr(&ctx, ArrayRef<int64_t>{0, 0, 0}), getIntArrayAttr(&ctx, ArrayRef<int64_t>{0, 0, 0}),
             getFPAttr(&ctx, -0.75f));
     checkInterpolateAttr(actualTransformations[0], _expectedInterpolateAttr);
+}
+
+TEST_F(MLIR_ContentSetupTest, FuseGatherElements) {
+    auto baseContentAttrSetup = getContentSetup(ArrayRef<int64_t>{2, 3}, mlir::Float32Type::get(&ctx));
+    const auto axisAttr = getIntAttr(&ctx, 1);
+    SmallVector<int64_t> indicesVals = {2, 1, 0, 2};
+    const auto indicesType = mlir::RankedTensorType::get({2, 2}, getSInt64Type(&ctx));
+    auto indicesAttr = mlir::DenseElementsAttr::get(indicesType, ArrayRef<int64_t>(indicesVals));
+
+    // original GatherElements
+    auto contentAttrSetup = baseContentAttrSetup.gatherElements(axisAttr, indicesAttr);
+
+    // check final GatherElements
+    auto actualTransformations = contentAttrSetup.getTransformations();
+    ASSERT_EQ(actualTransformations.size(), 1);
+    checkGatherElementsAttr(actualTransformations[0], axisAttr.getInt(), indicesAttr);
 }
 
 //

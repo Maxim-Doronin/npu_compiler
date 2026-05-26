@@ -20,6 +20,9 @@ namespace vpux::IE {
 
 mlir::LogicalResult QuantizeToDwRewriter::matchAndRewrite(IE::QuantizeOp originOp,
                                                           mlir::PatternRewriter& rewriter) const {
+    if (_canSkipConversion(originOp)) {
+        return mlir::failure();
+    }
     const auto origType = mlir::cast<vpux::NDTypeInterface>(originOp.getInput().getType());
     const auto origShape = origType.getShape();
     const auto OC = origShape[Dims4D::Act::C];
@@ -45,6 +48,9 @@ mlir::LogicalResult QuantizeToDwRewriter::matchAndRewrite(IE::QuantizeOp originO
 
 mlir::LogicalResult DequantizeToDwRewriter::matchAndRewrite(IE::DequantizeOp originOp,
                                                             mlir::PatternRewriter& rewriter) const {
+    if (_canSkipConversion(originOp)) {
+        return mlir::failure();
+    }
     const auto origType = mlir::cast<vpux::NDTypeInterface>(originOp.getInput().getType());
     auto intType = mlir::cast<mlir::quant::QuantizedType>(origType.getElementType());
     if (intType.getStorageTypeIntegralWidth() > 8) {
@@ -79,6 +85,9 @@ mlir::LogicalResult DequantizeToDwRewriter::matchAndRewrite(IE::DequantizeOp ori
 
 mlir::LogicalResult DequantizeToAddRewriter::matchAndRewrite(IE::DequantizeOp originOp,
                                                              mlir::PatternRewriter& rewriter) const {
+    if (_canSkipConversion(originOp)) {
+        return mlir::failure();
+    }
     const auto broadcastType =
             vpux::IE::AutoBroadcastTypeAttr::get(getContext(), IE::AutoBroadcastType::NONE_OR_EXPLICIT);
 
@@ -112,6 +121,9 @@ mlir::LogicalResult DequantizeToAddRewriter::matchAndRewrite(IE::DequantizeOp or
 
 mlir::LogicalResult QuantizeToAddRewriter::matchAndRewrite(IE::QuantizeOp originOp,
                                                            mlir::PatternRewriter& rewriter) const {
+    if (_canSkipConversion(originOp)) {
+        return mlir::failure();
+    }
     const auto broadcastType =
             vpux::IE::AutoBroadcastTypeAttr::get(getContext(), IE::AutoBroadcastType::NONE_OR_EXPLICIT);
 
@@ -144,6 +156,9 @@ mlir::LogicalResult QuantizeToAddRewriter::matchAndRewrite(IE::QuantizeOp origin
 
 mlir::LogicalResult DequantizeToConvRewriter::matchAndRewrite(IE::DequantizeOp originOp,
                                                               mlir::PatternRewriter& rewriter) const {
+    if (_canSkipConversion(originOp)) {
+        return mlir::failure();
+    }
     if (IE::isQuantizedPerAxis(originOp.getInput())) {
         _log.trace("Activations only support per tensor quantization");
         return mlir::failure();

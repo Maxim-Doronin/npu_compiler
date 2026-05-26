@@ -592,7 +592,7 @@ mlir::Value createDummyBuffer(mlir::OpBuilder& builder, mlir::Operation* inserti
                               VPU::MemoryKind memKind = VPU::MemoryKind::DDR);
 VPURT::TaskOp createSyncDMA(mlir::OpBuilder& builder, mlir::Value input, mlir::Value output, int port,
                             mlir::ValueRange waitBarriers, mlir::ValueRange updateBarriers,
-                            llvm::StringLiteral opName = "sync_dma");
+                            llvm::StringRef opName = "sync_dma");
 VPURT::TaskOp createBarProgDMA(mlir::OpBuilder& builder, mlir::Value input, mlir::Value output, int port,
                                mlir::ValueRange waitBarriers, mlir::ValueRange updateBarriers,
                                VPUIP::PhysicalBarrierRangeAttr physicalBarrierRangeAttr,
@@ -739,7 +739,8 @@ VPU::DistributionInfoAttr getDistributedAttrAfterShapeCast(VPU::DistributedTypeI
     return origDistribution;
 }
 
-bool isSubViewCompatibleWithDistributedBuffer(VPUIP::SubViewOp subViewOp, VPUIP::DistributedBufferType distributedType);
+bool isSubViewCompatibleWithDistributedBuffer(VPUIP::SubViewOp subViewOp, VPUIP::DistributedBufferType distributedType,
+                                              bool supportSameAxisForClusteredTilingAndSubview = false);
 
 //
 // SW Kernel prefetching reserved memory utils

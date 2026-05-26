@@ -66,9 +66,9 @@ void UnrollDistributedOpsStrategy::prepareOps(mlir::MLIRContext& ctx, Logger& lo
                     curDma.setFusionIdAttr(nullptr);
                 }
             } else {
-                // For 3T case fusion has higher benefit than fusion
+                // For 3T case split has higher benefit than fusion
                 if (fusionInfo.size() == 3) {
-                    fusionInfo.back().first.setSplitCandidate(false);
+                    fusionInfo.back().first.setSplitCandidate(true);
                 }
             }
         };

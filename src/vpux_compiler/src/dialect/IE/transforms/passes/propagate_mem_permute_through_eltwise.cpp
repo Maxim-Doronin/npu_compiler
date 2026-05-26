@@ -39,11 +39,40 @@ mlir::Operation* getInputPermuteLikeOp(mlir::Value addInput) {
             }
             parentOp = parentShapeCast.getSource().getDefiningOp();
             continue;
+        } else if (auto parentPermuteCast = mlir::dyn_cast<IE::PermuteCastOp>(parentOp)) {
+            if (VPU::hasMultiBranches(parentPermuteCast.getOperation())) {
+                return nullptr;
+            }
+            parentOp = parentPermuteCast.getInput().getDefiningOp();
+            continue;
+        } else if (auto parentQuantizeCast = mlir::dyn_cast<IE::QuantizeCastOp>(parentOp)) {
+            if (VPU::hasMultiBranches(parentQuantizeCast.getOperation())) {
+                return nullptr;
+            }
+            parentOp = parentQuantizeCast.getInput().getDefiningOp();
+            continue;
         } else {
             return nullptr;
         }
     }
     return nullptr;
+}
+
+// Check if PermuteLikeOp is reachable from addInput through only ShapeCast ops.
+// Returns false when PermuteCast or QuantizeCast sit between addInput and the PermuteLikeOp.
+bool isPermuteLikeDirectlyReachable(mlir::Value addInput, mlir::Operation* permLikeOp) {
+    auto parentOp = addInput.getDefiningOp();
+    while (parentOp) {
+        if (parentOp == permLikeOp) {
+            return true;
+        }
+        if (auto shapeCast = mlir::dyn_cast<IE::ShapeCastOp>(parentOp)) {
+            parentOp = shapeCast.getSource().getDefiningOp();
+            continue;
+        }
+        return false;
+    }
+    return false;
 }
 
 mlir::Operation* getEltwiseOp(mlir::Value permuteInput) {
@@ -153,14 +182,18 @@ bool isSupportedMemPermute(mlir::AffineMap memPerm, mlir::Type permuteOutType, m
     for (const auto& addInput : branches) {
         const auto inPermutationOp = getInputPermuteLikeOp(addInput);
         if (inPermutationOp != nullptr) {
-            // Further checking for inPermuteQuantizeOp - propagate if PermuteQuantize and MemPermute can be folded.
-            auto inPermuteQuantizeOp = mlir::dyn_cast<IE::PermuteQuantizeOp>(inPermutationOp);
-            if (inPermuteQuantizeOp != nullptr && !canBeFolded(inPermuteQuantizeOp, memPerm, permuteOutType) &&
-                !canBeFusedIntoPermuteCast(inPermuteQuantizeOp, memPerm)) {
-                log.trace("IE::PermuteQuantize op: {0} and MemPerm: {1} can not be folded or fused into "
-                          "permuteCast",
-                          inPermuteQuantizeOp.getLoc(), memPerm);
-                return false;
+            // PermuteQuantize fold/fuse check only applies when the op is directly reachable
+            // (through ShapeCast only). Indirect paths (via PermuteCast/QuantizeCast) use
+            // processNonPermuteBranch which does not fold with the upstream PermuteQuantize.
+            if (isPermuteLikeDirectlyReachable(addInput, inPermutationOp)) {
+                auto inPermuteQuantizeOp = mlir::dyn_cast<IE::PermuteQuantizeOp>(inPermutationOp);
+                if (inPermuteQuantizeOp != nullptr && !canBeFolded(inPermuteQuantizeOp, memPerm, permuteOutType) &&
+                    !canBeFusedIntoPermuteCast(inPermuteQuantizeOp, memPerm)) {
+                    log.trace("IE::PermuteQuantize op: {0} and MemPerm: {1} can not be folded or fused into "
+                              "permuteCast",
+                              inPermuteQuantizeOp.getLoc(), memPerm);
+                    return false;
+                }
             }
             countInPermutationOp++;
         }
@@ -268,6 +301,27 @@ mlir::Value processNonPermuteBranch(mlir::PatternRewriter& rewriter, IE::MemPerm
     return newShapeCastOp.getResult();
 }
 
+// Returns true if the upstream PermuteLike op is an indirect IE::MemPermuteOp
+// (connected through PermuteCast/QuantizeCast), has multiple users, and at least one user is not an IE::MemPermuteOp.
+// This matches the restriction in IE::fusePermutations(): multi-use MemPermute producers are only blocked if they have
+// mixed users (not all MemPermute). For other PermuteLike ops, multi-use is allowed.
+// Callers pass pre-computed inPermutationOp and isDirectlyReachable to avoid redundant IR walks.
+bool hasMultiUseIndirectPermuteLike(mlir::Operation* inPermutationOp, bool isDirectlyReachable) {
+    if (inPermutationOp == nullptr || isDirectlyReachable) {
+        return false;
+    }
+    // Only restrict multi-use IE::MemPermuteOp with at least one non-MemPermute user
+    if (auto memPerm = mlir::dyn_cast<IE::MemPermuteOp>(inPermutationOp)) {
+        if (!memPerm->hasOneUse()) {
+            return llvm::any_of(memPerm->getUsers(), [](mlir::Operation* user) {
+                return !mlir::isa<IE::MemPermuteOp>(user);
+            });
+        }
+    }
+    // For other PermuteLike ops, allow multi-use
+    return false;
+}
+
 //
 // OptimizeEltwise
 //
@@ -332,14 +386,18 @@ mlir::LogicalResult OptimizeEltwise::matchAndRewrite(IE::MemPermuteOp memPermute
     for (size_t inputIdx = 0; inputIdx < branches.size(); inputIdx++) {
         auto branchInput = branches[inputIdx];
 
-        if (getInputPermuteLikeOp(branchInput) == nullptr) {
-            // Process branch without PermuteLike op.
+        const auto inPermutationOp = getInputPermuteLikeOp(branchInput);
+        const auto isDirectlyReachable =
+                inPermutationOp != nullptr && isPermuteLikeDirectlyReachable(branchInput, inPermutationOp);
+        if (inPermutationOp == nullptr || !isDirectlyReachable) {
+            if (hasMultiUseIndirectPermuteLike(inPermutationOp, isDirectlyReachable)) {
+                return matchFailed(_log, rewriter, memPermuteOp,
+                                   "Upstream PermuteLike op has multiple uses on indirect path");
+            }
             const auto newOutput = processNonPermuteBranch(rewriter, memPermuteOp, branchInput, inputIdx, std::nullopt);
             newAddInputs.push_back(newOutput);
             continue;
         }
-
-        const auto inPermutationOp = getInputPermuteLikeOp(branchInput);
 
         const auto newMemPermuteLoc = appendLoc(memPermuteOp.getLoc(), "mem_permute_{0}", inputIdx);
         auto newMemPermuteOp = rewriter.create<IE::MemPermuteOp>(newMemPermuteLoc, inPermutationOp->getResult(0),
@@ -466,6 +524,13 @@ mlir::LogicalResult OptimizeShapeCastedEltwise::matchAndRewrite(IE::MemPermuteOp
         autoBroadcastType = autoBroadcastAttr.getValue();
     }
 
+    // Check shape compatibility before calling broadcastEltwiseShape, which emits
+    // a non-suppressible diagnostic on failure via errorAt.
+    if (autoBroadcastType == IE::AutoBroadcastType::NONE_OR_EXPLICIT && newAlignedShape[0] != newAlignedShape[1]) {
+        return matchFailed(_log, rewriter, memPermuteOp,
+                           "New aligned input shapes are not equal for NONE_OR_EXPLICIT broadcast");
+    }
+
     auto inferredOutShape = IE::broadcastEltwiseShape(newAlignedShape[0].raw(), newAlignedShape[1].raw(),
                                                       autoBroadcastType, eltwiseOp->getLoc());
     if (mlir::failed(inferredOutShape)) {
@@ -507,12 +572,16 @@ mlir::LogicalResult OptimizeShapeCastedEltwise::matchAndRewrite(IE::MemPermuteOp
         auto branchInput = branches[inputIdx];
 
         mlir::Value newInput;
-        if (getInputPermuteLikeOp(branchInput) == nullptr) {
-            // Process branch without PermuteLike op.
+        const auto inPermutationOp = getInputPermuteLikeOp(branchInput);
+        const auto isDirectlyReachable =
+                inPermutationOp != nullptr && isPermuteLikeDirectlyReachable(branchInput, inPermutationOp);
+        if (inPermutationOp == nullptr || !isDirectlyReachable) {
+            if (hasMultiUseIndirectPermuteLike(inPermutationOp, isDirectlyReachable)) {
+                return matchFailed(_log, rewriter, memPermuteOp,
+                                   "Upstream PermuteLike op has multiple uses on indirect path");
+            }
             newInput = processNonPermuteBranch(rewriter, memPermuteOp, branchInput, inputIdx, newAlignedShape);
         } else {
-            const auto inPermutationOp = getInputPermuteLikeOp(branchInput);
-
             const auto newMemPermuteLoc = appendLoc(memPermuteOp.getLoc(), "mem_permute_{0}", inputIdx);
             auto newMemPermuteOp =
                     rewriter.create<IE::MemPermuteOp>(newMemPermuteLoc, inPermutationOp->getResult(0),
@@ -997,6 +1066,7 @@ void PropagateMemPermuteThroughEltwisePass::safeRunOnFunc() {
     patterns.add<OptimizeIdentityPool<IE::AvgPoolOp>>(&ctx, _log);
     patterns.add<OptimizeIdentityPool<IE::MaxPoolOp>>(&ctx, _log);
     IE::PermuteCastOp::getCanonicalizationPatterns(patterns, &ctx);
+    IE::MemPermuteOp::getCanonicalizationPatterns(patterns, &ctx);
 
     if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
         signalPassFailure();

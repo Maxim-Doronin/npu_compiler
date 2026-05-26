@@ -27,6 +27,7 @@ namespace VPUIP {
 struct SEPInfo {
     Shape sepTableShape;
     Shape sepActShape;
+    bool hasSparseMap = false;  // true if sparsity map is present
 };
 
 struct WorkloadCostParams {

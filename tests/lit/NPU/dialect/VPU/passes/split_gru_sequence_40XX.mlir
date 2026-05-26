@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --split-gru-sequence %s | FileCheck %s
-// REQUIRES: arch-NPU40XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --split-gru-sequence %s | FileCheck %s
+// REQUIRES: platform-NPU4000
 
 // CHECK-LABEL: func.func @SplitGRUSequence
 // CHECK-SAME:        [[INPUT_0:%arg[0-9]]]: tensor<1x1x2400xf16>

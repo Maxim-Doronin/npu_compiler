@@ -626,32 +626,6 @@ mlir::LogicalResult OutlinerPass::initializeOptions(
 void OutlinerPass::safeRunOnModule() {
     auto moduleOp = getOperation();
 
-    // A module attribute "config.debatch" will enforce 'batching' outlining method providing that
-    // other methods defined by OutlinerPassOptions became forbidden,
-    // unless it's the only one `BatchingOptions`
-    if (config::hasCompileMethodDebatch(moduleOp)) {
-        if (_options.count() != 0) {
-            if (_options.count() != 1) {
-                mlir::emitError(moduleOp->getLoc(),
-                                printToString("The module attribute 'config.debatch' doesn't support "
-                                              "multiple `OutlinerPassOptions`, got: {0}",
-                                              _options.count()));
-                signalPassFailure();
-                return;
-            }
-            if (!_options.getIf<vpux::IE::BatchingOptions>(0)) {
-                mlir::emitError(moduleOp->getLoc(),
-                                "The module attribute 'config.debatch' expects 'BatchingOptions' only");
-                signalPassFailure();
-                return;
-            }
-            _log.info("{0} Outliner will use \"batching\" as the options has been requested explicilty", getName());
-        } else {
-            _log.info("{0} has detected debatching compile method, enforce \"batching\" outlining", getName());
-            _options = vpux::IE::OutlinerPassOptions::createFromString("batching=''");
-        }
-    }
-
     for (size_t i = 0; i < _options.count(); ++i) {
         if (i >= 1) {
             _log.warning("Execution of fallback outliner solutions is not yet implemented!");
@@ -669,6 +643,19 @@ void OutlinerPass::safeRunOnModule() {
             outliner.outline(moduleOp, "fn");
         } else if (const auto* opt = _options.getIf<vpux::IE::BatchingOptions>(i)) {
             std::ignore = opt;
+            if (_options.count() != 1) {
+                mlir::emitError(moduleOp->getLoc(),
+                                printToString("Outliner must not use \"batching\" outlining together with other "
+                                              "options, total options count: {0}",
+                                              _options.count()));
+                signalPassFailure();
+                return;
+            }
+
+            if (!config::hasCompileMethodDebatch(moduleOp)) {
+                _log.info("{0} ignores \"batching\" outlining as \"config.debatch\" wasn't found", getName());
+                return;
+            }
             outliner::Batching outliner(_log);
             outliner.outline(moduleOp, "batching");
         } else {

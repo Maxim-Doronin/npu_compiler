@@ -54,16 +54,6 @@ MemPermuteConversionAttributes extractMemPermuteConversionAttributes(NDTypeInter
 }
 namespace {
 
-SmallVector<uint32_t> computeOrder(DimsOrder inOrder, DimsOrder outOrder) {
-    auto inPerm = inOrder.toPermutation();
-    auto outPerm = outOrder.toPermutation();
-    SmallVector<uint32_t> memPerm(inPerm.size());
-    for (auto p : outPerm | indexed) {
-        memPerm[p.index()] = static_cast<uint32_t>(inOrder.dimPos(p.value()));
-    }
-    return memPerm;
-}
-
 /// Encloses the details of handling pure-view-like transformations within this
 /// pass.
 namespace ViewLikeUtils {
@@ -91,9 +81,8 @@ bool isViewLike(NDTypeInterface inputType, Const::TransformAttrInterface t) {
             .Case([&](Const::ReorderAttr reorder) {
                 const auto inOrder = inputType.getDimsOrder();
                 const auto inMemShape = inOrder.toMemoryOrder(inputType.getShape());
-                const auto outType = reorder.inferOutputType(inputType);
-                const auto outOrder = outType.getDimsOrder();
-                const auto memPerm = mlir::AffineMap::getPermutationMap(ArrayRef(computeOrder(inOrder, outOrder)), ctx);
+                const auto outOrder = DimsOrder::fromAffineMap(reorder.getOrder().getValue());
+                const auto memPerm = getPermutationFromOrders(inOrder, outOrder, ctx);
                 return isTrivialPermute(inMemShape, memPerm);
             })
             .Default([](Const::TransformAttrInterface) {
@@ -120,24 +109,26 @@ bool isSupportedTransformation(vpux::NDTypeInterface inType, Const::TransformAtt
 }
 }  // namespace
 
-bool isTrivialForWeightsSeparation(Const::DeclareOp constOp) {
-    // E#151098: this should be handled the same way as view-like-only
-    // transformations.
+bool isTrivialForWeightsSeparation(Const::DeclareOp constOp, bool skipViewLikeOnly) {
     const auto contentAttr = constOp.getContentAttr();
-    if (contentAttr.getTransformations().empty()) {
+    // TODO: Technically, splats can expand into huge memory buffers (e.g.
+    // simply because their tensor "descriptor" requires this). But this is left
+    // "as is" for now. In theory, we can take splats if their size is larger
+    // than that of a NetworkInfo data entry?
+    if (contentAttr.isSplat()) {
         return true;
     }
 
-    return contentAttr.isSplat() || ViewLikeUtils::hasOnlyViewLikeTransformations(contentAttr);
+    return skipViewLikeOnly && ViewLikeUtils::hasOnlyViewLikeTransformations(contentAttr);
 }
 
-bool isSuitableForWeightsSeparation(Const::DeclareOp constOp) {
+bool isSuitableForWeightlessCompilation(Const::DeclareOp constOp, bool skipViewLikeOnly) {
     // ignore all non-OV constants
     if (!Const::isOpenVINOConstant(constOp)) {
         return false;
     }
 
-    if (isTrivialForWeightsSeparation(constOp)) {
+    if (isTrivialForWeightsSeparation(constOp, skipViewLikeOnly)) {
         return false;
     }
 
@@ -145,6 +136,9 @@ bool isSuitableForWeightsSeparation(Const::DeclareOp constOp) {
         auto contentAttr = constOp.getContentAttr();
         auto baseType = contentAttr.getBaseContent().getType();
         auto transformations = contentAttr.getTransformations();
+        if (transformations.empty()) {
+            return true;
+        }
 
         for (auto t : transformations.drop_back(1)) {
             if (!conversions::isSupportedTransformation(baseType, t)) {
@@ -496,6 +490,12 @@ mlir::Value createMatchingIeOperation(mlir::OpBuilder& builder, mlir::Location l
                 return builder.create<IE::AffineReshapeOp>(loc, input, affineReshape.getDimMapping(),
                                                            affineReshape.getShapeValue());
             })
+            .Case<Const::GatherElementsAttr>([&](Const::GatherElementsAttr gatherElements) {
+                auto indicesContentAttr = Const::ContentAttr::get(gatherElements.getIndices());
+                auto indices = builder.create<Const::DeclareOp>(
+                        appendLoc(loc, "indices"), gatherElements.getIndices().getType(), indicesContentAttr);
+                return builder.create<IE::GatherElementsOp>(loc, input, indices, gatherElements.getAxis().getInt());
+            })
             .Case<Const::ScalarMultInverseAttr>([&](Const::ScalarMultInverseAttr /*scalarMultInverse*/) -> mlir::Value {
                 const auto inverseLoc = appendLoc(loc, "inverse");
                 SmallVector<int64_t> shapeRank = {1};
@@ -551,8 +551,8 @@ bool isSupportedTransformation(vpux::NDTypeInterface inType, Const::TransformAtt
     return mlir::isa<Const::AddAttr, Const::BroadcastAttr, Const::ChangeShapeAndElemTypeAttr, Const::CastElemTypeAttr,
                      Const::ConvertElemTypeAttr, Const::QuantizeAttr, Const::LayoutCastAttr, Const::MemPermuteAttr,
                      Const::PadWithZeroAttr, Const::ReorderAttr, Const::RescaleAttr, Const::ReshapeAttr,
-                     Const::ScalarMultInverseAttr, Const::SubViewAttr, Const::TransposeAttr, Const::AffineReshapeAttr>(
-            t);
+                     Const::ScalarMultInverseAttr, Const::SubViewAttr, Const::TransposeAttr, Const::AffineReshapeAttr,
+                     Const::GatherElementsAttr>(t);
 }
 
 /// Returns a VPU operation for the given constant transformation.
@@ -594,9 +594,8 @@ mlir::Value createMatchingVpuOperation(mlir::OpBuilder& builder, mlir::Location 
             })
             .Case([&](Const::ReorderAttr reorder) -> mlir::Value {
                 const auto inOrder = inputType.getDimsOrder();
-                auto outType = reorder.inferOutputType(inputType);
-                const auto outOrder = outType.getDimsOrder();
-                const auto memPerm = mlir::AffineMap::getPermutationMap(ArrayRef(computeOrder(inOrder, outOrder)), ctx);
+                const auto outOrder = DimsOrder::fromAffineMap(reorder.getOrder().getValue());
+                const auto memPerm = getPermutationFromOrders(inOrder, outOrder, ctx);
                 return builder.create<VPU::PermuteCastOp>(loc, input, reorder.getOrder(),
                                                           mlir::AffineMapAttr::get(memPerm));
             })
@@ -895,49 +894,26 @@ vpux::Byte getResultBufferSizeForInit(const TransformationsSplit& x) {
 }
 }  // namespace detail
 
-namespace {
-// comparison template that serves both TransformationsSplit and
-// Const::DeclareOp
-template <typename T>
-bool stableCompare(const T& x, const T& y) {
+bool operator<(const TransformationsSplit& x, const TransformationsSplit& y) {
     const auto& xContent = x.getContentAttr();
     const auto& yContent = y.getContentAttr();
 
     const auto xName = getResourceName(xContent.getBaseContent());
     const auto yName = getResourceName(yContent.getBaseContent());
     assert((!xName.empty() && !yName.empty()) && "Only dense_resource<> constants should be collected");
-    // sort by resource name, then by transformations
-    if (xName < yName) {
-        return true;
-    }
-    if (xName == yName) {
-        auto xHash = xContent.getTransformationHash();
-        auto yHash = yContent.getTransformationHash();
-        // Note: since we expect these hashes to be stable across
-        // compilations, we could also rely on them to sort the constants.
-        return xHash < yHash;
-    }
-    return false;  // xName > yName
-}
-}  // namespace
-
-bool operator<(const TransformationsSplit& x, const TransformationsSplit& y) {
-    return stableCompare(x, y);
+    return xName < yName;
 }
 
-std::vector<Const::DeclareOp> collectMoveWorthyConstants(const Logger& log, mlir::func::FuncOp mainFunc) {
+std::vector<Const::DeclareOp> collectMoveWorthyConstants(const Logger& log, mlir::func::FuncOp mainFunc,
+                                                         const IsWorthyToCollect& pred) {
     std::vector<Const::DeclareOp> ops;
     mainFunc.walk([&](Const::DeclareOp constOp) {
-        if (!isSuitableForWeightsSeparation(constOp)) {
-            log.trace("Constant is NOT used in init schedule: {0}", constOp);
+        if (!pred(constOp)) {
+            log.trace("Constant is NOT worthy to be collected: {0}", constOp);
             return;
         }
         ops.emplace_back(constOp);
     });
-
-    // sort the found constants. this ensures that the schedule stays the same
-    // even when constant operation order changes.
-    llvm::sort(ops, stableCompare<Const::DeclareOp>);
 
     if (log.isActive(LogLevel::Trace)) {
         log.trace("Found the following constants in {0}:", mainFunc.getSymName());
@@ -950,9 +926,13 @@ std::vector<Const::DeclareOp> collectMoveWorthyConstants(const Logger& log, mlir
 }
 
 namespace {
+using FilterCollectedConstants = std::function<void(std::vector<Const::DeclareOp>&)>;
+
 /// Collects all constant operations that are worth moving to the Init schedule
 /// across the full IR (represented as a call-chain tree).
-std::vector<Const::DeclareOp> collectMoveWorthyConstants(const Logger& log, const CallChainTree& tree) {
+std::vector<Const::DeclareOp> collectMoveWorthyConstants(const Logger& log, const CallChainTree& tree,
+                                                         const IsWorthyToCollect& pred,
+                                                         const FilterCollectedConstants& filter) {
     std::vector<Const::DeclareOp> ops;
 
     FuncOpVisitor hasSeenThisFunction;
@@ -963,12 +943,14 @@ std::vector<Const::DeclareOp> collectMoveWorthyConstants(const Logger& log, cons
                     return false;
                 }
 
-                auto locals = VPU::collectMoveWorthyConstants(log, currOp);
+                auto locals = VPU::collectMoveWorthyConstants(log, currOp, pred);
                 ops.insert(ops.end(), std::make_move_iterator(locals.begin()), std::make_move_iterator(locals.end()));
                 return true;
             },
             nullptr);
     tree.apply(splitCollector);
+
+    filter(ops);
 
     return ops;
 }
@@ -1150,14 +1132,79 @@ mlir::Value ConstOpConverter::convertToIrForm(mlir::Location loc, const VPU::Tra
     return value;
 }
 
+namespace {
+constexpr const char* WS_INFO_OPTIONS_NAME = "VPU.WsInfoOptions";
+constexpr const char* WS_INFO_SKIP_VIEW_LIKE_ONLY = "wsSkipViewLikeOnly";
+
+// Removes all constants that point to the same weight, when only view-like
+// transformations are applied to such weight. Mixed cases, where at least one
+// transformation is non-trivial, are preserved. This makes this procedure
+// "global" i.e. one has to provide all possible constants for this removal to
+// be correct.
+void removeConstantsForWeightsWithOnlyViewLikeTransformations(std::vector<Const::DeclareOp>& ops) {
+    mlir::DenseSet<mlir::StringRef> weightHasToBeInInit;
+    for (const auto& op : ops) {
+        if (!ViewLikeUtils::hasOnlyViewLikeTransformations(op.getContentAttr())) {
+            weightHasToBeInInit.insert(getResourceName(op.getContentAttr().getBaseContent()));
+        }
+    }
+
+    auto it = std::remove_if(ops.begin(), ops.end(), [&](const Const::DeclareOp& op) {
+        return !weightHasToBeInInit.contains(getResourceName(op.getContentAttr().getBaseContent()));
+    });
+    ops.erase(it, ops.end());
+}
+}  // namespace
+
 WeightsSeparationInfo::WeightsSeparationInfo(mlir::ModuleOp moduleOp) {
     auto log = Logger::global().nest("weights-separation-info", 0);
     auto mainFuncOp = net::getMainFunc(moduleOp);
 
     auto tree = VPU::getOutliningRepresentation(mainFuncOp);
-    auto constants = collectMoveWorthyConstants(log, tree);
+
+    const auto options = getOptions(moduleOp);
+    const auto isWorthy = [&](Const::DeclareOp constOp) {
+        return isSuitableForWeightlessCompilation(constOp, options.weightlessSkipViewLikeOnly);
+    };
+    const auto filterWeightsAsInputs = [&](std::vector<Const::DeclareOp>& ops) {
+        // Note: This analysis collects transformations for init. If all of the
+        // transformations of a particular weight (across all functions) are
+        // "trivial", then init must not touch the weight at all. This is a step
+        // in the direction of "weights as inputs". Note that main schedule
+        // would still acknowledge such weights.
+        if (!options.weightlessSkipViewLikeOnly) {
+            removeConstantsForWeightsWithOnlyViewLikeTransformations(ops);
+        }
+    };
+
+    auto constants = collectMoveWorthyConstants(log, tree, isWorthy, filterWeightsAsInputs);
     _splits.reserve(constants.size());
     std::move(constants.begin(), constants.end(), std::back_inserter(_splits));
+}
+
+void WeightsSeparationInfo::setOptions(mlir::ModuleOp moduleOp, Options options) {
+    const auto ctx = moduleOp.getContext();
+
+    // convert options to a dictionary attr for simplicity
+    SmallVector<mlir::NamedAttribute> individualAttrs;
+    if (options.weightlessSkipViewLikeOnly) {
+        individualAttrs.emplace_back(WS_INFO_SKIP_VIEW_LIKE_ONLY, mlir::UnitAttr::get(ctx));
+    }
+    const auto optionsAttr = mlir::DictionaryAttr::get(ctx, individualAttrs);
+    moduleOp->setAttr(WS_INFO_OPTIONS_NAME, optionsAttr);
+}
+
+WeightsSeparationInfo::Options WeightsSeparationInfo::getOptions(mlir::ModuleOp moduleOp) {
+    const auto optionsAttr = moduleOp->getAttrOfType<mlir::DictionaryAttr>(WS_INFO_OPTIONS_NAME);
+    VPUX_THROW_WHEN(optionsAttr == nullptr, "WeightsSeparationInfo options are required to be set");
+
+    Options options;
+    options.weightlessSkipViewLikeOnly = optionsAttr.get(WS_INFO_SKIP_VIEW_LIKE_ONLY) != nullptr;
+    return options;
+}
+
+void WeightsSeparationInfo::removeOptions(mlir::ModuleOp moduleOp) {
+    moduleOp->removeAttr(WS_INFO_OPTIONS_NAME);
 }
 
 const std::vector<TransformationsSplit>& WeightsSeparationInfo::getCollectedSplits() const {

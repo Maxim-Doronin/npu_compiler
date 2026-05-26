@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --fold-activation-before-fq %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --fold-activation-before-fq %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL: @ReLUFakeQuantizeFolded
 // CHECK-SAME:      [[ARG_0:%[^:]+]]: tensor<1x3x30x30xf16>
@@ -283,4 +283,26 @@ func.func @ClampFakeQuantizeNotFolded(%arg0: tensor<1x3x30x30xf16>) -> tensor<1x
     // CHECK-SAME:      {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64}
     // CHECK:       tensor<1x3x30x30xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x3x30x30xf16>
     // CHECK:       return [[FQ]]
+}
+
+// -----
+
+// CHECK-LABEL: @ClampNotFoldedWithInputLowOutOfRange
+func.func @ClampNotFoldedWithInputLowOutOfRange(%arg0: tensor<1x3x30x30xf16>) -> tensor<1x3x30x30xf16> {
+    %val_low = const.Declare tensor<1x1x1x1xf16> = dense<-1.0> : tensor<1x1x1x1xf16>
+    %val_high = const.Declare tensor<1x1x1x1xf16> = dense<4.0> : tensor<1x1x1x1xf16>
+
+    %clamp = IE.Clamp(%arg0) {min = 1.0, max = 5.0} : tensor<1x3x30x30xf16> -> tensor<1x3x30x30xf16>
+    %fq = IE.FakeQuantize(%clamp, %val_low, %val_high, %val_low, %val_high)
+        { auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 } :
+        tensor<1x3x30x30xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<1x3x30x30xf16>
+
+    return %fq : tensor<1x3x30x30xf16>
+
+    // CHECK: [[VAL_LOW:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<-1.000000e+00> : tensor<1x1x1x1xf16>
+    // CHECK: [[VAL_HIGH:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<4.000000e+00> : tensor<1x1x1x1xf16>
+    // CHECK: [[CLAMP:%.+]] = IE.Clamp(%arg0) {max = 5.000000e+00 : f64, min = 1.000000e+00 : f64} : tensor<1x3x30x30xf16> -> tensor<1x3x30x30xf16>
+    // CHECK: [[FQ:%.+]] = IE.FakeQuantize([[CLAMP]], [[VAL_LOW]], [[VAL_HIGH]], [[VAL_LOW]], [[VAL_HIGH]])
+    // CHECK-SAME: {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 256 : i64}
+    // CHECK: return [[FQ]]
 }

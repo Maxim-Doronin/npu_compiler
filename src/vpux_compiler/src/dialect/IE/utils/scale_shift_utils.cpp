@@ -9,6 +9,19 @@
 namespace vpux {
 namespace IE {
 
+mlir::LogicalResult isScaleShiftAdaptationSupported(mlir::Operation* op) {
+    return mlir::success(
+            llvm::TypeSwitch<mlir::Operation*, bool>(op)
+                    .Case<IE::AddOp, IE::SubtractOp, IE::DivideOp, IE::MultiplyOp>([&](auto origOp) {
+                        const auto elemType =
+                                mlir::cast<vpux::NDTypeInterface>(origOp.getInput2().getType()).getElementType();
+                        return elemType.isF16();
+                    })
+                    .Default([](mlir::Operation*) {
+                        return false;
+                    }));
+}
+
 mlir::LogicalResult isBeneficialConvertScaleShiftToDW(IE::ScaleShiftOp scaleShiftOp, Logger log) {
     if (scaleShiftOp.getBiases() != nullptr) {
         if (mlir::failed(IE::getConstParentOp(scaleShiftOp.getBiases()))) {
@@ -22,7 +35,7 @@ mlir::LogicalResult isBeneficialConvertScaleShiftToDW(IE::ScaleShiftOp scaleShif
     auto onlySupportNHWCLayout = [&](mlir::Operation* op) -> bool {
         if (auto iface = mlir::dyn_cast_or_null<IE::LayoutInfoOpInterface>(op)) {
             auto orderInfo = iface.getLayoutInfo();
-            iface.inferLayoutInfo(orderInfo, /*seOpsEnabled=*/false, /*seExperimentalOpsEnabled=*/false);
+            iface.inferLayoutInfo(orderInfo);
             return orderInfo.hasChanges();
         }
         return false;

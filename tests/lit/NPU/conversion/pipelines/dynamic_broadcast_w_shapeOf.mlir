@@ -3,7 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-translate --vpu-arch=NPU37XX --import-IE ./dynamic_broadcast_with_shapeOf.xml | FileCheck %s
+// RUN: vpux-translate --platform=%platform% --import-IE ./dynamic_broadcast_with_shapeOf.xml | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 // CHECK: #C = affine_map<(d0) -> (d0)>
 // CHECK: #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>

@@ -3,9 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --vpu-arch=%arch% --split-input-file --mlir-elide-elementsattrs-if-larger 8 --host-compile %s | FileCheck %s --check-prefixes=CHECK,CHECK-%arch%
-
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --platform=%platform% --split-input-file --mlir-elide-elementsattrs-if-larger 8 --host-compile %s | FileCheck %s --check-prefixes=CHECK,CHECK-%platform%
+// REQUIRES: platform-NPU4000 || platform-NPU5010 || platform-NPU5020
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 // CHECK-LABEL: @EltwiseNHWCDynamic
@@ -42,10 +41,11 @@ module @EltwiseNHWCDynamic {
     // CHECK:    return [[ARG2]] : memref<4xi64>
     // }
 
-    // CHECK: func.func @main_func0_static([[func0_ARG0:%.+]]: memref<1x[[STEP:.+]]x1000x16xf16>, [[func0_ARG1:%.+]]: memref<1x[[STEP]]x1000x16xf16>, [[func0_ARG2:%.+]]: memref<1x[[STEP]]x1000x16xf16>) -> memref<1x[[STEP]]x1000x16xf16> {
+    // CHECK: func.func @main_func0_static([[func0_ARG0:%.+]]: memref<1x[[STEP:.+]]x1000x16xf16, strided<[?, ?, ?, ?], offset: ?>>, [[func0_ARG1:%.+]]: memref<1x[[STEP]]x1000x16xf16, strided<[?, ?, ?, ?], offset: ?>>, [[func0_ARG2:%.+]]: memref<1x[[STEP]]x1000x16xf16, strided<[?, ?, ?, ?], offset: ?>>) -> memref<1x[[STEP]]x1000x16xf16, strided<[?, ?, ?, ?], offset: ?>> {
 
-    // CHECK-NPU40XX-COUNT-6: VPUIP.NCEClusterTask
-    // CHECK-NPU50XX-COUNT-3: VPUIP.NCEClusterTask
+    // CHECK-NPU4000-COUNT-6: VPUIP.NCEClusterTask
+    // CHECK-NPU5010-COUNT-3: VPUIP.NCEClusterTask
+    // CHECK-NPU5020-COUNT-1: VPUIP.NCEClusterTask
     // CHECK-NOT: IE.Add
 
     // CHECK: func.func @main([[ARG0:%.+]]: memref<1x?x1000x16xf16>, [[ARG1:%.+]]: memref<1x?x1000x16xf16>, [[ARG2:%.+]]: memref<1x?x1000x16xf16>) -> memref<1x?x1000x16xf16> attributes {[[ANY_ATTR:.+]]} {
@@ -62,16 +62,16 @@ module @EltwiseNHWCDynamic {
     // CHECK:   [[OFFSET:%.+]] = affine.min #map([[ARG3]]){{\[}}[[DIM]]{{\]}}
     // CHECK:   [[SUBVIEW0:%.+]] = memref.subview [[ARG0]][0, [[OFFSET]], 0, 0] [1, [[STEP]], 1000, 16] [1, 1, 1, 1] : memref<1x?x1000x16xf16> to memref<1x[[STEP]]x1000x16xf16, strided<[?, 16000, 16, 1], offset: ?>>
     // CHECK:   [[SUBVIEW1:%.+]] = memref.subview [[ARG1]][0, [[OFFSET]], 0, 0] [1, [[STEP]], 1000, 16] [1, 1, 1, 1] : memref<1x?x1000x16xf16> to memref<1x[[STEP]]x1000x16xf16, strided<[?, 16000, 16, 1], offset: ?>>
-    // CHECK:   [[CAST0:%.+]] = builtin.unrealized_conversion_cast [[SUBVIEW0]] : memref<1x[[STEP]]x1000x16xf16, strided<[?, 16000, 16, 1], offset: ?>> to memref<1x[[STEP]]x1000x16xf16>
-    // CHECK:   [[CAST1:%.+]] = builtin.unrealized_conversion_cast [[SUBVIEW1]] : memref<1x[[STEP]]x1000x16xf16, strided<[?, 16000, 16, 1], offset: ?>> to memref<1x[[STEP]]x1000x16xf16>
+    // CHECK:   [[CAST0:%.+]] = memref.cast [[SUBVIEW0]] : memref<1x[[STEP]]x1000x16xf16, strided<[?, 16000, 16, 1], offset: ?>> to memref<1x[[STEP]]x1000x16xf16, strided<[?, ?, ?, ?], offset: ?>>
+    // CHECK:   [[CAST1:%.+]] = memref.cast [[SUBVIEW1]] : memref<1x[[STEP]]x1000x16xf16, strided<[?, 16000, 16, 1], offset: ?>> to memref<1x[[STEP]]x1000x16xf16, strided<[?, ?, ?, ?], offset: ?>>
     // CHECK:   [[SUBVIEW2:%.+]] = memref.subview [[ARG2]][0, [[OFFSET]], 0, 0] [1, [[STEP]], 1000, 16] [1, 1, 1, 1] : memref<1x?x1000x16xf16> to memref<1x[[STEP]]x1000x16xf16, strided<[?, 16000, 16, 1], offset: ?>>
-    // CHECK:   [[CAST2:%.+]] = builtin.unrealized_conversion_cast [[SUBVIEW2]] : memref<1x[[STEP]]x1000x16xf16, strided<[?, 16000, 16, 1], offset: ?>> to memref<1x[[STEP]]x1000x16xf16>
-    // CHECK:   [[TOKEN:%.+]], [[BODY_RESULTS:%.+]] = async.execute -> !async.value<memref<1x[[STEP]]x1000x16xf16>> {
-    // CHECK:     [[NESTED_CALL:%.+]] = Core.NestedCall @Module0::@main_func0_static([[CAST0]], [[CAST1]], [[CAST2]]) : (memref<1x[[STEP]]x1000x16xf16>, memref<1x[[STEP]]x1000x16xf16>, memref<1x[[STEP]]x1000x16xf16>) -> memref<1x[[STEP]]x1000x16xf16>
-    // CHECK:     async.yield [[NESTED_CALL]] : memref<1x[[STEP]]x1000x16xf16>
+    // CHECK:   [[CAST2:%.+]] = memref.cast [[SUBVIEW2]] : memref<1x[[STEP]]x1000x16xf16, strided<[?, 16000, 16, 1], offset: ?>> to memref<1x[[STEP]]x1000x16xf16, strided<[?, ?, ?, ?], offset: ?>>
+    // CHECK:   [[TOKEN:%.+]], [[BODY_RESULTS:%.+]] = async.execute -> !async.value<memref<1x[[STEP]]x1000x16xf16, strided<[?, ?, ?, ?], offset: ?>>> {
+    // CHECK:     [[NESTED_CALL:%.+]] = Core.NestedCall @Module0::@main_func0_static([[CAST0]], [[CAST1]], [[CAST2]]) : (memref<1x[[STEP]]x1000x16xf16, strided<[?, ?, ?, ?], offset: ?>>, memref<1x[[STEP]]x1000x16xf16, strided<[?, ?, ?, ?], offset: ?>>, memref<1x[[STEP]]x1000x16xf16, strided<[?, ?, ?, ?], offset: ?>>) -> memref<1x[[STEP]]x1000x16xf16, strided<[?, ?, ?, ?], offset: ?>>
+    // CHECK:     async.yield [[NESTED_CALL]] : memref<1x[[STEP]]x1000x16xf16, strided<[?, ?, ?, ?], offset: ?>>
     // CHECK:   }
     // CHECK:   [[ADD_TO_GROUP:%.+]] = async.add_to_group [[TOKEN]], [[GROUP]] : !async.token
-    // CHECK:   [[AWAIT:%.+]] = async.await [[BODY_RESULTS]] : !async.value<memref<1x[[STEP]]x1000x16xf16>>
+    // CHECK:   [[AWAIT:%.+]] = async.await [[BODY_RESULTS]] : !async.value<memref<1x[[STEP]]x1000x16xf16, strided<[?, ?, ?, ?], offset: ?>>>
     // CHECK: }
     // CHECK: async.await_all [[GROUP]]
     // CHECK: return [[ARG2]] : memref<1x?x1000x16xf16>

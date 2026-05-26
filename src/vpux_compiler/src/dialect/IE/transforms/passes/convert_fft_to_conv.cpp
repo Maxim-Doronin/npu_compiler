@@ -18,7 +18,7 @@
 #include <openvino/op/op.hpp>
 
 #include <mlir/Pass/PassManager.h>
-#include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Transforms/WalkPatternRewriteDriver.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_CONVERTFFTTOCONV
@@ -29,6 +29,9 @@ namespace vpux::IE {
 using namespace vpux;
 
 namespace {
+
+template <class ConcreteOp>
+bool shouldConvertOp(ConcreteOp op);
 
 constexpr float FftPi = 3.141592653589793238462643f;
 
@@ -362,6 +365,10 @@ public:
 
 public:
     mlir::LogicalResult matchAndRewrite(T op, mlir::PatternRewriter& rewriter) const final {
+        if (!shouldConvertOp<T>(op)) {
+            return mlir::failure();
+        }
+
         _log.trace("[{0}] Got Operation: '{1}'", this->getDebugName(), op);
         const auto dftLoc = appendLoc(op.getLoc(), "ComplexDftOrIdft");
         bool complexInputType = true;
@@ -393,6 +400,10 @@ public:
 
 public:
     mlir::LogicalResult matchAndRewrite(IE::RDFTOp op, mlir::PatternRewriter& rewriter) const final {
+        if (!shouldConvertOp<IE::RDFTOp>(op)) {
+            return mlir::failure();
+        }
+
         _log.trace("[{0}] Got Operation: '{1}'", getDebugName(), op);
         const auto rdftLoc = appendLoc(op.getLoc(), "RdftSplit");
         bool complexInputType = false;
@@ -428,6 +439,10 @@ public:
 
 public:
     mlir::LogicalResult matchAndRewrite(IE::IRDFTOp op, mlir::PatternRewriter& rewriter) const final {
+        if (!shouldConvertOp<IE::IRDFTOp>(op)) {
+            return mlir::failure();
+        }
+
         _log.trace("[{0}] Got Operation: '{1}'", getDebugName(), op);
         const auto irdftLoc = appendLoc(op.getLoc(), "IrdftSplit");
         bool complexInputType = true;
@@ -468,7 +483,7 @@ private:
 };
 
 template <class ConcreteOp>
-bool isLegalOp(ConcreteOp op) {
+bool shouldConvertOp(ConcreteOp op) {
     bool complexInputType = true;
     // RDFT input is real, so rank of input tensor map with parameter rank considered.
     if (mlir::isa<IE::RDFTOp>(op)) {
@@ -491,27 +506,16 @@ bool isLegalOp(ConcreteOp op) {
         const auto lastAxis = axes.back();
         // integer / 2 can leave false situation when signalSize attribute is on
         if ((signalSize.back() != -1) && (signalSize.back() != shape[lastAxis])) {
-            return true;
+            return false;
         }
         shape[lastAxis] = getRdftOutAxisLength(shape[lastAxis]);
         shape.push_back(2);
     }
-    return (shape != outShape);
+    return (shape == outShape);
 }
 
 void ConvertFFTToConvPass::safeRunOnFunc() {
     auto& ctx = getContext();
-
-    mlir::ConversionTarget target(ctx);
-    target.addDynamicallyLegalOp<IE::DFTOp>(&isLegalOp<IE::DFTOp>);
-    target.addDynamicallyLegalOp<IE::IDFTOp>(&isLegalOp<IE::IDFTOp>);
-    target.addDynamicallyLegalOp<IE::RDFTOp>(&isLegalOp<IE::RDFTOp>);
-    target.addDynamicallyLegalOp<IE::IRDFTOp>(&isLegalOp<IE::IRDFTOp>);
-    target.addLegalOp<IE::TransposeOp>();
-    target.addLegalOp<IE::ReshapeOp>();
-    target.addLegalOp<IE::MatMulOp>();
-    target.addLegalOp<Const::DeclareOp>();
-    target.addLegalOp<IE::SliceOp>();
 
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<ComplexFFTOpConverter<IE::DFTOp>>(&ctx, _log);
@@ -519,10 +523,7 @@ void ConvertFFTToConvPass::safeRunOnFunc() {
     patterns.add<RDFTOpConverter>(&ctx, _log);
     patterns.add<IRDFTOpConverter>(&ctx, _log);
 
-    auto func = getOperation();
-    if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
-        signalPassFailure();
-    }
+    walkAndApplyPatterns(getOperation(), std::move(patterns));
 }
 
 }  // namespace

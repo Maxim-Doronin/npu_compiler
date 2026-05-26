@@ -32,20 +32,6 @@ mlir::Type getLinalgElementType(mlir::Type ty, mlir::MLIRContext* ctx) {
         return elTy;
     }
 
-    // We need to convert the quantized type to its storage type because quant types
-    // are not part of the math or arith dialects in MLIR.
-    if (auto quantTy = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(elTy)) {
-        auto storageType = quantTy.getStorageType();
-        if (auto storageIntTy = mlir::dyn_cast<mlir::IntegerType>(storageType)) {
-            // If the storage type is signless, return as it is, otherwise convert to signless
-            return storageIntTy.isSignlessInteger() ? storageIntTy
-                                                    : mlir::IntegerType::get(ctx, storageIntTy.getWidth());
-        } else {
-            // Non-integer storage types are not supported
-            VPUX_THROW("Non int storage types not supported");
-        }
-    }
-
     return elTy;
 }
 
@@ -67,6 +53,51 @@ mlir::RankedTensorType normalizeType(mlir::RankedTensorType type) {
     auto rank = type.getRank();
     auto ndTy = mlir::cast<vpux::NDTypeInterface>(type);
     auto signlessElTy = getLinalgElementType(type, type.getContext());
+
+    if (auto quantTy = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(signlessElTy)) {
+        auto storageType = quantTy.getStorageType();
+        int width = storageType.getIntOrFloatBitWidth();
+        // E206657 Investigate non-signless storage type with quant types
+        // Convert to signless storage type for compatibility with MLIR's arith/math dialect operations
+        if (!storageType.isSignlessInteger()) {
+            // Create a signless storage type
+            mlir::Type signlessType = mlir::IntegerType::get(quantTy.getContext(), width);
+            // Create a new UniformQuantizedType with signless storage type
+            auto newQuantTy = mlir::quant::UniformQuantizedType::get(
+                    quantTy.getFlags(), signlessType, quantTy.getExpressedType(), quantTy.getScale(),
+                    quantTy.getZeroPoint(), quantTy.getStorageTypeMin(), quantTy.getStorageTypeMax());
+            signlessElTy = newQuantTy;
+        }
+    } else if (auto quantTy = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(signlessElTy)) {
+        auto storageType = quantTy.getStorageType();
+        int width = storageType.getIntOrFloatBitWidth();
+
+        // Order handling for per channel/axis Quantize/Dequantize
+        // The quantized dimension should be correctly mapped between logical and memory layout
+        // e.g: NCHW logical layout -> quantized dimension is at index 1
+        //      NHWC memory layout -> quantized dimension is at index 3
+        auto quantDim = quantTy.getQuantizedDimension();
+        auto dimOrder = ndTy.getDimsOrder();
+        auto inputShape = ndTy.getShape();
+        auto memoryShape = dimOrder.toMemoryOrder(inputShape);
+        auto newQuantDim = dimOrder.toMemDim(Dim(quantDim)).ind();
+
+        // Convert to signless storage type for compatibility with MLIR's arith/math dialect operations
+        mlir::Type finalStorageType = storageType;
+        if (!storageType.isSignlessInteger()) {
+            // Create a signless storage type
+            mlir::Type signlessType = mlir::IntegerType::get(quantTy.getContext(), width);
+            finalStorageType = signlessType;
+        }
+        auto newQuantTy = mlir::quant::UniformQuantizedPerAxisType::get(
+                quantTy.getFlags(), finalStorageType, quantTy.getExpressedType(), quantTy.getScales(),
+                quantTy.getZeroPoints(), newQuantDim, quantTy.getStorageTypeMin(), quantTy.getStorageTypeMax());
+        signlessElTy = newQuantTy;
+
+        auto dstShape = Shape(memoryShape.raw());
+        auto retTy = mlir::RankedTensorType::get(llvm::ArrayRef<int64_t>(dstShape.raw()), signlessElTy);
+        return retTy;
+    }
 
     auto dstShape = Shape(ndTy.getDimsOrder().toMemoryOrder(ndTy.getShape()).raw());
     auto retTy = ndTy.changeDimsOrder(DimsOrder::fromNumDims(rank)).changeShape(dstShape);

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --move-permute-post-eltwise --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --move-permute-post-eltwise --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
@@ -1324,10 +1324,10 @@ func.func @MovePermuteQuantizePostAddQuantType(%arg0: tensor<1x256x256x3xf16>) -
 
 // CHECK-LABEL: @NotPropagatePermuteThroughAvgPool
 func.func @NotPropagatePermuteThroughAvgPool(%arg0: tensor<1x5760x128x1xf16, {order = #NHWC}>) -> (tensor<1x128x5760x1xf16, {order = #NHWC}>, tensor<1x128x5760x1xf16, {order = #NHWC}>) {
-  %0 = IE.AvgPool(%arg0) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.Clamp<min = -7.000000e+00 : f64, max = 8.000000e+00 : f64>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x5760x128x1xf16, {order = #NHWC}> -> tensor<1x5760x128x1xf16, {order = #NHWC}>
+  %0 = IE.AvgPool(%arg0) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], clamp = {min = -7.000000e+00 : f64, max = 8.000000e+00 : f64}, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x5760x128x1xf16, {order = #NHWC}> -> tensor<1x5760x128x1xf16, {order = #NHWC}>
   %1 = IE.MemPermute(%0) {dst_order = #NHWC, mem_perm = affine_map<(d0, d1, d2, d3) -> (d0, d3, d2, d1)>} : tensor<1x5760x128x1xf16, {order = #NHWC}> -> tensor<1x128x5760x1xf16, {order = #NHWC}>
-  %2 = IE.AvgPool(%1) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.Clamp<min = -7.000000e+00 : f64, max = 7.000000e+00 : f64>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x128x5760x1xf16, {order = #NHWC}> -> tensor<1x128x5760x1xf16, {order = #NHWC}>
-  %3 = IE.AvgPool(%1) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.Clamp<min = -6.000000e+00 : f64, max = 7.000000e+00 : f64>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x128x5760x1xf16, {order = #NHWC}> -> tensor<1x128x5760x1xf16, {order = #NHWC}>
+  %2 = IE.AvgPool(%1) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], clamp = {min = -7.000000e+00 : f64, max = 7.000000e+00 : f64}, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x128x5760x1xf16, {order = #NHWC}> -> tensor<1x128x5760x1xf16, {order = #NHWC}>
+  %3 = IE.AvgPool(%1) {exclude_pads, kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], clamp = {min = -6.000000e+00 : f64, max = 7.000000e+00 : f64}, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x128x5760x1xf16, {order = #NHWC}> -> tensor<1x128x5760x1xf16, {order = #NHWC}>
 
   return %2, %3 : tensor<1x128x5760x1xf16, {order = #NHWC}>, tensor<1x128x5760x1xf16, {order = #NHWC}>
 

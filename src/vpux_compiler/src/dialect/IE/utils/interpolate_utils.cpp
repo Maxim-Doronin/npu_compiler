@@ -5,12 +5,12 @@
 
 #include "vpux/compiler/dialect/IE/utils/interpolate_utils.hpp"
 #include "vpux/compiler/core/attributes/dims_order.hpp"
+#include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
-#include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/error.hpp"
@@ -32,7 +32,7 @@ mlir::FailureOr<SmallVector<int64_t>> extractIntVector(mlir::Location loc, const
         const auto valueContent = valueConst.getContent();
         return to_small_vector(valueContent.getValues<int64_t>());
     }
-    return errorAt(loc, "Parameter were not provided");
+    return mlir::failure();
 }
 
 mlir::Value createPadding(mlir::PatternRewriter& rewriter, IE::InterpolateOp origOp, mlir::Value input, Dim axis,
@@ -96,6 +96,22 @@ mlir::FailureOr<SmallVector<double>> extractFPVector(mlir::Location loc, const m
     return mlir::failure();
 }
 
+bool isSizesAsParameter(const mlir::Value value, const std::optional<mlir::ArrayAttr>& attr) {
+    if (value == nullptr) {
+        return false;
+    }
+    auto sizesConst = value.getDefiningOp<Const::DeclareOp>();
+    return !attr.has_value() && sizesConst == nullptr;
+}
+
+bool isScalesAsParameter(const mlir::Value value, const std::optional<mlir::ArrayAttr>& attr) {
+    if (value == nullptr) {
+        return false;
+    }
+    auto scalesConst = value.getDefiningOp<Const::DeclareOp>();
+    return !attr.has_value() && scalesConst == nullptr;
+}
+
 SmallVector<int64_t> getInterpAxesVal(mlir::Location loc, const mlir::Value axes,
                                       const std::optional<mlir::ArrayAttr>& attr, NDTypeInterface inType) {
     const bool isExplicitAxes = (axes != nullptr) || (attr.has_value() && attr.value() != nullptr);
@@ -129,13 +145,13 @@ mlir::FailureOr<int64_t> getInnermostAxis(mlir::Location loc, DimsOrder dimsOrde
 }
 
 int64_t getInterpCoordinatesSize(mlir::Value output, int64_t innermostAxis) {
-    const auto outShape = getShape(output).raw();
+    const auto outShape = getBoundedShape(output).raw();
     const auto lenghtResized = outShape[innermostAxis];
     return lenghtResized;
 }
 
 int64_t getInterpLambdasSize(mlir::Value output, int64_t innermostAxis) {
-    const auto outShape = getShape(output).raw();
+    const auto outShape = getBoundedShape(output).raw();
     const auto lenghtResized = outShape[innermostAxis];
     return lenghtResized * 2;
 }
@@ -297,6 +313,9 @@ bool isBroadCastInterpolate(IE::InterpolateOp op) {
             return (inDimSize == outDimSize) || (inDimSize != outDimSize && inDimSize == 1);
         });
     } else if (calcMode == IE::InterpolateCalcMode::SCALES) {
+        if (isScalesAsParameter(op.getScales(), op.getScalesAttr())) {
+            return false;
+        }
         const auto scales = extractFPVector(op.getLoc(), op.getScales(), op.getScalesAttr());
         VPUX_THROW_UNLESS(mlir::succeeded(scales), "Cannot get scales Attr");
         const auto scalesVal = scales.value();
@@ -390,6 +409,11 @@ MapCoordFuncT getMapCoordMethod(InterpolateCoordMode coordMode) {
 bool isFusingConvertIntoBilinearInterpolateOnDpuBeneficial(IE::InterpolateOp op,
                                                            [[maybe_unused]] mlir::Type convertOutType) {
     config::ArchKind arch = vpux::config::getArch(op);
+
+    if (IE::hasDynamicTensors(op)) {
+        // Dynamic Interpolate should skip conversion on DPU
+        return false;
+    }
     switch (arch) {
     case config::ArchKind::NPU50XX: {
         return convertOutType.isF32();

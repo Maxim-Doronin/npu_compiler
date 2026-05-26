@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW  allow-custom-values=true" \
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW  allow-custom-values=true" \
 // RUN:     --default-hw-mode-vpu="enable-shave-code-gen=true" %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #map = affine_map<(d0, d1, d2, d3) -> (0, 0, 0, 0)>

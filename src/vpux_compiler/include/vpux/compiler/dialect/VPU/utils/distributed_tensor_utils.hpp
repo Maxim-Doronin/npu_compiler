@@ -43,6 +43,9 @@ constexpr StringLiteral multiClusterStrategy = "multiClusterStrategy";
 const SmallVector<int64_t> DISTRIBUTED_C_ALIGNMENT = SmallVector<int64_t>{1, 16, 1, 1};
 const SmallVector<int64_t> DISTRIBUTED_N_ALIGNMENT = SmallVector<int64_t>{16, 1, 1, 1};
 
+const SmallVector<int64_t> DISTRIBUTED_DW_ACT_C_ALIGNMENT = SmallVector<int64_t>{1, 32, 1, 1};
+const SmallVector<int64_t> DISTRIBUTED_DW_WT_C_ALIGNMENT = SmallVector<int64_t>{32, 1, 1, 1};
+
 using TensorDistributionMap = llvm::DenseMap<mlir::Type, VPU::DistributionInfo>;
 
 VPU::DistributionInfoAttr updateSliceLikeOpsAlignment(mlir::MLIRContext* ctx, vpux::ShapeRef inShape,
@@ -75,18 +78,18 @@ SmallVector<int64_t> getOutputTensorNumTiles(VPU::ClusteredOpInterface clustered
 std::optional<SmallVector<int64_t>> getOutputTensorMemoryNumTiles(VPU::ClusteredOpInterface clusteredOp,
                                                                   VPU::MultiClusterStrategy strategy,
                                                                   vpux::NDTypeInterface outputType = nullptr);
-std::optional<SmallVector<int64_t>> getOutputTensorAlignment(VPU::MultiClusterStrategy strategy);
+std::optional<SmallVector<int64_t>> getOutputTensorAlignment(VPU::ClusteredOpInterface clusteredOp,
+                                                             VPU::MultiClusterStrategy strategy, int64_t numClusters,
+                                                             int64_t channelSize);
 std::optional<vpux::NDTypeInterface> adjustOutputAlignmentForSOH(VPU::ClusteredOpInterface clusteredOp,
                                                                  vpux::NDTypeInterface originalDistType);
 
 SmallVector<int64_t> getWeightsTensorNumTiles(VPU::ClusteredOpInterface clusteredOp, vpux::NDTypeInterface tensorType,
                                               int64_t numClustersAvailableForCompilation,
                                               VPU::MultiClusterStrategy strategy);
-std::optional<SmallVector<int64_t>> getWeightsTensorAlignment(VPU::MultiClusterStrategy strategy);
-SmallVector<int64_t> getWeightsTableTensorNumTiles(VPU::ClusteredOpInterface clusteredOp,
-                                                   vpux::NDTypeInterface tensorType,
-                                                   int64_t numClustersAvailableForCompilation,
-                                                   VPU::MultiClusterStrategy strategy);
+std::optional<SmallVector<int64_t>> getWeightsTensorAlignment(VPU::ClusteredOpInterface clusteredOp,
+                                                              VPU::MultiClusterStrategy strategy, int64_t numClusters,
+                                                              int64_t channelSize = 0);
 DistributionMode getActivationTensorDistributionMode(VPU::ClusteredOpInterface clusteredOp,
                                                      VPU::MultiClusterStrategy strategy);
 DistributionMode getActivationTensorDistributionMode(VPU::GatherDMAOp op, VPU::MultiClusterStrategy strategy,
@@ -115,6 +118,20 @@ vpux::NDTypeInterface getDistributedTypeFromInput(VPU::ClusteredOpInterface clus
                                                   mlir::ArrayAttr alignment, VPU::MultiClusterStrategy strategy,
                                                   const bool hasExplicitDistributedAttr,
                                                   SiblingOpsAnalysis& siblingsAnalysis);
+
+// Computes the distributed type for an activation operand of a clustered op.
+// Handles the common preamble: optimal clusters, distribution mode, num tiles, alignment.
+vpux::NDTypeInterface getDistributedActivationTypeForOpOperand(VPU::ClusteredOpInterface clusteredOp,
+                                                               mlir::Value activationInput,
+                                                               VPU::MultiClusterStrategy strategy,
+                                                               bool hasExplicitDistributedAttr,
+                                                               SiblingOpsAnalysis& siblingsAnalysis);
+
+// Computes the distributed type for a weights-related operand (filter, weights table, etc.) of a clustered op.
+// Pass channelSize > 0 for ops that need channel-aware alignment (e.g. NCEDepthConvolution).
+vpux::NDTypeInterface getDistributedWeightsTypeForOpOperand(
+        VPU::ClusteredOpInterface clusteredOp, mlir::Value weightsValue, VPU::MultiClusterStrategy strategy,
+        bool hasExplicitDistributedAttr, SiblingOpsAnalysis& siblingsAnalysis, int64_t channelSize = 0);
 
 vpux::NDTypeInterface getSwDistributedTypeForOpOperand(VPU::ClusteredOpInterface clusteredOp, mlir::OpOperand& operand,
                                                        SiblingOpsAnalysis& siblingsAnalysis,
@@ -202,10 +219,13 @@ vpux::NDTypeInterface getDistributedOutputTensorType(VPU::ClusteredOpInterface c
                                                      VPU::MultiClusterStrategy strategy,
                                                      const bool hasExplicitDistributedAttr);
 // Get distributed output type for clustered op and vf op
-vpux::NDTypeInterface getDistributedOutputType(mlir::Operation* op);
+VPU::DistributedTypeInterface getDistributedOutputType(
+        mlir::Operation* op, std::optional<VPU::MultiClusterStrategy> customStrategy = std::nullopt);
 
 // Get distributed input type for clustered op and vf op
-vpux::NDTypeInterface getDistributedInputType(mlir::Operation* op, mlir::Value operand);
+VPU::DistributedTypeInterface getDistributedInputType(
+        mlir::Operation* op, mlir::Value operand,
+        std::optional<VPU::MultiClusterStrategy> customStrategy = std::nullopt);
 
 bool hasSpillDueToIncompatibleDistributionMode(VPU::DistributedTensorType distributedInType,
                                                VPU::DistributedTensorType distributedOutType);

@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/VPU/utils/scf/scf_utils.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
+#include "vpux/utils/core/error.hpp"
 
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/SmallVector.h>
@@ -132,6 +133,45 @@ public:
             inputTile.bounds = Bounds(mlir::applyPermutation(inputTile.bounds.raw(), permutation));
         }
 
+        return SCFTilingInfo{{std::move(inputTile)}};
+    }
+};
+
+class SCFSliceTilingModelOp : public SCFViewLikeTilingModelOp<SCFSliceTilingModelOp, VPU::SliceOp> {
+public:
+    SCFTilingInfo backInferSCFTileInfo(mlir::Operation* op, mlir::OpBuilder& builder,
+                                       const SCFTileInfo& outputTile) const {
+        auto sliceOp = mlir::cast<VPU::SliceOp>(op);
+
+        const auto inputShape = getShape(sliceOp.getInput());
+        const auto outputShape = getShape(sliceOp.getResult());
+        for (size_t i = 0; i < outputTile.shape.size(); ++i) {
+            const bool isDimSliced = (outputShape[Dim(i)] != inputShape[Dim(i)]);
+            if (isDimSliced) {
+                auto tileSizeValue = mlir::getConstantIntValue(outputTile.shape[i]);
+                VPUX_THROW_WHEN(tileSizeValue.has_value() && tileSizeValue.value() != outputShape[Dim(i)],
+                                "SCF tiling and VPU.Slice '{0}' both operate on axis {1} — not allowed",
+                                sliceOp.getLoc(), i);
+            }
+        }
+
+        auto inputTile = outputTile;
+        const auto sliceOffsets = parseIntArrayAttr<int64_t>(sliceOp.getStaticOffsetsAttr());
+        for (size_t i = 0; i < inputTile.offsets.size(); ++i) {
+            auto tileOffsetValue = getConstantIntValue(inputTile.offsets[i]);
+
+            if (!tileOffsetValue.has_value()) {
+                auto tileOffset = getValueOrCreateConstantIndexOp(builder, op->getLoc(), inputTile.offsets[i]);
+                auto sliceOffset =
+                        builder.create<mlir::arith::ConstantIndexOp>(op->getLoc(), sliceOffsets[i]).getResult();
+                inputTile.offsets[i] =
+                        builder.create<mlir::arith::AddIOp>(op->getLoc(), tileOffset, sliceOffset).getResult();
+            } else {
+                int64_t combinedOffset = tileOffsetValue.value() + sliceOffsets[i];
+                inputTile.offsets[i] =
+                        builder.create<mlir::arith::ConstantIndexOp>(op->getLoc(), combinedOffset).getResult();
+            }
+        }
         return SCFTilingInfo{{std::move(inputTile)}};
     }
 };

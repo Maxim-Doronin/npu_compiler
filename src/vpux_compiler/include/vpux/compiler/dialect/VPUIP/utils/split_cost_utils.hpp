@@ -13,7 +13,7 @@ class VPUCostModel;
 
 namespace vpux::VPUIP {
 
-int64_t computeSplitCost(const WorkloadSplit& split, const WorkloadCostParams& params, VPUNN::VPUCostModel& costModel,
-                         LogCb logCb = emptyLogCb);
+int64_t computeSplitCost(mlir::MLIRContext* ctx, const WorkloadSplit& split, const WorkloadCostParams& params,
+                         VPUNN::VPUCostModel& costModel, LogCb logCb = emptyLogCb);
 
 }  // namespace vpux::VPUIP

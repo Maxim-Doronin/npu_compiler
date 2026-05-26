@@ -25,13 +25,7 @@ replace_noerror(${TARGET_NAME})
 
 target_include_directories(${TARGET_NAME}
     PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        ${VPUX_UTILS_CURRENT_SOURCE_DIR}/include/
-        ${VPUX_UTILS_CURRENT_SOURCE_DIR}/include/vpux/utils/algorithm
+        ${VPUX_UTILS_CURRENT_SOURCE_DIR}/include
 )
 
-add_dependencies(${TARGET_NAME}
-    npu_llvm_utils
-)
-
-target_link_libraries(${TARGET_NAME} PRIVATE npu_llvm_utils)
+target_link_libraries(${TARGET_NAME} PUBLIC npu_core_utils)

@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-translate --vpu-arch=%arch% --import-IE --dynamic-shape-to-static --set-upper-bounds="1 18 3" ./IR/test_dynamic_shapes.xml -o %t
+// RUN: vpux-translate --platform=%platform% --import-IE --dynamic-shape-to-static --set-upper-bounds="1 18 3" ./IR/test_dynamic_shapes.xml -o %t
 // RUN: FileCheck %s --input-file %t
-// REQUIRES: arch-NPU37XX
+// REQUIRES: platform-NPU3720
 
 // CHECK: module @Function_0 {
 // CHECK:   net.NetworkInfo entryPoint : @main inputsInfo : {

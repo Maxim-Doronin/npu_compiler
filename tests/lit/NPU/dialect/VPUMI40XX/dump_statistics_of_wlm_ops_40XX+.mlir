@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: env OV_NPU_LOG_LEVEL=LOG_INFO env IE_NPU_LOG_FILTER=dump-statistics-of-wlm-ops vpux-opt --init-compiler="vpu-arch=%arch% allow-custom-values=true" --dump-statistics-of-wlm-ops -o /dev/null %s 2>&1 | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: env OV_NPU_LOG_LEVEL=LOG_INFO env IE_NPU_LOG_FILTER=dump-statistics-of-wlm-ops vpux-opt --init-compiler="platform=%platform% allow-custom-values=true" --dump-statistics-of-wlm-ops -o /dev/null %s 2>&1 | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>

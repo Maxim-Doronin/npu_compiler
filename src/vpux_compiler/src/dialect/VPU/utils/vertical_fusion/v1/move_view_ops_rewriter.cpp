@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/v1/move_view_ops_rewriter.hpp"
+#include "vpux/compiler/dialect/VPU/utils/sparsity_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/vertical_fusion/vertical_fusion_utils.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 
@@ -45,6 +46,22 @@ mlir::LogicalResult MoveViewOpsRewriter::matchAndRewrite(VPU::VerticalFusionOp v
                 return mlir::isa_and_nonnull<mlir::BlockArgument>(value) ||
                        mlir::isa_and_nonnull<Const::DeclareOp>(value.getDefiningOp());
             })) {
+            continue;
+        }
+        auto inType = mlir::cast<vpux::NDTypeInterface>(parentOp->getOperand(0).getType());
+        auto outType = mlir::cast<vpux::NDTypeInterface>(parentOp->getResult(0).getType());
+        auto getShapeTotalSize = [](vpux::NDTypeInterface type) {
+            if (auto sparseType = mlir::dyn_cast<VPU::SparseTensorType>(type)) {
+                auto ndType = mlir::cast<vpux::NDTypeInterface>(sparseType.getData());
+                return ndType.getShape().totalSize();
+            }
+            return type.getShape().totalSize();
+        };
+        auto isSizeChangedOnly = getShapeTotalSize(inType) != getShapeTotalSize(outType) &&
+                                 inType.getElemTypeSize() == outType.getElemTypeSize() &&
+                                 inType.getDimsOrder() == outType.getDimsOrder();
+        if (isSizeChangedOnly) {
+            // Not supported for v1
             continue;
         }
 

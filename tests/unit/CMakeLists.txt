@@ -20,7 +20,6 @@ set(MANDATORY_UNIT_TESTS_LIBS
     "openvino::runtime"
     "openvino::npu_al"
     "npu_algo_utils"
-    "npu_llvm_utils"
     "npu_ov_utils"
     "npu_profiling_utils"
     "openvino::npu_logger_utils"
@@ -29,7 +28,6 @@ set(MANDATORY_UNIT_TESTS_LIBS
 
 # Skip tests for plugin targets
 set(ENABLE_DRIVER_COMPILER_ADAPTER OFF)
-set(ENABLE_ZEROAPI_BACKEND OFF)
 list(APPEND EXCLUDED_UNIT_TESTS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/vpux_plugin")
 
 if(ENABLE_DRIVER_COMPILER_ADAPTER)
@@ -46,26 +44,10 @@ else()
     )
 endif()
 
-if(ENABLE_ZEROAPI_BACKEND)
-   list(APPEND OPTIONAL_UNIT_TESTS_LIBS
-       ze_loader
-   )
-endif()
-
 # TODO(E#200026): check whether the old usage of old conditions is still required for the separate build of test targets.
 list(APPEND MANDATORY_UNIT_TESTS_LIBS
     "npu_mlir_compiler_static"
 )
-
-if(ENABLE_NPU_EXECUTION_ENGINE AND BUILD_SHARED_LIBS)
-    list(APPEND OPTIONAL_UNIT_TESTS_LIBS
-        openvino::npu_zero_utils
-    )
-else()
-    list(APPEND EXCLUDED_UNIT_TESTS_DIR
-     "${CMAKE_CURRENT_SOURCE_DIR}/mlir_runtime"
-    )
-endif()
 
 ov_add_test_target(
     NAME ${TARGET_NAME}
@@ -75,6 +57,7 @@ ov_add_test_target(
     INCLUDES
         ${OPTIONAL_UNIT_TESTS_INCLUDES}
         ${CMAKE_CURRENT_SOURCE_DIR}/vpux_compiler
+        "${PROJECT_SOURCE_DIR}/tests/functional/shared_tests_instances"
         ${PROJECT_SOURCE_DIR}/src/vpux_compiler/include/vpux/compiler/NPU40XX/dialect/NPUReg40XX/firmware_headers/details
     LINK_LIBRARIES
         ${OPTIONAL_UNIT_TESTS_LIBS}

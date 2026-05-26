@@ -4,7 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
-#include "vpux/compiler/dialect/VPU/transforms/factories/make_ops_with_distributed_tensor_strategy_getter.hpp"
+#include "vpux/compiler/dialect/VPU/interfaces/strategies.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sibling_ops_analysis.hpp"
@@ -97,8 +97,9 @@ void MakeOpsWithDistributedTensorPass::safeRunOnFunc() {
     });
 
     mlir::RewritePatternSet patterns(&ctx);
-    auto strategy = vpux::VPU::createMakeOpsWithDistributedTensorStrategy(func, typeLookup, inputTypeLookup,
-                                                                          _enableExplicitDistributionInfoAttr);
+    const auto& strategyFactory = VPU::getVPUStrategyFactory(&ctx);
+    auto strategy = strategyFactory->getMakeOpsWithDistributedTensorStrategy(typeLookup, inputTypeLookup,
+                                                                             _enableExplicitDistributionInfoAttr);
     // Both ACT Shaves and DPUs are grouped together in NCE clusters, in a symmetric manner.
     // Each NCE cluster has the same amount of DPUs and ACT shaves.
     // Thus shaves have the availability for distributing across clusters similar to DPUs.

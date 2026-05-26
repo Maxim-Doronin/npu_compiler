@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --convert-reduce-to-pooling %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW" --convert-reduce-to-pooling %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000
 
 // CHECK-LABEL:    func.func @ConvertReduceMeanToPooling3D
 // CHECK-SAME:     ([[INPUT:%.+]]: tensor<256x7x7xf16>)

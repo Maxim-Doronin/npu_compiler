@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% enable-qdq-optimization-aggressive=false" --qdq-optimization-aggressive %s | FileCheck %s --check-prefix=CHECK-AGG-OFF
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% enable-qdq-optimization-aggressive=true" --qdq-optimization-aggressive %s | FileCheck %s --check-prefix=CHECK-AGG-ON
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% enable-qdq-optimization-aggressive=false" --qdq-optimization-aggressive %s | FileCheck %s --check-prefix=CHECK-AGG-OFF
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% enable-qdq-optimization-aggressive=true" --qdq-optimization-aggressive %s | FileCheck %s --check-prefix=CHECK-AGG-ON
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK-AGG-OFF-LABEL: @QDQOptimizationAggressiveForConv
 // CHECK-AGG-OFF-SAME:      ([[INPUT:%.+]]: tensor<1x1x60x60xui8>) -> tensor<1x1x60x60xf32>

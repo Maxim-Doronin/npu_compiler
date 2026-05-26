@@ -62,7 +62,7 @@ void SerializeNetworkMetadataPass::defineSerializedMetadataAsGlobalOp(mlir::Modu
     // store serialized metadata into a global variable
     mlir::OpBuilder builder(module.getBodyRegion());
     mlir::MLIRContext* ctx = builder.getContext();
-    auto nameAttr = mlir::StringAttr::get(module.getContext(), std::string(HOST_EXEC_NETWORK_METADATA_NAME));
+    auto nameAttr = mlir::StringAttr::get(module.getContext(), vpux::HostExec::HOST_EXEC_NETWORK_METADATA_NAME);
     auto type = mlir::LLVM::LLVMArrayType::get(mlir::IntegerType::get(ctx, 8), serializedMetadata.size());
     llvm::StringRef rawMetadata{reinterpret_cast<const char*>(serializedMetadata.data()), serializedMetadata.size()};
 
@@ -96,10 +96,10 @@ mlir::LogicalResult SerializeNetworkMetadataPass::addFuncOpToReturnMetadata(mlir
                                                  funcOp.getArgument(1), mlir::ValueRange{idx});
     builder.create<mlir::LLVM::StoreOp>(builder.getUnknownLoc(), numSubGraph, gep);
 
-    auto name = mlir::StringRef(HOST_EXEC_NETWORK_METADATA_NAME);
+    auto name = mlir::StringRef(vpux::HostExec::HOST_EXEC_NETWORK_METADATA_NAME);
     auto serializedMetadataGlobalOp = module.lookupSymbol<mlir::LLVM::GlobalOp>(name);
     if (serializedMetadataGlobalOp == nullptr) {
-        _log.error("Serialized network metadata is ont found");
+        _log.error("Serialized network metadata is not found");
         return mlir::failure();
     }
 
@@ -112,11 +112,11 @@ mlir::LogicalResult SerializeNetworkMetadataPass::addFuncOpToReturnMetadata(mlir
         return mlir::failure();
     }
 
-    mlir::LLVM::AddressOfOp serializedMetadataPtr =
-            builder.create<mlir::LLVM::AddressOfOp>(builder.getUnknownLoc(), voidPtrType /*globalType*/,
-                                                    builder.getStringAttr(HOST_EXEC_NETWORK_METADATA_NAME));
+    mlir::LLVM::AddressOfOp serializedMetadataPtr = builder.create<mlir::LLVM::AddressOfOp>(
+            builder.getUnknownLoc(), voidPtrType /*globalType*/,
+            builder.getStringAttr(vpux::HostExec::HOST_EXEC_NETWORK_METADATA_NAME));
     if (serializedMetadataPtr == nullptr) {
-        _log.error("Serialized network metadata is ont found");
+        _log.error("Serialized network metadata is not found");
         return mlir::failure();
     }
 

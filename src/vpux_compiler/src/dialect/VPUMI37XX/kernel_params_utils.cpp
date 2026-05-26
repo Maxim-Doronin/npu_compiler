@@ -5,6 +5,7 @@
 
 #include "vpux/compiler/dialect/VPUMI37XX/kernel_params_utils.hpp"
 #include "vpux/compiler/core/bounded_buffer.hpp"
+#include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
 
 namespace vpux {
@@ -90,8 +91,13 @@ sw_params::DataType KernelParamsSerializer::getDataTypeFromMlirType(mlir::Type t
     } else if (auto quantizeType = mlir::dyn_cast<mlir::quant::QuantizedType>(type)) {
         const auto isSigned = quantizeType.isSigned();
         auto bitWidth = quantizeType.getStorageTypeIntegralWidth();
-        auto isQuantileType =
-                mlir::isa<mlir::quant::QuantileQuantizedType, mlir::quant::QuantileQuantizedPerAxisType>(quantizeType);
+        auto isQuantileType = [type]() {
+            if (mlir::isa<mlir::quant::UniformQuantizedType, mlir::quant::UniformQuantizedPerAxisType>(type)) {
+                auto quantized = mlir::cast<mlir::quant::QuantizedType>(type);
+                return mlir::isa<vpux::type::QuantileType>(quantized.getStorageType());
+            }
+            return false;
+        }();
         auto isFloatStorage = mlir::isa<mlir::FloatType>(quantizeType.getStorageType());
         switch (bitWidth) {
         case 16:

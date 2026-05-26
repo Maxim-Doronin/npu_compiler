@@ -1,11 +1,11 @@
 //
-// Copyright (C) 2025 Intel Corporation.
+// Copyright (C) 2025-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #loc = loc(unknown)
 #loc3 = loc("profiling_result")
-module @double_m2i attributes {config.arch = #config.arch_kind<NPU50XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+module @double_m2i attributes {config.compilationMode = #config.compilation_mode<DefaultHW>} {
   config.PipelineOptions @Options {
     config.Option @config.UseDedicatedFifoPerShaveEngine : false
     config.Option @config.BarrierMaxVariantSum : 64

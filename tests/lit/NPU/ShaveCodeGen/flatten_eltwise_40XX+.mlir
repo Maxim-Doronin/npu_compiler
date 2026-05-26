@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --flatten-eltwise-kernel -canonicalize %s -o - | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --flatten-eltwise-kernel -canonicalize %s -o - | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 // CHECK: [[C:#.+]] = affine_map<(d0) -> (d0)>
@@ -157,7 +157,7 @@ module @PartialFlattenOuterBroadcast {
 // CHECK-NEXT:      [[COLLAPSED_IN1:%.+]] = tensor.collapse_shape [[ARG1]] {{\[\[}}0, 1, 2, 3{{\]\]}} : tensor<1x1x20x7xf16> into tensor<140xf16>
 // CHECK-NEXT:      [[COLLAPSED_OUT:%.+]] = tensor.collapse_shape [[ARG2]] {{\[\[}}0, 1], [2, 3{{\]\]}} : tensor<1x2441x20x7xf16> into tensor<2441x140xf16>
 // CHECK-NEXT:      [[OP:%.+]] = linalg.generic {indexing_maps = [[[NC]], [[map]], [[NC]]], iterator_types = ["parallel", "parallel"]} ins([[COLLAPSED_IN0]], [[COLLAPSED_IN1]] : tensor<2441x140xf16>, tensor<140xf16>) outs([[COLLAPSED_OUT]] : tensor<2441x140xf16>) {
-// CHECK-NEXT:      ^bb0([[IN0:%.+]]: f16, [[IN1:%.+]]: f16, %out: f16):
+// CHECK-NEXT:      ^bb0([[IN0:%.+]]: f16, [[IN1:%.+]]: f16, {{%[^:]+}}: f16):
 // CHECK-NEXT:        [[SUB:%.+]] = arith.subf [[IN0]], [[IN1]] : f16
 // CHECK-NEXT:        linalg.yield [[SUB]] : f16
 // CHECK-NEXT:      } -> tensor<2441x140xf16>

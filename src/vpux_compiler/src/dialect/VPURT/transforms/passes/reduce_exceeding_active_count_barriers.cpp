@@ -27,9 +27,8 @@ namespace {
 class ReduceExceedingActiveCountBarriersPass final :
         public VPURT::impl::ReduceExceedingActiveCountBarriersBase<ReduceExceedingActiveCountBarriersPass> {
 public:
-    explicit ReduceExceedingActiveCountBarriersPass(std::optional<WorkloadManagementMode> workloadManagementMode,
-                                                    const bool unevenVariantSplit, Logger log)
-            : _workloadManagementMode(workloadManagementMode), _unevenVariantSplitFlag(unevenVariantSplit) {
+    explicit ReduceExceedingActiveCountBarriersPass(const bool unevenVariantSplit, Logger log)
+            : _unevenVariantSplitFlag(unevenVariantSplit) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
@@ -49,9 +48,7 @@ private:
     const bool _considerTaskFifoDependency = false;
     bool _mergeWaitBarriersIteratively = false;
     bool _considerTaskExecutorType = false;
-    bool _shareWaitAndUpdateBarriers = false;
 
-    std::optional<WorkloadManagementMode> _workloadManagementMode = std::nullopt;
     bool _unevenVariantSplitFlag = false;
     SmallVector<llvm::BitVector> _taskControlMap;
     size_t _controlMapOffset = 0;
@@ -295,12 +292,6 @@ void ReduceExceedingActiveCountBarriersPass::safeRunOnFunc() {
 
     auto wlmFlag = (config::getWorkloadManagementStatus(module) == WorkloadManagementStatus::ENABLED) &&
                    !config::isArchVPUX3XXX(arch);
-    _shareWaitAndUpdateBarriers = VPURT::isShareWaitAndUpdateBarriersNeeded(_workloadManagementMode);
-
-    auto shareWaitAndUpdateBarriers = shareWaitAndUpdateBarriersOpt.hasValue()
-                                              ? static_cast<bool>(shareWaitAndUpdateBarriersOpt.getValue())
-                                              : _shareWaitAndUpdateBarriers;
-    _log.trace("Sharing wait and update barriers: {0}", shareWaitAndUpdateBarriers);
 
     auto& barrierInfo = getAnalysis<BarrierInfo>();
     if (barrierInfo.getNumOfBarrierOps() <= numBarriersToUse) {
@@ -339,7 +330,7 @@ void ReduceExceedingActiveCountBarriersPass::safeRunOnFunc() {
         _log.trace("Barrier simulation passed with '{0}' barriers, no issues with exceeding barriers count",
                    numBarriersToUse);
 
-        if (VPURT::verifyBarriersForTaskDescriptorFetch(barrierInfo, func, wlmFlag, _workloadManagementMode)) {
+        if (!wlmFlag || VPURT::verifyBarriersForTaskDescriptorFetch(barrierInfo, func, std::nullopt)) {
             barrierInfo.clearAttributes();
             return;
         }
@@ -350,9 +341,7 @@ void ReduceExceedingActiveCountBarriersPass::safeRunOnFunc() {
 
     const auto updateAnalysis = [&]() {
         barrierInfo.optimizeBarriers(_checkSlotCountWhenOptimizing, /* considerTaskFifoDependency */ true);
-        if (shareWaitAndUpdateBarriers) {
-            barrierInfo.shareWaitAndUpdateBarriers(_availableSlots);
-        }
+        barrierInfo.shareWaitAndUpdateBarriers(_availableSlots);
         VPURT::orderExecutionTasksAndBarriers(func, barrierInfo, _log);
 
         barrierSim = VPURT::BarrierSimulator{func, wlmFlag, barrierInfo};
@@ -370,11 +359,6 @@ void ReduceExceedingActiveCountBarriersPass::safeRunOnFunc() {
                 // IR was modified
                 VPURT::orderExecutionTasksAndBarriers(func, barrierInfo, _log);
             }
-        }
-        if (wlmFlag == false) {
-            // Legalize schedule for non-WLM in case some of the required legalization barriers were optimized out as
-            // they were seen as redundant to optimization logic
-            VPURT::legalizeScheduleForNonWlm(func, barrierInfo, _log);
         }
         // remove unused barriers before simulation of assigning physical barriers in order to avoid creating batches
         // that cannot be linearized (eg. containing only final barrier)
@@ -441,8 +425,6 @@ void ReduceExceedingActiveCountBarriersPass::safeRunOnFunc() {
     }
 
     VPUX_THROW_UNLESS(barrierInfo.verifyControlGraphSplit(), "Encountered split of control graph is incorrect");
-    VPUX_THROW_UNLESS(VPURT::verifyBarriersForTaskDescriptorFetch(barrierInfo, func, wlmFlag, _workloadManagementMode),
-                      "Encountered execution group without required barrier for task descriptor fetch.");
 
     // remove attributes before removing barriers
     barrierInfo.clearAttributes();
@@ -464,8 +446,7 @@ void ReduceExceedingActiveCountBarriersPass::safeRunOnFunc() {
 // createReduceExceedingActiveCountBarriersPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::VPURT::createReduceExceedingActiveCountBarriersPass(
-        std::optional<WorkloadManagementMode> workloadManagementMode, const bool unevenVariantSplitFlag, Logger log) {
-    return std::make_unique<ReduceExceedingActiveCountBarriersPass>(workloadManagementMode, unevenVariantSplitFlag,
-                                                                    log);
+std::unique_ptr<mlir::Pass> vpux::VPURT::createReduceExceedingActiveCountBarriersPass(const bool unevenVariantSplitFlag,
+                                                                                      Logger log) {
+    return std::make_unique<ReduceExceedingActiveCountBarriersPass>(unevenVariantSplitFlag, log);
 }

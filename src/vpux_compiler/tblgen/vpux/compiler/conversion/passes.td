@@ -20,9 +20,14 @@ def ConvertIEToVPUNCE : PassBase<"convert-IE-to-VPU-NCE", "vpux::FunctionPass"> 
     let summary = "Convert supported IE layers to VPU NCE operations";
 
     let description = [{
-        The pass converts VPUNCE-friendly operations (such as Conv, Pool, Eltwise)
+        AI-generated summary
 
-        It doesn't change the memory spaces or add any new operations such as Copy
+        Converts NCE-compatible IE operations (Convolution, AveragePool,
+        PermuteQuantize, GroupConvolution, Eltwise, MatMul) to VPU NCE counterparts
+        (NCEConvolution, NCEAveragePool, NCEPermute, NCEDepthConvolution, NCEEltwise,
+        NCEMatMul). Generates aligned weight tensors, weights tables, and PPE
+        configuration attributes. Does not change memory spaces or insert Copy
+        operations.
     }];
 
     let constructor = "vpux::createConvertIEToVPUNCEPass()";
@@ -119,7 +124,14 @@ def AdjustDynamicOpsBeforeBufferization : PassBase<"adjust-dynamic-ops-before-bu
     let summary = "Prepare operation with dynamic tensors to be properly bufferized";
 
     let description = [{
-        Replace dynamic operations with their alternative version that can properly handle dynamic tensors.
+        AI-generated summary
+
+        Prepares dynamic-shape operations for bufferization by converting operations with
+        dynamic dimensions into forms that carry explicit shape information.
+
+        Registered rewrite patterns:
+        - UnsqueezeRewrite: replaces VPU.UnsqueezeOp (when it has dynamic tensors) with
+          VPU.DynamicReshapeOp plus a constant shape tensor that encodes the output dimensions
     }];
 
     let constructor = "vpux::createAdjustDynamicOpsBeforeBufferizationPass()";
@@ -178,7 +190,16 @@ def DecomposeAggregateOps : PassBase<"decompose-aggregate-ops", "vpux::ModulePas
 //
 
 def ExpandLayers : PassBase<"expand-layers", "vpux::ModulePass"> {
-    let summary = "Expand IE Dialect SW Layers to Math dialect";
+    let summary = "Expand high-level math operations into polynomial approximations for SHAVE kernels";
+
+    let description = [{
+        AI-generated summary
+
+        Lowers math operations (sin, cos, erf, round, asin, acos, asinh, acosh, fma, negf)
+        from the VPU.SW module generated functions into polynomial approximation sequences
+        and bitwise operations suitable for SHAVE execution. Handles f16-specific rounding
+        without f32 promotion and supports both scalar and vector operands.
+    }];
 
     let constructor = "vpux::ShaveCodeGen::createExpandLayersPass()";
 
@@ -194,7 +215,17 @@ def ExpandLayers : PassBase<"expand-layers", "vpux::ModulePass"> {
 //
 
 def ConvertAffine2LLVM : PassBase<"convert-Affine-to-LLVM", "vpux::ModulePass"> {
-    let summary = "Convert Affine and Std dialects to LLVM dialect";
+    let summary = "Convert Affine and SCF control flow to LLVM IR for SHAVE kernel compilation";
+
+    let description = [{
+        AI-generated summary
+
+        Converts affine.for loops and structured control flow (SCF) to standard LLVM
+        control flow, then lowers all operations (arith, memref, func, math) to LLVM
+        dialect. Analyzes memref argument aliases across all SW kernel invocations to
+        add LLVM noalias attributes, enabling aggressive vectorization optimizations
+        in generated SHAVE code.
+    }];
 
     let constructor = "vpux::ShaveCodeGen::createConvertAffine2LLVMPass()";
 
@@ -216,7 +247,17 @@ def ConvertAffine2LLVM : PassBase<"convert-Affine-to-LLVM", "vpux::ModulePass"> 
 //
 
 def ConvertVPUIP2VPUMI37XX : PassBase<"convert-VPUIP-to-VPUMI37XX", "vpux::ModulePass"> {
-    let summary = "Convert VPUIP Dialect to VPUMI37XX Dialect";
+    let summary = "Convert VPUIP dialect to VPUMI37XX dialect";
+
+    let description = [{
+        AI-generated summary
+
+        Lowers VPUIP dialect operations containing DMA and NCE computations to VPUMI37XX
+        register-mapped operations (DPUInvariant, DPUVariant, NNDMA). Handles distributed
+        buffer unrolling for multi-cluster scenarios, barrier legalization, and task
+        dependency chaining. Generates MappedInference operation encapsulating all tasks
+        into executable kernel blocks.
+    }];
 
     let constructor = "vpux::createConvertVPUIP2VPUMI37XXPass()";
 
@@ -230,39 +271,21 @@ def ConvertVPUIP2VPUMI37XX : PassBase<"convert-VPUIP-to-VPUMI37XX", "vpux::Modul
 }
 
 //
-// ConvertVPUMI37XX2VPUASM
-//
-
-def ConvertVPUMI37XX2VPUASM : PassBase<"convert-VPUMI37XX-to-VPUASM", "vpux::ModulePass"> {
-    let summary = "Convert VPUMI37XX dialect to VPUASM";
-
-    let description = [{
-        VPUMI37XX is the last level of representation where we still employ op-result-operand relationships.
-        After this conversion pass expect only symbolic relationships between the OPS. (with the occasional exception,
-        and helped by *VPUASM_SymbolizeValueOp* we can still permit non-symbolic ops to be present in the IR, having
-        an explicit conversion OP, that can still be present as information containers).
-
-        Concrete example for DistributetBuffers that have no VPUASM counterpart, we can still hook them into VPUASM.Invariant
-        by using SymbolizeValueOp to create a symbol for it.
-    }];
-
-    let constructor = "vpux::createConvertVPUMI37XX2VPUASMPass()";
-    let dependentDialects = [
-        "vpux::VPUIP::VPUIPDialect",
-        "vpux::VPURT::VPURTDialect",
-        "vpux::VPUMI37XX::VPUMI37XXDialect",
-        "vpux::VPURegMapped::VPURegMappedDialect",
-        "vpux::VPUASM::VPUASMDialect",
-        "vpux::ELFNPU37XX::ELFNPU37XXDialect"
-    ];
-}
-
-//
 // ConvertVPUIP2VPUMI40XX
 //
 
 def ConvertVPUIP2VPUMI40XX : PassBase<"convert-VPUIP-to-VPUMI40XX", "vpux::FunctionPass"> {
-    let summary = "Convert VPUIP Dialect to VPUMI40XX Dialect";
+    let summary = "Convert VPUIP dialect to VPUMI40XX dialect";
+
+    let description = [{
+        AI-generated summary
+
+        Lowers VPUIP dialect operations to VPUMI40XX register-mapped instructions (DMA, DPU,
+        barrier operations). Supports Workload Management Extension (WLM) for multi-engine
+        scheduling, SHAVE stack allocation, memory-side caching, and profiling metadata
+        generation. Enumerates and chains tasks by executor locality with proper barrier
+        dependency tracking.
+    }];
 
     let constructor = "vpux::createConvertVPUIP2VPUMI40XXPass()";
 
@@ -275,9 +298,9 @@ def ConvertVPUIP2VPUMI40XX : PassBase<"convert-VPUIP-to-VPUMI40XX", "vpux::Funct
 
     let options = [
         Option<
-            "allocateShaveStackFrames", "allocate-shave-stack-frames",
+            "allocateDDRStackFrames", "allocate-ddr-stack-frames",
             "bool", "false",
-            "Flag to enable shave stack frame allocation."
+            "Flag to enable shave stack frames allocation in DDR."
         >
     ];
 }
@@ -310,13 +333,6 @@ def ConvertVPUMI40XX2VPUASM : PassBase<"convert-VPUMI40XX-to-VPUASM", "vpux::Mod
         "vpux::ELFNPU37XX::ELFNPU37XXDialect"
     ];
 
-    let options = [
-        Option<
-            "enablePWLMOpt", "workload-management-enable",
-            "bool", "true",
-            "Flag which identifies enablement of partial workload management"
-        >
-    ];
 }
 
 //
@@ -324,7 +340,17 @@ def ConvertVPUMI40XX2VPUASM : PassBase<"convert-VPUMI40XX-to-VPUASM", "vpux::Mod
 //
 
 def ConvertVPUMI37XX2ELF : PassBase<"convert-VPUMI37XX-to-ELF", "vpux::ModulePass"> {
-    let summary = "Convert VPUMI37XX Dialect to ELF Dialect";
+    let summary = "Convert VPUMI37XX register-mapped operations to ELF binary structure";
+
+    let description = [{
+        AI-generated summary
+
+        Converts VPUMI37XX operations (DPUInvariant, DPUVariant, NNDMA, MappedInference)
+        into typed ELF sections (.text.DPUInvariants, .text.DPUVariants, .data.Buffers,
+        etc.), symbol tables, and relocation records. Creates symbol tables for network I/O
+        and runtime CMX address mapping. Generates relocations to bind abstract task indices
+        to concrete addresses at load time.
+    }];
 
     let constructor = "vpux::createConvertVPUMI37XX2ELFPass()";
 
@@ -390,7 +416,7 @@ def ConvertVPUIPDPU2NPUReg40XX : PassBase<"convert-VPUIPDPU-to-NPUReg40XX", "vpu
     let summary = "Convert VPUIPDPU dialect to NPUReg40XX";
 
     let description = [{
-        VPUIPDPU is a logical representation of the DPU config., following the HW functionality specific for each architecture generation.
+        VPUIPDPU is a logical representation of the DPU descriptor hierarchy, following the HW functionality specific for each architecture generation.
         NPUReg40XX dialect represents ops in terms of hardware registers.
     }];
 
@@ -420,7 +446,7 @@ def ConvertVPUIPDPU2NPUReg50XX : PassBase<"convert-VPUIPDPU-to-NPUReg50XX", "vpu
     let summary = "Convert VPUIPDPU dialect to NPUReg50XX";
 
     let description = [{
-        VPUIPDPU is a logical representation of the DPU config., following the HW functionality specific for each architecture generation.
+        VPUIPDPU is a logical representation of the DPU descriptor hierarchy, following the HW functionality specific for each architecture generation.
         NPUReg50XX dialect represents ops in terms of hardware registers.
     }];
 
@@ -445,11 +471,54 @@ def ConvertVPUIPDPU2NPUReg50XX : PassBase<"convert-VPUIPDPU-to-NPUReg50XX", "vpu
     ];
 }
 //
+// ConvertHostcodeToBytecode
+//
+
+def ConvertHostcodeToBytecode : PassBase<"convert-hostcode-to-bytecode", "vpux::ModulePass"> {
+    let summary = "Convert operations that execute on host to Bytecode";
+
+    let description = [{
+        The pass converts operations that execute on host to Bytecode.
+        A function section is introduced in the IR, and the converted bytecode functions are stored in this section.
+        The original functions are erased after conversion.
+
+        In Bytecode dialect, there are multiple sections that exist (e.g. constant section, string section).
+        This pass only creates the function section, so the other sections will be inserted by later passes.
+        As a result, operations that use data from other sections will be converted to intermediate operations in the Bytecode dialect,
+        and the later passes will convert them to the final Bytecode operations.
+        For example, `cf.assert` will be converted to `bytecode.ext.assert` in this pass and will store the message string as an attribute.
+        Another pass will lower `bytecode.ext.assert` to `bytecode.assert` and move the message string to the string section, and replace
+        the attribute with a symbol from the string section. See the `ConvertIntermediateBytecodeOps` pass for details.
+    }];
+
+    let constructor = "vpux::bytecode::createConvertHostcodeToBytecodePass()";
+
+    let dependentDialects = [
+        "mlir::arith::ArithDialect",
+        "mlir::cf::ControlFlowDialect",
+        "mlir::func::FuncDialect",
+        "mlir::math::MathDialect",
+        "mlir::memref::MemRefDialect",
+        "mlir::tensor::TensorDialect",
+        "vpux::bytecode::BytecodeDialect"
+    ];
+}
+//
 // ConvertLayers2VPU
 //
 
 def ConvertLayers2VPU : PassBase<"convert-layers-to-VPU", "vpux::FunctionPass"> {
-    let summary = "Convert Layers Operations to VPU Dialect (SW and View layers)";
+    let summary = "Convert IE layer operations to VPU dialect for hardware acceleration";
+
+    let description = [{
+        AI-generated summary
+
+        Converts IE dialect operations to VPU dialect equivalents via rewrite patterns.
+        Uses auto-generated 1:1 conversion patterns for the majority of operations. Special
+        cases include IfRewrite (inlines IE.IfOp branches and replaces with
+        VPU.ConditionalCopyOp) and LogSoftmaxTopK/PeakRewrite (1:1 conversion of
+        pre-decomposed LogSoftmax sub-operations).
+    }];
 
     let constructor = "vpux::createConvertLayers2VPUPass()";
 
@@ -464,7 +533,16 @@ def ConvertLayers2VPU : PassBase<"convert-layers-to-VPU", "vpux::FunctionPass"> 
 //
 
 def ConvertDynamicQuantToVPUNCE : PassBase<"convert-dynamic-quant-to-VPU-NCE", "vpux::FunctionPass"> {
-    let summary = "Convert IE.DynamicDequantize -> IE.Convolution pattern to VPU.PopulateWeightTable-> VPU.NCE.Convolution pattern";
+    let summary = "Convert IE convolutions with dynamic quantized weights to NCE operations";
+
+    let description = [{
+        Converts IE.DynamicDequantize -> IE.Convolution pattern to
+        VPU.PopulateWeightTable -> VPU.NCE.Convolution pattern.
+
+        IE.Convolution to VPU.NCE.Convolution lowering is identical to the general case
+        (see convert-IE-to-VPU-NCE), but the weights table is generated from runtime scales
+        and is represented by VPU.PopulateWeightsTable op, instead of a Const.
+    }];
 
     let constructor = "vpux::createConvertDynamicQuantToVPUNCEPass()";
 

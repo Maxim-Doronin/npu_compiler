@@ -5,10 +5,12 @@
 
 #include "vpux/compiler/dialect/VPU/utils/scf/scf_unroll_utils.hpp"
 #include "vpux/compiler/core/attributes/dim.hpp"
-#include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/VPU/utils/scf/scf_analysis_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/scf/scf_utils.hpp"
 
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/utils/core/range.hpp"
 
 #include <mlir/Dialect/ControlFlow/IR/ControlFlowOps.h>
 #include <mlir/IR/IRMapping.h>
@@ -18,6 +20,8 @@
 #include "vpux/compiler/dialect/HostExec/params.hpp"
 
 namespace vpux::VPU {
+
+namespace {
 
 std::string parseCaseNumber(const std::string& functionName) {
     // Check if string contains "_cases_"
@@ -49,7 +53,41 @@ std::string parseCaseNumber(const std::string& functionName) {
     return "";
 }
 
+/**
+ * @brief Gets the case value for a block if it's inside an IndexSwitchOp.
+ *
+ * @param block The block to check
+ * @return Optional case value if block is in an IndexSwitchOp, std::nullopt otherwise
+ */
+std::optional<int64_t> getCaseValueForBlock(mlir::Block* block) {
+    if (block == nullptr) {
+        return std::nullopt;
+    }
+
+    auto parentSwitchOp = block->getParentOp();
+    if (parentSwitchOp == nullptr || !mlir::isa<mlir::scf::IndexSwitchOp>(parentSwitchOp)) {
+        return std::nullopt;
+    }
+
+    auto switchOp = mlir::cast<mlir::scf::IndexSwitchOp>(parentSwitchOp);
+    auto caseRegions = switchOp.getCaseRegions();
+    auto caseValues = switchOp.getCases();
+
+    // Find which region contains this block
+    for (size_t i = 0; i < caseRegions.size(); ++i) {
+        if (&caseRegions[i].front() == block) {
+            return static_cast<int64_t>(caseValues[i]);
+        }
+    }
+
+    return std::nullopt;
+}
+
 mlir::Operation* findFirstNonArithmeticOperation(mlir::Block* block) {
+    if (block == nullptr) {
+        return nullptr;
+    }
+
     for (auto& op : block->getOperations()) {
         if (mlir::isa<mlir::arith::ArithDialect, mlir::affine::AffineDialect>(op.getDialect())) {
             continue;
@@ -75,6 +113,10 @@ mlir::Operation* findFirstNonArithmeticOperation(mlir::Block* block) {
 }
 
 void cleanUpAfterMerging(mlir::Block* block) {
+    if (block == nullptr) {
+        return;
+    }
+
     SmallVector<mlir::Operation*> toDelete;
     for (auto it = block->rbegin(); it != block->rend(); ++it) {
         mlir::Operation& op = *it;
@@ -312,7 +354,7 @@ SmallVector<int64_t> generateUnrollCombinations(ArrayRef<int64_t> blockSizes, Ar
 
     // Check if any dimension can be unrolled
     bool canUnroll = false;
-    for (int size : blockSizes) {
+    for (auto size : blockSizes) {
         if (size > 1) {
             canUnroll = true;
             break;
@@ -519,16 +561,6 @@ mlir::Value encodeBlockPositionId(mlir::OpBuilder& builder, SmallVector<mlir::Va
     return returnVal;
 }
 
-void deleteUnrolledBlocks(llvm::SmallSetVector<mlir::Operation*, 8>& opsToDelete) {
-    for (auto op : llvm::reverse(opsToDelete)) {
-        if (op->use_empty()) {
-            op->erase();
-        } else {
-            assert(false && "Operation to be deleted still has uses");
-        }
-    }
-}
-
 void constructIndexSwitchCaseBlock(mlir::OpBuilder& builder, mlir::Block&, SmallVector<int64_t>& targetCaseValues,
                                    SmallVector<mlir::scf::IndexSwitchOp>& indexSwitchOps, const UnrollConfig&) {
     mlir::IRMapping valueMapper;
@@ -642,7 +674,7 @@ SmallVector<vpux::VPU::ConcatOp> insertConcatOp(mlir::OpBuilder& builder, mlir::
     SmallVector<mlir::Value> operandsCopy(operands.begin(), operands.end());
 
     // Process dimensions from innermost (rightmost) to outermost (leftmost)
-    for (int dimIdx = config.accessOrder.size() - 1; dimIdx >= 0; --dimIdx) {
+    for (size_t dimIdx = config.accessOrder.size(); dimIdx-- > 0;) {
         unsigned dim = config.accessOrder[dimIdx];
         int64_t factor = config.unrollFactors[dimIdx];
 
@@ -699,21 +731,11 @@ SmallVector<vpux::VPU::ConcatOp> insertConcatOp(mlir::OpBuilder& builder, mlir::
  */
 SmallVector<int64_t> getMultiDimIndices(int64_t linearIdx, ArrayRef<int64_t> factors) {
     SmallVector<int64_t> indices(factors.size());
-    for (int i = factors.size() - 1; i >= 0; --i) {
+    for (auto i : irange(factors.size()) | reversed) {
         indices[i] = linearIdx % factors[i];
         linearIdx /= factors[i];
     }
     return indices;
-}
-
-// Extract static value from OpFoldResult
-int64_t getStaticValue(mlir::OpFoldResult ofr) {
-    if (auto attr = mlir::dyn_cast<mlir::Attribute>(ofr)) {
-        if (auto intAttr = mlir::dyn_cast<mlir::IntegerAttr>(attr)) {
-            return intAttr.getInt();
-        }
-    }
-    return mlir::ShapedType::kDynamic;
 }
 
 struct SliceSizeInfo {
@@ -746,7 +768,7 @@ SliceSizeInfo collectSliceSizes(ArrayRef<T> opsOfType, uint64_t index, const Unr
         auto outputShape = rankedType.getShape();
         auto sizes = to_small_vector(outputShape);
 
-        auto multiDimIndices = getMultiDimIndices(linearIdx, config.unrollFactors);
+        auto multiDimIndices = getMultiDimIndices(checked_cast<int64_t>(linearIdx), config.unrollFactors);
 
         // Store size for each unrolled dimension at this position
         for (size_t i = 0; i < config.accessOrder.size(); ++i) {
@@ -762,66 +784,6 @@ SliceSizeInfo collectSliceSizes(ArrayRef<T> opsOfType, uint64_t index, const Unr
     }
 
     return info;
-}
-
-SliceSizeInfo collectSliceSizes(llvm::ArrayRef<mlir::tensor::ExtractSliceOp> extractOps, const UnrollConfig& config) {
-    SliceSizeInfo info;
-
-    // Initialize size vectors for each unrolled dimension
-    for (const auto& dim : config.accessOrder) {
-        size_t index = &dim - &config.accessOrder[0];
-        info.dimToSizes[dim].resize(config.unrollFactors[index], 0);
-    }
-
-    // Collect sizes from all extract_slice ops
-    for (size_t linearIdx = 0; linearIdx < extractOps.size(); ++linearIdx) {
-        auto extractOp = extractOps[linearIdx];
-        auto sizes = extractOp.getMixedSizes();
-        auto multiDimIndices = getMultiDimIndices(linearIdx, config.unrollFactors);
-
-        // Store size for each unrolled dimension at this position
-        for (size_t i = 0; i < config.accessOrder.size(); ++i) {
-            unsigned dim = config.accessOrder[i];
-            int64_t blockIndex = multiDimIndices[i];
-            int64_t sliceSize = getStaticValue(sizes[dim]);
-
-            if (sliceSize != mlir::ShapedType::kDynamic) {
-                // Take maximum size seen at this position
-                info.dimToSizes[dim][blockIndex] = std::max(info.dimToSizes[dim][blockIndex], sliceSize);
-            }
-        }
-    }
-
-    return info;
-}
-
-SmallVector<int64_t> computeMergedShape(llvm::ArrayRef<mlir::tensor::ExtractSliceOp> extractOps,
-                                        const UnrollConfig& config) {
-    auto firstOp = extractOps[0];
-    auto rank = firstOp.getType().getRank();
-    SmallVector<int64_t> mergedShape(rank);
-
-    // Get sizes from first extract_slice for non-unrolled dimensions
-    auto firstSliceSize = firstOp.getMixedSizes();
-    for (size_t dim = 0; dim < static_cast<size_t>(rank); ++dim) {
-        mergedShape[dim] = getStaticValue(firstSliceSize[dim]);
-    }
-
-    // Collect actual sizes from all slices
-    auto sizeInfo = collectSliceSizes(extractOps, config);
-
-    // Accumulate sizes for each unrolled dimension
-    for (auto dim : config.accessOrder) {
-        int64_t totalSize = 0;
-        for (auto size : sizeInfo.dimToSizes[dim]) {
-            totalSize += size;
-        }
-        if (totalSize > 0) {
-            mergedShape[dim] = totalSize;
-        }
-    }
-
-    return mergedShape;
 }
 
 template <typename T>
@@ -855,53 +817,6 @@ SmallVector<int64_t> calculateVPUSliceOffset(int64_t linearIdx, llvm::ArrayRef<T
     return offset;
 }
 
-SmallVector<int64_t> calculateVPUSliceOffset(int64_t linearIdx,
-                                             llvm::ArrayRef<mlir::tensor::ExtractSliceOp> allExtractOps,
-                                             const UnrollConfig& config) {
-    auto firstSliceOp = allExtractOps[0];
-    auto rank = firstSliceOp.getType().getRank();
-    SmallVector<int64_t> offset(rank, 0);
-
-    // Get multi-dimensional indices for this operation
-    auto multiDimIndices = getMultiDimIndices(linearIdx, config.unrollFactors);
-
-    // Collect size information
-    auto sizeInfo = collectSliceSizes(allExtractOps, config);
-
-    // Calculate offset for each unrolled dimension
-    for (size_t i = 0; i < config.accessOrder.size(); ++i) {
-        unsigned dim = config.accessOrder[i];
-        int64_t blockIndex = multiDimIndices[i];
-
-        // Accumulate sizes of all blocks before this one
-        int64_t accumulatedOffset = 0;
-        for (int64_t prevIdx = 0; prevIdx < blockIndex; ++prevIdx) {
-            accumulatedOffset += sizeInfo.dimToSizes[dim][prevIdx];
-        }
-
-        offset[dim] = accumulatedOffset;
-    }
-
-    return offset;
-}
-
-mlir::tensor::ExtractSliceOp createNewExtractSliceOp(mlir::OpBuilder& builder,
-                                                     llvm::ArrayRef<mlir::tensor::ExtractSliceOp> extractSliceOps,
-                                                     const UnrollConfig& config) {
-    auto firstExtractSliceOp = extractSliceOps[0];
-    auto mergedSliceOpShape = computeMergedShape(extractSliceOps, config);
-    SmallVector<mlir::OpFoldResult> mergedSliceOpSize;
-    for (auto dim : mergedSliceOpShape) {
-        mergedSliceOpSize.push_back(builder.getIndexAttr(dim));
-    }
-    auto newOutputRetType =
-            mlir::RankedTensorType::get(mergedSliceOpShape, firstExtractSliceOp.getType().getElementType(),
-                                        firstExtractSliceOp.getType().getEncoding());
-    return builder.create<mlir::tensor::ExtractSliceOp>(
-            vpux::takeOpLoc(firstExtractSliceOp, "new_block_shape"), newOutputRetType, firstExtractSliceOp.getSource(),
-            firstExtractSliceOp.getMixedOffsets(), mergedSliceOpSize, firstExtractSliceOp.getMixedStrides());
-}
-
 SmallVector<int64_t> calculateCombinedShape(llvm::ArrayRef<mlir::RankedTensorType> tensorTypes,
                                             const UnrollConfig& config) {
     if (tensorTypes.empty()) {
@@ -928,20 +843,10 @@ SmallVector<int64_t> calculateCombinedShape(llvm::ArrayRef<mlir::RankedTensorTyp
         dimToSizes[dim].resize(factor, 0);
     }
 
-    // Helper: convert linear index to multi-dimensional grid position
-    auto getMultiDimIndices = [&](int64_t linearIdx) -> SmallVector<int64_t> {
-        SmallVector<int64_t> indices(config.unrollFactors.size());
-        for (int i = config.unrollFactors.size() - 1; i >= 0; --i) {
-            indices[i] = linearIdx % config.unrollFactors[i];
-            linearIdx /= config.unrollFactors[i];
-        }
-        return indices;
-    };
-
     // Collect sizes from all tensors
     for (size_t tensorIdx = 0; tensorIdx < tensorTypes.size(); ++tensorIdx) {
         auto shape = tensorTypes[tensorIdx].getShape();
-        auto gridPos = getMultiDimIndices(tensorIdx);
+        auto gridPos = getMultiDimIndices(checked_cast<int64_t>(tensorIdx), config.unrollFactors);
 
         // For each unrolled dimension, track the size at this grid position
         for (size_t i = 0; i < config.accessOrder.size(); ++i) {
@@ -981,7 +886,12 @@ mlir::func::FuncOp mergeFuncOps(mlir::FunctionType newFuncType, mlir::ModuleOp m
     auto funcOps = module.getOps<mlir::func::FuncOp>();
     moduleBuilder.setInsertionPoint(*funcOps.begin());
     auto suffix = funcNameSuffix.empty() ? ("_" + std::to_string(functionCounter++)) : funcNameSuffix;
-    auto newFunc = moduleBuilder.create<mlir::func::FuncOp>(module.getLoc(), "merged_vpu_func" + suffix, newFuncType);
+    auto candidateName = std::string("merged_vpu_func") + suffix;
+
+    while (module.lookupSymbol<mlir::func::FuncOp>(candidateName) != nullptr) {
+        candidateName = std::string("merged_vpu_func") + suffix + "_" + std::to_string(functionCounter++);
+    }
+    auto newFunc = moduleBuilder.create<mlir::func::FuncOp>(module.getLoc(), candidateName, newFuncType);
 
     // Clone operations into new function
     auto* entryBlock = newFunc.addEntryBlock();
@@ -1130,7 +1040,7 @@ mlir::LogicalResult handleCallOps(mlir::OpBuilder& builder, mlir::IRMapping& val
         opsToMerge.insert(callOp.getOperation());
         auto functionName = callOp.getCallee().str();
         auto caseStr = parseCaseNumber(functionName);
-        if (caseStr != "") {
+        if (!caseStr.empty()) {
             suffix += "_" + caseStr;
         }
     }
@@ -1209,25 +1119,195 @@ mlir::LogicalResult handleCallOps(mlir::OpBuilder& builder, mlir::IRMapping& val
     // This attributes are used in AddNetInfoToModule pass
 
     // This will be replaced with core dialect definition when dynamic strides
-    llvm::StringRef funcArgDynmicStridesAttrName = HOST_EXEC_FUNC_ARG_DYNAMIC_STRIDES_ATTR_NAME;
+    llvm::StringRef funcArgDynamicStridesAttrName = vpux::HostExec::HOST_EXEC_FUNC_ARG_DYNAMIC_STRIDES_ATTR_NAME;
 
     for (auto [idx, argType] : llvm::enumerate(newFuncOp.getArgumentTypes())) {
         auto dynamicTensorAttr =
-                mlir::dyn_cast_or_null<mlir::BoolAttr>(firstFuncOp.getArgAttr(idx, funcArgDynmicStridesAttrName));
+                mlir::dyn_cast_or_null<mlir::BoolAttr>(firstFuncOp.getArgAttr(idx, funcArgDynamicStridesAttrName));
         if (dynamicTensorAttr && dynamicTensorAttr.getValue()) {
-            newFuncOp.setArgAttr(idx, funcArgDynmicStridesAttrName, builder.getBoolAttr(true));
+            newFuncOp.setArgAttr(idx, funcArgDynamicStridesAttrName, builder.getBoolAttr(true));
         }
     }
 
     for (auto [idx, resultType] : llvm::enumerate(newFuncOp.getResultTypes())) {
         auto dynamicTensorAttr =
-                mlir::dyn_cast_or_null<mlir::BoolAttr>(firstFuncOp.getResultAttr(idx, funcArgDynmicStridesAttrName));
+                mlir::dyn_cast_or_null<mlir::BoolAttr>(firstFuncOp.getResultAttr(idx, funcArgDynamicStridesAttrName));
         if (dynamicTensorAttr && dynamicTensorAttr.getValue()) {
-            newFuncOp.setResultAttr(idx, funcArgDynmicStridesAttrName, builder.getBoolAttr(true));
+            newFuncOp.setResultAttr(idx, funcArgDynamicStridesAttrName, builder.getBoolAttr(true));
         }
     }
 
     return mlir::success();
+}
+
+struct AdjustedOffsetsAndSizes {
+    SmallVector<int64_t> mergedSize;
+    SmallVector<SmallVector<int64_t>> sliceOffsets;
+    SmallVector<SmallVector<int64_t>> sliceSizes;
+};
+
+/* @brief Compute merged block parameters and individual slice offsets
+ *
+ * Analyzes multiple slices to compute:
+ * 1. Merged block size (the minimal bounding box that contains all slices)
+ * 2. Individual slice offsets relative to the merged block
+ * 3. Individual slice sizes (unchanged from input)
+ *
+ * @param allOffsets Vector of absolute offsets for each slice
+ * @param allSizes Vector of sizes for each slice
+ * @return AdjustedOffsetsAndSizes structure containing merged size, slice offsets, and slice sizes
+ */
+AdjustedOffsetsAndSizes computeMergedBlockAndSlices(const SmallVector<SmallVector<int64_t>>& allOffsets,
+                                                    const SmallVector<SmallVector<int64_t>>& allSizes) {
+    AdjustedOffsetsAndSizes result;
+
+    if (allOffsets.empty() || allSizes.empty()) {
+        return result;
+    }
+
+    const size_t numDims = allOffsets[0].size();
+    const size_t numSlices = allOffsets.size();
+
+    // Validate that all offsets and sizes have consistent dimensionality
+    VPUX_THROW_UNLESS(llvm::all_of(allOffsets,
+                                   [numDims](const auto& offsets) {
+                                       return offsets.size() == numDims;
+                                   }),
+                      "Inconsistent offset dimensions in slice operations");
+    VPUX_THROW_UNLESS(llvm::all_of(allSizes,
+                                   [numDims](const auto& sizes) {
+                                       return sizes.size() == numDims;
+                                   }),
+                      "Inconsistent size dimensions in slice operations");
+    VPUX_THROW_UNLESS(allOffsets.size() == allSizes.size(), "Mismatch between number of offsets ({0}) and sizes ({1})",
+                      allOffsets.size(), allSizes.size());
+
+    result.mergedSize.resize(numDims);
+    result.sliceOffsets.resize(numSlices);
+    result.sliceSizes = allSizes;
+
+    // For each dimension, compute the merged block parameters
+    for (size_t dimIdx = 0; dimIdx < numDims; ++dimIdx) {
+        // Find minimum offset across all slices using LLVM range algorithms
+        auto minOffsetIt = llvm::min_element(allOffsets, [dimIdx](const auto& a, const auto& b) {
+            return a[dimIdx] < b[dimIdx];
+        });
+        int64_t minOffset = (*minOffsetIt)[dimIdx];
+
+        // Find maximum end across all slices
+        int64_t maxEnd = allOffsets[0][dimIdx] + allSizes[0][dimIdx];
+        for (size_t sliceIdx = 1; sliceIdx < numSlices; ++sliceIdx) {
+            maxEnd = std::max(maxEnd, allOffsets[sliceIdx][dimIdx] + allSizes[sliceIdx][dimIdx]);
+        }
+
+        // Merged block size
+        result.mergedSize[dimIdx] = maxEnd - minOffset;
+
+        // Compute relative offsets for each slice
+        for (size_t sliceIdx = 0; sliceIdx < numSlices; ++sliceIdx) {
+            if (result.sliceOffsets[sliceIdx].size() <= dimIdx) {
+                result.sliceOffsets[sliceIdx].resize(numDims);
+            }
+            result.sliceOffsets[sliceIdx][dimIdx] = allOffsets[sliceIdx][dimIdx] - minOffset;
+        }
+    }
+
+    return result;
+}
+
+/**
+ * @brief Computes adjusted offsets and sizes for extract slice operations accounting for halo regions
+ *
+ * Analyzes extract slice operations within unrolled loops to determine:
+ * 1. The merged block size that encompasses all slices including halo regions
+ * 2. Individual slice offsets relative to the merged block
+ * 3. Individual slice sizes
+ *
+ * @param extractSliceOps Array of extract slice operations to analyze
+ * @param config UnrollConfig containing loop information
+ * @param caseValue Optional case value when inside IndexSwitchOp to determine block positions
+ * @return AdjustedOffsetsAndSizes structure with computed parameters
+ */
+AdjustedOffsetsAndSizes computeSliceOffsetsAndSizes(llvm::ArrayRef<mlir::tensor::ExtractSliceOp> extractSliceOps,
+                                                    const UnrollConfig& config, std::optional<int64_t> caseValue = {}) {
+    BlockEncodingUtils encodingUtils;
+    OpChainAnalysis opAnalyzer;
+    ValueRangeMap mapper;
+
+    if (caseValue.has_value()) {
+        // Inside IndexSwitchOp: determine induction variable values based on block positions
+        for (size_t loopIdx = 0; loopIdx < config.accessOrder.size(); ++loopIdx) {
+            auto dimIdx = config.accessOrder[loopIdx];
+            auto dim = vpux::Dim(dimIdx);
+            auto forOp = config.forOps[loopIdx];
+            auto startBlk = encodingUtils.decodeStartAndEndBlkIds(dim, caseValue.value()).first;
+            auto [low, high, step] = opAnalyzer.getForOpParams(forOp);
+            auto inductionVar = forOp.getInductionVar();
+
+            switch (static_cast<TilePosition>(startBlk)) {
+            case TilePosition::START:
+                mapper[inductionVar] = {low};
+                break;
+            case TilePosition::MIDDLE:
+                mapper[inductionVar] = {low + step};
+                break;
+            case TilePosition::END:
+                mapper[inductionVar] = {high - step};
+                break;
+            case TilePosition::FULLBLK:
+                VPUX_THROW("Unexpected FULLBLK position for dimension {0} in extract slice analysis", dimIdx);
+            default:
+                VPUX_THROW("Unknown TilePosition {0} for dimension {1}", startBlk, dimIdx);
+            }
+        }
+    } else {
+        // Default case: initialize all induction variables to 0
+        for (size_t loopIdx = 0; loopIdx < config.accessOrder.size(); ++loopIdx) {
+            auto forOp = config.forOps[loopIdx];
+            mapper[forOp.getInductionVar()] = {0};
+        }
+    }
+
+    // Extract offsets and sizes from all slice operations
+    SmallVector<SmallVector<int64_t>> allOffsets;
+    SmallVector<SmallVector<int64_t>> allSizes;
+    allOffsets.reserve(extractSliceOps.size());
+    allSizes.reserve(extractSliceOps.size());
+    for (auto sliceOp : extractSliceOps) {
+        SmallVector<int64_t> staticOffsets;
+        SmallVector<int64_t> staticSizes;
+
+        auto mixedOffsets = sliceOp.getMixedOffsets();
+        for (size_t offsetIdx = 0; offsetIdx < mixedOffsets.size(); ++offsetIdx) {
+            auto offset = mixedOffsets[offsetIdx];
+            auto staticValue = mlir::getConstantIntValue(offset);
+            if (staticValue.has_value()) {
+                staticOffsets.push_back(staticValue.value());
+            } else {
+                auto result = opAnalyzer.getOpFoldResultValue(offset, mapper);
+                VPUX_THROW_UNLESS(result.has_value(),
+                                  "Unable to determine offset value for dimension {0} in slice operation at {1}",
+                                  offsetIdx, sliceOp.getLoc());
+                staticOffsets.push_back(result.value()[0]);
+            }
+        }
+
+        auto mixedSizes = sliceOp.getMixedSizes();
+        for (size_t sizeIdx = 0; sizeIdx < mixedSizes.size(); ++sizeIdx) {
+            auto size = mixedSizes[sizeIdx];
+            auto staticValue = mlir::getConstantIntValue(size);
+            VPUX_THROW_UNLESS(staticValue.has_value(),
+                              "Unable to determine size value for dimension {0} in slice operation at {1}", sizeIdx,
+                              sliceOp.getLoc());
+            staticSizes.push_back(staticValue.value());
+        }
+
+        allOffsets.push_back(staticOffsets);
+        allSizes.push_back(staticSizes);
+    }
+
+    // Compute merged block and individual slice parameters
+    return computeMergedBlockAndSlices(allOffsets, allSizes);
 }
 
 /* @brief Handles extract slice operations by creating a merged extract slice and VPU slice operations
@@ -1253,39 +1333,63 @@ mlir::LogicalResult handleExtractSliceOps(mlir::OpBuilder& builder, mlir::IRMapp
                                           SmallVector<mlir::Operation*>& allUnrolledOps, const UnrollConfig& config) {
     mlir::OpBuilder::InsertionGuard guard(builder);
     SmallVector<mlir::tensor::ExtractSliceOp> extractSliceOps;
+
     for (size_t i = 0; i < totalBlocks; ++i) {
         auto currentExtractSliceOp =
                 mlir::cast<mlir::tensor::ExtractSliceOp>(allUnrolledOps[idx + i * originalOpCount]);
         extractSliceOps.push_back(currentExtractSliceOp);
     }
 
-    builder.setInsertionPoint(extractSliceOps.front());
-    auto mergedExtractSliceOp = createNewExtractSliceOp(builder, extractSliceOps, config);
+    // Compute merged block parameters accounting for halo regions
+    AdjustedOffsetsAndSizes adjustedParams;
 
-    // Create slices from merged extract with calculated offsets
+    if (extractSliceOps.front()->getParentOfType<mlir::scf::IndexSwitchOp>()) {
+        // Inside IndexSwitchOp: use caseValue-aware analysis
+        auto currentBlock = extractSliceOps.front()->getBlock();
+        auto caseValue = getCaseValueForBlock(currentBlock);
+        VPUX_THROW_UNLESS(caseValue.has_value(), "Case value not found for block containing extract slice operations");
+        adjustedParams = computeSliceOffsetsAndSizes(extractSliceOps, config, caseValue.value());
+    } else {
+        // Default case: compute without caseValue
+        adjustedParams = computeSliceOffsetsAndSizes(extractSliceOps, config);
+    }
+
+    builder.setInsertionPoint(extractSliceOps.front());
+
+    // Create merged ExtractSliceOp with original offsets and calculated merged sizes
+    auto firstExtractSliceOp = extractSliceOps[0];
+
+    SmallVector<mlir::OpFoldResult> mergedSliceOpSize;
+    for (auto dim : adjustedParams.mergedSize) {
+        mergedSliceOpSize.push_back(builder.getIndexAttr(dim));
+    }
+
+    auto newOutputRetType =
+            mlir::RankedTensorType::get(adjustedParams.mergedSize, firstExtractSliceOp.getType().getElementType(),
+                                        firstExtractSliceOp.getType().getEncoding());
+
+    auto mergedExtractSliceOp = builder.create<mlir::tensor::ExtractSliceOp>(
+            vpux::takeOpLoc(firstExtractSliceOp, "merged_block"), newOutputRetType, firstExtractSliceOp.getSource(),
+            firstExtractSliceOp.getMixedOffsets(),  // Original offsets (may have runtime values)
+            mergedSliceOpSize,                      // Calculated merged sizes
+            firstExtractSliceOp.getMixedStrides());
+
+    // Create VPU.Slice operations from merged extract using calculated parameters
     for (size_t i = 0; i < extractSliceOps.size(); ++i) {
         auto extractOp = extractSliceOps[i];
 
-        // Calculate offset using actual accumulated sizes
-        auto vpuSliceOffset = calculateVPUSliceOffset(i, extractSliceOps, config);
-
-        // Get sizes from current extract_slice
-        SmallVector<int64_t> vpuSliceSize;
-        for (auto size : extractOp.getMixedSizes()) {
-            vpuSliceSize.push_back(getStaticValue(size));
-        }
-
-        auto newSliceOp = builder.create<vpux::VPU::SliceOp>(
-                takeOpLoc(extractOp, "from_merged"), mergedExtractSliceOp.getResult(),
-                builder.getI64ArrayAttr(vpuSliceOffset), builder.getI64ArrayAttr(vpuSliceSize));
+        auto newSliceOp = builder.create<vpux::VPU::SliceOp>(takeOpLoc(extractOp, "from_merged"),
+                                                             mergedExtractSliceOp.getResult(),
+                                                             builder.getI64ArrayAttr(adjustedParams.sliceOffsets[i]),
+                                                             builder.getI64ArrayAttr(adjustedParams.sliceSizes[i]));
         builder.setInsertionPointAfter(newSliceOp);
         extractOp.replaceAllUsesWith(newSliceOp.getResult());
 
-        // Except for the ExtractSliceOp, all the merged ops are created anew. valueMapper needs to be updated
-        // for the newly created ops.
+        // Update valueMapper for newly created ops
         valueMapper.map(newSliceOp.getResult(), newSliceOp.getResult());
     }
 
+    // Erase original extract slice operations
     for (auto op : llvm::reverse(extractSliceOps)) {
         assert(op.use_empty() && "ExtractSliceOp to be deleted still has uses");
         op.erase();
@@ -1380,7 +1484,7 @@ mlir::LogicalResult handleInsertSliceOps(mlir::OpBuilder& builder, mlir::Block* 
         }
     }
 
-    if (!sliceOpsUsedByTerminator.size()) {
+    if (sliceOpsUsedByTerminator.empty()) {
         return mlir::failure();
     }
 
@@ -1525,13 +1629,15 @@ mlir::LogicalResult handleIndexSwitchOps(mlir::OpBuilder& builder, mlir::IRMappi
     return mlir::success();
 }
 
+}  // namespace
+
 mlir::LogicalResult mergeUnrollOperationsInBlock(mlir::Block* block, const UnrollConfig& config, int64_t numOriginalOps,
                                                  bool cleanupAfterMerge) {
     auto totalBlocks = config.totalBlocks;
     auto startingOp = findFirstNonArithmeticOperation(block);
     auto firstUnrollSliceBeginIt = mlir::Block::iterator(startingOp);
     auto firstUnrollSliceEndIt = std::next(firstUnrollSliceBeginIt, numOriginalOps);
-    auto unrollSliceEndIt = std::next(firstUnrollSliceBeginIt, totalBlocks * numOriginalOps);
+    auto unrollSliceEndIt = std::next(firstUnrollSliceBeginIt, static_cast<int64_t>(totalBlocks * numOriginalOps));
     bool nonTensorDialectOps = false;
     for (auto it = firstUnrollSliceBeginIt; it != firstUnrollSliceEndIt; ++it) {
         auto op = &*it;
@@ -1616,6 +1722,7 @@ mlir::LogicalResult mergeUnrolledOperations(mlir::scf::ForOp forOp, SmallVector<
     for (auto tileDimInfo : tileDimInfoVec) {
         config.unrollFactors.push_back(tileDimInfo.numBlocks);
         config.accessOrder.push_back(tileDimInfo.dimension.ind());
+        config.forOps.push_back(tileDimInfo.forOp);
     }
 
     config.totalBlocks = 1;
@@ -1670,7 +1777,7 @@ mlir::LogicalResult mergeUnrolledOperations(mlir::scf::ForOp forOp, SmallVector<
 mlir::scf::ForOp fuseSiblingForLoops(mlir::scf::ForOp target, mlir::scf::ForOp source, mlir::RewriterBase& rewriter,
                                      bool residualLoops) {
     // Create fused init_args, with target's init_args before source's init_args.
-    llvm::SmallVector<mlir::Value> fusedInitArgs;
+    SmallVector<mlir::Value> fusedInitArgs;
     llvm::append_range(fusedInitArgs, target.getInitArgs());
 
     // Create a new scf.for op after the source loop (with scf.yield terminator
@@ -1702,7 +1809,7 @@ mlir::scf::ForOp fuseSiblingForLoops(mlir::scf::ForOp target, mlir::scf::ForOp s
     }
 
     // Build fused yield results by appropriately mapping original yield operands.
-    llvm::SmallVector<mlir::Value> yieldResults;
+    SmallVector<mlir::Value> yieldResults;
     for (mlir::Value operand : target.getBody()->getTerminator()->getOperands()) {
         yieldResults.push_back(mapping.lookupOrDefault(operand));
     }

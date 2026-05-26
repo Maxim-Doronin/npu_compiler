@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --tile-lstm-sequence --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU40XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --tile-lstm-sequence --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU4000
 
 #NCWH = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>
 // CHECK-LABEL: func.func @TileBidirectionalLSTMSequence(
@@ -217,6 +217,7 @@ func.func @TileReverseLSTMSequenceSplitOverBatch(%arg0: tensor<3x1x990x512xf16>)
 // -----
 
 // CHECK-LABEL: func.func @TileBidirectionalLSTMSequenceSplitOverKernelSeqLenParamInput(
+// CHECK-SAME:  [[ARG0:%[^:]+]]: tensor<1x2x640x512xf16>, [[ARG1:%[^:]+]]: tensor<1x2x1x128xf16>, [[ARG2:%[^:]+]]: tensor<1x2x1x128xf16>, [[ARG3:%[^:]+]]: tensor<1x1x1x1xsi32>)
 func.func @TileBidirectionalLSTMSequenceSplitOverKernelSeqLenParamInput(%arg0: tensor<1x2x640x512xf16>, %arg1: tensor<1x2x1x128xf16>, %arg2: tensor<1x2x1x128xf16>, %arg3: tensor<1x1x1x1xsi32>) -> (tensor<1x2x640x128xf16>, tensor<1x2x1x128xf16>, tensor<1x2x1x128xf16>) {
   %cst = const.Declare tensor<1x1x1x2xsi32> = dense<0> : tensor<1x1x1x2xsi32>
   %cst_1 = const.Declare tensor<1x2x4x128xf16, {order = affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>}> = dense<2.000000e+00> : tensor<2x512xf32>, [#const.Reshape<[1, 2, 4, 128]>, #const.CastElemType<f16>, #const.Reorder<affine_map<(d0, d1, d2, d3) -> (d0, d1, d3, d2)>>]
@@ -227,18 +228,18 @@ func.func @TileBidirectionalLSTMSequenceSplitOverKernelSeqLenParamInput(%arg0: t
 // CHECK-DAG:   [[CST:%.+]] = const.Declare tensor<1x1x1x2xsi32> = dense<0> : tensor<1x1x1x2xsi32>
 // CHECK-DAG:   [[CST_0:%.+]] = const.Declare tensor<1x2x4x128xf16, {order = #NCWH}> = dense<2.000000e+00> : tensor<2x512xf32>, [#const.Reshape<[1, 2, 4, 128]>, #const.CastElemType<f16>, #const.Reorder<#NCWH>]
 // CHECK-DAG:   [[CST_1:%.+]] = const.Declare tensor<2x4x128x128xf16, {order = #NWHC}> = dense<1.000000e+00> : tensor<2x512x128xf32>, [#const.Reshape<[2, 4, 128, 128]>, #const.CastElemType<f16>, #const.Reorder<#NWHC>]
-// CHECK:   [[SLICE_0:%.+]] = VPU.Slice %arg0 [0, 0, 0, 0] [1, 1, 320, 512] : tensor<1x2x640x512xf16> to tensor<1x1x320x512xf16>
-// CHECK:   [[SLICE_1:%.+]] = VPU.Slice %arg0 [0, 1, 320, 0] [1, 1, 320, 512] : tensor<1x2x640x512xf16> to tensor<1x1x320x512xf16>
+// CHECK:   [[SLICE_0:%.+]] = VPU.Slice [[ARG0]] [0, 0, 0, 0] [1, 1, 320, 512] : tensor<1x2x640x512xf16> to tensor<1x1x320x512xf16>
+// CHECK:   [[SLICE_1:%.+]] = VPU.Slice [[ARG0]] [0, 1, 320, 0] [1, 1, 320, 512] : tensor<1x2x640x512xf16> to tensor<1x1x320x512xf16>
 // CHECK:   [[CONCAT_0:%.+]] = VPU.Concat([[SLICE_0]], [[SLICE_1]])
 // CHECK-SAME{LITERAL}:      {static_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]} : tensor<1x1x320x512xf16>, tensor<1x1x320x512xf16> -> tensor<1x2x320x512xf16>
-// CHECK:   [[OUT_HV_1:%.+]], [[OUT_HS_1:%.+]], [[OUT_CS_1:%.+]] = VPU.LSTMSequence([[CONCAT_0]], %arg1, %arg2, %arg3, [[CST_1]], [[CST_0]], [[CST]]) {direction = #IE.rnn_seq_direction<BIDIRECTIONAL>, initial_output_offset_attr = [0, 320], operandSegmentSizes = array<i32: 1, 1, 1, 1, 1, 1, 1>} : tensor<1x2x320x512xf16>, tensor<1x2x1x128xf16>, tensor<1x2x1x128xf16>, tensor<1x1x1x1xsi32>, tensor<2x4x128x128xf16, {order = #NWHC}>, tensor<1x2x4x128xf16, {order = #NCWH}>, tensor<1x1x1x2xsi32> -> tensor<1x2x320x128xf16>, tensor<1x2x1x128xf16>, tensor<1x2x1x128xf16>
+// CHECK:   [[OUT_HV_1:%.+]], [[OUT_HS_1:%.+]], [[OUT_CS_1:%.+]] = VPU.LSTMSequence([[CONCAT_0]], [[ARG1]], [[ARG2]], [[ARG3]], [[CST_1]], [[CST_0]], [[CST]]) {direction = #IE.rnn_seq_direction<BIDIRECTIONAL>, initial_output_offset_attr = [0, 320], operandSegmentSizes = array<i32: 1, 1, 1, 1, 1, 1, 1>} : tensor<1x2x320x512xf16>, tensor<1x2x1x128xf16>, tensor<1x2x1x128xf16>, tensor<1x1x1x1xsi32>, tensor<2x4x128x128xf16, {order = #NWHC}>, tensor<1x2x4x128xf16, {order = #NCWH}>, tensor<1x1x1x2xsi32> -> tensor<1x2x320x128xf16>, tensor<1x2x1x128xf16>, tensor<1x2x1x128xf16>
 // CHECK:   [[SLICE_2:%.+]] = VPU.Slice [[OUT_HV_1]] [0, 0, 0, 0] [1, 1, 320, 128] : tensor<1x2x320x128xf16> to tensor<1x1x320x128xf16>
 // CHECK:   [[SLICE_3:%.+]] = VPU.Slice [[OUT_HV_1]] [0, 1, 0, 0] [1, 1, 320, 128] : tensor<1x2x320x128xf16> to tensor<1x1x320x128xf16>
-// CHECK:   [[SLICE_4:%.+]] = VPU.Slice %arg0 [0, 0, 320, 0] [1, 1, 320, 512] : tensor<1x2x640x512xf16> to tensor<1x1x320x512xf16>
-// CHECK:   [[SLICE_5:%.+]] = VPU.Slice %arg0 [0, 1, 0, 0] [1, 1, 320, 512] : tensor<1x2x640x512xf16> to tensor<1x1x320x512xf16>
+// CHECK:   [[SLICE_4:%.+]] = VPU.Slice [[ARG0]] [0, 0, 320, 0] [1, 1, 320, 512] : tensor<1x2x640x512xf16> to tensor<1x1x320x512xf16>
+// CHECK:   [[SLICE_5:%.+]] = VPU.Slice [[ARG0]] [0, 1, 0, 0] [1, 1, 320, 512] : tensor<1x2x640x512xf16> to tensor<1x1x320x512xf16>
 // CHECK:   [[CONCAT_1:%.+]] = VPU.Concat([[SLICE_4]], [[SLICE_5]])
 // CHECK-SAME{LITERAL}:      {static_offsets = [[0, 0, 0, 0], [0, 1, 0, 0]]} : tensor<1x1x320x512xf16>, tensor<1x1x320x512xf16> -> tensor<1x2x320x512xf16>
-// CHECK:   [[OUT_HV_2:%.+]], [[OUT_HS_2:%.+]], [[OUT_CS_2:%.+]] = VPU.LSTMSequence([[CONCAT_1]], [[OUT_HS_1]], [[OUT_CS_1]], %arg3, [[CST_1]], [[CST_0]], [[CST]]) {direction = #IE.rnn_seq_direction<BIDIRECTIONAL>, initial_output_offset_attr = [320, 0], operandSegmentSizes = array<i32: 1, 1, 1, 1, 1, 1, 1>} : tensor<1x2x320x512xf16>, tensor<1x2x1x128xf16>, tensor<1x2x1x128xf16>, tensor<1x1x1x1xsi32>, tensor<2x4x128x128xf16, {order = #NWHC}>, tensor<1x2x4x128xf16, {order = #NCWH}>, tensor<1x1x1x2xsi32> -> tensor<1x2x320x128xf16>, tensor<1x2x1x128xf16>, tensor<1x2x1x128xf16>
+// CHECK:   [[OUT_HV_2:%.+]], [[OUT_HS_2:%.+]], [[OUT_CS_2:%.+]] = VPU.LSTMSequence([[CONCAT_1]], [[OUT_HS_1]], [[OUT_CS_1]], [[ARG3]], [[CST_1]], [[CST_0]], [[CST]]) {direction = #IE.rnn_seq_direction<BIDIRECTIONAL>, initial_output_offset_attr = [320, 0], operandSegmentSizes = array<i32: 1, 1, 1, 1, 1, 1, 1>} : tensor<1x2x320x512xf16>, tensor<1x2x1x128xf16>, tensor<1x2x1x128xf16>, tensor<1x1x1x1xsi32>, tensor<2x4x128x128xf16, {order = #NWHC}>, tensor<1x2x4x128xf16, {order = #NCWH}>, tensor<1x1x1x2xsi32> -> tensor<1x2x320x128xf16>, tensor<1x2x1x128xf16>, tensor<1x2x1x128xf16>
 // CHECK:   [[SLICE_6:%.+]] = VPU.Slice [[OUT_HV_2]] [0, 0, 0, 0] [1, 1, 320, 128] : tensor<1x2x320x128xf16> to tensor<1x1x320x128xf16>
 // CHECK:   [[SLICE_7:%.+]] = VPU.Slice [[OUT_HV_2]] [0, 1, 0, 0] [1, 1, 320, 128] : tensor<1x2x320x128xf16> to tensor<1x1x320x128xf16>
 // CHECK:   [[CONCAT_2:%.+]] = VPU.Concat([[SLICE_2]], [[SLICE_6]], [[SLICE_7]], [[SLICE_3]])

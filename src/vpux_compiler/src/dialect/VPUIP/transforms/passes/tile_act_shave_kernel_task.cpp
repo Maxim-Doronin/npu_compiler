@@ -236,7 +236,7 @@ Dim getSwKernelTileDim(VPUIP::SwKernelOp swKernelOp) {
         const auto tileDim =
                 (mlir::cast<vpux::NDTypeInterface>(swKernelOp->getResult(0).getType())).getShape().size() - 1;
         return Dim(tileDim);
-    } else if (kernelEntryName == "lstm_sequence" || (kernelEntryName == "sdpa_extended") ||
+    } else if (kernelEntryName == "lstm_sequence" || (kernelEntryName == "attention") ||
                (kernelEntryName == "flash_sdpa")) {
         const auto tileDim =
                 (mlir::cast<vpux::NDTypeInterface>(swKernelOp->getResult(0).getType())).getShape().size() - 1;
@@ -304,6 +304,21 @@ Dim getSwKernelTileDim(VPUIP::SwKernelOp swKernelOp) {
     }
 
     return tileDim;
+}
+
+// Returns configured numShaves/tile from existing attribute
+int64_t getIoDmaSwKernelNumShaves(VPUIP::SwKernelOp swKernelOp) {
+    auto kernelEntryName = getSwKernelEntryName(swKernelOp);
+    auto args = kernelArgsRange(swKernelOp);
+
+    // See attr ordering for VPUIP::KernelInfo ctor (in sw_kernel.cpp)
+    if (kernelEntryName == "activation_atan_dma") {
+        const auto attr = mlir::dyn_cast<mlir::IntegerAttr>(args.begin()[0]);
+        VPUX_THROW_UNLESS(attr != nullptr, "Failed to extract numShaves attr at '{0}'", swKernelOp->getLoc());
+        return (attr.getInt() >> 32);  // low 32bits are numTiles
+    }
+
+    VPUX_THROW("Missing numShaves extraction support for '{0}'", kernelEntryName);
 }
 
 bool isGatherOpTileAtHighestDim(VPUIP::SwKernelOp swKernelOp) {
@@ -442,7 +457,7 @@ bool isTopKOpTileAtHighestDim(VPUIP::SwKernelOp swKernelOp) {
 bool isOpTileOverWidthDim(VPUIP::SwKernelOp swKernelOp) {
     auto kernelEntryName = getSwKernelEntryName(swKernelOp);
     VPUX_THROW_UNLESS(kernelEntryName == "rms_norm" || kernelEntryName == "rope" || kernelEntryName == "rope_ilv" ||
-                              kernelEntryName == "sdpa",
+                              kernelEntryName == "rope_pairwise" || kernelEntryName == "sdpa",
                       "This function was designed for RMSNorm, RoPE or SDPA operators");
 
     const auto outTileDimVal = getSwKernelTileDim(swKernelOp);
@@ -713,7 +728,7 @@ mlir::FailureOr<OutputTiling> getSwKernelOutputTiling(VPUIP::SwKernelOp swKernel
                                                       int64_t maxNumTiles, bool insertSubview, vpux::Logger log) {
     auto kernelEntryName = getSwKernelEntryName(swKernelOp);
 
-    if (kernelEntryName == "lstm_sequence" || kernelEntryName == "sdpa_extended" || kernelEntryName == "flash_sdpa") {
+    if (kernelEntryName == "lstm_sequence" || kernelEntryName == "attention" || kernelEntryName == "flash_sdpa") {
         OutputTiling dividedTiles;
         TileInfo tileFullOutput(outputShape);
         log.trace("{0} no tiles is {1}", kernelEntryName, maxNumTiles);
@@ -806,7 +821,7 @@ mlir::Value createSubViewOpWithDistributedOutput(mlir::PatternRewriter& rewriter
     if (VPU::isDistributedAttrWithExplicitShapesAndOffsets(distribution) && mode != VPU::DistributionMode::DUPLICATED) {
         return rewriter.create<VPUIP::SubViewOp>(loc, operand, vpux::getIntArrayAttr(ctx, offset),
                                                  vpux::getIntArrayAttr(ctx, outShape), nullptr,
-                                                 distribution.getComputeShapes());
+                                                 distribution.getComputeShapes(), distribution.getComputeOffsets());
     }
     return rewriter.create<VPUIP::SubViewOp>(loc, operand, vpux::getIntArrayAttr(ctx, offset),
                                              vpux::getIntArrayAttr(ctx, outShape));
@@ -862,7 +877,7 @@ bool checkSwKernelTilingAlignment(VPUIP::SwKernelOp swKernelOp, const vpux::NDTy
 // SwKernelRewriterBase
 //
 
-static OutputTiling computeOutputTiling(VPUIP::SwKernelOp swKernelOp, const SmallString& kernelEntryName,
+static OutputTiling computeOutputTiling(VPUIP::SwKernelOp /*swKernelOp*/, const SmallString& kernelEntryName,
                                         const TileInfo& firstOutputTile) {
     if (kernelEntryName == "detection_output_sort") {
         return vpux::VPU::DetectionOutputSortOpOutputTiling(firstOutputTile);
@@ -881,10 +896,7 @@ static OutputTiling computeOutputTiling(VPUIP::SwKernelOp swKernelOp, const Smal
     } else if ((kernelEntryName == "lstm_dpu")) {
         return vpux::VPU::lstmDpuOutputTiling(firstOutputTile);
     } else if (kernelEntryName == "flash_sdpa") {
-        auto query = swKernelOp->getOperand(0);
-        auto queryShape = getShape(query);
-        auto qkEmbedding = queryShape[Dims4D::Act::W];
-        return vpux::VPU::FlashSDPAOpOutputTiling(firstOutputTile, qkEmbedding);
+        return vpux::VPU::FlashSDPAOpOutputTiling(firstOutputTile);
     }
     return OutputTiling{firstOutputTile};
 }
@@ -952,6 +964,35 @@ mlir::LogicalResult SwKernelRewriterBase::matchAndRewrite(VPUIP::SwKernelOp swKe
         // swKernelOp has already been tiled
         return mlir::failure();
     }
+
+    if (isIoDmaSwKernel(swKernelOp)) {
+        const auto numShaves = getIoDmaSwKernelNumShaves(swKernelOp);
+        if (numShaves == 1) {
+            return mlir::failure();
+        }
+
+        auto inputs = swKernelOp.getInputs();
+        auto outputs = swKernelOp.getOutputs();
+
+        SmallVector<mlir::Value> newInputs;
+        SmallVector<mlir::Value> newOutputs;
+
+        for (int i = 0; i < numShaves; i++) {
+            for (auto x : inputs) {
+                newInputs.push_back(x);
+            }
+            for (auto x : outputs) {
+                newOutputs.push_back(x);
+            }
+        }
+
+        auto newSwKernelOp = createNewSwKernelOp(swKernelOp, newInputs, newOutputs, false, rewriter);
+        // 'newSwKernelOp' contains duplicated outputs for multiple runs
+        //  using 1st run outputs to replace original op
+        rewriter.replaceOp(swKernelOp, newSwKernelOp.getResults().slice(0, outputs.size()));
+        return mlir::success();
+    }
+
     if (!doesSwKernelSupportTiling(swKernelOp, _log.nest())) {
         // swKernelOp doesn't support tiling on multi-shaves
         _log.trace("Could not tile across shaves op {0}: kernel does not support tiling", swKernelOp->getLoc());
@@ -1646,6 +1687,35 @@ bool ClusterSwKernelRewriter::requireLayoutChangePermuteCast(VPUIP::SwKernelOp s
     return tileDim != highestDim;
 }
 
+// Return the set of dimension indices where any input shape differs from the output shape.
+// Dimensions with broadcast cannot be safely fused or permuted.
+mlir::DenseSet<size_t> getBroadcastDims(VPUIP::SwKernelOp swKernelOp) {
+    mlir::DenseSet<size_t> broadcastDims;
+    if (swKernelOp.getInputs().size() < 2) {
+        return broadcastDims;
+    }
+
+    const auto kernelEntryName = getSwKernelEntryName(swKernelOp);
+    if (!llvm::is_contained(SW_KERNELS_WITH_BROADCAST, kernelEntryName)) {
+        return broadcastDims;
+    }
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(swKernelOp->getResult(0).getType());
+    const auto outShape = outType.getShape();
+    for (auto input : swKernelOp.getInputs()) {
+        const auto inType = mlir::cast<vpux::NDTypeInterface>(input.getType());
+        VPUX_THROW_UNLESS(inType.getRank() == outType.getRank(), "Input rank {0} does not match output rank {1}",
+                          inType.getRank(), outType.getRank());
+        const auto inShape = inType.getShape();
+        // Per NUMPY broadcast rules, a dimension is broadcast when inShape == 1 and outShape != 1
+        for (const auto ind : irange(inType.getRank())) {
+            if (inShape[Dim(ind)] == 1 && outShape[Dim(ind)] != 1) {
+                broadcastDims.insert(ind);
+            }
+        }
+    }
+    return broadcastDims;
+}
+
 // Pick up the dimensions that can be fused to the tileDim
 // if mcDimFusible is true, the multi cluster dimension is fusible, otherwise it's not.
 DimArr getFusibleDims(VPUIP::SwKernelOp swKernelOp, Dim tileDim, bool mcDimFusible = false) {
@@ -1656,22 +1726,10 @@ DimArr getFusibleDims(VPUIP::SwKernelOp swKernelOp, Dim tileDim, bool mcDimFusib
         auto taskArgs = kernelArgsRange(swKernelOp);
         const auto kernelAxis = mlir::cast<mlir::IntegerAttr>(taskArgs.front()).getInt();
         forbiddenDims.insert(convertKernelAxisToDim(swKernelOp.getResult(0), kernelAxis).ind());
-    } else if (kernelEntryName == "eltwise_mul" || kernelEntryName == "prelu_fp16" ||
-               kernelEntryName == "eltwise_div") {
-        // If one of the two inputs are broadcast
-        // this dimension can't be fused otherwise the broadcast won't work
-        VPUX_THROW_UNLESS(swKernelOp->getOperands().size() >= 2, "invalid inputs number for eltwise_mul");
-        const auto inType0 = mlir::cast<vpux::NDTypeInterface>(swKernelOp->getOperand(0).getType());
-        const auto inType1 = mlir::cast<vpux::NDTypeInterface>(swKernelOp->getOperand(1).getType());
-        VPUX_THROW_UNLESS(inType0.getRank() == inType1.getRank(), "The two inputs' ranks are not aligned");
-        auto inShape0 = inType0.getShape();
-        auto inShape1 = inType1.getShape();
-        for (const auto ind : irange(inType0.getRank())) {
-            if (inShape0[Dim(ind)] != inShape1[Dim(ind)]) {
-                forbiddenDims.insert(ind);
-            }
-        }
     }
+    // Dimensions with broadcast cannot be fused otherwise the broadcast semantics break
+    const auto broadcastDims = getBroadcastDims(swKernelOp);
+    forbiddenDims.insert(broadcastDims.begin(), broadcastDims.end());
     if (!mcDimFusible && VPUIP::hasDistributedOperand(swKernelOp)) {
         // If the multiCluster tiling is on a different dimension
         // this dimension can't be fused
@@ -1751,18 +1809,11 @@ mlir::FailureOr<VPUIP::PermuteCastOp> ClusterSwKernelRewriter::adjustSWLayout(VP
         return mlir::failure();
     }
 
-    auto kernelEntryName = getSwKernelEntryName(swKernelOp);
-    if (kernelEntryName == "eltwise_mul") {
-        // If one of the two inputs need broadcast, skip ths case due to it will case accuracy issue.
-        // For example, 1x3x1x2xf16 broadcast to 1x3x160x2xf16, tiling over H, if just insert PermuteCast, the value
-        // after broadcasted is not same.
-        const auto inType0 = mlir::cast<vpux::NDTypeInterface>(swKernelOp->getOperand(0).getType());
-        const auto inType1 = mlir::cast<vpux::NDTypeInterface>(swKernelOp->getOperand(1).getType());
-        auto inShape0 = inType0.getShape();
-        auto inShape1 = inType1.getShape();
-        if (inShape0 != inShape1) {
-            return mlir::failure();
-        }
+    // If any input needs broadcast, skip layout change since PermuteCast would break broadcast semantics.
+    // For example, 1x3x1x2xf16 broadcast to 1x3x160x2xf16, tiling over H, if just insert PermuteCast, the value
+    // after broadcasted is not same.
+    if (!getBroadcastDims(swKernelOp).empty()) {
+        return mlir::failure();
     }
 
     const auto origOrder = distributedOutType.getDimsOrder();
@@ -1795,6 +1846,7 @@ mlir::FailureOr<VPUIP::PermuteCastOp> ClusterSwKernelRewriter::adjustSWLayout(VP
     auto newSWAllocOp =
             rewriter.create<VPURT::AllocDistributed>(swKernelOp->getLoc(), newDistributedType, nullptr, nullptr);
     auto newSwKernelOp = createNewSwKernelOp(swKernelOp, newInputs, {newSWAllocOp}, false, rewriter);
+    copyLoopAttributes(swKernelOp, newSwKernelOp);
 
     const auto outPermAttr = mlir::AffineMapAttr::get(origOrder.toAffineMap(ctx));
     auto outPermuteCast = rewriter.create<VPUIP::PermuteCastOp>(swKernelOp->getLoc(), distributedOutType,
@@ -1944,6 +1996,7 @@ mlir::FailureOr<VPUIP::ShapeCastOp> ClusterSwKernelRewriter::getSWKernelWithFuse
             rewriter.create<VPURT::AllocDistributed>(swKernelOp->getLoc(), newDistributedType, nullptr, nullptr);
 
     auto newSwKernelOp = createNewSwKernelOp(swKernelOp, newInputs, {newAllocCMXOp}, false, rewriter);
+    copyLoopAttributes(swKernelOp, newSwKernelOp);
 
     auto distributedOutType = mlir::dyn_cast<vpux::VPUIP::DistributedBufferType>(swKernelOp.getResult(0).getType());
     auto prevPerClusterShapesAttr = vpux::getIntArrayOfArray(ctx, distributedOutType.getPerClusterMemoryShapes());
@@ -2567,13 +2620,17 @@ void ClusterSwKernelRewriter::replaceOpWithConcatView(VPUIP::SwKernelOp origOp, 
     }
 
     const auto origOpResults = origOp.getResults();
-    const auto resultsNum = static_cast<int64_t>(origOpResults.size());
+    const auto resultsNum = origOpResults.size();
     if (insertSubview) {
         llvm::SmallVector<mlir::Value> newConcats;
         for (auto p : origOpResults | indexed) {
             const auto index = p.index();
             const auto newResults = newSwKernelOp->getResults();
-            auto concatInputs = llvm::SmallVector<mlir::Value>{newResults[index], newResults[resultsNum + index]};
+            const size_t numSplits = newResults.size() / resultsNum;
+            llvm::SmallVector<mlir::Value> concatInputs;
+            for (size_t i = 0; i < numSplits; i++) {
+                concatInputs.push_back(newResults[index + i * resultsNum]);
+            }
             auto outBufOp = origOp.getOutputBuffs()[index].getDefiningOp();
             auto concatOp =
                     rewriter.create<VPUIP::ConcatViewOp>(newSwKernelOp->getLoc(), concatInputs, outBufOp->getResult(0));

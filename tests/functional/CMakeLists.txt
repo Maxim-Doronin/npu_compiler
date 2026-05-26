@@ -15,6 +15,18 @@ set(OPTIONAL_FUNC_TESTS_LIBS "")
 set(SKIP_CONFIG "npu_skip_func_tests.xml")
 set(SKIP_CONFIG_PATH ${CMAKE_CURRENT_SOURCE_DIR}/shared_tests_instances/${SKIP_CONFIG})
 
+if(ENABLE_NPU_EXECUTION_ENGINE AND BUILD_SHARED_LIBS)
+    list(APPEND OPTIONAL_FUNC_TESTS_LIBS
+        openvino::npu_zero_utils
+        npu_compiler_interface
+        openvino::npu_vm_runtime_api
+    )
+else()
+    list(APPEND EXCLUDED_FUNC_TESTS_DIR
+        "${CMAKE_CURRENT_SOURCE_DIR}/behavior/vm_runtime"
+    )
+endif()
+
 ov_add_test_target(
     NAME ${TARGET_NAME}
     ROOT ${CMAKE_CURRENT_SOURCE_DIR}
@@ -22,24 +34,23 @@ ov_add_test_target(
         ${EXCLUDED_FUNC_TESTS_DIR}
     INCLUDES
         ${CMAKE_CURRENT_SOURCE_DIR}
-        ${OPTIONAL_FUNC_TESTS_INCLUDES}
-        "${PROJECT_SOURCE_DIR}/tests/functional/shared_tests_instances"
-        "${PROJECT_SOURCE_DIR}/tests/functional/behavior"
-        "${PROJECT_SOURCE_DIR}/tests/functional/subgraph_tests"
-        "${PROJECT_SOURCE_DIR}/tests/functional/custom/single_layer_tests/classes"
-        "${PROJECT_SOURCE_DIR}/artifacts/vpuip_2"
-        "${PROJECT_SOURCE_DIR}/src/vpux_translate_utils/include"
-        "${CMAKE_CURRENT_SOURCE_DIR}/internal"
-        "${CMAKE_CURRENT_SOURCE_DIR}/shared_test_classes/include"
+        ${PROJECT_SOURCE_DIR}/tests/functional/shared_tests_instances
+        ${PROJECT_SOURCE_DIR}/tests/functional/behavior
+        ${PROJECT_SOURCE_DIR}/tests/functional/subgraph_tests
+        ${PROJECT_SOURCE_DIR}/tests/functional/custom/single_layer_tests/classes
+        ${PROJECT_SOURCE_DIR}/artifacts/vpuip_2
+        ${PROJECT_SOURCE_DIR}/src/vpux_translate_utils/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/internal
+        ${CMAKE_CURRENT_SOURCE_DIR}/shared_test_classes/include
         ${LLVM_INCLUDE_DIRS}
     LINK_LIBRARIES
         ${OPTIONAL_FUNC_TESTS_LIBS}
+        npu_ov_utils
+        npu_logger
         openvino::func_test_utils
         openvino::funcSharedTests
         openvino::format_reader
         openvino::runtime
-        npu_llvm_utils
-        npu_ov_utils
         openvino::npu_al
         openvino::npu_ops
     DEFINES
@@ -76,22 +87,33 @@ install(TARGETS ${TARGET_NAME}
         EXCLUDE_FROM_ALL
 )
 
-# Copies tests skip config to installed package
+set(VM_RUNTIME_TEST_DATA_DIR "${CMAKE_CURRENT_SOURCE_DIR}/behavior/vm_runtime/data")
+
+# Copies test data to installed package
 install(FILES ${SKIP_CONFIG_PATH}
         DESTINATION tests
         COMPONENT ${VPUX_TESTS_COMPONENT}
         EXCLUDE_FROM_ALL
 )
 
-# For developer builds we need to find the output folder of compiled binaries
+install(DIRECTORY "${VM_RUNTIME_TEST_DATA_DIR}/"
+        DESTINATION tests
+        COMPONENT ${VPUX_TESTS_COMPONENT}
+        EXCLUDE_FROM_ALL
+)
+
 get_target_property(EXE_LOCATION ${TARGET_NAME} RUNTIME_OUTPUT_DIRECTORY)
 
+# Copies test data to local build directory
 if(EXE_LOCATION)
-    # Copy tests skip config to binary output folder
     configure_file(
         ${SKIP_CONFIG_PATH}
         ${EXE_LOCATION}/${SKIP_CONFIG}
         COPYONLY
+    )
+
+    file(COPY "${VM_RUNTIME_TEST_DATA_DIR}/"
+         DESTINATION "${EXE_LOCATION}"
     )
 endif()
 

@@ -3,10 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --vpu-arch=%arch% --convert-VPUMI40XX-to-VPUASM %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --platform=%platform% --convert-VPUMI40XX-to-VPUASM %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
-module @Test attributes {config.arch = #config.arch_kind<NPU40XX>} {
+module @Test {
   config.ExecutorResource 1 of @DMA_NN
   config.Resources 1 of @NCE at 6.000000e+02 MHz {
     config.ExecutorResource 2 of @SHAVE_ACT
@@ -19,11 +19,13 @@ module @Test attributes {config.arch = #config.arch_kind<NPU40XX>} {
   module @VPU.SW {
     func.func private @builtin_softmax(memref<*xf16>, memref<*xf16>, i64) attributes {VPU.kernel_code = "softmax.cpp", VPU.kernel_entry = "softmax"}
   }
-  VPUASM.IOBindings inputDeclarations : {
+  VPUASM.InputBindings inputDeclarations : {
     VPUASM.DeclareBuffer @input_buffDecl !VPUASM.Buffer< "NetworkInput"[0] <0> : memref<1x1x1x1000xf16> :  swizzling(0)>
-  } outputDeclarations : {
+  }
+  VPUASM.OutputBindings outputDeclarations : {
     VPUASM.DeclareBuffer @softmax_buffDecl !VPUASM.Buffer< "NetworkOutput"[0] <0> : memref<1x1x1x1000xf16> :  swizzling(0)>
-  } profilingBuffDeclarations : {
+  }
+  VPUASM.ProfilingBindings profilingDeclarations : {
   }
   func.func @main() {
     %tb_dma_00 = VPUMI40XX.DeclareTaskBuffer <DMA> -> !VPURegMapped.Index<0:0:0>
@@ -49,7 +51,7 @@ module @Test attributes {config.arch = #config.arch_kind<NPU40XX>} {
     %miV = VPUMI40XX.MappedInferenceVersion(11 _ 4 _ 10) -> !VPURegMapped.Index<0:0:0>
 
     VPUMI40XX.MappedInference dmas((%11, %12) : (!VPURegMapped.Index<0:0:0>, !VPURegMapped.Index<0:1:0>)) actKernelRanges((%13): (!VPURegMapped.Index<0:0:0>)) actKernelInvocations((%14): (!VPURegMapped.Index<0:0:0>)) barriers(%9: !VPURegMapped.Index<0:0:0>) dmaCount([[1, 1]]) invariantCount([0]) variantCount([0]) actKernelRangesCount([[1, 0]]) actKernelInvocationsCount([[1, 0]]) mediaCount(0) barrierCount(2) mappedInferenceVersion(%miV : !VPURegMapped.Index<0:0:0>) -> !VPURegMapped.Index<0:0:0>
-    ELF.ABIVersion {sym_name = "LoaderABIVersion"}
+    ELF.ABIVersion
     VPUMI40XX.OpRanges
   }
 }

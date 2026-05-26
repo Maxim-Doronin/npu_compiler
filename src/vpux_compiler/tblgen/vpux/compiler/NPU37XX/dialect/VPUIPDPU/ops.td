@@ -1205,13 +1205,13 @@ If data_type/data_width is not specified then ODU output data type should be inf
         }];
 
     let arguments = (ins
-        AnyMemRef:$out_activations,
+        Optional<AnyMemRef>:$out_activations,
         OptionalAttr<VPUIPDPU_ODUDataTypes>:$data_type,
         OptionalAttr<VPUIPDPU_ODUDataBitWidth>:$data_width
     );
 
     let assemblyFormat = [{
-        `out_activations` `(` $out_activations `:` type($out_activations) `)`
+        (`out_activations` `(` $out_activations^ `:` type($out_activations) `)`)?
         (`data_type` `(` $data_type^ `)`)?
         (`data_width` `(` $data_width^ `)`)?
         attr-dict

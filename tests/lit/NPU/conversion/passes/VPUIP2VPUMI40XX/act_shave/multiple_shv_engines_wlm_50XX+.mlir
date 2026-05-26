@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% workload-management-enable=true enable-sw-kernel-fifo-per-shave-engine=true" --convert-VPUIP-to-VPUMI40XX %s | FileCheck %s
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% workload-management-enable=true enable-sw-kernel-fifo-per-shave-engine=true" --convert-VPUIP-to-VPUMI40XX %s | FileCheck %s
+// REQUIRES: platform-NPU5010
 //
 
 module @Test {

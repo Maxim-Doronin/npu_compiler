@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt %s --split-input-file --init-compiler="vpu-arch=%arch%" \
+// RUN: vpux-opt %s --split-input-file --init-compiler="platform=%platform%" \
 // RUN:     --convert-eltwise-layers-to-math | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 module @BroadcastMax {
   net.NetworkInfo entryPoint : @main inputsInfo : {

@@ -8,7 +8,7 @@
 #include "vpux/compiler/compilation_options.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/pipelines/options_mapper.hpp"
-#include "vpux/utils/IE/config.hpp"
+#include "vpux/utils/ov/config.hpp"
 
 #include "intel_npu/config/options.hpp"
 
@@ -111,7 +111,7 @@ private:
 
         auto optimizationEnabled = getQDQOptimization(config);
         _initCompilerOptions->enableAdaptiveStripping =
-                optimizationAggressiveEnabled.value_or(false) || optimizationEnabled.value_or(false);
+                optimizationAggressiveEnabled.value_or(false) || optimizationEnabled.value_or(true);
 
         maybeSetValue(_initCompilerOptions->enableProfiling, getPerfCount(config));
 
@@ -176,10 +176,10 @@ protected:
     }
 
     static void setupOptionsCommon(ArchSpecificOptionsType& options, VPU::InitCompilerOptions& initCompilerOptions) {
-        if (initCompilerOptions.enableAdaptiveStripping) {
-            options.enableQuantDequantRemoval = true;
-            options.enableFuseOutstandingDequant = true;
-            options.enableFuseOutstandingQuant = true;
+        if (!initCompilerOptions.enableAdaptiveStripping) {
+            options.enableQuantDequantRemoval = false;
+            options.enableFuseOutstandingDequant = false;
+            options.enableFuseOutstandingQuant = false;
         }
     }
 };

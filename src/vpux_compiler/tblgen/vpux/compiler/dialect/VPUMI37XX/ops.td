@@ -672,7 +672,8 @@ def VPUMI37XX_ProfilingMetadataOp :
 def MappedInferenceVersionOp :
         VPUMI37XX_Op<"MappedInferenceVersion",
             [
-                DeclareOpInterfaceMethods<ELFNPU37XX_BinaryOpInterface>
+                DeclareOpInterfaceMethods<ELFNPU37XX_BinaryOpInterface>,
+                VPURegMapped_MIVersionInterface
             ]
         > {
     let summary = "Represents a versioning mechanism for Mapped Inference";

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --reduce-exceeding-active-count-barriers="num-barriers=2 max-variant-count=4 share-wait-and-update-barriers=true" %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --reduce-exceeding-active-count-barriers="num-barriers=2 max-variant-count=4" %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 // Note: 'idx' added since tasks can be reordered
 

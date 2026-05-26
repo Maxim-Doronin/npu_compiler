@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --decompose-lstm-sequence %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --decompose-lstm-sequence %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL: func.func @DecomposeLSTMSequence(
 // CHECK-SAME:      [[VAL_0:%.+]]: tensor<1x3x64xf32>) -> (tensor<1x2x3x128xf32>, tensor<1x2x128xf32>, tensor<1x2x128xf32>) {
@@ -211,7 +211,7 @@ func.func @DecomposeUnsupportedLSTMSequenceSeqLenParamInput(%arg0: tensor<2x25x6
     // CHECK-DAG:   [[CST_0:%.+]] = const.Declare tensor<2x2x512x64xf32> = dense<0.000000e+00> : tensor<2x512x64xf32>, [#const.Reshape<[1, 2, 512, 64]>, #const.Broadcast<0 : i64, 2 : i64>]
     // CHECK-DAG:   [[CST_1:%.+]] = const.Declare tensor<4xsi32> = dense<[2, 2, 25, 64]> : tensor<4xsi64>, [#const.CastElemType<si32>]
     // CHECK-DAG:   [[CST_2:%.+]] = const.Declare tensor<2x512x128xf32> = dense<1.000000e+00> : tensor<2x512x128xf32>
-    // CHECK:   [[UNSQUEEZE:%.+]] = IE.Unsqueeze(%arg0) {axes_value = [1]} : tensor<2x25x64xf32> -> tensor<2x1x25x64xf32>
+    // CHECK:   [[UNSQUEEZE:%.+]] = IE.Unsqueeze([[ARG_0]]) {axes_value = [1]} : tensor<2x25x64xf32> -> tensor<2x1x25x64xf32>
     // CHECK:   [[BROADCAST:%.+]] = IE.Broadcast([[UNSQUEEZE]], [[CST_1]]) {mode = #IE.broadcast_type<NUMPY>} : tensor<2x1x25x64xf32>, tensor<4xsi32> -> tensor<2x2x25x64xf32>
     // CHECK:   [[MATMUL:%.+]] = IE.MatMul([[BROADCAST]], [[CST_0]]) {transpose_b} : tensor<2x2x25x64xf32>, tensor<2x2x512x64xf32> -> tensor<2x2x25x512xf32>
     // CHECK:   [[OUT_HV:%.+]], [[OUT_HS:%.+]], [[OUT_CS:%.+]] = IE.LSTMSequence([[MATMUL]], [[ARG_1]], [[ARG_2]], [[ARG_3]], [[CST_2]], [[CST]]) {direction = #IE.rnn_seq_direction<BIDIRECTIONAL>, operandSegmentSizes = array<i32: 1, 1, 1, 1, 0, 1, 1>} : tensor<2x2x25x512xf32>, tensor<2x2x128xf32>, tensor<2x2x128xf32>, tensor<2xsi64>, tensor<2x512x128xf32>, tensor<2x1x512xf32> -> tensor<2x2x25x128xf32>, tensor<2x2x128xf32>, tensor<2x2x128xf32>

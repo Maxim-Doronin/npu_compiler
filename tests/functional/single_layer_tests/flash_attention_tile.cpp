@@ -6,7 +6,9 @@
 #include <intel_npu/ops/flash_attention_tile.hpp>
 
 #include <common/print_test_case_name.hpp>
+#include <common/tensor_comparison.hpp>
 #include <common_test_utils/ov_tensor_utils.hpp>
+#include <openvino/core/type/element_type.hpp>
 #include <pretty_test_arguments.hpp>
 #include <vpu_ov2_layer_test.hpp>
 
@@ -64,14 +66,12 @@ protected:
 
         std::mt19937 rng{SEED};
 
-        const auto inputType = ov::element::f32;
         const auto& modelInputs = function->inputs();
-
         const auto hasAttentionMask = (attentionMask != Mask::Absent);
-        const auto numRequiredInputs = 6;
 
         // Generate QKV
         for (int i = 0; i < 3; i++) {
+            const auto inputType = modelInputs[i].get_element_type();
             ov::test::utils::InputGenerateData data(-1, 2, 32, SEED);
             ov::Tensor tensor = ov::test::utils::create_and_fill_tensor(inputType, targetInputStaticShapes[i], data);
             inputs.insert({modelInputs[i].get_node_shared_ptr(), tensor});
@@ -79,29 +79,46 @@ protected:
 
         // Generate initial running out/max/sum constants
         for (int i = 3; i < 6; i++) {
+            const auto inputType = modelInputs[i].get_element_type();
             const auto isRunningMaxTensor = (i == 4);
-            const auto tensorValue = isRunningMaxTensor ? -std::numeric_limits<float>::infinity() : 0;
 
             auto tensor = ov::Tensor(inputType, targetInputStaticShapes[i]);
-            auto data = tensor.data<float>();
-            std::fill_n(data, tensor.get_size(), tensorValue);
+            if (inputType == ov::element::f16) {
+                const ov::float16 tensorValue =
+                        isRunningMaxTensor ? ov::float16(-std::numeric_limits<float>::infinity()) : ov::float16(0);
+                auto data = tensor.data<ov::float16>();
+                std::fill_n(data, tensor.get_size(), tensorValue);
+            } else {
+                const auto tensorValue = isRunningMaxTensor ? -std::numeric_limits<float>::infinity() : 0.f;
+                auto data = tensor.data<float>();
+                std::fill_n(data, tensor.get_size(), tensorValue);
+            }
 
             inputs.insert({modelInputs[i].get_node_shared_ptr(), tensor});
         }
 
-        // Generate random sparse matrix
+        // Generate random sparse attention mask
         if (hasAttentionMask) {
-            const auto attentionMaskIdx = 6;
-
             std::uniform_real_distribution<float> dist(0.0f, 1.0f);
             const auto sparsity = 0.3f;
 
+            const auto attentionMaskIdx = 6;
+
+            const auto inputType = modelInputs[attentionMaskIdx].get_element_type();
             auto tensor = ov::Tensor(inputType, targetInputStaticShapes[attentionMaskIdx]);
-            auto data = tensor.data<float>();
             const auto size = tensor.get_size();
 
-            for (size_t i = 0; i < size; i++) {
-                data[i] = dist(rng) < sparsity ? -std::numeric_limits<float>::infinity() : 0.0f;
+            if (inputType == ov::element::f16) {
+                auto data = tensor.data<ov::float16>();
+                for (size_t i = 0; i < size; i++) {
+                    data[i] = dist(rng) < sparsity ? ov::float16(-std::numeric_limits<float>::infinity())
+                                                   : ov::float16(0);
+                }
+            } else {
+                auto data = tensor.data<float>();
+                for (size_t i = 0; i < size; i++) {
+                    data[i] = dist(rng) < sparsity ? -std::numeric_limits<float>::infinity() : 0.0f;
+                }
             }
 
             inputs.insert({modelInputs[attentionMaskIdx].get_node_shared_ptr(), tensor});
@@ -109,6 +126,8 @@ protected:
     }
 
     void compare(const std::vector<ov::Tensor>& expected, const std::vector<ov::Tensor>& actual) override {
+        init_thresholds();
+
         ASSERT_EQ(expected.size(), 3u);
         ASSERT_EQ(actual.size(), 3u);
 
@@ -116,63 +135,29 @@ protected:
         std::ostringstream failures;
         auto failureCount = 0;
 
-        auto check = [&](size_t i, const auto* expPtr, const auto* actPtr) {
-            const auto& shape = expected[i].get_shape();
-            ASSERT_EQ(shape, actual[i].get_shape()) << "Shape mismatch for " << names[i];
+        auto check = [&](size_t i) {
+            auto result = ov::test::utils::compareTensors(expected[i], actual[i], abs_threshold, rel_threshold);
 
-            auto mismatchCount = 0;
-            auto worstIdx = 0;
-            auto maxAbs = 0.0;
-            auto maxRel = 0.0;
-            auto worstExp = 0.0;
-            auto worstAct = 0.0;
-
-            auto min = std::numeric_limits<float>::max();
-            auto max = -std::numeric_limits<float>::infinity();
-
-            const auto expectedSize = static_cast<int>(expected[i].get_size());
-            for (auto j = 0; j < expectedSize; ++j) {
-                auto e = static_cast<float>(expPtr[j]);
-                auto a = static_cast<float>(actPtr[j]);
-                auto absDiff = std::abs(e - a);
-                auto relDiff = (e != 0.0) ? absDiff / std::abs(e) : absDiff;
-
-                min = std::min(min, a);
-                max = std::max(max, a);
-
-                if (absDiff > abs_threshold && relDiff > rel_threshold) {
-                    ++mismatchCount;
-                    if (absDiff > maxAbs) {
-                        maxAbs = absDiff;
-                        maxRel = relDiff;
-                        worstIdx = j;
-                        worstExp = e;
-                        worstAct = a;
-                    }
-                }
+            auto warning = ov::test::utils::formatExpectedAnomalyWarning(result, names[i]);
+            if (!warning.empty()) {
+                vpux::Logger::global().warning("{0}", warning);
             }
 
-            if (mismatchCount > 0) {
+            if (!result.passed()) {
                 ++failureCount;
-                failures << "\n"
-                         << names[i] << " [" << shape << "]:"
-                         << "\n  Mismatches: " << mismatchCount << " / " << expected[i].get_size()
-                         << "\n  Worst at flat index " << worstIdx << ":"
-                         << " expected=" << worstExp << ", actual=" << worstAct << ", abs=" << maxAbs
-                         << ", rel=" << maxRel;
+                failures << "\n" << ov::test::utils::formatComparisonResult(result, names[i]);
             }
         };
 
         const auto isTail = this->isTail;
 
-        check(0, expected[0].data<const float>(), actual[0].data<const float>());
+        check(0);
         if (!isTail) {
-            check(1, expected[1].data<const float>(), actual[1].data<const float>());
-            check(2, expected[2].data<const float>(), actual[2].data<const float>());
+            check(1);
+            check(2);
         }
 
-        ASSERT_EQ(failureCount, 0) << "Flash attention failed (abs=" << abs_threshold << ", rel=" << rel_threshold
-                                   << "):" << failures.str();
+        ASSERT_EQ(failureCount, 0) << failures.str();
     }
 
     void SetUp() override {
@@ -275,16 +260,30 @@ INSTANTIATE_TEST_SUITE_P(smoke, FlashAttentionTileLayerTest,
                                             ),                                                      //
                          PrintTestCaseName());
 
-INSTANTIATE_TEST_SUITE_P(smoke_BigSequenceLength, FlashAttentionTileLayerTest,
-                         ::testing::Combine(::testing::Values(Heads{32}),                                        //
-                                            ::testing::Values(SourceSeqLen{1024}),                               //
-                                            ::testing::Values(TargetSeqLen{1024}),                               //
-                                            ::testing::Values(QKEmbeddingSize{128}),                             //
-                                            ::testing::Values(VEmbeddingSize{128}),                              //
-                                            ::testing::ValuesIn(std::vector<AttentionMask>{Mask::Broadcasted}),  //
-                                            ::testing::ValuesIn(std::vector<IsHead>{false}),                     //
-                                            ::testing::ValuesIn(std::vector<IsTail>{true})                       //
-                                            ),                                                                   //
+INSTANTIATE_TEST_SUITE_P(smoke_SeqLen960, FlashAttentionTileLayerTest,
+                         ::testing::Combine(::testing::Values(Heads{32}),             //
+                                            ::testing::Values(SourceSeqLen{960}),     //
+                                            ::testing::Values(TargetSeqLen{960}),     //
+                                            ::testing::Values(QKEmbeddingSize{128}),  //
+                                            ::testing::Values(VEmbeddingSize{128}),   //
+                                            ::testing::ValuesIn(std::vector<AttentionMask>{Mask::Broadcasted,
+                                                                                           Mask::Absent}),  //
+                                            ::testing::ValuesIn(std::vector<IsHead>{false}),                //
+                                            ::testing::ValuesIn(std::vector<IsTail>{true})                  //
+                                            ),                                                              //
+                         PrintTestCaseName());
+
+INSTANTIATE_TEST_SUITE_P(smoke_SeqLen1024, FlashAttentionTileLayerTest,
+                         ::testing::Combine(::testing::Values(Heads{32}),             //
+                                            ::testing::Values(SourceSeqLen{1024}),    //
+                                            ::testing::Values(TargetSeqLen{1024}),    //
+                                            ::testing::Values(QKEmbeddingSize{128}),  //
+                                            ::testing::Values(VEmbeddingSize{128}),   //
+                                            ::testing::ValuesIn(std::vector<AttentionMask>{Mask::Broadcasted,
+                                                                                           Mask::Absent}),  //
+                                            ::testing::ValuesIn(std::vector<IsHead>{false}),                //
+                                            ::testing::ValuesIn(std::vector<IsTail>{true})                  //
+                                            ),                                                              //
                          PrintTestCaseName());
 
 }  // namespace ov::test

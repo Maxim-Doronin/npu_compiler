@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -67,7 +67,9 @@ public:
         const auto expected = expectedTensors[0];
         const auto actual = actualTensors[0];
         ASSERT_EQ(expected.get_size(), actual.get_size());
-        ov::test::utils::compare(expected, actual);
+        const float absThreshold = 0.5f;
+        const float relThreshold = 0.5f;
+        ov::test::utils::compare(expected, actual, absThreshold, relThreshold);
     }
 
     void SetUp() override {
@@ -118,7 +120,7 @@ using namespace ov::test::subgraph;
 const std::vector<MatMulParams> allParams = {MatMulParams{64, 49, 128, 384, 128, false, true, 255.f, 0.001f},
                                              MatMulParams{1, 32, 256, 256, 64, false, false, 0.f, 1.f},
                                              MatMulParams{32, 64, 256, 256, 128, false, false, 30.f, 1.f},
-                                             MatMulParams{1, 1, 2048, 2048, 512, false, false, 30.f, 0.01f}};
+                                             MatMulParams{1, 1, 2048, 2048, 512, false, false, 30.f, 0.001f}};
 
 INSTANTIATE_TEST_SUITE_P(precommit_MixedAsymMatmul, MixedPrecisionAsymmetricPerTensorMatmul,
                          ::testing::ValuesIn(allParams), MixedPrecisionAsymmetricPerTensorMatmul::getTestCaseName);

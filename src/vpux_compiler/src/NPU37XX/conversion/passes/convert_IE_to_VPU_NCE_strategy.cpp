@@ -78,7 +78,7 @@ void ConvertIEToVPUNCEStrategy::addPatterns(mlir::RewritePatternSet& patterns) c
     patterns.add<ConvToNCE>(ctx, _arch, _log);
     patterns.add<DepthConvToNCE>(ctx, _arch, _log);
     patterns.add<MaxPoolToNCE>(ctx, _log);
-    patterns.add<AveragePoolToNCE>(ctx, _log);
+    patterns.add<AveragePoolToNCE>(ctx, _arch, _log);
     patterns.add<PermuteQuantizeToNCEPermute>(ctx, _log);
     patterns.add<MatMulToNCE>(ctx, _arch, _log);
 

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --fuse-convert-with-qdq %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --fuse-convert-with-qdq %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK: !qElemType = !quant.uniform<u8:f16, 0.95599999999999996:128>
 !qElemType = !quant.uniform<u8:f16, 0.956:128>
@@ -148,4 +148,73 @@ func.func @WithQuantizeCastZeroZeroPoint(%arg0: tensor<1x3x16x16xui8>) -> tensor
     //CHECK-SAME:   tensor<1x3x16x16x!qElemType> -> tensor<1x3x16x16xui8>
 
     //CHECK: return [[VAL1]] : tensor<1x3x16x16xui8>
+}
+
+// -----
+
+!qElemType_mismatch = !quant.uniform<u8:f16, 0.956:128>
+
+// CHECK-LABEL: @NotFuseConvertQuantizeSignednessMismatch
+// CHECK-SAME: [[ARG:%.+]]: tensor<1x3x16x16xsi8>
+func.func @NotFuseConvertQuantizeSignednessMismatch(%arg0: tensor<1x3x16x16xsi8>) -> tensor<1x3x16x16xf16> {
+    %0 = IE.Convert(%arg0) {dstElemType = f16} : tensor<1x3x16x16xsi8> -> tensor<1x3x16x16xf16>
+    %1 = IE.Quantize(%0) {dstElemType = !qElemType_mismatch} : tensor<1x3x16x16xf16> -> tensor<1x3x16x16x!qElemType_mismatch>
+    %2 = IE.Dequantize(%1) {dstElemType = f16} : tensor<1x3x16x16x!qElemType_mismatch> -> tensor<1x3x16x16xf16>
+
+    return %2 : tensor<1x3x16x16xf16>
+
+    //CHECK: [[CONVERT:%.+]] = IE.Convert([[ARG]]) {dstElemType = f16} :
+    //CHECK-SAME:   tensor<1x3x16x16xsi8> -> tensor<1x3x16x16xf16>
+    //CHECK: [[QUANT:%.+]] = IE.Quantize([[CONVERT]]) {dstElemType = !qElemType} :
+    //CHECK-SAME:   tensor<1x3x16x16xf16> -> tensor<1x3x16x16x!qElemType>
+    //CHECK: [[DEQUANT:%.+]] = IE.Dequantize([[QUANT]]) {dstElemType = f16} :
+    //CHECK-SAME:   tensor<1x3x16x16x!qElemType> -> tensor<1x3x16x16xf16>
+
+    //CHECK: return [[DEQUANT]] : tensor<1x3x16x16xf16>
+}
+
+// -----
+
+!qElemType_mismatch_axis = !quant.uniform<u8:f16:1, {0.956:128, 0.785:128, 0.567:128}>
+
+// CHECK-LABEL: @NotFuseConvertQuantizeSignednessMismatchPerAxis
+// CHECK-SAME: [[ARG:%.+]]: tensor<1x3x16x16xsi8>
+func.func @NotFuseConvertQuantizeSignednessMismatchPerAxis(%arg0: tensor<1x3x16x16xsi8>) -> tensor<1x3x16x16xf16> {
+    %0 = IE.Convert(%arg0) {dstElemType = f16} : tensor<1x3x16x16xsi8> -> tensor<1x3x16x16xf16>
+    %1 = IE.Quantize(%0) {dstElemType = !qElemType_mismatch_axis} : tensor<1x3x16x16xf16> -> tensor<1x3x16x16x!qElemType_mismatch_axis>
+    %2 = IE.Dequantize(%1) {dstElemType = f16} : tensor<1x3x16x16x!qElemType_mismatch_axis> -> tensor<1x3x16x16xf16>
+
+    return %2 : tensor<1x3x16x16xf16>
+
+    //CHECK: [[CONVERT:%.+]] = IE.Convert([[ARG]]) {dstElemType = f16} :
+    //CHECK-SAME:   tensor<1x3x16x16xsi8> -> tensor<1x3x16x16xf16>
+    //CHECK: [[QUANT:%.+]] = IE.Quantize([[CONVERT]]) {dstElemType = !qElemType} :
+    //CHECK-SAME:   tensor<1x3x16x16xf16> -> tensor<1x3x16x16x!qElemType>
+    //CHECK: [[DEQUANT:%.+]] = IE.Dequantize([[QUANT]]) {dstElemType = f16} :
+    //CHECK-SAME:   tensor<1x3x16x16x!qElemType> -> tensor<1x3x16x16xf16>
+
+    //CHECK: return [[DEQUANT]] : tensor<1x3x16x16xf16>
+}
+
+// -----
+
+!qElemType_signed = !quant.uniform<i8:f16, 0.956:0>
+
+// CHECK: !qElemType = !quant.uniform<i8:f16, 0.95599999999999996>
+
+// CHECK-LABEL: @FuseConvertQuantizeSignednessMatch
+// CHECK-SAME: [[ARG:%.+]]: tensor<1x3x16x16xsi8>
+func.func @FuseConvertQuantizeSignednessMatch(%arg0: tensor<1x3x16x16xsi8>) -> tensor<1x3x16x16xf16> {
+    %0 = IE.Convert(%arg0) {dstElemType = f16} : tensor<1x3x16x16xsi8> -> tensor<1x3x16x16xf16>
+    %1 = IE.Quantize(%0) {dstElemType = !qElemType_signed} : tensor<1x3x16x16xf16> -> tensor<1x3x16x16x!qElemType_signed>
+    %2 = IE.Dequantize(%1) {dstElemType = f16} : tensor<1x3x16x16x!qElemType_signed> -> tensor<1x3x16x16xf16>
+
+    return %2 : tensor<1x3x16x16xf16>
+
+    //CHECK: [[QUANTIZE_CAST:%.+]] = IE.QuantizeCast([[ARG]]) {dstElemType = !qElemType} :
+    //CHECK-SAME:   tensor<1x3x16x16xsi8> -> tensor<1x3x16x16x!qElemType>
+    //CHECK: [[DEQUANT:%.+]] = IE.Dequantize([[QUANTIZE_CAST]]) {dstElemType = f16} :
+    //CHECK-SAME:   tensor<1x3x16x16x!qElemType> -> tensor<1x3x16x16xf16>
+
+    //CHECK: return [[DEQUANT]] : tensor<1x3x16x16xf16>
 }

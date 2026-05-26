@@ -28,6 +28,17 @@ using namespace vpux;
 
 namespace {
 
+// Insert syncDMA before the profiling buffer copying operation in order to ensure that previous profiled DMAs have
+// completed updating profiling buffer before the copy starts. Due to a HW race, this is needed even when
+// dmaProfilingBufferCopyOp waits for a barrier.
+void insertSyncDMABefore(VPURT::TaskOp dmaProfilingBufferCopyOp, mlir::OpBuilder& builder, vpux::Logger log) {
+    log.trace("Inserting sync DMA with shared wait barriers before DMA task at '{0}'",
+              dmaProfilingBufferCopyOp->getLoc());
+    auto syncDmaBuffer = VPUIP::createDummyBuffer(builder, dmaProfilingBufferCopyOp, VPU::MemoryKind::DDR);
+    builder.setInsertionPoint(dmaProfilingBufferCopyOp);
+    VPUIP::createSyncDMA(builder, syncDmaBuffer, syncDmaBuffer, 0, {dmaProfilingBufferCopyOp.getWaitBarriers()}, {});
+}
+
 // This class is used by the DMA profiling pass to track references to
 // first/last DMA ops in DMA queues before/after inserting a buffer
 // spill DMA.
@@ -262,6 +273,7 @@ void DMATaskProfilingHwDdrPass::setupProfiling(mlir::MLIRContext* ctx, mlir::Mod
         if (dmaHwpId == VPUIP::HW_DMA_PROFILING_ID_LIMIT - 1) {
             lastBufferCopy = generateBufferCopyAfter(builder, taskOp, profOutputId, profOutputOffset,
                                                      dmaHwpId * recordSize, baseOffset, lastBufferCopy);
+            insertSyncDMABefore(lastBufferCopy, builder, _log);
             profOutputOffset += dmaHwpId * recordSize;
             dmaHwpId = 0;
         }
@@ -271,6 +283,7 @@ void DMATaskProfilingHwDdrPass::setupProfiling(mlir::MLIRContext* ctx, mlir::Mod
     if (dmaHwpId != 0) {
         lastBufferCopy = generateBufferCopyAfter(builder, lastTaskOp, profOutputId, profOutputOffset,
                                                  dmaHwpId * recordSize, baseOffset, lastBufferCopy);
+        insertSyncDMABefore(lastBufferCopy, builder, _log);
     }
 
     // Remove last update barrier

@@ -124,7 +124,7 @@ struct BarrierConsumptionEventData {
 struct BarrierCountConfig {
     uint16_t producer_count_;
     uint16_t consumer_count_;
-    uint8_t real_id_;
+    size_t real_id_;
 };
 
 bool processSim(VirtualDependencyTracker& vdt_, const std::vector<BarrierCountConfig>& barriersConfig,
@@ -390,11 +390,11 @@ private:
         auto acts = buildTaskVector<VPUMI40XX::ActKernelInvocationOp>(funcOp, vdt_);
 
         std::vector<BarrierCountConfig> barriersConfigs;
-        unsigned char nn_barriers_ = 0;
+        size_t nn_barriers_ = 0;
         for (auto op : funcOp.getOps<VPUMI40XX::ConfigureBarrierOp>()) {
-            barriersConfigs.push_back(
-                    BarrierCountConfig{op.getProducerCount().value(), op.getConsumerCount().value(), op.getId()});
-            nn_barriers_ = std::max<unsigned char>(nn_barriers_, op.getId() + 1);
+            barriersConfigs.push_back(BarrierCountConfig{op.getProducerCount().value(), op.getConsumerCount().value(),
+                                                         static_cast<size_t>(op.getId())});
+            nn_barriers_ = std::max(nn_barriers_, static_cast<size_t>(op.getId()) + 1);
         }
 
         simulateBarriers(barriersConfigs, nn_barriers_, dmas, dpus, acts, vdt_);

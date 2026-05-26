@@ -14,14 +14,14 @@ namespace test {
 class Pad12LayerTestCommon : public Pad12LayerTest, virtual public VpuOv2LayerTest {};
 class PadLayerTestCommon : public PadLayerTest, virtual public VpuOv2LayerTest {
     void configure_model() override {  // allow both f16/f32 tests
-        configuration[ov::intel_npu::compilation_mode_params.name()] = "convert-precision-to-fp16=false";
+        configuration[ov::intel_npu::compilation_mode_params.name()] = "disabled-passes=convert-precision-to-fp16";
     }
 };
 
 class PadLayerTestSW : public PadLayerTest, virtual public VpuOv2LayerTest {
     void configure_model() override {  // don't allow mapping to DPU
         configuration[ov::intel_npu::compilation_mode_params.name()] =
-                "enable-convert-non-constant-pad-to-slice-and-concat=false";
+                "disabled-passes=convert-non-constant-pad-to-slice-and-concat";
     }
 };
 

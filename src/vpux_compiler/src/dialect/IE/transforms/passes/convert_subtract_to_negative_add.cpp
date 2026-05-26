@@ -16,7 +16,7 @@
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
-#include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Transforms/WalkPatternRewriteDriver.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_CONVERTSUBTRACTTOADD
@@ -69,6 +69,52 @@ IE::FakeQuantizeOp createNewFq(mlir::PatternRewriter& rewriter, mlir::Location l
     return rewriter.create<IE::FakeQuantizeOp>(appendLoc(loc, "new_fq"), fqInput, inLow, inHigh, outLow, outHigh,
                                                initialFqOp.getLevelsAttr(), initialFqOp.getLowFpTypeAttr(),
                                                initialFqOp.getAutoBroadcastAttr());
+}
+
+bool shouldConvertSubtractOp(IE::SubtractOp op) {
+    const auto input1Type = mlir::cast<vpux::NDTypeInterface>(op.getInput1().getType());
+    const auto input2Type = mlir::cast<vpux::NDTypeInterface>(op.getInput2().getType());
+    const auto outputType = mlir::cast<vpux::NDTypeInterface>(op.getResult().getType());
+
+    // tracking number: E#171091
+    // When input1 is constant and input2 is dynamic, we need a GroupConv operation that supports dynamic shapes for
+    // input2 (Scenario 1 and Scenario 2). Currently, dynamic shape support is not available.
+    if (outputType.getShape().isDynamic()) {
+        return false;
+    }
+
+    // SubTract with INTEGER input/ouput can not be executed as NCE op, and should be kept like Subtract and be
+    // executed on shave.
+    const auto hasIntInput = mlir::isa<mlir::IntegerType>(input1Type.getElementType()) ||
+                             mlir::isa<mlir::IntegerType>(input2Type.getElementType());
+    // SubTract with FLOAT32 input/ouput can not be executed as NCE op, and should be kept like Subtract and be
+    // executed on shave.
+    const auto hasFP32Input = mlir::isa<mlir::Float32Type>(input1Type.getElementType()) ||
+                              mlir::isa<mlir::Float32Type>(input2Type.getElementType());
+    const auto convertGroupConv = getInputConstantOp(op.getInput2()) == nullptr;
+
+    // Check if a broadcast operation is needed. If the input and output types do not match, and it cannot be
+    // optimized through constant folding, then broadcasting is required
+    const auto needsBroadcast = (input1Type != input2Type) &&
+                                ((input1Type != outputType && getInputConstantOp(op.getInput1()) == nullptr) ||
+                                 (input2Type != outputType && getInputConstantOp(op.getInput2()) == nullptr));
+
+    // Check if an expansion operation is needed. If the size of the output shape is not a multiple of the channel
+    // alignment, then expansion is required
+    const auto alignment = VPU::NCEInvariant::getAlignment(outputType.getElementType());
+    const auto needsExpansion = (outputType.getShape().totalSize() % alignment) != 0;
+
+    // if the second input is a multiply with constant, marked as illegal to enable the optimization
+    bool hasMulWithConst = false;
+    if (auto mulOp = op.getInput2().getDefiningOp<IE::MultiplyOp>()) {
+        if (getInputConstantOp(mulOp.getInput1()) || getInputConstantOp(mulOp.getInput2())) {
+            hasMulWithConst = true;
+        }
+    }
+
+    const bool isIllegalForConversion =
+            !hasMulWithConst && (hasIntInput || needsBroadcast || needsExpansion || (hasFP32Input && convertGroupConv));
+    return !isIllegalForConversion;
 }
 
 //
@@ -141,6 +187,10 @@ private:
 
 mlir::LogicalResult ConvertSubtractToDWConvAdd::matchAndRewrite(IE::SubtractOp subOp,
                                                                 mlir::PatternRewriter& rewriter) const {
+    if (!shouldConvertSubtractOp(subOp)) {
+        return mlir::failure();
+    }
+
     auto subOpLoc = subOp.getLoc();
     _log.trace("[{0}] Got '{1}' at '{2}'", this->getDebugName(), subOp->getName(), subOp->getLoc());
 
@@ -277,67 +327,11 @@ private:
 
 void ConvertSubtractToAddPass::safeRunOnFunc() {
     auto& ctx = getContext();
-    auto func = getOperation();
-
-    const auto isLegalSubtractOp = [&](IE::SubtractOp op) {
-        const auto input1Type = mlir::cast<vpux::NDTypeInterface>(op.getInput1().getType());
-        const auto input2Type = mlir::cast<vpux::NDTypeInterface>(op.getInput2().getType());
-        const auto outputType = mlir::cast<vpux::NDTypeInterface>(op.getResult().getType());
-
-        // tracking number: E#171091
-        // When input1 is constant and input2 is dynamic, we need a GroupConv operation that supports dynamic shapes for
-        // input2 (Scenario 1 and Scenario 2). Currently, dynamic shape support is not available.
-        if (outputType.getShape().isDynamic()) {
-            return true;
-        }
-
-        // SubTract with INTEGER input/ouput can not be executed as NCE op, and should be kept like Subtract and be
-        // executed on shave.
-        const auto hasIntInput = mlir::isa<mlir::IntegerType>(input1Type.getElementType()) ||
-                                 mlir::isa<mlir::IntegerType>(input2Type.getElementType());
-
-        // SubTract with FLOAT32 input/ouput can not be executed as NCE op, and should be kept like Subtract and be
-        // executed on shave.
-        const auto hasFP32Input = mlir::isa<mlir::Float32Type>(input1Type.getElementType()) ||
-                                  mlir::isa<mlir::Float32Type>(input2Type.getElementType());
-        const auto convertGroupConv = getInputConstantOp(op.getInput2()) == nullptr;
-
-        // Check if a broadcast operation is needed. If the input and output types do not match, and it cannot be
-        // optimized through constant folding, then broadcasting is required
-        const auto needsBroadcast = (input1Type != input2Type) &&
-                                    ((input1Type != outputType && getInputConstantOp(op.getInput1()) == nullptr) ||
-                                     (input2Type != outputType && getInputConstantOp(op.getInput2()) == nullptr));
-
-        // Check if an expansion operation is needed. If the size of the output shape is not a multiple of the channel
-        // alignment, then expansion is required
-        const auto alignment = VPU::NCEInvariant::getAlignment(outputType.getElementType());
-        const auto needsExpansion = (outputType.getShape().totalSize() % alignment) != 0;
-
-        // if the second input is a multiply with constant, marked as illegal to enable the optimization
-        if (auto mulOp = op.getInput2().getDefiningOp<IE::MultiplyOp>()) {
-            if (getInputConstantOp(mulOp.getInput1()) || getInputConstantOp(mulOp.getInput2())) {
-                return false;
-            }
-        }
-
-        return hasIntInput || needsBroadcast || needsExpansion || (hasFP32Input && convertGroupConv);
-    };
-
-    mlir::ConversionTarget target(ctx);
-    target.addLegalOp<IE::GroupConvolutionOp>();
-    target.addLegalOp<IE::AddOp>();
-    target.addLegalOp<Const::DeclareOp>();
-    target.addLegalOp<IE::FakeQuantizeOp>();
-    target.addLegalOp<IE::NegativeOp>();
-    target.addLegalOp<IE::MultiplyOp>();
-    target.addDynamicallyLegalOp<IE::SubtractOp>(isLegalSubtractOp);
 
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<ConvertSubtractToDWConvAdd>(&ctx, _log);
 
-    if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
-        signalPassFailure();
-    }
+    walkAndApplyPatterns(getOperation(), std::move(patterns));
 }
 
 }  // namespace

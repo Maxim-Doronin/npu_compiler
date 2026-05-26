@@ -139,6 +139,34 @@ std::vector<ELF::RelocationInfo> vpux::VPUASM::KernelParamsOp::getRelocationInfo
         }
     }
 
+    //
+    // kernel_params is an array ref of uint8_t
+    // <---------------attrs-------------------> <-----8 byte x 2 release descriptor addr------>
+    // [----------------------------------------|-----------------------|-----------------------]
+    //
+    // Since we need to patch the last 16 bytes we go back by 16 bytes from the end of kernel_params to get the offset
+    // for the first release descriptor address, and similarly 8 bytes from the end of kernel_params to get the offset
+    // for the second release descriptor address
+    if (auto releaseDescOpt = getReleaseDesc()) {
+        const auto& releaseDesc = releaseDescOpt.value();
+
+        // If present, must be non-empty
+        VPUX_THROW_UNLESS(!releaseDesc.empty(), "KernelParamsOp '{0}' has empty release descriptor list", getSymName());
+
+        const auto releaseCount = releaseDesc.size();
+        const auto& params = getProperties().kernel_params;
+
+        for (auto releaseDescIt : releaseDesc | indexed) {
+            auto releaseDescSymRef = mlir::cast<mlir::SymbolRefAttr>(releaseDescIt.value());
+
+            // Each release descriptor is 8 bytes
+            size_t relocOffset = params.size() - sizeof(uint64_t) * (releaseCount - releaseDescIt.index());
+            relocs.emplace_back(releaseDescSymRef, targetSection, relocOffset, ELF::RelocationType::R_VPU_64,
+                                ELF::getOffsetOfSymRef(symRefMap, releaseDescSymRef),
+                                "Release desc " + std::to_string(releaseDescIt.index()) + " kernel params reloc");
+        }
+    }
+
     if (!getIsJitCompiled()) {
         auto getNDTypeIfFromSymRef = [&symRefMap](mlir::SymbolRefAttr symRef) {
             auto memoryOp = symRefMap.lookupSymbol(symRef);
@@ -257,15 +285,13 @@ std::vector<ELF::RelocationInfo> vpux::VPUASM::KernelParamsOp::getRelocationInfo
     return relocs;
 }
 
-void vpux::VPUASM::KernelParamsOp::build(mlir::OpBuilder&, mlir::OperationState& state, mlir::StringAttr symName,
-                                         mlir::ArrayAttr inputs, mlir::ArrayAttr outputs,
-                                         mlir::ArrayAttr dynamicInputShapes, mlir::ArrayAttr dynamicOutputShapes,
-                                         mlir::StringAttr kernelType, SmallVector<uint8_t>&& kernelParams,
-                                         SmallVector<uint8_t>&& inputDimsBinaryVector,
-                                         SmallVector<uint8_t>&& inputStridesBinaryVector,
-                                         SmallVector<uint8_t>&& outputDimsBinaryVector,
-                                         SmallVector<uint8_t>&& outputStridesBinaryVector,
-                                         bool isOutputBroadcasted = false, bool isJitCompiled = false) {
+void vpux::VPUASM::KernelParamsOp::build(
+        mlir::OpBuilder&, mlir::OperationState& state, mlir::StringAttr symName, mlir::ArrayAttr inputs,
+        mlir::ArrayAttr outputs, mlir::ArrayAttr dynamicInputShapes, mlir::ArrayAttr dynamicOutputShapes,
+        mlir::StringAttr kernelType, SmallVector<uint8_t>&& kernelParams, SmallVector<uint8_t>&& inputDimsBinaryVector,
+        SmallVector<uint8_t>&& inputStridesBinaryVector, SmallVector<uint8_t>&& outputDimsBinaryVector,
+        SmallVector<uint8_t>&& outputStridesBinaryVector, bool isOutputBroadcasted = false, bool isJitCompiled = false,
+        mlir::ArrayAttr skipDescIds = nullptr) {
     auto& props = state.getOrAddProperties<Properties>();
     props.sym_name = symName;
     props.kernel_params = std::move(kernelParams);
@@ -282,4 +308,5 @@ void vpux::VPUASM::KernelParamsOp::build(mlir::OpBuilder&, mlir::OperationState&
     props.kernel_type = kernelType;
     props.is_output_broadcasted = isOutputBroadcasted;
     props.isJitCompiled = isJitCompiled;
+    props.skipDescIds = skipDescIds;
 }

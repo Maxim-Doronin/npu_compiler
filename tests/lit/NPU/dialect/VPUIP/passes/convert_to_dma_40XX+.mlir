@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW allow-custom-values=true" --convert-to-dma --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW allow-custom-values=true" --convert-to-dma --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 4096, 4096, 4096]
   module @VPU.SW {
@@ -296,35 +296,72 @@ func.func @ConvertMemPermuteNCHWToHNWC(%arg0: memref<4x4x86x256xf16, @DDR>)
 
 VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 4096, 4096, 4096]
   module @VPU.SW {
-    func.func private @builtin_MemPermute(memref<*xui4, [@CMX_NN, 0]>, memref<*xui4, [@CMX_NN, 0]>, none) attributes {VPU.kernel_code = "reorder.cpp", VPU.kernel_entry = "reorder"}
+    func.func private @builtin_MemPermute(memref<*x!quant.uniform<i4:f16, 1.000000e+00>, [@CMX_NN, 0]>, memref<*x!quant.uniform<i4:f16, 1.000000e+00>, [@CMX_NN, 0]>, none) attributes {VPU.kernel_code = "reorder.cpp", VPU.kernel_entry = "reorder"}
     func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
   }
 
-// CHECK-LABEL: @ConvertMemPermuteNCHWToCWNH
-// CHECK-SAME:    [[INPUT:%.+]]: memref<86x4x256x4xui4, @DDR>
-func.func @ConvertMemPermuteNCHWToCWNH(%arg0: memref<86x4x256x4xui4, @DDR>)
-                                       -> memref<4x4x86x256xui4, @DDR> {
-    %0 = memref.alloc() : memref<86x4x256x4xui4, [@CMX_NN, 0]>
+// CHECK-LABEL: @ConvertMemPermuteI4
+func.func @ConvertMemPermuteI4(%arg0: memref<86x4x256x4x!quant.uniform<i4:f16, 1.000000e+00>, @DDR>)
+                                       -> memref<4x4x86x256x!quant.uniform<i4:f16, 1.000000e+00>, @DDR> {
+    %0 = memref.alloc() : memref<86x4x256x4x!quant.uniform<i4:f16, 1.000000e+00>, [@CMX_NN, 0]>
     %1 = VPUIP.Copy
-        inputs(%arg0 : memref<86x4x256x4xui4, @DDR>)
-        outputs(%0 : memref<86x4x256x4xui4, [@CMX_NN, 0]>)  ->  memref<86x4x256x4xui4, [@CMX_NN, 0]>
+        inputs(%arg0 : memref<86x4x256x4x!quant.uniform<i4:f16, 1.000000e+00>, @DDR>)
+        outputs(%0 : memref<86x4x256x4x!quant.uniform<i4:f16, 1.000000e+00>, [@CMX_NN, 0]>)  ->  memref<86x4x256x4x!quant.uniform<i4:f16, 1.000000e+00>, [@CMX_NN, 0]>
 
-    %2 = memref.alloc() : memref<4x4x86x256xui4, [@CMX_NN, 0]>
+    %2 = memref.alloc() : memref<4x4x86x256x!quant.uniform<i4:f16, 1.000000e+00>, [@CMX_NN, 0]>
     %3 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>}
                 @VPU.SW::@builtin_MemPermute
-                inputs(%1 as %arg2: memref<86x4x256x4xui4, [@CMX_NN, 0]>)
-                outputs(%2 as %arg3: memref<4x4x86x256xui4, [@CMX_NN, 0]>)
-                on tile 0 -> memref<4x4x86x256xui4, [@CMX_NN, 0]>{
+                inputs(%1 as %arg2: memref<86x4x256x4x!quant.uniform<i4:f16, 1.000000e+00>, [@CMX_NN, 0]>)
+                outputs(%2 as %arg3: memref<4x4x86x256x!quant.uniform<i4:f16, 1.000000e+00>, [@CMX_NN, 0]>)
+                on tile 0 -> memref<4x4x86x256x!quant.uniform<i4:f16, 1.000000e+00>, [@CMX_NN, 0]>{
             VPUIP.SW.Kernel.run {attrs = [[1, 3, 0, 2]]}(%arg2, %arg3)
-                : memref<86x4x256x4xui4, [@CMX_NN, 0]>, memref<4x4x86x256xui4, [@CMX_NN, 0]>
+                : memref<86x4x256x4x!quant.uniform<i4:f16, 1.000000e+00>, [@CMX_NN, 0]>, memref<4x4x86x256x!quant.uniform<i4:f16, 1.000000e+00>, [@CMX_NN, 0]>
     }
 
-    %4 = memref.alloc() : memref<4x4x86x256xui4, @DDR>
+    %4 = memref.alloc() : memref<4x4x86x256x!quant.uniform<i4:f16, 1.000000e+00>, @DDR>
     %5 = VPUIP.Copy
-        inputs(%3 : memref<4x4x86x256xui4, [@CMX_NN, 0]>)
-        outputs(%4 : memref<4x4x86x256xui4, @DDR>)  ->  memref<4x4x86x256xui4, @DDR>
+        inputs(%3 : memref<4x4x86x256x!quant.uniform<i4:f16, 1.000000e+00>, [@CMX_NN, 0]>)
+        outputs(%4 : memref<4x4x86x256x!quant.uniform<i4:f16, 1.000000e+00>, @DDR>)  ->  memref<4x4x86x256x!quant.uniform<i4:f16, 1.000000e+00>, @DDR>
 
-    return %5: memref<4x4x86x256xui4, @DDR>
+    return %5: memref<4x4x86x256x!quant.uniform<i4:f16, 1.000000e+00>, @DDR>
+
+    // CHECK-NOT:       VPUIP.SW.Kernel
+    // CHECK:   VPUIP.PermuteDMA
+    // CHECK-NOT:       VPUIP.SW.Kernel
+}
+
+// -----
+
+VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 4096, 4096, 4096]
+  module @VPU.SW {
+    func.func private @builtin_MemPermute(memref<*x!quant.uniform<i4:f16, 1.000000e+00>, [@CMX_NN, 0]>, memref<*x!quant.uniform<i4:f16, 1.000000e+00>, [@CMX_NN, 0]>, none) attributes {VPU.kernel_code = "reorder.cpp", VPU.kernel_entry = "reorder"}
+    func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
+  }
+
+// CHECK-LABEL: @DoNotConvertMemPermuteI4
+func.func @DoNotConvertMemPermuteI4(%arg0: memref<86x4x255x4x!quant.uniform<i4:f16, 1.000000e+00>, @DDR>)
+                                       -> memref<4x4x86x255x!quant.uniform<i4:f16, 1.000000e+00>, @DDR> {
+    %0 = memref.alloc() : memref<86x4x255x4x!quant.uniform<i4:f16, 1.000000e+00>, [@CMX_NN, 0]>
+    %1 = VPUIP.Copy
+        inputs(%arg0 : memref<86x4x255x4x!quant.uniform<i4:f16, 1.000000e+00>, @DDR>)
+        outputs(%0 : memref<86x4x255x4x!quant.uniform<i4:f16, 1.000000e+00>, [@CMX_NN, 0]>)  ->  memref<86x4x255x4x!quant.uniform<i4:f16, 1.000000e+00>, [@CMX_NN, 0]>
+
+    %2 = memref.alloc() : memref<4x4x86x255x!quant.uniform<i4:f16, 1.000000e+00>, [@CMX_NN, 0]>
+    %3 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>}
+                @VPU.SW::@builtin_MemPermute
+                inputs(%1 as %arg2: memref<86x4x255x4x!quant.uniform<i4:f16, 1.000000e+00>, [@CMX_NN, 0]>)
+                outputs(%2 as %arg3: memref<4x4x86x255x!quant.uniform<i4:f16, 1.000000e+00>, [@CMX_NN, 0]>)
+                on tile 0 -> memref<4x4x86x255x!quant.uniform<i4:f16, 1.000000e+00>, [@CMX_NN, 0]>{
+            VPUIP.SW.Kernel.run {attrs = [[1, 3, 0, 2]]}(%arg2, %arg3)
+                : memref<86x4x255x4x!quant.uniform<i4:f16, 1.000000e+00>, [@CMX_NN, 0]>, memref<4x4x86x255x!quant.uniform<i4:f16, 1.000000e+00>, [@CMX_NN, 0]>
+    }
+
+    %4 = memref.alloc() : memref<4x4x86x255x!quant.uniform<i4:f16, 1.000000e+00>, @DDR>
+    %5 = VPUIP.Copy
+        inputs(%3 : memref<4x4x86x255x!quant.uniform<i4:f16, 1.000000e+00>, [@CMX_NN, 0]>)
+        outputs(%4 : memref<4x4x86x255x!quant.uniform<i4:f16, 1.000000e+00>, @DDR>)  ->  memref<4x4x86x255x!quant.uniform<i4:f16, 1.000000e+00>, @DDR>
+
+    return %5: memref<4x4x86x255x!quant.uniform<i4:f16, 1.000000e+00>, @DDR>
 
     // CHECK-NOT:   VPUIP.PermuteDMA
     // CHECK:       VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_MemPermute
@@ -684,4 +721,53 @@ func.func @ConvertMemPermuteNCHWToHCWN(%arg0: memref<64x1x18x34xf16, @DDR>)
     // CHECK:   [[COPY2:%.+]] = VPUIP.Copy inputs([[PERMUTEDMA0]] : memref<18x1x34x64xf16, [@CMX_NN, 0]>) outputs([[ALLOC_1]] : memref<18x1x34x64xf16, @DDR>) -> memref<18x1x34x64xf16, @DDR>
 
     // CHECK:   return [[COPY2]] : memref<18x1x34x64xf16, @DDR>
+}
+
+// -----
+
+#map = affine_map<(d0, d1, d2, d3) -> (d1, d0, d3, d2)>
+
+VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 4096, 4096, 4096]
+  module @VPU.SW {
+    func.func private @builtin_MemPermute(memref<*xf16, [@CMX_NN, 0]>, memref<*xf16, [@CMX_NN, 0]>, none) attributes {VPU.kernel_code = "reorder.cpp", VPU.kernel_entry = "reorder"}
+    func.func private @runtime() attributes {VPU.kernel_code = "nnActEntry"}
+  }
+
+// CHECK-LABEL: @ConvertMemPermuteNCHWToCNWH
+// CHECK-SAME:    [[INPUT:%.+]]: memref<4x86x256x4xf16, @DDR>
+func.func @ConvertMemPermuteNCHWToCNWH(%arg0: memref<4x86x256x4xf16, @DDR>)
+                                       -> memref<86x4x4x256xf16, @DDR> {
+    %0 = memref.alloc() : memref<4x86x256x4xf16, [@CMX_NN, 0]>
+    %1 = VPUIP.Copy
+        inputs(%arg0 : memref<4x86x256x4xf16, @DDR>)
+        outputs(%0 : memref<4x86x256x4xf16, [@CMX_NN, 0]>)  ->  memref<4x86x256x4xf16, [@CMX_NN, 0]>
+
+    %2 = memref.alloc() : memref<86x4x4x256xf16, [@CMX_NN, 0]>
+    %3 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>}
+                @VPU.SW::@builtin_MemPermute
+                inputs(%1 as %arg2: memref<4x86x256x4xf16, [@CMX_NN, 0]>)
+                outputs(%2 as %arg3: memref<86x4x4x256xf16, [@CMX_NN, 0]>)
+                on tile 0 -> memref<86x4x4x256xf16, [@CMX_NN, 0]>{
+            VPUIP.SW.Kernel.run {attrs = [[1, 0, 3, 2]]}(%arg2, %arg3)
+                : memref<4x86x256x4xf16, [@CMX_NN, 0]>, memref<86x4x4x256xf16, [@CMX_NN, 0]>
+    }
+
+    %4 = memref.alloc() : memref<86x4x4x256xf16, @DDR>
+    %5 = VPUIP.Copy
+        inputs(%3 : memref<86x4x4x256xf16, [@CMX_NN, 0]>)
+        outputs(%4 : memref<86x4x4x256xf16, @DDR>)  ->  memref<86x4x4x256xf16, @DDR>
+
+    return %5: memref<86x4x4x256xf16, @DDR>
+
+    // CHECK:   [[COPY_BUFF_0:%.+]] = memref.alloc() : memref<4x86x256x4xf16, [@CMX_NN, 0]>
+    // CHECK:    [[COPY_0:%.+]] = VPUIP.Copy
+    // CHECK-SAME:     inputs([[INPUT]]
+    // CHECK-SAME:     outputs([[COPY_BUFF_0]]
+    // CHECK:   [[PERMUTE_DMA_BUFF_0:%.+]] = memref.alloc() : memref<86x4x4x256xf16, [@CMX_NN, 0]>
+    // CHECK:   [[PERMUTE_DMA_0:%.+]] = VPUIP.PermuteDMA <{mem_perm = #map}> inputs([[COPY_0]]{{.+}}) outputs([[PERMUTE_DMA_BUFF_0]]{{.+}})
+    // CHECK:   [[COPY_BUFF_1:%.+]] = memref.alloc() : memref<86x4x4x256xf16, @DDR>
+    // CHECK:    [[COPY_1:%.+]] = VPUIP.Copy
+    // CHECK-SAME:     inputs([[PERMUTE_DMA_0]]
+    // CHECK-SAME:     outputs([[COPY_BUFF_1]]
+    // CHECK:   return [[COPY_1]]
 }

@@ -107,6 +107,13 @@ private:
             return;
         }
 
+        auto weightShape = getShape(nceOp->getOperand(1));
+        // Skip the case that the the weights had been flattened
+        if (weightShape[Dims4D::Filter::IC] == 1) {
+            _log.nest().trace("The weights had been flattened");
+            return;
+        }
+
         const auto logCb = [&](const formatv_object_base& msg) {
             _log.nest().trace("{0}", msg.str());
         };

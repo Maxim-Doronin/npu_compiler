@@ -5,14 +5,16 @@
 
 #pragma once
 
-#include "vpux/compiler/dialect/config/IR/attributes.hpp"
-#include "vpux/compiler/dialect/config/IR/utils.hpp"
-#include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
-
+#include "vpux/compiler/core/types/quantile_float/types.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
+#include "vpux/compiler/dialect/IE/utils/matmul.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/dpu.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/image.hpp"
+#include "vpux/compiler/dialect/config/IR/attributes.hpp"
+#include "vpux/compiler/dialect/config/IR/utils.hpp"
+#include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 
 namespace vpux::VPU {
 /* @brief
@@ -20,24 +22,6 @@ namespace vpux::VPU {
  */
 class MPEEngineConfig {
 public:
-    static MPEEngineAttr retrieveMPEEngineAttribute(mlir::Operation* operation) {
-        const auto arch = config::getArch(operation);
-
-        VPUX_THROW_WHEN(arch == config::ArchKind::UNKNOWN,
-                        "An unknown architecture is associated to the provided operation");
-
-        return MPEEngine37XXAttr::get(operation->getContext(),
-                                      MPEEngine37XXModeAttr::get(operation->getContext(), MPEEngine37XXMode::SCL));
-    }
-
-    template <typename ConcreteOp>
-    static MPEEngineAttr retrieveMPEEngineAttribute(ConcreteOp operation, bool) {
-        static_assert(std::is_same_v<ConcreteOp, IE::ConvolutionOp> || std::is_same_v<ConcreteOp, IE::MatMulOp>,
-                      "Invalid operation, expected IE::ConvolutionOp or IE::MatMulOp");
-
-        return retrieveMPEEngineAttribute(operation);
-    }
-
     static bool useNewWeightTableFormat(mlir::Operation*, bool) {
         return false;
     }

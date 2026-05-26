@@ -227,6 +227,7 @@ VPU::VF::v2::VFCase getVFCaseWithTiling(
                 mergedCase.setTilingStorage(std::move(minStorage));
                 return mergedCase;
             }
+
             for (const auto& check : currentCheck->nextChecks() | reversed) {
                 schedulingChecks.push_front(check);
             }

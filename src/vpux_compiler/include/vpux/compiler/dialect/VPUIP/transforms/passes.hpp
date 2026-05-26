@@ -40,9 +40,9 @@ bool isOp(mlir::Operation* op) {
 
 ConditionFunc makeStubCondition();
 
+std::unique_ptr<mlir::Pass> createLegalizeShaveSubmitDMAsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createAddPlaceholderFetchDMAsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createAddPlaceholderFetchDMAsPWLMPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createLegalizeScheduleForPartialWlmFetchDmasPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createFuseSegmentedDmaPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createSplitDMAToBalanceLoadPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createDetectDMASplitCandidatePass(Logger log = Logger::global());
@@ -62,7 +62,6 @@ std::unique_ptr<mlir::Pass> createComputeHaloRegionForDPUTaskOpPass(Logger log =
 std::unique_ptr<mlir::Pass> createAddSwKernelCacheHandlingOpsPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createConvertWeightsTableOp2ConstPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createUpdateSwKernelParamsPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createSyncShvDpuPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createDumpStatisticsOfTaskOpsPass(Logger log = Logger::global(), bool forceLogging = true);
 std::unique_ptr<mlir::Pass> createUnrollDistributedOpsPass(Logger log = Logger::global(),
                                                            std::optional<bool> enableSegmentedDmaFusion = std::nullopt);
@@ -160,6 +159,7 @@ std::unique_ptr<mlir::Pass> createCompressWeightsBTCPass(Logger log = Logger::gl
 std::unique_ptr<mlir::Pass> createNNDMATilingPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createUngroupBoundedBuffersPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createUngroupBoundedBuffersAsFuncArgsPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createUngroupHostBuffersAsFuncArgsPass(Logger log = Logger::global());
 
 //
 // Memory allocation pipeline
@@ -212,17 +212,8 @@ std::unique_ptr<mlir::Pass> createFuseLastCopyPass(Logger log = Logger::global()
 //
 
 struct DefaultHWOptionsDialectBase : public virtual DefaultHWOptionsBase {
-    BoolOption enableM2IProfiling{*this, "m2i-profiling", llvm::cl::desc("Enable M2I task profiling"),
-                                  llvm::cl::init(true)};
-
-    BoolOption enableOptimizeCopies{*this, "optimize-copies", llvm::cl::desc("Enable optimize-copies pass"),
-                                    llvm::cl::init(true)};
-
     BoolOption enableOptimizeConstCopies{*this, "optimize-const-copies", llvm::cl::desc("Enable optimize-const-copies"),
                                          llvm::cl::init(true)};
-
-    BoolOption enableConstantFusion{*this, "constant-fusion", llvm::cl::desc("Enable constant fusion"),
-                                    llvm::cl::init(true)};
 
     BoolOption enableOpsAsDMA{*this, "enable-ops-as-dma",
                               llvm::cl::desc("Force using DMA transformations instead of SW ops"),
@@ -238,9 +229,6 @@ struct DefaultHWOptionsDialectBase : public virtual DefaultHWOptionsBase {
 
     BoolOption linearizeSchedule{*this, "linearize-schedule", llvm::cl::desc("Linearize tasks on all engines"),
                                  llvm::cl::init(false)};
-
-    BoolOption enableShaveKernelTiling{*this, "enable-shave-kernel-tiling",
-                                       ::llvm::cl::desc("Enable shave kernel tiling"), ::llvm::cl::init(true)};
 
     BoolOption setMemorySpaceForFunctionBoundaries{
             *this, "set-memory-space-for-function-boundaries",

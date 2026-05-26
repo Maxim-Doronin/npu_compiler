@@ -1127,4 +1127,47 @@ def VPU_GatherAddressingMode :
     }];
 }
 
+//
+// S2D/D2S Config
+//
+def VPU_S2DD2SEnable :
+    VPU_I64EnumAttr<
+        "S2DD2SEnable",
+        "Enable S2D/D2S",
+        [
+            I64EnumAttrCase<"DISABLED", 0>,
+            I64EnumAttrCase<"S2D", 1>,
+            I64EnumAttrCase<"D2S", 2>
+        ]
+    > {
+}
+
+def VPU_S2DD2SEnableAttr : VPU_EnumAttr<VPU_S2DD2SEnable, "S2DD2SEnable">;
+
+def VPU_S2DD2SVariant :
+    VPU_I64EnumAttr<
+        "S2DD2SVariant",
+        "Select S2D/D2S variant type",
+        [
+            I64EnumAttrCase<"BLOCK_FIRST",  0>,
+            I64EnumAttrCase<"DEPTH_FIRST",  1>
+        ]
+    > {
+}
+
+def VPU_S2DD2SVariantAttr : VPU_EnumAttr<VPU_S2DD2SVariant, "S2DD2SVariant">;
+
+def VPU_S2DD2SConfigAttr : VPU_Attr<"S2DD2SConfig"> {
+    let description = [{
+        Config for ODU S2D (Space to Depth) and D2S (Depth to Space) operations
+    }];
+
+    let parameters = (ins
+        "S2DD2SEnableAttr":$enable,
+        "S2DD2SVariantAttr":$variant,
+        "mlir::IntegerAttr":$blk_size
+    );
+    let assemblyFormat = "`<` struct(params) `>`";
+}
+
 #endif

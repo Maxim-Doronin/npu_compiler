@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --segment-halos %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW" --segment-halos %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
@@ -85,7 +85,7 @@ func.func @main(%arg0:  memref<1x16x32x17xf16>, %arg1:  memref<1x16x32x17xf16>, 
     %weights2 = VPURT.DeclareBuffer <CMX_NN> [2] <37888> -> memref<32x16x1x1xf16, #NHWC, [@CMX_NN, 2]>
 
     VPURT.Task {
-        VPUIP.NCEClusterTask <{
+        VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
@@ -122,7 +122,7 @@ func.func @main(%arg0:  memref<1x16x32x17xf16>, %arg1:  memref<1x16x32x17xf16>, 
     }
 
     VPURT.Task {
-        VPUIP.NCEClusterTask <{
+        VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
@@ -159,7 +159,7 @@ func.func @main(%arg0:  memref<1x16x32x17xf16>, %arg1:  memref<1x16x32x17xf16>, 
     }
 
     VPURT.Task {
-        VPUIP.NCEClusterTask <{
+        VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
@@ -404,7 +404,8 @@ func.func @main(%arg0:  memref<1x16x10x10xf16>, %arg1:  memref<1x16x10x10xf16>, 
     %weights2 = VPURT.DeclareBuffer <CMX_NN> [2] <22400> -> memref<32x16x1x1xf16, #NHWC, [@CMX_NN, 2]>
 
     VPURT.Task {
-        VPUIP.NCEClusterTask <{
+        VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>}
+            <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
@@ -441,7 +442,7 @@ func.func @main(%arg0:  memref<1x16x10x10xf16>, %arg1:  memref<1x16x10x10xf16>, 
     }
 
     VPURT.Task {
-        VPUIP.NCEClusterTask <{
+        VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
@@ -478,7 +479,7 @@ func.func @main(%arg0:  memref<1x16x10x10xf16>, %arg1:  memref<1x16x10x10xf16>, 
     }
 
     VPURT.Task {
-        VPUIP.NCEClusterTask <{
+        VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
@@ -745,7 +746,7 @@ func.func @main(%arg0:  memref<1x16x16x16xf16>, %arg1:  memref<1x16x16x16xf16>, 
     %weights3 = VPURT.DeclareBuffer <CMX_NN> [3] <45056> -> memref<32x16x1x1xf16, #NHWC, [@CMX_NN, 3]>
 
     VPURT.Task {
-        VPUIP.NCEClusterTask <{
+        VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
@@ -782,7 +783,7 @@ func.func @main(%arg0:  memref<1x16x16x16xf16>, %arg1:  memref<1x16x16x16xf16>, 
     }
 
     VPURT.Task {
-        VPUIP.NCEClusterTask <{
+        VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
@@ -819,7 +820,7 @@ func.func @main(%arg0:  memref<1x16x16x16xf16>, %arg1:  memref<1x16x16x16xf16>, 
     }
 
     VPURT.Task {
-        VPUIP.NCEClusterTask <{
+        VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
@@ -874,7 +875,7 @@ func.func @main(%arg0:  memref<1x16x16x16xf16>, %arg1:  memref<1x16x16x16xf16>, 
     }
 
     VPURT.Task {
-        VPUIP.NCEClusterTask <{
+        VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
@@ -1237,7 +1238,7 @@ func.func @main(%arg0:  memref<1x16x20x16xf16>, %arg1:  memref<1x16x20x16xf16>, 
     %weights3 = VPURT.DeclareBuffer <CMX_NN> [3] <22848> -> memref<16x16x1x1xf16, #NHWC, [@CMX_NN, 3]>
 
     VPURT.Task {
-        VPUIP.NCEClusterTask <{
+        VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
@@ -1274,7 +1275,7 @@ func.func @main(%arg0:  memref<1x16x20x16xf16>, %arg1:  memref<1x16x20x16xf16>, 
     }
 
     VPURT.Task {
-        VPUIP.NCEClusterTask <{
+        VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
@@ -1311,7 +1312,7 @@ func.func @main(%arg0:  memref<1x16x20x16xf16>, %arg1:  memref<1x16x20x16xf16>, 
     }
 
     VPURT.Task {
-        VPUIP.NCEClusterTask <{
+        VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
@@ -1339,7 +1340,7 @@ func.func @main(%arg0:  memref<1x16x20x16xf16>, %arg1:  memref<1x16x20x16xf16>, 
     }
 
     VPURT.Task {
-        VPUIP.NCEClusterTask <{
+        VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
                 kernel_padding = #VPU.Padding<left = 0 , right = 0, top = 0, bottom = 0>,
                 kernel_size = [1, 1],
                 kernel_strides = [1, 1],
@@ -1667,7 +1668,7 @@ func.func @main(%arg0:  memref<1x128x14x56xf16>, %arg1:  memref<1x128x14x56xf16>
     %weights3 = VPURT.DeclareBuffer <CMX_NN> [3] <2816> -> memref<128x16x1x1x!qElemType0, #NHWC, [@CMX_NN, 3]>
 
     VPURT.Task {
-        VPUIP.NCEClusterTask <{
+        VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
                 is_small_kernel_optimized,
                 kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 0 : i64>,
                 kernel_size = [3, 3],
@@ -1692,7 +1693,7 @@ func.func @main(%arg0:  memref<1x128x14x56xf16>, %arg1:  memref<1x128x14x56xf16>
     }
 
     VPURT.Task {
-        VPUIP.NCEClusterTask <{
+        VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
                 is_small_kernel_optimized,
                 kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 0 : i64>,
                 kernel_size = [3, 3],
@@ -1717,7 +1718,7 @@ func.func @main(%arg0:  memref<1x128x14x56xf16>, %arg1:  memref<1x128x14x56xf16>
     }
 
     VPURT.Task {
-        VPUIP.NCEClusterTask <{
+        VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
                 is_small_kernel_optimized,
                 kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 0 : i64>,
                 kernel_size = [3, 3],
@@ -1742,7 +1743,7 @@ func.func @main(%arg0:  memref<1x128x14x56xf16>, %arg1:  memref<1x128x14x56xf16>
     }
 
     VPURT.Task {
-        VPUIP.NCEClusterTask <{
+        VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
             is_small_kernel_optimized,
                 kernel_padding = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 1 : i64>,
                 kernel_size = [3, 3],
@@ -1895,7 +1896,7 @@ func.func @main(%arg0:  memref<1x16x2x121xf16, #NHWC, [@CMX_NN, 0]>, %arg1:  mem
     %output1 = VPURT.DeclareBuffer <CMX_NN> [1] <0> -> !OutputITI1
 
     VPURT.Task {
-        VPUIP.NCEClusterTask <{
+        VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
                 eltwise_type = #VPU.eltwise_type<ADD>,
                 task_type = #VPUIP.nce_task_type<ELTWISE>
             }>
@@ -1919,7 +1920,7 @@ func.func @main(%arg0:  memref<1x16x2x121xf16, #NHWC, [@CMX_NN, 0]>, %arg1:  mem
     }
 
     VPURT.Task {
-        VPUIP.NCEClusterTask <{
+        VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
                 eltwise_type = #VPU.eltwise_type<ADD>,
                 task_type = #VPUIP.nce_task_type<ELTWISE>
             }>
@@ -1974,12 +1975,14 @@ func.func @main(%arg0:  memref<1x16x2x121xf16, #NHWC, [@CMX_NN, 0]>, %arg1:  mem
 // CHECK-NEXT:          ]>
 
 // CHECK:        VPUIP.NCEClusterTask <{
-// CHECK-SAME:         eltwise_type = #VPU.eltwise_type<ADD>, task_type = #VPUIP.nce_task_type<ELTWISE>
+// CHECK-SAME:         eltwise_type = #VPU.eltwise_type<ADD>,
+// CHECK-SAME:         task_type = #VPUIP.nce_task_type<ELTWISE>
 // CHECK:          output_ITI_buff([[OUT_CMX1]]
 // CHECK:          outputs([[OUT_CMX0]]
 
 // CHECK:         VPUIP.NCEClusterTask <{
-// CHECK-SAME:         eltwise_type = #VPU.eltwise_type<ADD>, task_type = #VPUIP.nce_task_type<ELTWISE>
+// CHECK-SAME:         eltwise_type = #VPU.eltwise_type<ADD>,
+// CHECK-SAME:         task_type = #VPUIP.nce_task_type<ELTWISE>
 // CHECK:           output_ITI_buff([[OUT_CMX0]]
 // CHECK:           outputs([[OUT_CMX1]]
 

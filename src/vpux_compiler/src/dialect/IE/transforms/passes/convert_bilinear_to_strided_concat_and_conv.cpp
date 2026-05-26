@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "mlir/Transforms/WalkPatternRewriteDriver.h"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
@@ -129,6 +130,215 @@ mlir::Value createMaxPool(mlir::Value input, mlir::Location loc, mlir::PatternRe
             .getOutput();
 }
 
+bool shouldConvertBilinearInterpolate(IE::InterpolateOp op, bool enableSEPtrsOperations,
+                                      std::function<void(const formatv_object_base&)> logCb) {
+    // Scale-as-parameter interpolation has dynamic output shapes; skip conversion to conv.
+    if (IE::isScalesAsParameter(op.getScales(), op.getScalesAttr())) {
+        return false;
+    }
+
+    if (enableSEPtrsOperations) {
+        auto seOp = mlir::dyn_cast<IE::SEOpInterface>(op.getOperation());
+        if (seOp && seOp.isSupported(logCb)) {
+            return false;
+        }
+    }
+
+    const auto attrs = op.getAttr();
+    const auto interpMode = attrs.getMode().getValue();
+    const auto antiAlias = attrs.getAntialias().getValue();
+    const auto coordMode = attrs.getCoordMode().getValue();
+    const auto inputShape = getShape(op.getInput());
+    const auto outShape = getShape(op.getOutput());
+    int64_t scaleW = 1;
+    int64_t scaleH = 1;
+
+    if ((interpMode != IE::InterpolateMode::LINEAR_ONNX && interpMode != IE::InterpolateMode::LINEAR) || antiAlias) {
+        return false;
+    }
+
+    // Only support 4D Input shape
+    if (inputShape.size() != 4) {
+        return false;
+    }
+
+    if ((inputShape[Dims4D::Act::N] != outShape[Dims4D::Act::N]) ||
+        (inputShape[Dims4D::Act::C] != outShape[Dims4D::Act::C])) {
+        return false;
+    }
+
+    // Small-channel models WA: when the channel size is smaller than the channel alignment
+    // The alignment causes worse performance than SHAVE interpolation
+    // For channel size is smaller than channel alignement, it's partially resolved by
+    // SmallChannelPytorchHalfPixelBilinearInterpolateOpConverter.
+    const auto elemType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType()).getElementType();
+    const auto alignment = VPU::NCEInvariant::getAlignment(elemType);
+    if (inputShape[Dims4D::Act::C] < alignment) {
+        return false;
+    }
+
+    // Runtime already has a efficient implementation for this case
+    // And also current solution for this case will produce lots of DMAs, which is not efficient
+    if (inputShape[Dims4D::Act::H] == 1 && inputShape[Dims4D::Act::W] == 1) {
+        return false;
+    }
+
+    bool isBothUpscale = (outShape[Dims4D::Act::W] > inputShape[Dims4D::Act::W]) &&
+                         (outShape[Dims4D::Act::H] > inputShape[Dims4D::Act::H]);
+    if (!isBothUpscale) {
+        // E#95440: Support for downscaling cases will be provided once the permuteQuantize issue has been
+        // resolved.
+        return false;
+    }
+
+    // E46240: only this kind of align_corners is accurate and is supported
+    if (coordMode == IE::InterpolateCoordMode::ALIGN_CORNERS) {
+        if ((outShape[Dims4D::Act::W] - 1) % (inputShape[Dims4D::Act::W] - 1) != 0 ||
+            (outShape[Dims4D::Act::H] - 1) % (inputShape[Dims4D::Act::H] - 1) != 0) {
+            return false;
+        }
+
+        scaleW = (outShape[Dims4D::Act::W] - 1) / (inputShape[Dims4D::Act::W] - 1);
+        scaleH = (outShape[Dims4D::Act::H] - 1) / (inputShape[Dims4D::Act::H] - 1);
+        if (scaleW > 4 && scaleH > 4) {
+            return false;
+        }
+        return true;
+    }
+
+    // E#95440: Support for TF_HALF_PIXEL_FOR_NN upsampling will be provided once the permuteQuantize issue
+    // has been resolved.
+    if (coordMode == IE::InterpolateCoordMode::TF_HALF_PIXEL_FOR_NN) {
+        return false;
+    }
+
+    if ((coordMode == IE::InterpolateCoordMode::PYTORCH_HALF_PIXEL) &&
+        (outShape[Dims4D::Act::W] == 1 || outShape[Dims4D::Act::H] == 1)) {
+        return false;
+    }
+
+    if (outShape[Dims4D::Act::W] % inputShape[Dims4D::Act::W] != 0 ||
+        outShape[Dims4D::Act::H] % inputShape[Dims4D::Act::H] != 0) {
+        return false;
+    }
+
+    // Support N times upsampling of asymmetric, half_pixel, pytorch_half_pixel modes.
+    scaleW = outShape[Dims4D::Act::W] / inputShape[Dims4D::Act::W];
+    scaleH = outShape[Dims4D::Act::H] / inputShape[Dims4D::Act::H];
+
+    if (coordMode == IE::InterpolateCoordMode::ASYMMETRIC) {
+        // Deeplab-v3 WA: SHAVE implementation may be better for some big bilinear interpolates
+        // Current solution will produce some extra DMAs as we need do padding by slice-concat, which may
+        // cause some performance loss especially for big interpolates. In future, SEP may help to solve
+        // this issue. Details see ticket: E43217 The scaleW 4 and scaleH 4 is more efficient on VPUX37XX.
+        // Details see ticket: E56905
+        return !(scaleW > 4 && scaleH > 4);
+    } else if ((coordMode == IE::InterpolateCoordMode::PYTORCH_HALF_PIXEL) ||
+               (coordMode == IE::InterpolateCoordMode::HALF_PIXEL)) {
+        // Similar to the asymmetric mode, ensure that the convolutional kernel size does not exceed 4.
+        if ((scaleW % 2 == 0) && (scaleH % 2 == 0)) {
+            return (scaleW <= 2) && (scaleH <= 2);
+        } else if ((scaleW % 2 != 0) && (scaleH % 2 != 0)) {
+            return (scaleW <= 3) && (scaleH <= 3);
+        } else {
+            return false;
+        }
+    } else {
+        return false;
+    }
+}
+
+bool shouldConvertHalfPixelBilinearInterpolate(IE::InterpolateOp op, bool enableSEPtrsOperations,
+                                               std::function<void(const formatv_object_base&)> logCb) {
+    // Scale-as-parameter interpolation has dynamic output shapes; skip conversion to conv.
+    if (IE::isScalesAsParameter(op.getScales(), op.getScalesAttr())) {
+        return false;
+    }
+
+    if (enableSEPtrsOperations) {
+        auto seOp = mlir::dyn_cast<IE::SEOpInterface>(op.getOperation());
+        if (seOp && seOp.isSupported(logCb)) {
+            return false;
+        }
+    }
+
+    const auto attrs = op.getAttr();
+    const auto interpMode = attrs.getMode().getValue();
+    const auto antiAlias = attrs.getAntialias().getValue();
+    const auto coordMode = attrs.getCoordMode().getValue();
+    const auto inputShape = getShape(op.getInput());
+    const auto outputShape = getShape(op.getOutput());
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
+
+    if ((interpMode != IE::InterpolateMode::LINEAR_ONNX && interpMode != IE::InterpolateMode::LINEAR) || antiAlias) {
+        return false;
+    }
+
+    // Use ExecutorOpInterface to determine if SHAVE is preferred
+    if (auto iface = mlir::dyn_cast<IE::ExecutorOpInterface>(op.getOperation())) {
+        auto execs = iface.getPreferredExecutors();
+        if (!execs.empty() && execs[0] == config::ExecutorKind::SHAVE_ACT) {
+            return false;
+        }
+    }
+
+    const auto inputElemType = inputType.getElementType();
+    if (mlir::isa<mlir::quant::QuantizedType>(inputElemType)) {
+        // Support of quantized case will be open after E#104698 fix AC issue.
+        return false;
+    }
+
+    if (inputShape[Dims4D::Act::N] != 1) {
+        return false;
+    }
+
+    if ((inputShape[Dims4D::Act::N] != outputShape[Dims4D::Act::N]) ||
+        (inputShape[Dims4D::Act::C] != outputShape[Dims4D::Act::C])) {
+        return false;
+    }
+
+    if (auto alignInterface = mlir::dyn_cast<IE::AlignedChannelsOpInterface>(op.getOperation())) {
+        const auto alignment = alignInterface.getInputChannelAlignment();
+        // Ensure that the converted convolution can avoid expand through shapeCast in AdjustConvolutionShapePass
+        if ((inputShape[Dims4D::Act::C] * inputShape[Dims4D::Act::W]) % alignment != 0) {
+            return false;
+        }
+        // After first permutation outputShapeH will become the real W of second conv, so we need keep it can avoid
+        // expand through shapeCast in AdjustConvolutionShapePass.
+        if ((inputShape[Dims4D::Act::C] * outputShape[Dims4D::Act::H]) % alignment != 0) {
+            return false;
+        }
+    }
+
+    // For channel >= 8 case, we can use SEP-interp to get better performance.
+    if (inputShape[Dims4D::Act::C] >= 8) {
+        return false;
+    }
+
+    // Runtime already has a efficient implementation for this case
+    // And also current solution for this case will produce lots of DMAs, which is not efficient.
+    if (inputShape[Dims4D::Act::H] == 1 && inputShape[Dims4D::Act::W] == 1) {
+        return false;
+    }
+
+    if (coordMode != vpux::IE::InterpolateCoordMode::PYTORCH_HALF_PIXEL &&
+        coordMode != vpux::IE::InterpolateCoordMode::HALF_PIXEL) {
+        return false;
+    }
+
+    // This conversion does not necessarily bring performance improvement for scaling greater than
+    // SMALL_CHANNEL_SUPPORT_SCALER times.
+    const auto scalerHeight = outputShape[Dims4D::Act::H] / inputShape[Dims4D::Act::H];
+    const auto scalerWidth = outputShape[Dims4D::Act::W] / inputShape[Dims4D::Act::W];
+    if (scalerHeight != scalerWidth || scalerHeight > SMALL_CHANNEL_SUPPORT_SCALER) {
+        return false;
+    }
+
+    // This check ensure the scaler is an integer, otherwise it will case accuracy issue.
+    return inputShape[Dims4D::Act::H] * scalerHeight == outputShape[Dims4D::Act::H] &&
+           inputShape[Dims4D::Act::W] * scalerWidth == outputShape[Dims4D::Act::W];
+}
+
 //
 // ConvertBilinearToStridedConcatAndConvPass
 //
@@ -153,8 +363,11 @@ private:
 class ConvertBilinearToStridedConcatAndConvPass::BilinearInterpolateOpConverter final :
         public mlir::OpRewritePattern<IE::InterpolateOp> {
 public:
-    BilinearInterpolateOpConverter(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit, Logger log)
-            : mlir::OpRewritePattern<IE::InterpolateOp>(ctx, benefit), _log(log) {
+    BilinearInterpolateOpConverter(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit, bool enableSEPtrsOperations,
+                                   Logger log)
+            : mlir::OpRewritePattern<IE::InterpolateOp>(ctx, benefit),
+              _log(log),
+              _enableSEPtrsOperations(enableSEPtrsOperations) {
     }
 
 public:
@@ -162,14 +375,18 @@ public:
 
 private:
     Logger _log;
+    bool _enableSEPtrsOperations;
 };
 
 // BilinearInterpolateOpConverterV2
 class ConvertBilinearToStridedConcatAndConvPass::BilinearInterpolateOpConverterV2 final :
         public mlir::OpRewritePattern<IE::InterpolateOp> {
 public:
-    BilinearInterpolateOpConverterV2(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit, Logger log)
-            : mlir::OpRewritePattern<IE::InterpolateOp>(ctx, benefit), _log(log) {
+    BilinearInterpolateOpConverterV2(mlir::MLIRContext* ctx, mlir::PatternBenefit benefit, bool enableSEPtrsOperations,
+                                     Logger log)
+            : mlir::OpRewritePattern<IE::InterpolateOp>(ctx, benefit),
+              _log(log),
+              _enableSEPtrsOperations(enableSEPtrsOperations) {
     }
 
 public:
@@ -177,6 +394,7 @@ public:
 
 private:
     Logger _log;
+    bool _enableSEPtrsOperations;
 };
 
 /// @brief Replace NxN bilinear interpolate as a cascaded structure of one NxN nearest interpolate with padding and
@@ -186,6 +404,14 @@ private:
 /// @reminder Current solution can be optimized further by SEP feature in future
 mlir::LogicalResult ConvertBilinearToStridedConcatAndConvPass::BilinearInterpolateOpConverter::matchAndRewrite(
         IE::InterpolateOp origOp, mlir::PatternRewriter& rewriter) const {
+    const auto logCb = [&](const formatv_object_base& msg) {
+        _log.trace("{0}", msg.str());
+    };
+
+    if (!shouldConvertBilinearInterpolate(origOp, _enableSEPtrsOperations, logCb)) {
+        return mlir::failure();
+    }
+
     _log.trace("Get bilinear Interpolate Op {0}", origOp);
     const auto inputShape = getShape(origOp.getInput());
     const auto attrs = origOp.getAttr();
@@ -309,6 +535,14 @@ mlir::LogicalResult ConvertBilinearToStridedConcatAndConvPass::BilinearInterpola
 /// @details It is a faster solutoin than the original one above. See ticket: E#49791
 mlir::LogicalResult ConvertBilinearToStridedConcatAndConvPass::BilinearInterpolateOpConverterV2::matchAndRewrite(
         IE::InterpolateOp origOp, mlir::PatternRewriter& rewriter) const {
+    const auto logCb = [&](const formatv_object_base& msg) {
+        _log.trace("{0}", msg.str());
+    };
+
+    if (!shouldConvertBilinearInterpolate(origOp, _enableSEPtrsOperations, logCb)) {
+        return mlir::failure();
+    }
+
     _log.trace("DPU Interp solution V2: optimize bilinear Interpolate Op {0}", origOp);
     if (!origOp->hasOneUse()) {
         return mlir::failure();
@@ -446,8 +680,11 @@ mlir::LogicalResult ConvertBilinearToStridedConcatAndConvPass::BilinearInterpola
 class ConvertBilinearToStridedConcatAndConvPass::SmallChannelPytorchHalfPixelBilinearInterpolateOpConverter final :
         public mlir::OpRewritePattern<IE::InterpolateOp> {
 public:
-    SmallChannelPytorchHalfPixelBilinearInterpolateOpConverter(mlir::MLIRContext* ctx, Logger log)
-            : mlir::OpRewritePattern<IE::InterpolateOp>(ctx), _log(log) {
+    SmallChannelPytorchHalfPixelBilinearInterpolateOpConverter(mlir::MLIRContext* ctx, bool enableSEPtrsOperations,
+                                                               Logger log)
+            : mlir::OpRewritePattern<IE::InterpolateOp>(ctx),
+              _log(log),
+              _enableSEPtrsOperations(enableSEPtrsOperations) {
     }
 
 public:
@@ -455,6 +692,7 @@ public:
 
 private:
     Logger _log;
+    bool _enableSEPtrsOperations;
 };
 
 /* An interpolate will be convert to:
@@ -516,6 +754,14 @@ private:
 mlir::LogicalResult
 ConvertBilinearToStridedConcatAndConvPass::SmallChannelPytorchHalfPixelBilinearInterpolateOpConverter::matchAndRewrite(
         IE::InterpolateOp origOp, mlir::PatternRewriter& rewriter) const {
+    const auto logCb = [&](const formatv_object_base& msg) {
+        _log.trace("{0}", msg.str());
+    };
+
+    if (!shouldConvertHalfPixelBilinearInterpolate(origOp, _enableSEPtrsOperations, logCb)) {
+        return mlir::failure();
+    }
+
     _log.trace("Get interp {0} on {1}", origOp->getName(), origOp->getLoc());
 
     // The conversion logic is the same as pass BilinearInterpolateOpConverter, which is a concretization of pass
@@ -602,231 +848,14 @@ void ConvertBilinearToStridedConcatAndConvPass::safeRunOnFunc() {
     auto moduleOp = getModuleOp(func);
     const auto enableSEPtrsOperations = config::hasEnableSEPtrsOperations(moduleOp);
 
-    const auto logCb = [&](const formatv_object_base& msg) {
-        _log.trace("{0}", msg.str());
-    };
-
-    mlir::ConversionTarget target(ctx);
-    target.addDynamicallyLegalOp<IE::InterpolateOp>([&](IE::InterpolateOp op) {
-        if (enableSEPtrsOperations) {
-            if (VPU::NCEInterpolateOp::isSupported(op, logCb, /*checkLayout=*/false, /*checkChannelAlignment=*/false,
-                                                   /*checkBatch=*/false)) {
-                return true;
-            }
-        }
-
-        const auto attrs = op.getAttr();
-        const auto interpMode = attrs.getMode().getValue();
-        const auto antiAlias = attrs.getAntialias().getValue();
-        const auto coordMode = attrs.getCoordMode().getValue();
-        const auto inputShape = getShape(op.getInput());
-        const auto outShape = getShape(op.getOutput());
-        int64_t scaleW = 1;
-        int64_t scaleH = 1;
-
-        if ((interpMode != IE::InterpolateMode::LINEAR_ONNX && interpMode != IE::InterpolateMode::LINEAR) ||
-            antiAlias) {
-            return true;
-        }
-
-        // Only support 4D Input shape
-        if (inputShape.size() != 4) {
-            return true;
-        }
-
-        if ((inputShape[Dims4D::Act::N] != outShape[Dims4D::Act::N]) ||
-            (inputShape[Dims4D::Act::C] != outShape[Dims4D::Act::C])) {
-            return true;
-        }
-
-        // Small-channel models WA: when the channel size is smaller than the channel alignment
-        // The alignment causes worse performance than SHAVE interpolation
-        // For channel size is smaller than channel alignement, it's partially resolved by
-        // SmallChannelPytorchHalfPixelBilinearInterpolateOpConverter.
-        const auto elemType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType()).getElementType();
-        const auto alignment = VPU::NCEInvariant::getAlignment(elemType);
-        if (inputShape[Dims4D::Act::C] < alignment) {
-            return true;
-        }
-
-        // Runtime already has a efficient implementation for this case
-        // And also current solution for this case will produce lots of DMAs, which is not efficient
-        if (inputShape[Dims4D::Act::H] == 1 && inputShape[Dims4D::Act::W] == 1) {
-            return true;
-        }
-
-        bool isBothUpscale = (outShape[Dims4D::Act::W] > inputShape[Dims4D::Act::W]) &&
-                             (outShape[Dims4D::Act::H] > inputShape[Dims4D::Act::H]);
-
-        if (isBothUpscale) {
-            // E46240: only this kind of align_corners is accurate and is supported
-            if (coordMode == IE::InterpolateCoordMode::ALIGN_CORNERS) {
-                if ((outShape[Dims4D::Act::W] - 1) % (inputShape[Dims4D::Act::W] - 1) == 0 &&
-                    (outShape[Dims4D::Act::H] - 1) % (inputShape[Dims4D::Act::H] - 1) == 0) {
-                    scaleW = (outShape[Dims4D::Act::W] - 1) / (inputShape[Dims4D::Act::W] - 1);
-                    scaleH = (outShape[Dims4D::Act::H] - 1) / (inputShape[Dims4D::Act::H] - 1);
-                    return (scaleW > 4 && scaleH > 4);
-                } else {
-                    return true;
-                }
-            }
-
-            // E#95440: Support for TF_HALF_PIXEL_FOR_NN upsampling will be provided once the permuteQuantize issue
-            // has been resolved.
-            else if (coordMode == IE::InterpolateCoordMode::TF_HALF_PIXEL_FOR_NN) {
-                return true;
-            } else if ((coordMode == IE::InterpolateCoordMode::PYTORCH_HALF_PIXEL) &&
-                       (outShape[Dims4D::Act::W] == 1 || outShape[Dims4D::Act::H] == 1)) {
-                return true;
-            } else if (outShape[Dims4D::Act::W] % inputShape[Dims4D::Act::W] == 0 &&
-                       outShape[Dims4D::Act::H] % inputShape[Dims4D::Act::H] == 0) {
-                // Support N times upsampling of asymmetric, half_pixel, pytorch_half_pixel
-                // modes
-                scaleW = outShape[Dims4D::Act::W] / inputShape[Dims4D::Act::W];
-                scaleH = outShape[Dims4D::Act::H] / inputShape[Dims4D::Act::H];
-                if (coordMode == IE::InterpolateCoordMode::ASYMMETRIC) {
-                    // Deeplab-v3 WA: SHAVE implementation may be better for some big bilinear interpolates
-                    // Current solution will produce some extra DMAs as we need do padding by slice-concat, which may
-                    // cause some performance loss especially for big interpolates. In future, SEP may help to solve
-                    // this issue. Details see ticket: E43217 The scaleW 4 and scaleH 4 is more efficient on VPUX37XX.
-                    // Details see ticket: E56905
-                    return (scaleW > 4 && scaleH > 4);
-                } else if ((coordMode == IE::InterpolateCoordMode::PYTORCH_HALF_PIXEL) ||
-                           (coordMode == IE::InterpolateCoordMode::HALF_PIXEL)) {
-                    scaleW = outShape[Dims4D::Act::W] / inputShape[Dims4D::Act::W];
-                    scaleH = outShape[Dims4D::Act::H] / inputShape[Dims4D::Act::H];
-                    // Similar to the asymmetric mode, ensure that the convolutional kernel size does not exceed 4.
-                    if ((scaleW % 2 == 0) && (scaleH % 2 == 0)) {
-                        return ((scaleW > 2) || (scaleH > 2));
-                    } else if ((scaleW % 2 != 0) && (scaleH % 2 != 0)) {
-                        return ((scaleW > 3) || (scaleH > 3));
-                    } else {
-                        return true;
-                    };
-                };
-            } else {
-                return true;
-            }
-        }
-        // E#95440: Support for downscaling cases will be provided once the permuteQuantize issue has been
-        // resolved.
-        return true;
-    });
-
-    target.addLegalOp<IE::SliceOp>();
-    target.addLegalOp<IE::ConcatOp>();
-    target.addLegalOp<IE::MaxPoolOp>();
-    target.addLegalOp<IE::FakeQuantizeOp>();
-    target.addLegalOp<Const::DeclareOp>();
-    target.addLegalOp<IE::GroupConvolutionOp>();
-
     mlir::RewritePatternSet patterns(&ctx);
     /// @warning The insert order for patterns can't decide the real execuation order
     /// So we use the explicit declaration (PatternBenefit) in their class constrution function
     /// to control them. Here pattern V2 executed first
-    patterns.insert<BilinearInterpolateOpConverterV2>(&ctx, vpux::benefitMid, _log);
-    patterns.insert<BilinearInterpolateOpConverter>(&ctx, vpux::benefitLow, _log);
+    patterns.insert<BilinearInterpolateOpConverterV2>(&ctx, vpux::benefitMid, enableSEPtrsOperations, _log);
+    patterns.insert<BilinearInterpolateOpConverter>(&ctx, vpux::benefitLow, enableSEPtrsOperations, _log);
 
-    if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
-        signalPassFailure();
-    }
-
-    mlir::ConversionTarget smallChannelTarget(ctx);
-    smallChannelTarget.addDynamicallyLegalOp<IE::InterpolateOp>([&](IE::InterpolateOp op) {
-        if (enableSEPtrsOperations) {
-            if (VPU::NCEInterpolateOp::isSupported(op, logCb, /*checkLayout=*/false, /*checkChannelAlignment=*/false,
-                                                   /*checkBatch=*/false)) {
-                return true;
-            }
-        }
-
-        const auto attrs = op.getAttr();
-        const auto interpMode = attrs.getMode().getValue();
-        const auto antiAlias = attrs.getAntialias().getValue();
-        const auto coordMode = attrs.getCoordMode().getValue();
-        const auto inputShape = getShape(op.getInput());
-        const auto outputShape = getShape(op.getOutput());
-        const auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
-
-        if ((interpMode != IE::InterpolateMode::LINEAR_ONNX && interpMode != IE::InterpolateMode::LINEAR) ||
-            antiAlias) {
-            return true;
-        }
-
-        // Use ExecutorOpInterface to determine if SHAVE is preferred
-        if (auto iface = mlir::dyn_cast<IE::ExecutorOpInterface>(op.getOperation())) {
-            auto execs = iface.getPreferredExecutors();
-            if (!execs.empty() && execs[0] == config::ExecutorKind::SHAVE_ACT) {
-                return true;
-            }
-        }
-
-        const auto inputElemType = inputType.getElementType();
-        if (mlir::isa<mlir::quant::QuantizedType>(inputElemType)) {
-            // Support of quantized case will be open after E#104698 fix AC issue.
-            return true;
-        }
-
-        if (inputShape[Dims4D::Act::N] != 1) {
-            return true;
-        }
-
-        if ((inputShape[Dims4D::Act::N] != outputShape[Dims4D::Act::N]) ||
-            (inputShape[Dims4D::Act::C] != outputShape[Dims4D::Act::C])) {
-            return true;
-        }
-
-        if (auto alignInterface = mlir::dyn_cast<IE::AlignedChannelsOpInterface>(op.getOperation())) {
-            const auto alignment = alignInterface.getInputChannelAlignment();
-            // Ensure that the converted convolution can avoid expand through shapeCast in AdjustConvolutionShapePass
-            if ((inputShape[Dims4D::Act::C] * inputShape[Dims4D::Act::W]) % alignment != 0) {
-                return true;
-            }
-            // After first permutation outputShapeH will become the real W of second conv, so we need keep it can avoid
-            // expand through shapeCast in AdjustConvolutionShapePass.
-            if ((inputShape[Dims4D::Act::C] * outputShape[Dims4D::Act::H]) % alignment != 0) {
-                return true;
-            }
-        }
-
-        // For channel >= 8 case, we can use SEP-interp to get better performance.
-        if (inputShape[Dims4D::Act::C] >= 8) {
-            return true;
-        }
-
-        // Runtime already has a efficient implementation for this case
-        // And also current solution for this case will produce lots of DMAs, which is not efficient.
-        if (inputShape[Dims4D::Act::H] == 1 && inputShape[Dims4D::Act::W] == 1) {
-            return true;
-        }
-
-        if (coordMode != vpux::IE::InterpolateCoordMode::PYTORCH_HALF_PIXEL &&
-            coordMode != vpux::IE::InterpolateCoordMode::HALF_PIXEL) {
-            return true;
-        }
-
-        // This conversion does not necessarily bring performance improvement for scaling greater than
-        // SMALL_CHANNEL_SUPPORT_SCALER times.
-        const auto scalerHeight = outputShape[Dims4D::Act::H] / inputShape[Dims4D::Act::H];
-        const auto scalerWidth = outputShape[Dims4D::Act::W] / inputShape[Dims4D::Act::W];
-        if (scalerHeight != scalerWidth || scalerHeight > SMALL_CHANNEL_SUPPORT_SCALER) {
-            return true;
-        }
-        // This check ensure the scaler is an integer, otherwise it will case accuracy issue.
-        if (inputShape[Dims4D::Act::H] * scalerHeight != outputShape[Dims4D::Act::H] ||
-            inputShape[Dims4D::Act::W] * scalerWidth != outputShape[Dims4D::Act::W]) {
-            return true;
-        }
-
-        return false;
-    });
-
-    smallChannelTarget.addLegalOp<IE::SliceOp>();
-    smallChannelTarget.addLegalOp<IE::ConcatOp>();
-    smallChannelTarget.addLegalOp<IE::ReorderOp>();
-    smallChannelTarget.addLegalOp<IE::MemPermuteOp>();
-    smallChannelTarget.addLegalOp<Const::DeclareOp>();
-    smallChannelTarget.addLegalOp<IE::ConvolutionOp>();
+    walkAndApplyPatterns(func, std::move(patterns));
 
     mlir::RewritePatternSet smallChannelPatterns(&ctx);
 
@@ -835,11 +864,10 @@ void ConvertBilinearToStridedConcatAndConvPass::safeRunOnFunc() {
     // For channel < 8 case, SmallChannelPytorchHalfPixelBilinearInterpolateOpConverter will get a better performance.
     // For 8 <= channel < 16 case, we perfer using SEP-interpolate, it will get better performance.
 
-    smallChannelPatterns.add<SmallChannelPytorchHalfPixelBilinearInterpolateOpConverter>(&ctx, _log);
+    smallChannelPatterns.add<SmallChannelPytorchHalfPixelBilinearInterpolateOpConverter>(&ctx, enableSEPtrsOperations,
+                                                                                         _log);
 
-    if (mlir::failed(mlir::applyPartialConversion(func, smallChannelTarget, std::move(smallChannelPatterns)))) {
-        signalPassFailure();
-    }
+    walkAndApplyPatterns(func, std::move(smallChannelPatterns));
 }
 
 }  // namespace

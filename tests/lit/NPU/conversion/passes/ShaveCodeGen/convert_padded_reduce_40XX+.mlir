@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-eltwise-layers-to-math %s -o - | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --convert-eltwise-layers-to-math %s -o - | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 // CHECK: [[NCHW:#.+]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 // CHECK: [[map:#.+]] = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3)>
@@ -22,8 +22,7 @@ func.func @PaddedFlat(%arg0: tensor<1x16x4000x200xf32>) -> tensor<16x4000x200xf3
 // CHECK-NEXT:      [[PAD:%.+]] = tensor.empty() : tensor<16x4000x200xf32>
 // CHECK-NEXT:      [[PAD_FILL:%.+]] = linalg.fill ins([[F32_ZERO]] : f32) outs([[PAD]] : tensor<16x4000x200xf32>) -> tensor<16x4000x200xf32>
 // CHECK-NEXT:      [[EXTRACT_PAD:%.+]] = tensor.extract_slice [[PAD_FILL]][0, 0, 0] [1, 4000, 200] [1, 1, 1] : tensor<16x4000x200xf32> to tensor<1x4000x200xf32>
-// CHECK-NEXT:      [[F32_ZERO1:%.+]] = arith.constant 0.000000e+00 : f32
-// CHECK-NEXT:      [[OUT_SLICE:%.+]] = linalg.fill ins([[F32_ZERO1]] : f32) outs([[EXTRACT_PAD]] : tensor<1x4000x200xf32>) -> tensor<1x4000x200xf32>
+// CHECK-NEXT:      [[OUT_SLICE:%.+]] = linalg.fill ins([[F32_ZERO]] : f32) outs([[EXTRACT_PAD]] : tensor<1x4000x200xf32>) -> tensor<1x4000x200xf32>
 // CHECK-NEXT:      [[IN_SLICE:%.+]] = tensor.extract_slice [[ARG1]][0, 0, 0, 0] [1, 12, 4000, 200] [1, 1, 1, 1] : tensor<1x16x4000x200xf32> to tensor<1x12x4000x200xf32>
 // CHECK-NEXT:      [[REDUCE:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[map]]], iterator_types = ["parallel", "reduction", "parallel", "parallel"]} ins([[IN_SLICE]] : tensor<1x12x4000x200xf32>) outs([[OUT_SLICE]] : tensor<1x4000x200xf32>) {
 // CHECK-NEXT:      ^bb0([[IN:%.+]]: f32, [[OUT:%.+]]: f32):
@@ -48,8 +47,8 @@ func.func @PaddedFlatKeepDims(%arg0: tensor<1x16x4000x200xf32>) -> tensor<1x16x4
   return %0 : tensor<1x16x4000x200xf32>
 
 // CHECK:    IE.CodeGenCapsule inputs({{.+}} as [[ARG1:%.+]]: tensor<1x16x4000x200xf32>) {
+// CHECK-NEXT:      [[ZERO:%.+]] = arith.constant 0.000000e+00 : f32  
 // CHECK-NEXT:      [[EMPT:%.+]] = tensor.empty() : tensor<1x4000x200xf32>
-// CHECK-NEXT:      [[ZERO:%.+]] = arith.constant 0.000000e+00 : f32
 // CHECK-NEXT:      [[REDUCE_INIT:%.+]] = linalg.fill ins([[ZERO]] : f32) outs([[EMPT]] : tensor<1x4000x200xf32>) -> tensor<1x4000x200xf32>
 // CHECK-NEXT:      [[REDUCE_IN:%.+]] = tensor.extract_slice [[ARG1]][0, 0, 0, 0] [1, 12, 4000, 200] [1, 1, 1, 1] : tensor<1x16x4000x200xf32> to tensor<1x12x4000x200xf32>
 // CHECK-NEXT:      [[REDUCE:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[map]]], iterator_types = ["parallel", "reduction", "parallel", "parallel"]} ins([[REDUCE_IN]] : tensor<1x12x4000x200xf32>) outs([[REDUCE_INIT]] : tensor<1x4000x200xf32>) {
@@ -57,9 +56,8 @@ func.func @PaddedFlatKeepDims(%arg0: tensor<1x16x4000x200xf32>) -> tensor<1x16x4
 // CHECK-NEXT:        [[ADD:%.+]] = arith.addf [[OUT]], [[IN]] fastmath<reassoc> : f32
 // CHECK-NEXT:        linalg.yield [[ADD]] : f32
 // CHECK-NEXT:      } -> tensor<1x4000x200xf32>
-// CHECK-NEXT:      [[ZERO1:%.+]] = arith.constant 0.000000e+00 : f32
 // CHECK-NEXT:      [[PAD:%.+]] = tensor.empty() : tensor<1x16x4000x200xf32>
-// CHECK-NEXT:      [[PAD_FILL:%.+]] = linalg.fill ins([[ZERO1]] : f32) outs([[PAD]] : tensor<1x16x4000x200xf32>) -> tensor<1x16x4000x200xf32>
+// CHECK-NEXT:      [[PAD_FILL:%.+]] = linalg.fill ins([[ZERO]] : f32) outs([[PAD]] : tensor<1x16x4000x200xf32>) -> tensor<1x16x4000x200xf32>
 // CHECK-NEXT:      [[PAD_SLICE:%.+]] = tensor.extract_slice [[PAD_FILL]][0, 0, 0, 0] [1, 1, 4000, 200] [1, 1, 1, 1] : tensor<1x16x4000x200xf32> to tensor<1x1x4000x200xf32>
 // CHECK-NEXT:      [[RESHAPE:%.+]] = linalg.generic {indexing_maps = [[[map]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[REDUCE]] : tensor<1x4000x200xf32>) outs([[PAD_SLICE]] : tensor<1x1x4000x200xf32>) {
 // CHECK-NEXT:      ^bb0([[IN:%.+]]: f32, {{.+}}: f32):
@@ -86,8 +84,8 @@ func.func @PaddedNHWCKeepDims(%arg0: tensor<1x16x4000x200xf32, {order = #NHWC}>)
   return %0 : tensor<1x16x4000x200xf32, {order = #NHWC}>
 
 // CHECK:    IE.CodeGenCapsule inputs({{.+}} as [[ARG1:%.+]]: tensor<1x4000x200x16xf32>) {
-// CHECK-NEXT:      [[EMPT:%.+]] = tensor.empty() : tensor<1x4000x200xf32>
 // CHECK-NEXT:      [[ZERO:%.+]] = arith.constant 0.000000e+00 : f32
+// CHECK-NEXT:      [[EMPT:%.+]] = tensor.empty() : tensor<1x4000x200xf32>
 // CHECK-NEXT:      [[REDUCE_INIT:%.+]] = linalg.fill ins([[ZERO]] : f32) outs([[EMPT]] : tensor<1x4000x200xf32>) -> tensor<1x4000x200xf32>
 // CHECK-NEXT:      [[REDUCE_IN:%.+]] = tensor.extract_slice [[ARG1]][0, 0, 0, 0] [1, 4000, 200, 12] [1, 1, 1, 1] : tensor<1x4000x200x16xf32> to tensor<1x4000x200x12xf32>
 // CHECK-NEXT:      [[REDUCE:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[map]]], iterator_types = ["parallel", "parallel", "parallel", "reduction"]} ins([[REDUCE_IN]] : tensor<1x4000x200x12xf32>) outs([[REDUCE_INIT]] : tensor<1x4000x200xf32>) {
@@ -95,9 +93,8 @@ func.func @PaddedNHWCKeepDims(%arg0: tensor<1x16x4000x200xf32, {order = #NHWC}>)
 // CHECK-NEXT:        [[ADD:%.+]] = arith.addf [[OUT]], [[IN]] fastmath<reassoc> : f32
 // CHECK-NEXT:        linalg.yield [[ADD]] : f32
 // CHECK-NEXT:      } -> tensor<1x4000x200xf32>
-// CHECK-NEXT:      [[ZERO1:%.+]] = arith.constant 0.000000e+00 : f32
 // CHECK-NEXT:      [[PAD:%.+]] = tensor.empty() : tensor<1x4000x200x16xf32>
-// CHECK-NEXT:      [[PAD_FILL:%.+]] = linalg.fill ins([[ZERO1]] : f32) outs([[PAD]] : tensor<1x4000x200x16xf32>) -> tensor<1x4000x200x16xf32>
+// CHECK-NEXT:      [[PAD_FILL:%.+]] = linalg.fill ins([[ZERO]] : f32) outs([[PAD]] : tensor<1x4000x200x16xf32>) -> tensor<1x4000x200x16xf32>
 // CHECK-NEXT:      [[RESHAPE_OUT_SLICE:%.+]] = tensor.extract_slice [[PAD_FILL]][0, 0, 0, 0] [1, 4000, 200, 1] [1, 1, 1, 1] : tensor<1x4000x200x16xf32> to tensor<1x4000x200x1xf32>
 // CHECK-NEXT:      [[RESHAPE:%.+]] = linalg.generic {indexing_maps = [[[map]], [[NCHW]]], iterator_types = ["parallel", "parallel", "parallel", "parallel"]} ins([[REDUCE]] : tensor<1x4000x200xf32>) outs([[RESHAPE_OUT_SLICE]] : tensor<1x4000x200x1xf32>) {
 // CHECK-NEXT:      ^bb0([[IN:%.+]]: f32, {{.+}}: f32):
@@ -128,8 +125,7 @@ func.func @PaddedNHWCToFlatKeepDims(%arg0: tensor<1x16x4000x200xf32, {order = #N
 // CHECK-NEXT:      [[EMPT:%.+]] = tensor.empty() : tensor<16x4000x200xf32>
 // CHECK-NEXT:      [[PAD:%.+]] = linalg.fill ins([[ZERO]] : f32) outs([[EMPT]] : tensor<16x4000x200xf32>) -> tensor<16x4000x200xf32>
 // CHECK-NEXT:      [[PAD_SLICE:%.+]] = tensor.extract_slice [[PAD]][0, 0, 0] [1, 4000, 200] [1, 1, 1] : tensor<16x4000x200xf32> to tensor<1x4000x200xf32>
-// CHECK-NEXT:      [[ZERO1:%.+]] = arith.constant 0.000000e+00 : f32
-// CHECK-NEXT:      [[REDUCE_OUT_INIT:%.+]] = linalg.fill ins([[ZERO1]] : f32) outs([[PAD_SLICE]] : tensor<1x4000x200xf32>) -> tensor<1x4000x200xf32>
+// CHECK-NEXT:      [[REDUCE_OUT_INIT:%.+]] = linalg.fill ins([[ZERO]] : f32) outs([[PAD_SLICE]] : tensor<1x4000x200xf32>) -> tensor<1x4000x200xf32>
 // CHECK-NEXT:      [[REDUCE_IN:%.+]] = tensor.extract_slice [[ARG1]][0, 0, 0, 0] [1, 4000, 200, 12] [1, 1, 1, 1] : tensor<1x4000x200x16xf32> to tensor<1x4000x200x12xf32>
 // CHECK-NEXT:      [[REDUCE:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[map]]], iterator_types = ["parallel", "parallel", "parallel", "reduction"]} ins([[REDUCE_IN]] : tensor<1x4000x200x12xf32>) outs([[REDUCE_OUT_INIT]] : tensor<1x4000x200xf32>) {
 // CHECK-NEXT:      ^bb0([[IN:%.+]]: f32, [[OUT:%.+]]: f32):
@@ -163,8 +159,7 @@ func.func @PaddedNHWCToCWH(%arg0: tensor<1x16x4000x200xf32, {order = #NHWC}>) ->
 // CHECK-NEXT:     [[EMPT:%.+]] = tensor.empty() : tensor<16x200x4000xf32>
 // CHECK-NEXT:     [[PAD:%.+]] = linalg.fill ins([[ZERO]] : f32) outs([[EMPT]] : tensor<16x200x4000xf32>) -> tensor<16x200x4000xf32>
 // CHECK-NEXT:     [[PAD_SLICE:%.+]] = tensor.extract_slice [[PAD]][0, 0, 0] [1, 200, 4000] [1, 1, 1] : tensor<16x200x4000xf32> to tensor<1x200x4000xf32>
-// CHECK-NEXT:     [[ZERO1:%.+]] = arith.constant 0.000000e+00 : f32
-// CHECK-NEXT:     [[REDUCE_OUT_INIT:%.+]] = linalg.fill ins([[ZERO1]] : f32) outs([[PAD_SLICE]] : tensor<1x200x4000xf32>) -> tensor<1x200x4000xf32>
+// CHECK-NEXT:     [[REDUCE_OUT_INIT:%.+]] = linalg.fill ins([[ZERO]] : f32) outs([[PAD_SLICE]] : tensor<1x200x4000xf32>) -> tensor<1x200x4000xf32>
 // CHECK-NEXT:     [[REDUCE_IN:%.+]] = tensor.extract_slice [[ARG1]][0, 0, 0, 0] [1, 4000, 200, 12] [1, 1, 1, 1] : tensor<1x4000x200x16xf32> to tensor<1x4000x200x12xf32>
 // CHECK-NEXT:     [[REDUCE:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[map1]]], iterator_types = ["parallel", "parallel", "parallel", "reduction"]} ins([[REDUCE_IN]] : tensor<1x4000x200x12xf32>) outs([[REDUCE_OUT_INIT]] : tensor<1x200x4000xf32>) {
 // CHECK-NEXT:     ^bb0([[IN:%.+]]: f32, [[OUT:%.+]]: f32):
@@ -195,9 +190,10 @@ func.func @PaddedNHWCToCWHF16(%arg0: tensor<1x16x4000x200xf16, {order = #NHWC}>)
   return %0 : tensor<16x4000x200xf16, {order = #map}>
 
 // CHECK:    IE.CodeGenCapsule inputs({{.+}} as [[ARG1:%.+]]: tensor<1x4000x200x16xf16>) {
-// CHECK-NEXT:     [[EMPT:%.+]] = tensor.empty() : tensor<1x200x4000xf32>
+// CHECK-NEXT:     [[ZERO1:%.+]] = arith.constant 0.000000e+00 : f16 
 // CHECK-NEXT:     [[ZERO:%.+]] = arith.constant 0.000000e+00 : f32
-// CHECK-NEXT:     [[REDUCE_OUT_INIT:%.+]] = linalg.fill ins(%cst : f32) outs(%1 : tensor<1x200x4000xf32>) -> tensor<1x200x4000xf32>
+// CHECK-NEXT:     [[EMPT:%.+]] = tensor.empty() : tensor<1x200x4000xf32>
+// CHECK-NEXT:     [[REDUCE_OUT_INIT:%.+]] = linalg.fill ins([[ZERO]] : f32) outs([[EMPT]] : tensor<1x200x4000xf32>) -> tensor<1x200x4000xf32>
 // CHECK-NEXT:     [[REDUCE_IN:%.+]] = tensor.extract_slice [[ARG1]][0, 0, 0, 0] [1, 4000, 200, 12] [1, 1, 1, 1] : tensor<1x4000x200x16xf16> to tensor<1x4000x200x12xf16>
 // CHECK-NEXT:     [[REDUCE:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[map1]]], iterator_types = ["parallel", "parallel", "parallel", "reduction"]} ins([[REDUCE_IN]] : tensor<1x4000x200x12xf16>) outs([[REDUCE_OUT_INIT]] : tensor<1x200x4000xf32>) {
 // CHECK-NEXT:     ^bb0([[IN:%.+]]: f16, [[OUT:%.+]]: f32):
@@ -205,7 +201,6 @@ func.func @PaddedNHWCToCWHF16(%arg0: tensor<1x16x4000x200xf16, {order = #NHWC}>)
 // CHECK-NEXT:       [[ADD:%.+]] = arith.addf [[OUT]], [[EXT]] fastmath<reassoc> : f32
 // CHECK-NEXT:       linalg.yield [[ADD]] : f32
 // CHECK-NEXT:     } -> tensor<1x200x4000xf32>
-// CHECK-NEXT:     [[ZERO1:%.+]] = arith.constant 0.000000e+00 : f16
 // CHECK-NEXT:     [[PAD_EMPT:%.+]] = tensor.empty() : tensor<16x200x4000xf16>
 // CHECK-NEXT:     [[PAD:%.+]] = linalg.fill ins([[ZERO1]] : f16) outs([[PAD_EMPT]] : tensor<16x200x4000xf16>) -> tensor<16x200x4000xf16>
 // CHECK-NEXT:     [[PAD_SLICE:%.+]] = tensor.extract_slice [[PAD]][0, 0, 0] [1, 200, 4000] [1, 1, 1] : tensor<16x200x4000xf16> to tensor<1x200x4000xf16>
@@ -241,14 +236,13 @@ func.func @PaddedNHWCToCWHUI32(%arg0: tensor<1x16x4000x200xui32, {order=#NHWC}>)
 // CHECK-NEXT:     [[EMPT:%.+]] = tensor.empty() : tensor<16x200x4000xi32>
 // CHECK-NEXT:     [[PAD:%.+]] = linalg.fill ins([[ZERO]] : i32) outs([[EMPT]] : tensor<16x200x4000xi32>) -> tensor<16x200x4000xi32>
 // CHECK-NEXT:     [[REDUCE_OUT:%.+]] = tensor.extract_slice [[PAD]][0, 0, 0] [1, 200, 4000] [1, 1, 1] : tensor<16x200x4000xi32> to tensor<1x200x4000xi32>
-// CHECK-NEXT:     [[ZERO1:%.+]] = arith.constant 0 : i32
-// CHECK-NEXT:     [[REDUCE_OUT_INIT:%.+]] = linalg.fill ins([[ZERO1]] : i32) outs([[REDUCE_OUT]] : tensor<1x200x4000xi32>) -> tensor<1x200x4000xi32>
+// CHECK-NEXT:     [[REDUCE_OUT_INIT:%.+]] = linalg.fill ins([[ZERO]] : i32) outs([[REDUCE_OUT]] : tensor<1x200x4000xi32>) -> tensor<1x200x4000xi32>
 // CHECK-NEXT:     [[REDUCE_IN:%.+]] = tensor.extract_slice [[ARG1]][0, 0, 0, 0] [1, 4000, 200, 12] [1, 1, 1, 1] : tensor<1x4000x200x16xi32> to tensor<1x4000x200x12xi32>
 // CHECK-NEXT:     [[OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[map1]]], iterator_types = ["parallel", "parallel", "parallel", "reduction"]} ins([[REDUCE_IN]] : tensor<1x4000x200x12xi32>) outs([[REDUCE_OUT_INIT]] : tensor<1x200x4000xi32>) {
 // CHECK-NEXT:     ^bb0([[IN:%.+]]: i32, [[OUT:%.+]]: i32):
 // CHECK-NEXT:       [[ADD:%.+]] = arith.addi [[OUT]], [[IN]] : i32
 // CHECK-NEXT:       linalg.yield [[ADD]] : i32
 // CHECK-NEXT:     } -> tensor<1x200x4000xi32>
-// CHECK-NEXT:     [[OUT:%.+]] = tensor.insert_slice [[OP]] into %2[0, 0, 0] [1, 200, 4000] [1, 1, 1] : tensor<1x200x4000xi32> into tensor<16x200x4000xi32>
+// CHECK-NEXT:     [[OUT:%.+]] = tensor.insert_slice [[OP]] into [[PAD]][0, 0, 0] [1, 200, 4000] [1, 1, 1] : tensor<1x200x4000xi32> into tensor<16x200x4000xi32>
 // CHECK-NEXT:     IE.CGCYield [[OUT]] : tensor<16x200x4000xi32>
 }

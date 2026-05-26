@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --one-shot-bufferize-VPU-to-VPUIP %s | FileCheck %s
-// REQUIRES: arch-NPU40XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --one-shot-bufferize-VPU-to-VPUIP %s | FileCheck %s
+// REQUIRES: platform-NPU4000
 
 // CHECK-LABEL:  func.func @ConvertFP32ToFP16
 func.func @ConvertFP32ToFP16(%arg0: tensor<1x3x4x4xf32>) -> tensor<1x3x4x4xf16> {

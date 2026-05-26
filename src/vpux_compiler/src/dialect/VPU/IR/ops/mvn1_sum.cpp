@@ -49,6 +49,8 @@ vpux::InputTiling vpux::VPU::MVN1SumOp::backInferTileInfo(const vpux::TileInfo& 
     auto inputShape = getShape(getInput());
     TileInfo inputTile({inputShape[Dims4D::Act::N], outputTile.shape[Dims4D::Act::C], inputShape[Dims4D::Act::H],
                         inputShape[Dims4D::Act::W]});
+    inputTile.axis[Dims4D::Act::C] = outputTile.axis[Dims4D::Act::C];
+
     return TilingInfo{{std::move(inputTile)}};
 }
 

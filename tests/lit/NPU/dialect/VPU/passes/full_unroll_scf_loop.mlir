@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW allow-custom-values=true" --full-unroll-scf-loop %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW allow-custom-values=true" --full-unroll-scf-loop %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
@@ -520,8 +520,6 @@ func.func @SOHConvTileOverH(%arg0: tensor<1x32x64x64xf16, {order = #NHWC}>) -> t
 #map3 = affine_map<(d0) -> (0, d0 - 30)>
 #map4 = affine_map<(d0, d1) -> (d0 + d1)>
 #map5 = affine_map<(d0) -> (-d0 + 256, 96)>
-#map6 = affine_map<(d0, d1, d2) -> (d0 - d1 - d2)>
-#map7 = affine_map<(d0) -> (-d0, 0)>
 
 !convInTiledType = tensor<1x32x?x66xf16, {bounds = #const.OpaqueI64Elements<[1, 32, 66, 66]> : tensor<4xsi64>, mem_space = @CMX_NN, order = #NHWC}>
 !convOutTiledDDRType = tensor<1x256x?x64xf16, {bounds = #const.OpaqueI64Elements<[1, 256, 64, 64]> : tensor<4xsi64>, order = #NHWC}>
@@ -532,7 +530,6 @@ func.func @SOHConvTileOverH(%arg0: tensor<1x32x64x64xf16, {order = #NHWC}>) -> t
 // CHECK-LABEL:   @SOKConvTileOverH
 // CHECK-SAME:       [[INPUT:%[^:]+]]: tensor<1x32x64x64xf16, {order = #NHWC}>
 func.func @SOKConvTileOverH(%arg0: tensor<1x32x64x64xf16, {order = #NHWC}>) -> tensor<1x256x64x64xf16, {order = #NHWC}> {
-  %c33 = arith.constant 33 : index
   %c31 = arith.constant 31 : index
   %cst = arith.constant 0.000000e+00 : f16
   %c32 = arith.constant 32 : index
@@ -555,18 +552,13 @@ func.func @SOKConvTileOverH(%arg0: tensor<1x32x64x64xf16, {order = #NHWC}>) -> t
 
     %10 = scf.forall (%arg3) = (0) to (256) step (96) shared_outs(%arg4 = %9) -> (!convOutTiledDDRType) {
       %11 = affine.min #map5(%arg3)
-      %12 = arith.addi %7, %c33 : index
-      %13 = affine.apply #map6(%12, %4, %6)
-      %14 = affine.max #map7(%4)
 
-      %extracted_slice_1 = tensor.extract_slice %extracted_slice[0, 0, %14, 0] [1, 32, %13, 64] [1, 1, 1, 1]
-        : tensor<1x32x33x64xf16, {order = #NHWC}> to tensor<1x32x?x64xf16, {order = #NHWC}>
-      %copy_act = VPU.Copy(%extracted_slice_1) {out_mem_space = @CMX_NN}
-        : tensor<1x32x?x64xf16, {order = #NHWC}> -> tensor<1x32x?x64xf16, {mem_space = @CMX_NN, order = #NHWC}>
+      %copy_act = VPU.Copy(%extracted_slice) {out_mem_space = @CMX_NN}
+        : tensor<1x32x33x64xf16, {order = #NHWC}> -> tensor<1x32x33x64xf16, {mem_space = @CMX_NN, order = #NHWC}>
       %padded = tensor.pad %copy_act low[0, 0, %4, 1] high[0, 0, %6, 1] {
         ^bb0(%arg5: index, %arg6: index, %arg7: index, %arg8: index):
           tensor.yield %cst : f16
-      } : tensor<1x32x?x64xf16, {mem_space = @CMX_NN, order = #NHWC}> to !convInTiledType
+      } : tensor<1x32x33x64xf16, {mem_space = @CMX_NN, order = #NHWC}> to !convInTiledType
 
       %extracted_slice_2 = tensor.extract_slice %cst_0[%arg3, 0, 0, 0] [%11, 32, 3, 3] [1, 1, 1, 1]
         : tensor<256x32x3x3xf16, {order = #NHWC}>
@@ -1801,4 +1793,547 @@ func.func @DepthToSpaceSOW(%arg0: tensor<1x128x12x270xf16, {order = #NHWC}>) -> 
   // CHECK-SAME{LITERAL}:         memory_offsets = [[0, 0, 0, 0], [0, 0, 0, 216], [0, 0, 0, 432], [0, 0, 0, 648], [0, 0, 0, 864]]}>
   // CHECK:          [[OUT_COPY:%.+]] = VPU.Copy([[D2S]])
   // CHECK-SAME:            -> tensor<1x8x48x1080xf16, {order = #NHWC}>
+}
+
+// -----
+
+// Verify multiclustering unroll for LSTMGates (multi-output SW op).
+// The scf.forall splits the H dimension (dim 2) across 4 clusters.
+// Both outputs (hiddenState, cellState) must be distributed and copied out.
+
+#map2 = affine_map<(d0) -> (-d0 + 128, 32)>
+
+// CHECK-LABEL: @UnrollMCLSTMGates
+// CHECK-SAME:       [[GATES:%[^:]+]]: tensor<1x1x128x512xf16>
+// CHECK-SAME:       [[CELL:%[^:]+]]: tensor<1x1x128x128xf16>
+func.func @UnrollMCLSTMGates(
+    %arg0: tensor<1x1x128x512xf16>,
+    %arg1: tensor<1x1x128x128xf16>
+) -> (tensor<1x1x128x128xf16>, tensor<1x1x128x128xf16>) {
+  %out_h = tensor.empty() : tensor<1x1x128x128xf16>
+  %out_c = tensor.empty() : tensor<1x1x128x128xf16>
+
+  %result:2 = scf.forall (%iv) = (0) to (128) step (32)
+      shared_outs(%sh_h = %out_h, %sh_c = %out_c)
+      -> (tensor<1x1x128x128xf16>, tensor<1x1x128x128xf16>) {
+    %tile_size = affine.min #map2(%iv)
+
+    %slice_gates = tensor.extract_slice %arg0[0, 0, %iv, 0] [1, 1, %tile_size, 512] [1, 1, 1, 1]
+        : tensor<1x1x128x512xf16>
+          to tensor<1x1x?x512xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 128, 512]> : tensor<4xsi64>}>
+    %slice_cell = tensor.extract_slice %arg1[0, 0, %iv, 0] [1, 1, %tile_size, 128] [1, 1, 1, 1]
+        : tensor<1x1x128x128xf16>
+          to tensor<1x1x?x128xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 128, 128]> : tensor<4xsi64>}>
+
+    %h, %c = VPU.LSTMGates(%slice_gates, %slice_cell)
+        : tensor<1x1x?x512xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 128, 512]> : tensor<4xsi64>}>,
+          tensor<1x1x?x128xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 128, 128]> : tensor<4xsi64>}>
+       -> tensor<1x1x?x128xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 128, 128]> : tensor<4xsi64>}>,
+          tensor<1x1x?x128xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 128, 128]> : tensor<4xsi64>}>
+
+    scf.forall.in_parallel {
+      tensor.parallel_insert_slice %h into %sh_h[0, 0, %iv, 0] [1, 1, %tile_size, 128] [1, 1, 1, 1]
+          : tensor<1x1x?x128xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 128, 128]> : tensor<4xsi64>}>
+            into tensor<1x1x128x128xf16>
+      tensor.parallel_insert_slice %c into %sh_c[0, 0, %iv, 0] [1, 1, %tile_size, 128] [1, 1, 1, 1]
+          : tensor<1x1x?x128xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 128, 128]> : tensor<4xsi64>}>
+            into tensor<1x1x128x128xf16>
+    }
+  }
+  return %result#0, %result#1 : tensor<1x1x128x128xf16>, tensor<1x1x128x128xf16>
+}
+
+// CHECK-NOT: scf.forall
+
+// Input copies: both inputs are distributed (SEGMENTED on H, 4 clusters)
+// CHECK:      [[GATES_COPY:%.+]] = VPU.Copy([[GATES]]) {out_mem_space = @CMX_NN}
+// CHECK-SAME:     : tensor<1x1x128x512xf16>
+// CHECK-SAME:     -> !VPU.DistributedTensor<1x1x128x512xf16, #NCHW, @CMX_NN, {
+// CHECK-SAME:          mode = "SEGMENTED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64
+// CHECK-SAME{LITERAL}: compute_shapes = [[1, 1, 32, 512], [1, 1, 32, 512], [1, 1, 32, 512], [1, 1, 32, 512]],
+// CHECK-SAME{LITERAL}: compute_offsets = [[0, 0, 0, 0], [0, 0, 32, 0], [0, 0, 64, 0], [0, 0, 96, 0]],
+// CHECK-SAME{LITERAL}: memory_shapes = [[1, 1, 32, 512], [1, 1, 32, 512], [1, 1, 32, 512], [1, 1, 32, 512]],
+// CHECK-SAME{LITERAL}: memory_offsets = [[0, 0, 0, 0], [0, 0, 32, 0], [0, 0, 64, 0], [0, 0, 96, 0]]}>
+
+// CHECK:      [[CELL_COPY:%.+]] = VPU.Copy([[CELL]]) {out_mem_space = @CMX_NN}
+// CHECK-SAME:     : tensor<1x1x128x128xf16>
+// CHECK-SAME:     -> !VPU.DistributedTensor<1x1x128x128xf16, #NCHW, @CMX_NN, {
+// CHECK-SAME:          mode = "SEGMENTED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64
+// CHECK-SAME{LITERAL}: compute_shapes = [[1, 1, 32, 128], [1, 1, 32, 128], [1, 1, 32, 128], [1, 1, 32, 128]],
+// CHECK-SAME{LITERAL}: compute_offsets = [[0, 0, 0, 0], [0, 0, 32, 0], [0, 0, 64, 0], [0, 0, 96, 0]],
+// CHECK-SAME{LITERAL}: memory_shapes = [[1, 1, 32, 128], [1, 1, 32, 128], [1, 1, 32, 128], [1, 1, 32, 128]],
+// CHECK-SAME{LITERAL}: memory_offsets = [[0, 0, 0, 0], [0, 0, 32, 0], [0, 0, 64, 0], [0, 0, 96, 0]]}>
+
+// Compute op with distributed outputs
+// CHECK:      [[H_DIST:%.+]], [[C_DIST:%.+]] = VPU.LSTMGates([[GATES_COPY]], [[CELL_COPY]])
+// CHECK-SAME:     -> !VPU.DistributedTensor<1x1x128x128xf16, #NCHW, @CMX_NN, {
+// CHECK-SAME:          mode = "SEGMENTED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64
+// CHECK-SAME{LITERAL}: compute_shapes = [[1, 1, 32, 128], [1, 1, 32, 128], [1, 1, 32, 128], [1, 1, 32, 128]],
+// CHECK-SAME{LITERAL}: compute_offsets = [[0, 0, 0, 0], [0, 0, 32, 0], [0, 0, 64, 0], [0, 0, 96, 0]]
+
+// Output copies: one per result
+// CHECK:      [[H_OUT:%.+]] = VPU.Copy([[H_DIST]])
+// CHECK-SAME:     -> tensor<1x1x128x128xf16>
+// CHECK:      [[C_OUT:%.+]] = VPU.Copy([[C_DIST]])
+// CHECK-SAME:     -> tensor<1x1x128x128xf16>
+
+// CHECK:      return [[H_OUT]], [[C_OUT]]
+
+// -----
+
+// CHECK: func.func @UnrollLSTMGatesNoMC([[GATES:%.+]]: tensor<1x1x128x512xf16>,
+// CHECK-SAME:                           [[CELL:%.+]]: tensor<1x1x128x128xf16>)
+func.func @UnrollLSTMGatesNoMC(
+    %arg0: tensor<1x1x128x512xf16>,
+    %arg1: tensor<1x1x128x128xf16>
+) -> (tensor<1x1x128x128xf16>, tensor<1x1x128x128xf16>) {
+  %c0   = arith.constant 0   : index
+  %c128 = arith.constant 128 : index
+  %c32  = arith.constant 32  : index
+  %out0 = tensor.empty() : tensor<1x1x128x128xf16>
+  %out1 = tensor.empty() : tensor<1x1x128x128xf16>
+
+  // Tiling loop: 4 tiles of size 32 along the H dimension (dim 2). No multiClusterStrategy is set.
+  %result:2 = scf.for %iv = %c0 to %c128 step %c32
+      iter_args(%acc_h = %out0, %acc_c = %out1)
+      -> (tensor<1x1x128x128xf16>, tensor<1x1x128x128xf16>) {
+
+    %slice_gates = tensor.extract_slice %arg0[0, 0, %iv, 0] [1, 1, 32, 512] [1, 1, 1, 1]
+        : tensor<1x1x128x512xf16> to tensor<1x1x32x512xf16>
+    %slice_cell = tensor.extract_slice %arg1[0, 0, %iv, 0] [1, 1, 32, 128] [1, 1, 1, 1]
+        : tensor<1x1x128x128xf16> to tensor<1x1x32x128xf16>
+
+    %h, %c = VPU.LSTMGates(%slice_gates, %slice_cell)
+        : tensor<1x1x32x512xf16>, tensor<1x1x32x128xf16>
+       -> tensor<1x1x32x128xf16>, tensor<1x1x32x128xf16>
+
+    %ins_h = tensor.insert_slice %h into %acc_h[0, 0, %iv, 0] [1, 1, 32, 128] [1, 1, 1, 1]
+        : tensor<1x1x32x128xf16> into tensor<1x1x128x128xf16>
+    %ins_c = tensor.insert_slice %c into %acc_c[0, 0, %iv, 0] [1, 1, 32, 128] [1, 1, 1, 1]
+        : tensor<1x1x32x128xf16> into tensor<1x1x128x128xf16>
+
+    scf.yield %ins_h, %ins_c : tensor<1x1x128x128xf16>, tensor<1x1x128x128xf16>
+  }
+
+  return %result#0, %result#1 : tensor<1x1x128x128xf16>, tensor<1x1x128x128xf16>
+
+  // CHECK-NOT: scf.for
+  // CHECK-NOT: tensor.extract_slice
+
+  // CHECK: [[GATES0:%.+]] = VPU.Slice [[GATES]] [0, 0, 0, 0] [1, 1, 32, 512]
+  // CHECK: [[CELL0:%.+]]  = VPU.Slice [[CELL]]  [0, 0, 0, 0] [1, 1, 32, 128]
+  // CHECK: [[H0:%.+]], [[C0:%.+]] = VPU.LSTMGates([[GATES0]], [[CELL0]])
+  // CHECK-NOT: multiClusterStrategy
+  // CHECK: [[GATES1:%.+]] = VPU.Slice [[GATES]] [0, 0, 32, 0] [1, 1, 32, 512]
+  // CHECK: [[CELL1:%.+]]  = VPU.Slice [[CELL]]  [0, 0, 32, 0] [1, 1, 32, 128]
+  // CHECK: [[H1:%.+]], [[C1:%.+]] = VPU.LSTMGates([[GATES1]], [[CELL1]])
+  // CHECK: [[GATES2:%.+]] = VPU.Slice [[GATES]] [0, 0, 64, 0] [1, 1, 32, 512]
+  // CHECK: [[CELL2:%.+]]  = VPU.Slice [[CELL]]  [0, 0, 64, 0] [1, 1, 32, 128]
+  // CHECK: [[H2:%.+]], [[C2:%.+]] = VPU.LSTMGates([[GATES2]], [[CELL2]])
+  // CHECK: [[GATES3:%.+]] = VPU.Slice [[GATES]] [0, 0, 96, 0] [1, 1, 32, 512]
+  // CHECK: [[CELL3:%.+]]  = VPU.Slice [[CELL]]  [0, 0, 96, 0] [1, 1, 32, 128]
+  // CHECK: [[H3:%.+]], [[C3:%.+]] = VPU.LSTMGates([[GATES3]], [[CELL3]])
+
+  // CHECK-NOT: tensor.insert_slice
+
+  // CHECK: [[CONCAT_H:%.+]] = VPU.Concat([[H0]], [[H1]], [[H2]], [[H3]])
+  // CHECK-SAME{LITERAL}: {static_offsets = [[0, 0, 0, 0], [0, 0, 32, 0], [0, 0, 64, 0], [0, 0, 96, 0]]}
+  // CHECK: [[CONCAT_C:%.+]] = VPU.Concat([[C0]], [[C1]], [[C2]], [[C3]])
+  // CHECK-SAME{LITERAL}: {static_offsets = [[0, 0, 0, 0], [0, 0, 32, 0], [0, 0, 64, 0], [0, 0, 96, 0]]}
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#map_tile = affine_map<(d0) -> (-d0 + 1024, 205)>
+#map_mc = affine_map<(d0) -> (-d0 + 205, 35)>
+
+// CHECK-LABEL: @MCLSTMGatesLargeShape
+// CHECK-SAME:         [[ARG0:%.+]]: tensor<1x1x1024x2048xf16>
+// CHECK-SAME:         [[ARG1:%.+]]: tensor<1x1x1024x512xf16>
+  func.func @MCLSTMGatesLargeShape(%arg0: tensor<1x1x1024x2048xf16>, %arg1: tensor<1x1x1024x512xf16>) -> (tensor<1x1x1024x512xf16>, tensor<1x1x1024x512xf16>) {
+    %c0 = arith.constant 0 : index
+    %c1024 = arith.constant 1024 : index
+    %c205 = arith.constant 205 : index
+    %0 = tensor.empty() : tensor<1x1x1024x512xf16>
+    %1:2 = scf.for %arg2 = %c0 to %c1024 step %c205 iter_args(%arg3 = %0, %arg4 = %0) -> (tensor<1x1x1024x512xf16>, tensor<1x1x1024x512xf16>) {
+      %tile_sz = affine.min #map_tile(%arg2)
+      %extracted_slice = tensor.extract_slice %arg0[0, 0, %arg2, 0] [1, 1, %tile_sz, 2048] [1, 1, 1, 1] : tensor<1x1x1024x2048xf16> to tensor<1x1x?x2048xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 1024, 2048]> : tensor<4xsi64>, order = #NCHW}>
+      %extracted_slice_0 = tensor.extract_slice %arg1[0, 0, %arg2, 0] [1, 1, %tile_sz, 512] [1, 1, 1, 1] : tensor<1x1x1024x512xf16> to tensor<1x1x?x512xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 1024, 512]> : tensor<4xsi64>, order = #NCHW}>
+      %mc_step = affine.apply affine_map<(d0) -> (d0 ceildiv 6)>(%tile_sz)
+      %2 = tensor.empty(%tile_sz) : tensor<1x1x?x512xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 1024, 512]> : tensor<4xsi64>, order = #NCHW}>
+      %3:2 = scf.forall (%arg5) = (0) to (%tile_sz) step (%mc_step) shared_outs(%arg6 = %2, %arg7 = %2) -> (tensor<1x1x?x512xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 1024, 512]> : tensor<4xsi64>, order = #NCHW}>, tensor<1x1x?x512xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 1024, 512]> : tensor<4xsi64>, order = #NCHW}>) {
+        %4 = affine.min affine_map<(d0, d1)[s0] -> (-d0 + s0, d1 ceildiv 6)>(%arg5, %tile_sz)[%tile_sz]
+        %extracted_slice_2 = tensor.extract_slice %extracted_slice[0, 0, %arg5, 0] [1, 1, %4, 2048] [1, 1, 1, 1] : tensor<1x1x?x2048xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 1024, 2048]> : tensor<4xsi64>, order = #NCHW}> to tensor<1x1x?x2048xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 1024, 2048]> : tensor<4xsi64>, order = #NCHW}>
+        %extracted_slice_3 = tensor.extract_slice %extracted_slice_0[0, 0, %arg5, 0] [1, 1, %4, 512] [1, 1, 1, 1] : tensor<1x1x?x512xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 1024, 512]> : tensor<4xsi64>, order = #NCHW}> to tensor<1x1x?x512xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 1024, 512]> : tensor<4xsi64>, order = #NCHW}>
+        %outputHiddenState, %outputCellState = VPU.LSTMGates(%extracted_slice_2, %extracted_slice_3) : tensor<1x1x?x2048xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 1024, 2048]> : tensor<4xsi64>, order = #NCHW}>, tensor<1x1x?x512xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 1024, 512]> : tensor<4xsi64>, order = #NCHW}> -> tensor<1x1x?x512xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 1024, 512]> : tensor<4xsi64>, order = #NCHW}>, tensor<1x1x?x512xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 1024, 512]> : tensor<4xsi64>, order = #NCHW}>
+        scf.forall.in_parallel {
+          tensor.parallel_insert_slice %outputHiddenState into %arg6[0, 0, %arg5, 0] [1, 1, %4, 512] [1, 1, 1, 1] : tensor<1x1x?x512xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 1024, 512]> : tensor<4xsi64>, order = #NCHW}> into tensor<1x1x?x512xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 1024, 512]> : tensor<4xsi64>, order = #NCHW}>
+          tensor.parallel_insert_slice %outputCellState into %arg7[0, 0, %arg5, 0] [1, 1, %4, 512] [1, 1, 1, 1] : tensor<1x1x?x512xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 1024, 512]> : tensor<4xsi64>, order = #NCHW}> into tensor<1x1x?x512xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 1024, 512]> : tensor<4xsi64>, order = #NCHW}>
+        }
+      }
+      %ins_h = tensor.insert_slice %3#0 into %arg3[0, 0, %arg2, 0] [1, 1, %tile_sz, 512] [1, 1, 1, 1] : tensor<1x1x?x512xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 1024, 512]> : tensor<4xsi64>, order = #NCHW}> into tensor<1x1x1024x512xf16>
+      %ins_c = tensor.insert_slice %3#1 into %arg4[0, 0, %arg2, 0] [1, 1, %tile_sz, 512] [1, 1, 1, 1] : tensor<1x1x?x512xf16, {bounds = #const.OpaqueI64Elements<[1, 1, 1024, 512]> : tensor<4xsi64>, order = #NCHW}> into tensor<1x1x1024x512xf16>
+      scf.yield %ins_h, %ins_c : tensor<1x1x1024x512xf16>, tensor<1x1x1024x512xf16>
+    }
+    return %1#0, %1#1 : tensor<1x1x1024x512xf16>, tensor<1x1x1024x512xf16>
+
+  // CHECK-NOT: scf.for
+  // CHECK-NOT: scf.forall
+
+  // Shared output accumulator (uninitialised; filled by insert_slice chains).
+  // CHECK: [[ACC:%.+]] = tensor.empty() : tensor<1x1x1024x512xf16>
+
+  // CHECK: [[G0:%.+]] = VPU.Slice [[ARG0]] [0, 0, 0, 0] [1, 1, 205, 2048]
+  // CHECK: [[S0:%.+]] = VPU.Slice [[ARG1]] [0, 0, 0, 0] [1, 1, 205, 512]
+  // CHECK: [[G0_DIST:%.+]] = VPU.Copy([[G0]]) {out_mem_space = @CMX_NN}
+  // CHECK-SAME:     : tensor<1x1x205x2048xf16>
+  // CHECK-SAME:     -> !VPU.DistributedTensor<1x1x205x2048xf16, #NCHW, @CMX_NN, {
+  // CHECK-SAME:          mode = "SEGMENTED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64
+  // CHECK-SAME{LITERAL}: compute_shapes = [[1, 1, 35, 2048], [1, 1, 35, 2048], [1, 1, 35, 2048], [1, 1, 35, 2048], [1, 1, 35, 2048], [1, 1, 30, 2048]],
+  // CHECK-SAME{LITERAL}: compute_offsets = [[0, 0, 0, 0], [0, 0, 35, 0], [0, 0, 70, 0], [0, 0, 105, 0], [0, 0, 140, 0], [0, 0, 175, 0]],
+  // CHECK-SAME{LITERAL}: memory_shapes = [[1, 1, 35, 2048], [1, 1, 35, 2048], [1, 1, 35, 2048], [1, 1, 35, 2048], [1, 1, 35, 2048], [1, 1, 30, 2048]],
+  // CHECK-SAME{LITERAL}: memory_offsets = [[0, 0, 0, 0], [0, 0, 35, 0], [0, 0, 70, 0], [0, 0, 105, 0], [0, 0, 140, 0], [0, 0, 175, 0]]}>
+  // CHECK: [[S0_DIST:%.+]] = VPU.Copy([[S0]]) {out_mem_space = @CMX_NN}
+  // CHECK-SAME:     : tensor<1x1x205x512xf16>
+  // CHECK-SAME:     -> !VPU.DistributedTensor<1x1x205x512xf16, #NCHW, @CMX_NN, {
+  // CHECK-SAME:          mode = "SEGMENTED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64
+  // CHECK-SAME{LITERAL}: compute_shapes = [[1, 1, 35, 512], [1, 1, 35, 512], [1, 1, 35, 512], [1, 1, 35, 512], [1, 1, 35, 512], [1, 1, 30, 512]],
+  // CHECK-SAME{LITERAL}: compute_offsets = [[0, 0, 0, 0], [0, 0, 35, 0], [0, 0, 70, 0], [0, 0, 105, 0], [0, 0, 140, 0], [0, 0, 175, 0]],
+  // CHECK-SAME{LITERAL}: memory_shapes = [[1, 1, 35, 512], [1, 1, 35, 512], [1, 1, 35, 512], [1, 1, 35, 512], [1, 1, 35, 512], [1, 1, 30, 512]],
+  // CHECK-SAME{LITERAL}: memory_offsets = [[0, 0, 0, 0], [0, 0, 35, 0], [0, 0, 70, 0], [0, 0, 105, 0], [0, 0, 140, 0], [0, 0, 175, 0]]}>
+  // CHECK: [[H0_DIST:%.+]], [[C0_DIST:%.+]] = VPU.LSTMGates([[G0_DIST]], [[S0_DIST]])
+  // CHECK-SAME:     -> !VPU.DistributedTensor<1x1x205x512xf16, #NCHW, @CMX_NN, {
+  // CHECK-SAME:          mode = "SEGMENTED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64
+  // CHECK-SAME{LITERAL}: compute_shapes = [[1, 1, 35, 512], [1, 1, 35, 512], [1, 1, 35, 512], [1, 1, 35, 512], [1, 1, 35, 512], [1, 1, 30, 512]]
+  // CHECK: [[H0_CPY:%.+]] = VPU.Copy([[H0_DIST]])
+  // CHECK-SAME:     -> tensor<1x1x205x512xf16>
+  // CHECK: tensor.cast [[H0_CPY]]
+  // CHECK: [[C0_CPY:%.+]] = VPU.Copy([[C0_DIST]])
+  // CHECK-SAME:     -> tensor<1x1x205x512xf16>
+  // CHECK: tensor.cast [[C0_CPY]]
+  // CHECK: tensor.insert_slice {{.*}} into [[ACC]][0, 0, {{.*}}, 0] [1, 1, {{.*}}, 512]
+  // CHECK: tensor.insert_slice {{.*}} into [[ACC]][0, 0, {{.*}}, 0] [1, 1, {{.*}}, 512]
+
+  // CHECK: VPU.Slice [[ARG0]] [0, 0, 205, 0] [1, 1, 205, 2048]
+  // CHECK: VPU.Slice [[ARG1]] [0, 0, 205, 0] [1, 1, 205, 512]
+  // CHECK: VPU.Copy{{.*}}{out_mem_space = @CMX_NN}
+  // CHECK-SAME:     -> !VPU.DistributedTensor<1x1x205x2048xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED"
+  // CHECK: VPU.Copy{{.*}}{out_mem_space = @CMX_NN}
+  // CHECK-SAME:     -> !VPU.DistributedTensor<1x1x205x512xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED"
+  // CHECK: VPU.LSTMGates
+  // CHECK: VPU.Copy{{.*}}-> tensor<1x1x205x512xf16>
+  // CHECK: tensor.cast
+  // CHECK: VPU.Copy{{.*}}-> tensor<1x1x205x512xf16>
+  // CHECK: tensor.cast
+
+  // CHECK: VPU.Slice [[ARG0]] [0, 0, 410, 0] [1, 1, 205, 2048]
+  // CHECK: VPU.Slice [[ARG1]] [0, 0, 410, 0] [1, 1, 205, 512]
+  // CHECK: VPU.Copy{{.*}}{out_mem_space = @CMX_NN}
+  // CHECK-SAME:     -> !VPU.DistributedTensor<1x1x205x2048xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED"
+  // CHECK: VPU.Copy{{.*}}{out_mem_space = @CMX_NN}
+  // CHECK-SAME:     -> !VPU.DistributedTensor<1x1x205x512xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED"
+  // CHECK: VPU.LSTMGates
+  // CHECK: VPU.Copy{{.*}}-> tensor<1x1x205x512xf16>
+  // CHECK: tensor.cast
+  // CHECK: VPU.Copy{{.*}}-> tensor<1x1x205x512xf16>
+  // CHECK: tensor.cast
+
+  // CHECK: VPU.Slice [[ARG0]] [0, 0, 615, 0] [1, 1, 205, 2048]
+  // CHECK: VPU.Slice [[ARG1]] [0, 0, 615, 0] [1, 1, 205, 512]
+  // CHECK: VPU.Copy{{.*}}{out_mem_space = @CMX_NN}
+  // CHECK-SAME:     -> !VPU.DistributedTensor<1x1x205x2048xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED"
+  // CHECK: VPU.Copy{{.*}}{out_mem_space = @CMX_NN}
+  // CHECK-SAME:     -> !VPU.DistributedTensor<1x1x205x512xf16, #NCHW, @CMX_NN, {mode = "SEGMENTED"
+  // CHECK: VPU.LSTMGates
+  // CHECK: VPU.Copy{{.*}}-> tensor<1x1x205x512xf16>
+  // CHECK: tensor.cast
+  // CHECK: VPU.Copy{{.*}}-> tensor<1x1x205x512xf16>
+  // CHECK: tensor.cast
+
+  // CHECK: [[G4:%.+]] = VPU.Slice [[ARG0]] [0, 0, 820, 0] [1, 1, 204, 2048]
+  // CHECK: [[S4:%.+]] = VPU.Slice [[ARG1]] [0, 0, 820, 0] [1, 1, 204, 512]
+  // CHECK: [[G4_DIST:%.+]] = VPU.Copy([[G4]]) {out_mem_space = @CMX_NN}
+  // CHECK-SAME:     : tensor<1x1x204x2048xf16>
+  // CHECK-SAME:     -> !VPU.DistributedTensor<1x1x204x2048xf16, #NCHW, @CMX_NN, {
+  // CHECK-SAME:          mode = "SEGMENTED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64
+  // CHECK-SAME{LITERAL}: compute_shapes = [[1, 1, 34, 2048], [1, 1, 34, 2048], [1, 1, 34, 2048], [1, 1, 34, 2048], [1, 1, 34, 2048], [1, 1, 34, 2048]],
+  // CHECK-SAME{LITERAL}: compute_offsets = [[0, 0, 0, 0], [0, 0, 34, 0], [0, 0, 68, 0], [0, 0, 102, 0], [0, 0, 136, 0], [0, 0, 170, 0]]
+  // CHECK: [[S4_DIST:%.+]] = VPU.Copy([[S4]]) {out_mem_space = @CMX_NN}
+  // CHECK-SAME:     : tensor<1x1x204x512xf16>
+  // CHECK-SAME:     -> !VPU.DistributedTensor<1x1x204x512xf16, #NCHW, @CMX_NN, {
+  // CHECK-SAME:          mode = "SEGMENTED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64
+  // CHECK-SAME{LITERAL}: compute_shapes = [[1, 1, 34, 512], [1, 1, 34, 512], [1, 1, 34, 512], [1, 1, 34, 512], [1, 1, 34, 512], [1, 1, 34, 512]],
+  // CHECK-SAME{LITERAL}: compute_offsets = [[0, 0, 0, 0], [0, 0, 34, 0], [0, 0, 68, 0], [0, 0, 102, 0], [0, 0, 136, 0], [0, 0, 170, 0]]
+  // CHECK: [[H4_DIST:%.+]], [[C4_DIST:%.+]] = VPU.LSTMGates([[G4_DIST]], [[S4_DIST]])
+  // CHECK-SAME:     -> !VPU.DistributedTensor<1x1x204x512xf16, #NCHW, @CMX_NN, {
+  // CHECK-SAME:          mode = "SEGMENTED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64
+  // CHECK-SAME{LITERAL}: compute_shapes = [[1, 1, 34, 512], [1, 1, 34, 512], [1, 1, 34, 512], [1, 1, 34, 512], [1, 1, 34, 512], [1, 1, 34, 512]]
+  // CHECK: [[H4_CPY:%.+]] = VPU.Copy([[H4_DIST]])
+  // CHECK-SAME:     -> tensor<1x1x204x512xf16>
+  // CHECK: tensor.cast [[H4_CPY]]
+  // CHECK: [[C4_CPY:%.+]] = VPU.Copy([[C4_DIST]])
+  // CHECK-SAME:     -> tensor<1x1x204x512xf16>
+  // CHECK: tensor.cast [[C4_CPY]]
+
+  // CHECK: [[H_OUT:%.+]] = tensor.insert_slice {{.*}} into {{.*}}[0, 0, {{.*}}, 0] [1, 1, {{.*}}, 512]
+  // CHECK: [[C_OUT:%.+]] = tensor.insert_slice {{.*}} into {{.*}}[0, 0, {{.*}}, 0] [1, 1, {{.*}}, 512]
+  // CHECK: return [[H_OUT]], [[C_OUT]] : tensor<1x1x1024x512xf16>, tensor<1x1x1024x512xf16>
+  }
+
+// -----
+
+// Verify multiclustering unroll for TopK (multi-output SW op).
+// The scf.forall splits the H dimension (dim 2) across 4 clusters.
+// Both outputs (values, indices) must be distributed and copied out.
+
+#map3 = affine_map<(d0) -> (-d0 + 128, 32)>
+
+// CHECK-LABEL: @UnrollMCTopK
+// CHECK-SAME:       [[INPUT:%[^:]+]]: tensor<1x64x128x128xf32>
+func.func @UnrollMCTopK(
+    %arg0: tensor<1x64x128x128xf32>
+) -> (tensor<1x8x128x128xf32>, tensor<1x8x128x128xsi32>) {
+  %k_buf = VPU.Empty : tensor<1x1x1x1024xui8>
+  %out_vals = tensor.empty() : tensor<1x8x128x128xf32>
+  %out_inds = tensor.empty() : tensor<1x8x128x128xsi32>
+
+  %result:2 = scf.forall (%iv) = (0) to (128) step (32)
+      shared_outs(%sh_v = %out_vals, %sh_i = %out_inds)
+      -> (tensor<1x8x128x128xf32>, tensor<1x8x128x128xsi32>) {
+    %tile_size = affine.min #map3(%iv)
+
+    %slice_in = tensor.extract_slice %arg0[0, 0, %iv, 0] [1, 64, %tile_size, 128] [1, 1, 1, 1]
+        : tensor<1x64x128x128xf32>
+          to tensor<1x64x?x128xf32, {bounds = #const.OpaqueI64Elements<[1, 64, 128, 128]> : tensor<4xsi64>}>
+
+    %vals, %inds = VPU.TopK(%slice_in, %k_buf) {
+        axis = 1 : i64,
+        element_type = si32,
+        k_value = 8 : i64,
+        mode = #IE.topk_mode<MAX>,
+        sort = #IE.topk_sort_type<SORT_INDICES>
+    } : tensor<1x64x?x128xf32, {bounds = #const.OpaqueI64Elements<[1, 64, 128, 128]> : tensor<4xsi64>}>,
+        tensor<1x1x1x1024xui8>
+     -> tensor<1x8x?x128xf32, {bounds = #const.OpaqueI64Elements<[1, 8, 128, 128]> : tensor<4xsi64>}>,
+        tensor<1x8x?x128xsi32, {bounds = #const.OpaqueI64Elements<[1, 8, 128, 128]> : tensor<4xsi64>}>
+
+    scf.forall.in_parallel {
+      tensor.parallel_insert_slice %vals into %sh_v[0, 0, %iv, 0] [1, 8, %tile_size, 128] [1, 1, 1, 1]
+          : tensor<1x8x?x128xf32, {bounds = #const.OpaqueI64Elements<[1, 8, 128, 128]> : tensor<4xsi64>}>
+            into tensor<1x8x128x128xf32>
+      tensor.parallel_insert_slice %inds into %sh_i[0, 0, %iv, 0] [1, 8, %tile_size, 128] [1, 1, 1, 1]
+          : tensor<1x8x?x128xsi32, {bounds = #const.OpaqueI64Elements<[1, 8, 128, 128]> : tensor<4xsi64>}>
+            into tensor<1x8x128x128xsi32>
+    }
+  }
+
+  return %result#0, %result#1 : tensor<1x8x128x128xf32>, tensor<1x8x128x128xsi32>
+
+  // CHECK-NOT: scf.forall
+
+  // Input copy: activation is distributed (SEGMENTED on H, 4 clusters)
+  // CHECK:      [[IN_COPY:%.+]] = VPU.Copy([[INPUT]]) {out_mem_space = @CMX_NN}
+  // CHECK-SAME:     : tensor<1x64x128x128xf32>
+  // CHECK-SAME:     -> !VPU.DistributedTensor<1x64x128x128xf32, #NCHW, @CMX_NN, {
+  // CHECK-SAME:          mode = "SEGMENTED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64
+  // CHECK-SAME{LITERAL}: compute_shapes = [[1, 64, 32, 128], [1, 64, 32, 128], [1, 64, 32, 128], [1, 64, 32, 128]],
+  // CHECK-SAME{LITERAL}: compute_offsets = [[0, 0, 0, 0], [0, 0, 32, 0], [0, 0, 64, 0], [0, 0, 96, 0]],
+  // CHECK-SAME{LITERAL}: memory_shapes = [[1, 64, 32, 128], [1, 64, 32, 128], [1, 64, 32, 128], [1, 64, 32, 128]],
+  // CHECK-SAME{LITERAL}: memory_offsets = [[0, 0, 0, 0], [0, 0, 32, 0], [0, 0, 64, 0], [0, 0, 96, 0]]}>
+
+  // k_buf: DUPLICATED (non-tiled, constant input)
+  // CHECK:      [[K_COPY:%.+]] = VPU.Copy
+  // CHECK-SAME:     -> !VPU.DistributedTensor<1x1x1x1024xui8, #NCHW, @CMX_NN, {
+  // CHECK-SAME:          mode = "DUPLICATED"
+
+  // Compute op with distributed outputs (values and indices)
+  // CHECK:      [[V_DIST:%.+]], [[I_DIST:%.+]] = VPU.TopK([[IN_COPY]], [[K_COPY]])
+  // CHECK-SAME:     -> !VPU.DistributedTensor<1x8x128x128xf32, #NCHW, @CMX_NN, {
+  // CHECK-SAME:          mode = "SEGMENTED", num_tiles = [1, 1, 4, 1], num_clusters = 4 : i64
+  // CHECK-SAME{LITERAL}: compute_shapes = [[1, 8, 32, 128], [1, 8, 32, 128], [1, 8, 32, 128], [1, 8, 32, 128]],
+  // CHECK-SAME{LITERAL}: compute_offsets = [[0, 0, 0, 0], [0, 0, 32, 0], [0, 0, 64, 0], [0, 0, 96, 0]]
+
+  // Output copies: one per result
+  // CHECK:      [[V_OUT:%.+]] = VPU.Copy([[V_DIST]])
+  // CHECK-SAME:     -> tensor<1x8x128x128xf32>
+  // CHECK:      [[I_OUT:%.+]] = VPU.Copy([[I_DIST]])
+  // CHECK-SAME:     -> tensor<1x8x128x128xsi32>
+
+  // CHECK:      return [[V_OUT]], [[I_OUT]]
+}
+
+// -----
+
+// CHECK: func.func @UnrollTopKNoMC([[INPUT:%.+]]: tensor<1x64x128x128xf32>)
+func.func @UnrollTopKNoMC(
+    %arg0: tensor<1x64x128x128xf32>
+) -> (tensor<1x8x128x128xf32>, tensor<1x8x128x128xsi32>) {
+  %c0   = arith.constant 0   : index
+  %c128 = arith.constant 128 : index
+  %c32  = arith.constant 32  : index
+  %k_buf = VPU.Empty : tensor<1x1x1x1024xui8>
+  %out_vals = tensor.empty() : tensor<1x8x128x128xf32>
+  %out_inds = tensor.empty() : tensor<1x8x128x128xsi32>
+
+  // Tiling loop: 4 tiles of size 32 along the H dimension (dim 2). No multiClusterStrategy is set.
+  %result:2 = scf.for %iv = %c0 to %c128 step %c32
+      iter_args(%acc_v = %out_vals, %acc_i = %out_inds)
+      -> (tensor<1x8x128x128xf32>, tensor<1x8x128x128xsi32>) {
+
+    %slice_in = tensor.extract_slice %arg0[0, 0, %iv, 0] [1, 64, 32, 128] [1, 1, 1, 1]
+        : tensor<1x64x128x128xf32> to tensor<1x64x32x128xf32>
+
+    %vals, %inds = VPU.TopK(%slice_in, %k_buf) {
+        axis = 1 : i64,
+        element_type = si32,
+        k_value = 8 : i64,
+        mode = #IE.topk_mode<MAX>,
+        sort = #IE.topk_sort_type<SORT_INDICES>
+    } : tensor<1x64x32x128xf32>, tensor<1x1x1x1024xui8>
+      -> tensor<1x8x32x128xf32>, tensor<1x8x32x128xsi32>
+
+    %ins_v = tensor.insert_slice %vals into %acc_v[0, 0, %iv, 0] [1, 8, 32, 128] [1, 1, 1, 1]
+        : tensor<1x8x32x128xf32> into tensor<1x8x128x128xf32>
+    %ins_i = tensor.insert_slice %inds into %acc_i[0, 0, %iv, 0] [1, 8, 32, 128] [1, 1, 1, 1]
+        : tensor<1x8x32x128xsi32> into tensor<1x8x128x128xsi32>
+
+    scf.yield %ins_v, %ins_i : tensor<1x8x128x128xf32>, tensor<1x8x128x128xsi32>
+  }
+
+  return %result#0, %result#1 : tensor<1x8x128x128xf32>, tensor<1x8x128x128xsi32>
+
+  // CHECK-NOT: scf.for
+  // CHECK-NOT: tensor.extract_slice
+
+  // k_buf is defined once; all four TopK tiles share it.
+  // CHECK: [[K_BUF:%.+]] = VPU.Empty : tensor<1x1x1x1024xui8>
+
+  // CHECK: [[IN0:%.+]] = VPU.Slice [[INPUT]] [0, 0, 0, 0] [1, 64, 32, 128]
+  // CHECK: [[V0:%.+]], [[I0:%.+]] = VPU.TopK([[IN0]], [[K_BUF]])
+  // CHECK-SAME: axis = 1 : i64, element_type = si32, k_value = 8 : i64
+  // CHECK-NOT: multiClusterStrategy
+  // CHECK: [[IN1:%.+]] = VPU.Slice [[INPUT]] [0, 0, 32, 0] [1, 64, 32, 128]
+  // CHECK: [[V1:%.+]], [[I1:%.+]] = VPU.TopK([[IN1]], [[K_BUF]])
+  // CHECK: [[IN2:%.+]] = VPU.Slice [[INPUT]] [0, 0, 64, 0] [1, 64, 32, 128]
+  // CHECK: [[V2:%.+]], [[I2:%.+]] = VPU.TopK([[IN2]], [[K_BUF]])
+  // CHECK: [[IN3:%.+]] = VPU.Slice [[INPUT]] [0, 0, 96, 0] [1, 64, 32, 128]
+  // CHECK: [[V3:%.+]], [[I3:%.+]] = VPU.TopK([[IN3]], [[K_BUF]])
+
+  // CHECK-NOT: tensor.insert_slice
+
+  // CHECK: [[VALS:%.+]] = VPU.Concat([[V0]], [[V1]], [[V2]], [[V3]])
+  // CHECK-SAME{LITERAL}: {static_offsets = [[0, 0, 0, 0], [0, 0, 32, 0], [0, 0, 64, 0], [0, 0, 96, 0]]}
+  // CHECK: [[INDS:%.+]] = VPU.Concat([[I0]], [[I1]], [[I2]], [[I3]])
+  // CHECK-SAME{LITERAL}: {static_offsets = [[0, 0, 0, 0], [0, 0, 32, 0], [0, 0, 64, 0], [0, 0, 96, 0]]}
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#map = affine_map<(d0) -> (-d0 + 1024, 171)>
+
+// CHECK-LABEL: @MCTopKLargeShape
+// CHECK-SAME:         [[INPUT:%.+]]: tensor<1x512x4096x4096xf32>
+func.func @MCTopKLargeShape(%arg0: tensor<1x512x4096x4096xf32>) -> (tensor<1x1x4096x4096xf32>, tensor<1x1x4096x4096xsi32>) {
+    %c1024 = arith.constant 1024 : index
+    %c4096 = arith.constant 4096 : index
+    %c0 = arith.constant 0 : index
+    %0 = VPU.Empty : tensor<1x1x1x8192xui8>
+    %1 = tensor.empty() : tensor<1x1x4096x4096xf32>
+    %2 = tensor.empty() : tensor<1x1x4096x4096xsi32>
+    %3:2 = scf.for %arg1 = %c0 to %c4096 step %c1024 iter_args(%arg2 = %1, %arg3 = %2) -> (tensor<1x1x4096x4096xf32>, tensor<1x1x4096x4096xsi32>) {
+      %extracted_slice = tensor.extract_slice %arg0[0, 0, %arg1, 0] [1, 512, 1024, 4096] [1, 1, 1, 1] : tensor<1x512x4096x4096xf32> to tensor<1x512x1024x4096xf32>
+      %4 = tensor.empty() : tensor<1x1x1024x4096xf32>
+      %5 = tensor.empty() : tensor<1x1x1024x4096xsi32>
+      %6:2 = scf.forall (%arg4) = (0) to (1024) step (171) shared_outs(%arg5 = %4, %arg6 = %5) -> (tensor<1x1x1024x4096xf32>, tensor<1x1x1024x4096xsi32>) {
+        %7 = affine.min #map(%arg4)
+        %extracted_slice_1 = tensor.extract_slice %extracted_slice[0, 0, %arg4, 0] [1, 512, %7, 4096] [1, 1, 1, 1] : tensor<1x512x1024x4096xf32> to tensor<1x512x?x4096xf32, {bounds = #const.OpaqueI64Elements<[1, 512, 1024, 4096]> : tensor<4xsi64>, order = #NCHW}>
+        %output_values, %output_indices = VPU.TopK(%extracted_slice_1, %0) {axis = 1 : i64, element_type = si32, k_value = 1 : i64, mode = #IE.topk_mode<MAX>, sort = #IE.topk_sort_type<SORT_INDICES>} : tensor<1x512x?x4096xf32, {bounds = #const.OpaqueI64Elements<[1, 512, 1024, 4096]> : tensor<4xsi64>, order = #NCHW}>, tensor<1x1x1x8192xui8> -> tensor<1x1x?x4096xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 1024, 4096]> : tensor<4xsi64>, order = #NCHW}>, tensor<1x1x?x4096xsi32, {bounds = #const.OpaqueI64Elements<[1, 1, 1024, 4096]> : tensor<4xsi64>, order = #NCHW}>
+        scf.forall.in_parallel {
+          tensor.parallel_insert_slice %output_values into %arg5[0, 0, %arg4, 0] [1, 1, %7, 4096] [1, 1, 1, 1] : tensor<1x1x?x4096xf32, {bounds = #const.OpaqueI64Elements<[1, 1, 1024, 4096]> : tensor<4xsi64>, order = #NCHW}> into tensor<1x1x1024x4096xf32>
+          tensor.parallel_insert_slice %output_indices into %arg6[0, 0, %arg4, 0] [1, 1, %7, 4096] [1, 1, 1, 1] : tensor<1x1x?x4096xsi32, {bounds = #const.OpaqueI64Elements<[1, 1, 1024, 4096]> : tensor<4xsi64>, order = #NCHW}> into tensor<1x1x1024x4096xsi32>
+        }
+      }
+      %inserted_slice = tensor.insert_slice %6#0 into %arg2[0, 0, %arg1, 0] [1, 1, 1024, 4096] [1, 1, 1, 1] : tensor<1x1x1024x4096xf32> into tensor<1x1x4096x4096xf32>
+      %inserted_slice_0 = tensor.insert_slice %6#1 into %arg3[0, 0, %arg1, 0] [1, 1, 1024, 4096] [1, 1, 1, 1] : tensor<1x1x1024x4096xsi32> into tensor<1x1x4096x4096xsi32>
+      scf.yield %inserted_slice, %inserted_slice_0 : tensor<1x1x4096x4096xf32>, tensor<1x1x4096x4096xsi32>
+    }
+    return %3#0, %3#1 : tensor<1x1x4096x4096xf32>, tensor<1x1x4096x4096xsi32>
+
+  // CHECK-NOT: scf.for
+  // CHECK-NOT: scf.forall
+
+  // k_buf is defined once; all four TopK tiles share it.
+  // CHECK: [[K_BUF:%.+]] = VPU.Empty : tensor<1x1x1x8192xui8>
+
+  // Tile 0: H offset 0
+  // CHECK: [[IN0:%.+]] = VPU.Slice [[INPUT]] [0, 0, 0, 0] [1, 512, 1024, 4096]
+  // CHECK: [[IN0_DIST:%.+]] = VPU.Copy([[IN0]]) {out_mem_space = @CMX_NN}
+  // CHECK-SAME:     : tensor<1x512x1024x4096xf32>
+  // CHECK-SAME:     -> !VPU.DistributedTensor<1x512x1024x4096xf32, #NCHW, @CMX_NN, {
+  // CHECK-SAME:          mode = "SEGMENTED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64
+  // CHECK-SAME{LITERAL}: compute_shapes = [[1, 512, 171, 4096], [1, 512, 171, 4096], [1, 512, 171, 4096], [1, 512, 171, 4096], [1, 512, 171, 4096], [1, 512, 169, 4096]],
+  // CHECK-SAME{LITERAL}: compute_offsets = [[0, 0, 0, 0], [0, 0, 171, 0], [0, 0, 342, 0], [0, 0, 513, 0], [0, 0, 684, 0], [0, 0, 855, 0]],
+  // CHECK-SAME{LITERAL}: memory_shapes = [[1, 512, 171, 4096], [1, 512, 171, 4096], [1, 512, 171, 4096], [1, 512, 171, 4096], [1, 512, 171, 4096], [1, 512, 169, 4096]],
+  // CHECK-SAME{LITERAL}: memory_offsets = [[0, 0, 0, 0], [0, 0, 171, 0], [0, 0, 342, 0], [0, 0, 513, 0], [0, 0, 684, 0], [0, 0, 855, 0]]}>
+  // CHECK: [[K0_DIST:%.+]] = VPU.Copy([[K_BUF]]) {out_mem_space = @CMX_NN}
+  // CHECK-SAME:     -> !VPU.DistributedTensor<1x1x1x8192xui8, #NCHW, @CMX_NN, {
+  // CHECK-SAME:          mode = "DUPLICATED", num_clusters = 6 : i64
+  // CHECK: [[V0_DIST:%.+]], [[I0_DIST:%.+]] = VPU.TopK([[IN0_DIST]], [[K0_DIST]])
+  // CHECK-SAME:     -> !VPU.DistributedTensor<1x1x1024x4096xf32, #NCHW, @CMX_NN, {
+  // CHECK-SAME:          mode = "SEGMENTED", num_tiles = [1, 1, 6, 1], num_clusters = 6 : i64
+  // CHECK-SAME{LITERAL}: compute_shapes = [[1, 1, 171, 4096], [1, 1, 171, 4096], [1, 1, 171, 4096], [1, 1, 171, 4096], [1, 1, 171, 4096], [1, 1, 169, 4096]],
+  // CHECK-SAME{LITERAL}: compute_offsets = [[0, 0, 0, 0], [0, 0, 171, 0], [0, 0, 342, 0], [0, 0, 513, 0], [0, 0, 684, 0], [0, 0, 855, 0]]
+  // CHECK: [[V0:%.+]] = VPU.Copy([[V0_DIST]])
+  // CHECK-SAME:     -> tensor<1x1x1024x4096xf32>
+  // CHECK: [[I0:%.+]] = VPU.Copy([[I0_DIST]])
+  // CHECK-SAME:     -> tensor<1x1x1024x4096xsi32>
+
+  // Tile 1: H offset 1024
+  // CHECK: [[IN1:%.+]] = VPU.Slice [[INPUT]] [0, 0, 1024, 0] [1, 512, 1024, 4096]
+  // CHECK: [[IN1_DIST:%.+]] = VPU.Copy([[IN1]]) {out_mem_space = @CMX_NN}
+  // CHECK-SAME:     -> !VPU.DistributedTensor<1x512x1024x4096xf32, #NCHW, @CMX_NN, {mode = "SEGMENTED"
+  // CHECK: VPU.Copy([[K_BUF]]) {out_mem_space = @CMX_NN}
+  // CHECK: [[V1_DIST:%.+]], [[I1_DIST:%.+]] = VPU.TopK([[IN1_DIST]],
+  // CHECK-SAME:     -> !VPU.DistributedTensor<1x1x1024x4096xf32
+  // CHECK: [[V1:%.+]] = VPU.Copy([[V1_DIST]])
+  // CHECK-SAME:     -> tensor<1x1x1024x4096xf32>
+  // CHECK: [[I1:%.+]] = VPU.Copy([[I1_DIST]])
+  // CHECK-SAME:     -> tensor<1x1x1024x4096xsi32>
+
+  // Tile 2: H offset 2048
+  // CHECK: [[IN2:%.+]] = VPU.Slice [[INPUT]] [0, 0, 2048, 0] [1, 512, 1024, 4096]
+  // CHECK: [[IN2_DIST:%.+]] = VPU.Copy([[IN2]]) {out_mem_space = @CMX_NN}
+  // CHECK-SAME:     -> !VPU.DistributedTensor<1x512x1024x4096xf32, #NCHW, @CMX_NN, {mode = "SEGMENTED"
+  // CHECK: VPU.Copy([[K_BUF]]) {out_mem_space = @CMX_NN}
+  // CHECK: [[V2_DIST:%.+]], [[I2_DIST:%.+]] = VPU.TopK([[IN2_DIST]],
+  // CHECK-SAME:     -> !VPU.DistributedTensor<1x1x1024x4096xf32
+  // CHECK: [[V2:%.+]] = VPU.Copy([[V2_DIST]])
+  // CHECK-SAME:     -> tensor<1x1x1024x4096xf32>
+  // CHECK: [[I2:%.+]] = VPU.Copy([[I2_DIST]])
+  // CHECK-SAME:     -> tensor<1x1x1024x4096xsi32>
+
+  // Tile 3: H offset 3072
+  // CHECK: [[IN3:%.+]] = VPU.Slice [[INPUT]] [0, 0, 3072, 0] [1, 512, 1024, 4096]
+  // CHECK: [[IN3_DIST:%.+]] = VPU.Copy([[IN3]]) {out_mem_space = @CMX_NN}
+  // CHECK-SAME:     -> !VPU.DistributedTensor<1x512x1024x4096xf32, #NCHW, @CMX_NN, {mode = "SEGMENTED"
+  // CHECK: VPU.Copy([[K_BUF]]) {out_mem_space = @CMX_NN}
+  // CHECK: [[V3_DIST:%.+]], [[I3_DIST:%.+]] = VPU.TopK([[IN3_DIST]],
+  // CHECK-SAME:     -> !VPU.DistributedTensor<1x1x1024x4096xf32
+  // CHECK: [[V3:%.+]] = VPU.Copy([[V3_DIST]])
+  // CHECK-SAME:     -> tensor<1x1x1024x4096xf32>
+  // CHECK: [[I3:%.+]] = VPU.Copy([[I3_DIST]])
+  // CHECK-SAME:     -> tensor<1x1x1024x4096xsi32>
+
+  // Both outputs are concatenated separately along the H dimension.
+  // CHECK: [[VALS:%.+]] = VPU.Concat([[V0]], [[V1]], [[V2]], [[V3]])
+  // CHECK-SAME{LITERAL}: {static_offsets = [[0, 0, 0, 0], [0, 0, 1024, 0], [0, 0, 2048, 0], [0, 0, 3072, 0]]}
+  // CHECK-SAME:     : tensor<1x1x1024x4096xf32>, tensor<1x1x1024x4096xf32>, tensor<1x1x1024x4096xf32>, tensor<1x1x1024x4096xf32>
+  // CHECK-SAME:       -> tensor<1x1x4096x4096xf32>
+  // CHECK: [[INDS:%.+]] = VPU.Concat([[I0]], [[I1]], [[I2]], [[I3]])
+  // CHECK-SAME{LITERAL}: {static_offsets = [[0, 0, 0, 0], [0, 0, 1024, 0], [0, 0, 2048, 0], [0, 0, 3072, 0]]}
+  // CHECK-SAME:     : tensor<1x1x1024x4096xsi32>, tensor<1x1x1024x4096xsi32>, tensor<1x1x1024x4096xsi32>, tensor<1x1x1024x4096xsi32>
+  // CHECK-SAME:       -> tensor<1x1x4096x4096xsi32>
+  // CHECK: return [[VALS]], [[INDS]]
 }

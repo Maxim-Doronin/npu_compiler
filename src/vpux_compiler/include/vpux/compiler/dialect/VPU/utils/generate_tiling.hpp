@@ -52,7 +52,7 @@ bool archSupportsSwLayerTiling(config::ArchKind arch);
 bool doesNCEOpChannelSatisfyWorkload(mlir::Operation* nceOp, const TileInfo& outputTile);
 std::optional<DimArr> getSEPConvTilingOrder(mlir::Operation* op);
 std::optional<std::pair<size_t, size_t>> getWorkLoadInformationForNCEWithSparseOutput(
-        config::ArchKind arch, ArrayRef<Shape> perClusterShapes, ArrayRef<int64_t> supportedChannels);
+        mlir::Operation* nceOp, ArrayRef<Shape> perClusterShapes, ArrayRef<int64_t> supportedChannels);
 
 /**
  * @brief Get the best hardware layer tiling strategy based on the VPUNN cost model
@@ -119,6 +119,31 @@ TileInfo getWeightsTableTile(ConcreteOp* origOp, const vpux::TileInfo& outputTil
     weightsTableTile.shape[Dim(0)] =
             weightsOutputChannels.has_value() ? weightsOutputChannels.value() : outputTile.shape[Dims4D::Act::C];
     return weightsTableTile;
+}
+
+// Returns a DataPointerTable tile required to produce the specific output tile
+template <typename ConcreteOp>
+TileInfo getDataPointerTableTile(ConcreteOp* origOp, const vpux::TileInfo& outputTile,
+                                 std::optional<int64_t> weightsOutputChannels = std::nullopt) {
+    const auto origDataPointerTable = origOp->getWeightTableDataPtr();
+    VPUX_THROW_UNLESS(origDataPointerTable != nullptr, "The operation {0} doesn't have a DataPointerTable", *origOp);
+
+    const auto origDataPointerTableShape = getShape(origDataPointerTable);
+    VPUX_THROW_UNLESS(
+            (weightsOutputChannels.has_value() ||
+             origDataPointerTableShape[Dim(0)] == getShape(origOp->getOutput())[Dims4D::Act::C]) &&
+                    origDataPointerTableShape[Dim(1)] == 1 && origDataPointerTableShape[Dim(2)] == 1 &&
+                    origDataPointerTableShape[Dim(3)] == VPU::NCEInvariant::NEW_WEIGHT_TABLE_NUM_ELEMENTS_PER_OC,
+            "Unexpected DataPointerTable shape notation or order: {0} with output shape of {1}"
+            "\nProbably, we need to update this logic",
+            origDataPointerTableShape, getShape(origOp->getOutput()));
+
+    // Each N-wise batch of the WeightsTable corresponds to its own output channel
+    TileInfo dataPointerTableTile(origDataPointerTableShape);
+    dataPointerTableTile.offsets[Dim(0)] = outputTile.offsets[Dims4D::Act::C];
+    dataPointerTableTile.shape[Dim(0)] =
+            weightsOutputChannels.has_value() ? weightsOutputChannels.value() : outputTile.shape[Dims4D::Act::C];
+    return dataPointerTableTile;
 }
 
 // Returns a ScaleTable tile required to produce the specific output tile

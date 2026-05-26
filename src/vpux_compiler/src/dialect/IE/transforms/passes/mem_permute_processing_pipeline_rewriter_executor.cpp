@@ -6,6 +6,7 @@
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/transforms/factories/mem_permute_processing_pipeline_strategy_getter.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
+#include "vpux/compiler/dialect/config/utils/config_option_utils.hpp"
 #include "vpux/compiler/dynamic_rewriter/dynamic_rewriter_factory.hpp"
 #include "vpux/compiler/utils/passes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
@@ -33,16 +34,13 @@ public:
 
     explicit MemPermuteProcessingPipelineRewriterExecutorPass(const IE::ExpandActivationChannelsOptions& options,
                                                               Logger log)
-            : _seOpsEnabled(isOptionEnabled(options.enableSEPtrsOperations) ||
-                            isOptionEnabled(options.enableExperimentalSEPtrsOperations)),
-              _enableAdjustConvShapePass(options.enableAdjustConvShapePass) {
+            : _enableAdjustConvShapePass(options.enableAdjustConvShapePass) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
 private:
     mlir::LogicalResult initialize(mlir::MLIRContext* ctx) final;
     void safeRunOnFunc() final;
-    bool _seOpsEnabled;
     bool _enableAdjustConvShapePass;
 };
 
@@ -55,18 +53,18 @@ mlir::LogicalResult MemPermuteProcessingPipelineRewriterExecutorPass::initialize
         setRewriterName(rewriterName.getValue());
     }
 
-    if (seOpsEnabled.hasValue()) {
-        _seOpsEnabled = seOpsEnabled.getValue();
-    }
-
     return mlir::success();
 }
 
 void MemPermuteProcessingPipelineRewriterExecutorPass::safeRunOnFunc() {
-    auto func = getOperation();
+    const auto func = getOperation();
     auto& ctx = getContext();
+    auto moduleOp = getModuleOp(func);
 
-    auto strategy = IE::createMemPermuteProcessingPipelineStrategy(func, _seOpsEnabled, _enableAdjustConvShapePass);
+    auto strategy = IE::createMemPermuteProcessingPipelineStrategy(
+            func,
+            config::hasEnableSEPtrsOperations(moduleOp) || config::hasEnableExperimentalSEPtrsOperations(moduleOp),
+            _enableAdjustConvShapePass);
     auto customRegistry = vpux::RegistryManager::createCustomRegistry();
     strategy->registerRewriters(*customRegistry, _log);
 

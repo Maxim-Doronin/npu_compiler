@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/compiler/dialect/VPU/utils/sprlut_utils.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
@@ -87,14 +88,13 @@ mlir::Value PalletLUTConverter::createLookupTableConst(VPUIP::NCEClusterTaskOp n
             mlir::dyn_cast<vpux::NDTypeInterface>(nceClusterTask.getWeights().getType()).getElementType();
 
     const auto [quantileType, quantileLUT] = [&]() {
-        if (const auto quantileUniformType = mlir::dyn_cast_or_null<mlir::quant::QuantileQuantizedType>(weightsType)) {
-            return std::tuple<mlir::Type, ArrayRef<double>>(quantileUniformType.getQuantileType(),
-                                                            quantileUniformType.getQuantiles());
-        }
-        if (const auto quantilePerAxisType =
-                    mlir::dyn_cast_or_null<mlir::quant::QuantileQuantizedPerAxisType>(weightsType)) {
-            return std::tuple<mlir::Type, ArrayRef<double>>(quantilePerAxisType.getQuantileType(),
-                                                            quantilePerAxisType.getQuantiles());
+        if (mlir::isa_and_present<mlir::quant::UniformQuantizedType, mlir::quant::UniformQuantizedPerAxisType>(
+                    weightsType)) {
+            const auto quantized = mlir::cast<mlir::quant::QuantizedType>(weightsType);
+            if (const auto quantileStorageType = mlir::dyn_cast<vpux::type::QuantileType>(quantized.getStorageType())) {
+                return std::tuple<mlir::Type, ArrayRef<double>>(quantileStorageType.getQuantileType(),
+                                                                quantileStorageType.getQuantiles());
+            }
         }
         VPUX_THROW("{0}: expected palletized weight type but {1} type was found instead", getDebugName(), weightsType);
     }();
@@ -154,9 +154,12 @@ void ConvertPalletLUTToConstPass::safeRunOnFunc() {
         }
         if (auto weights = op.getWeights()) {
             const auto weightsType = mlir::dyn_cast<vpux::NDTypeInterface>(weights.getType()).getElementType();
-            if (mlir::isa_and_nonnull<mlir::quant::QuantileQuantizedType, mlir::quant::QuantileQuantizedPerAxisType>(
+            if (mlir::isa_and_present<mlir::quant::UniformQuantizedType, mlir::quant::UniformQuantizedPerAxisType>(
                         weightsType)) {
-                return false;
+                const auto quantized = mlir::cast<mlir::quant::QuantizedType>(weightsType);
+                if (mlir::isa<vpux::type::QuantileType>(quantized.getStorageType())) {
+                    return false;
+                }
             }
         }
         return true;

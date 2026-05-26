@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
@@ -55,12 +56,26 @@ mlir::LogicalResult ConvertQuantizeRewriter::matchAndRewrite(IE::QuantizeOp quan
 
     auto originDstType = quantizeOp.getDstElemType();
     // We don't support quantile type now
-    if (mlir::isa_and_nonnull<mlir::quant::QuantileQuantizedType, mlir::quant::QuantileQuantizedPerAxisType>(
+    if (mlir::isa_and_present<mlir::quant::UniformQuantizedType, mlir::quant::UniformQuantizedPerAxisType>(
                 originDstType)) {
-        return mlir::failure();
+        const auto quantized = mlir::cast<mlir::quant::QuantizedType>(originDstType);
+        if (mlir::isa<vpux::type::QuantileType>(quantized.getStorageType())) {
+            return mlir::failure();
+        }
     }
 
     if (!mlir::isa<mlir::quant::UniformQuantizedType, mlir::quant::UniformQuantizedPerAxisType>(originDstType)) {
+        return mlir::failure();
+    }
+
+    // Block the fold when the Convert input signedness does not match the
+    // quantized output signedness. QuantizeCast is a no-op bit reinterpretation,
+    // so folding Convert(si8->f16) + Quantize(f16->u8) into QuantizeCast(si8->u8)
+    // is incorrect because si8 and u8 have different value semantics for the
+    // same byte pattern (e.g., byte 0xFF: si8=-1 vs u8=255).
+    auto intType = mlir::cast<mlir::IntegerType>(inElemType);
+    auto qType = mlir::cast<mlir::quant::QuantizedType>(originDstType);
+    if (intType.isSigned() != qType.isSigned()) {
         return mlir::failure();
     }
 

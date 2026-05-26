@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/activation.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
@@ -170,20 +171,18 @@ mlir::LogicalResult MixedFloatInQuantWeightsRewriter<ConcreteOp>::matchAndRewrit
     }
 
     const auto isSignedQuantizedType = [](mlir::quant::QuantizedType quantType) {
-        if (mlir::isa<mlir::quant::QuantileQuantizedType, mlir::quant::QuantileQuantizedPerAxisType>(quantType)) {
-            mlir::Type quantileType =
-                    mlir::isa<mlir::quant::QuantileQuantizedType>(quantType)
-                            ? mlir::dyn_cast<mlir::quant::QuantileQuantizedType>(quantType).getQuantileType()
-                            : mlir::dyn_cast<mlir::quant::QuantileQuantizedPerAxisType>(quantType).getQuantileType();
-
-            if (auto intType = mlir::dyn_cast<mlir::IntegerType>(quantileType)) {
-                return intType.isSigned();
-            } else {
-                // quantileType is a float type
-                return true;
+        if (mlir::isa<mlir::quant::UniformQuantizedType, mlir::quant::UniformQuantizedPerAxisType>(quantType)) {
+            const auto quantized = mlir::cast<mlir::quant::QuantizedType>(quantType);
+            if (const auto quantileStorage = mlir::dyn_cast<vpux::type::QuantileType>(quantized.getStorageType())) {
+                mlir::Type quantileType = quantileStorage.getQuantileType();
+                if (auto intType = mlir::dyn_cast<mlir::IntegerType>(quantileType)) {
+                    return intType.isSigned();
+                } else {
+                    // quantile type is a float type
+                    return true;
+                }
             }
         }
-
         return quantType.isSigned();
     };
 

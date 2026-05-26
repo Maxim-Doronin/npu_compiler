@@ -509,10 +509,13 @@ IE::RMSOp createRMSOp(mlir::OpBuilder& builder, mlir::Operation* headOp, mlir::V
 //    ---------------------------------------------------------------------------------------------
 // -> IE.Multiply (gamma)
 // Or
-// Input -> IE.Power -> IE.ReduceMean -> IE.Add (epsilon) -> [IE.AffineReshape] -> IE.Power(-0.5) -> IE.Multiply
-//   \                                                                                                   /
-//    ---------------------------------------------------------------------------------------------------
-// -> IE.Multiply (gamma)
+// Input -> IE.Power|IE.Multiply -> IE.ReduceMean -> IE.Add (epsilon) -> [IE.AffineReshape] -> IE.Power(-0.5) ->
+// IE.Multiply
+//   \                                                                                                               /
+//    ---------------------------------------------------------------------------------------------------------------
+// -> [IE.Multiply (gamma)]
+// Note: IE.Multiply (gamma) is optional; without it a unit gamma is synthesized.
+//       The final IE.Multiply may have multiple downstream users.
 // Or
 // Input -> IE.Convert -> IE.Power -> IE.ReduceMean -> IE.Add (epsilon) -> [IE.AffineReshape] -> IE.Sqrt -> IE.Divide
 //   \                                                                                                           /
@@ -621,20 +624,40 @@ void FuseRMSNormPass::safeRunOnFunc() {
         }
 
         auto multiplyOp1 = mlir::dyn_cast_or_null<IE::MultiplyOp>(*divideOp->getUsers().begin());
-        if (multiplyOp1 == nullptr || !multiplyOp1->hasOneUse() || getSingleDimSize(multiplyOp1) != layerSize) {
+        if (multiplyOp1 == nullptr || getSingleDimSize(multiplyOp1) != layerSize) {
             return;
         }
 
-        auto multiplyOp2 = mlir::dyn_cast_or_null<IE::MultiplyOp>(*multiplyOp1->getUsers().begin());
-        auto convertOp2 = mlir::dyn_cast_or_null<IE::ConvertOp>(*multiplyOp1->getUsers().begin());
+        // Verify that the self-normalize multiply uses the original input on one side.
+        // For IE.Multiply (x*x or x*Reshape(x)), both operands are candidates for the
+        // original input because the squaring op may carry mixed inputs (e.g. x and
+        // AffineReshape(x)), so operand(0) alone is not sufficient.
+        auto matchesOrigInput = [&](mlir::Value v) -> bool {
+            if (auto mulOp = mlir::dyn_cast<IE::MultiplyOp>(powerOp)) {
+                return v == mulOp.getInput1() || v == mulOp.getInput2();
+            }
+            return v == powerOp->getOperand(0);
+        };
+        if (!matchesOrigInput(multiplyOp1->getOperand(0)) && !matchesOrigInput(multiplyOp1->getOperand(1))) {
+            return;
+        }
+
+        // Look for an optional gamma multiply (or a Convert->gamma-multiply) only when
+        // multiplyOp1 has exactly one user; otherwise treat it as the pattern endpoint.
+        IE::MultiplyOp multiplyOp2 = nullptr;
+        IE::ConvertOp convertOp2 = nullptr;
         auto convertOp1 = mlir::dyn_cast_or_null<IE::ConvertOp>(powerOp->getOperand(0).getDefiningOp());
-        if (multiplyOp2 == nullptr) {
-            // try to match convert case
-            // Convert -> Power -> .... -> Multiply1 -> Convert -> Multiply2
-            if (convertOp1 != nullptr && convertOp2 != nullptr) {
-                multiplyOp2 = mlir::dyn_cast_or_null<IE::MultiplyOp>(*convertOp2->getUsers().begin());
-                if (multiplyOp2 != nullptr) {
-                    headOp = convertOp1.getOperation();
+        if (multiplyOp1->hasOneUse()) {
+            multiplyOp2 = mlir::dyn_cast_or_null<IE::MultiplyOp>(*multiplyOp1->getUsers().begin());
+            convertOp2 = mlir::dyn_cast_or_null<IE::ConvertOp>(*multiplyOp1->getUsers().begin());
+            if (multiplyOp2 == nullptr) {
+                // try to match convert case
+                // Convert -> Power -> .... -> Multiply1 -> Convert -> Multiply2
+                if (convertOp1 != nullptr && convertOp2 != nullptr && !convertOp2->use_empty()) {
+                    multiplyOp2 = mlir::dyn_cast_or_null<IE::MultiplyOp>(*convertOp2->getUsers().begin());
+                    if (multiplyOp2 != nullptr) {
+                        headOp = convertOp1.getOperation();
+                    }
                 }
             }
         }
@@ -680,6 +703,9 @@ void FuseRMSNormPass::safeRunOnFunc() {
         _log.trace("RMS pattern matched");
         auto rmsOp = createRMSOp(builder, headOp, gamma, layerSize, epsilonAttr);
         if (needCreateGamma) {
+            // Replacing all uses is safe: multiplyOp1 computes x/rms(x), which is
+            // identical to the RMS op output with a unit gamma, regardless of how
+            // many downstream consumers exist.
             multiplyOp1->replaceAllUsesWith(rmsOp);
         } else {
             multiplyOp2->replaceAllUsesWith(rmsOp);

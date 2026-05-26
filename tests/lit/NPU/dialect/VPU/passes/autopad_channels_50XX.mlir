@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --autopad-channels %s | FileCheck %s
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --autopad-channels %s | FileCheck %s
+// REQUIRES: platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -1360,5 +1360,43 @@ module @NCEToMixedUsers {
         // CHECK-SAME:    -> tensor<1x16x10x10xf16, {order = #NHWC}>
 
         // CHECK:       return [[NCE_MAXPOOL]], [[SLICE]], [[NCE_CONV]]
+    }
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+!qElemType = !quant.uniform<!QuantileType.quantile<ui4:f16, {0.000000e+00,1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00,5.000000e+00,6.000000e+00,7.000000e+00,-8.000000e+00,-7.000000e+00,-6.000000e+00,-5.000000e+00,-4.000000e+00,-3.000000e+00,-2.000000e+00,-1.000000e+00}>:f16:0, {0.34752008120218914,0.12665651639302572,0.094929353396097815,0.084537343184153235,0.30698224703470867,0.28974447250366209,0.26693764527638753,0.12085447311401368,0.044383547703425091,0.25514352321624756,0.22133098443349203,0.3355034033457438,0.050673830509185794,0.049167748292287192,0.23297847906748453,0.097839260101318353,0.18864235083262126,0.16857344309488934,0.21070744196573893,0.050129874547322588,0.11200370788574218,0.23889604409535725,0.068774632612864178,0.10396809180577596,0.087634785970052087,0.097554357846577969,0.10013328393300375,0.15399069786071778,0.50826853116353354,0.035824396212895709,0.25424510637919107,0.20570901234944661,0.16403183142344158,0.098595901330312096,0.20694102446238199,0.12597715854644775,0.21598444779713949,0.2774473746617635,0.22241100470225017,0.081242179870605474,0.11276891231536865,0.12670238415400187,0.26327354113260903,0.19722433090209962,0.24293375015258789,0.22243016560872395,0.23161002794901531,0.19442553520202638,0.36144959131876625,0.23247928619384767,0.38460179964701335,0.58605731328328448,0.041170380512873334,0.29940813382466636,0.047839981317520139,0.27798598607381186,0.12811976671218872,0.11265718936920166,0.083861255645751947,0.056905341148376462,0.23028884728749593,0.11043557325998941,0.52294886906941729,0.24752068519592285}>
+
+// CHECK-LABEL: @SkipExpandToNCEConvWithFlattenedWeights
+module @SkipExpandToNCEConvWithFlattenedWeights {
+    config.PipelineOptions @Options {
+        config.Option @config.AutoPaddingIDU : true
+        config.Option @config.AutoPaddingODU : true
+    }
+
+    // CHECK:  [[INPUT:%.+]]: tensor<1x3x224x224xf16, {order = #NHWC}>
+    func.func @main(%input: tensor<1x3x224x224xf16, {order = #NHWC}>) -> tensor<1x64x112x112xf16, {order = #NHWC}> {
+        %weights_table = const.Declare tensor<64x1x1x4xsi32> = dense<0> : tensor<64x1x1x4xsi32>
+        %weights = const.Declare tensor<64x1x1x800x!qElemType, {order = #NHWC}> = dense<1> : tensor<64x3x7x7xsi4>, [#const.ConvertElemType<si8>, #const.CastElemType<f16>, #const.CastElemType<!qElemType>, #const.Reorder<#NHWC>, #const.PadWithZero<[0, 0, 0, 0], [0, 13, 0, 0]>, #const.Reshape<[64, 1, 1, 784]>, #const.PadWithZero<[0, 0, 0, 0], [0, 0, 0, 16]>]
+
+        %0 = VPU.Expand(%input) {pads_begin = [0, 0, 0, 0], pads_end = [0, 13, 0, 0]} : tensor<1x3x224x224xf16, {order = #NHWC}> -> tensor<1x16x224x224xf16, {order = #NHWC}>
+        %1 = VPU.NCE.Convolution(%0, %weights, %weights_table) {
+            input_padding = [0, 13, 0, 0], output_padding = [0, 0, 0, 0],
+            pad = #VPU.Padding<left = 3 : i64, right = 2 : i64, top = 3 : i64, bottom = 2 : i64>,
+            ppe = #VPU.PPEStub<>,
+            rawFilterShape = [64, 16, 7, 7],
+            strides = [2, 2]
+        } : tensor<1x16x224x224xf16, {order = #NHWC}>, tensor<64x1x1x800x!qElemType, {order = #NHWC}>, tensor<64x1x1x4xsi32> -> tensor<1x64x112x112xf16, {order = #NHWC}>
+
+        return %1 : tensor<1x64x112x112xf16, {order = #NHWC}>
+
+        // CHECK: [[WEIGHTS_TABLE:%.+]] = const.Declare tensor<64x1x1x4xsi32> = dense<0> : tensor<64x1x1x4xsi32>
+        // CHECK: [[WEIGHTS:%.+]] = const.Declare tensor<64x1x1x800x!qElemType, {order = #NHWC}> = dense<1> : tensor<64x3x7x7xsi4>, [#const.ConvertElemType<si8>, #const.CastElemType<f16>, #const.CastElemType<!qElemType>, #const.Reorder<#NHWC>, #const.PadWithZero<[0, 0, 0, 0], [0, 13, 0, 0]>, #const.Reshape<[64, 1, 1, 784]>, #const.PadWithZero<[0, 0, 0, 0], [0, 0, 0, 16]>]
+        // CHECK: [[EXPAND:%.+]] = VPU.Expand([[INPUT]]) {pads_begin = [0, 0, 0, 0], pads_end = [0, 13, 0, 0]} : tensor<1x3x224x224xf16, {order = #NHWC}> -> tensor<1x16x224x224xf16, {order = #NHWC}>
+        // CHECK: [[CONV:%.+]] = VPU.NCE.Convolution([[EXPAND]], [[WEIGHTS]], [[WEIGHTS_TABLE]]) {input_padding = [0, 13, 0, 0], output_padding = [0, 0, 0, 0], pad = #VPU.Padding<left = 3 : i64, right = 2 : i64, top = 3 : i64, bottom = 2 : i64>, ppe = #VPU.PPEStub<>, rawFilterShape = [64, 16, 7, 7], strides = [2, 2]} : tensor<1x16x224x224xf16, {order = #NHWC}>, tensor<64x1x1x800x!qElemType, {order = #NHWC}>, tensor<64x1x1x4xsi32> -> tensor<1x64x112x112xf16, {order = #NHWC}>
+
+        // CHECK: return  [[CONV]]
     }
 }

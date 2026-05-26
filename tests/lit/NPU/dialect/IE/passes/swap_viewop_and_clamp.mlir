@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --swap-viewop-and-clamp %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --swap-viewop-and-clamp %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 !qElemType = !quant.uniform<u8:f16, 0.0022939644607843138>
 !qElemType1 = !quant.uniform<u8:f16, 0.0011469822303921569>
@@ -122,25 +122,6 @@ func.func @swapSliceWithClamp(%arg0: tensor<1x16x80x80x!qElemType>) -> tensor<1x
     // CHECK:   [[CLAMP:%.+]] = IE.Clamp([[ADD]]) {max = 4.000000e+00 : f64, min = -1.500000e+00 : f64} : tensor<1x16x80x80x!qElemType1> -> tensor<1x16x80x80x!qElemType1>
     // CHECK:   [[SLICE:%.+]] = IE.Slice [[CLAMP]] [0, 0, 0, 0] [1, 8, 80, 80] : tensor<1x16x80x80x!qElemType1> to tensor<1x8x80x80x!qElemType1>
     // CHECK:   return  [[SLICE]]
-}
-
-// -----
-
-!qElemType = !quant.uniform<u8:f16, 1.0:123>
-!qElemType1 = !quant.uniform<u8:f16, 1.0:120>
-// CHECK-LABEL: @notSwapWithNCEAlreadyHasPostOp
-// CHECK-SAME:    [[INPUT:%.+]]: tensor<1x16x80x80x!qElemType>
-func.func @notSwapWithNCEAlreadyHasPostOp(%arg0: tensor<1x16x80x80x!qElemType>) -> tensor<1x8x80x80x!qElemType1> {
-    %0 = IE.AvgPool(%arg0) { kernel_size = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], post_op = #IE.Relu<>, rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1] }
-            : tensor<1x16x80x80x!qElemType> -> tensor<1x16x80x80x!qElemType1>
-    %1 = IE.Slice %0 [0, 0, 0, 0] [1, 8, 80, 80] : tensor<1x16x80x80x!qElemType1> to tensor<1x8x80x80x!qElemType1>
-    %2 = IE.Clamp(%1) {max = 4.000000e+00 : f64, min = -1.500000e+00 : f64} : tensor<1x8x80x80x!qElemType1> -> tensor<1x8x80x80x!qElemType1>
-    return %2 : tensor<1x8x80x80x!qElemType1>
-
-    // CHECK:   [[POOL:%.+]] = IE.AvgPool([[INPUT]])
-    // CHECK:   [[SLICE:%.+]] = IE.Slice [[POOL]]
-    // CHECK:   [[CLAMP:%.+]] = IE.Clamp([[SLICE]])
-    // CHECK:   return  [[CLAMP]]
 }
 
 // -----

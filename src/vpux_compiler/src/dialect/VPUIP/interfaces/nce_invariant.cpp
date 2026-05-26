@@ -326,7 +326,7 @@ mlir::LogicalResult vpux::VPUIP::NCEInvariant::verifyChannels(IE::SoftMaxOp orig
     return mlir::success();
 }
 
-mlir::LogicalResult vpux::VPUIP::NCEInvariant::verifyChannels(IE::SDPAExtendedOp origOp, Logger log) {
+mlir::LogicalResult vpux::VPUIP::NCEInvariant::verifyChannels(IE::AttentionOp origOp, Logger log) {
     log.setName("NCEInvariant");
     int64_t ALIGNMENT_REQUIREMENT_IN_ELEMENTS = 16;
 
@@ -341,18 +341,18 @@ mlir::LogicalResult vpux::VPUIP::NCEInvariant::verifyChannels(IE::SDPAExtendedOp
     auto inputChannelAlignment = ALIGNMENT_REQUIREMENT_IN_ELEMENTS;
 
     if (dimE % inputChannelAlignment != 0) {
-        log.trace("[{0}] SDPAExtended input channels '{1}' are not aligned", loc, dimE);
+        log.trace("[{0}] Attention input channels '{1}' are not aligned", loc, dimE);
         return mlir::failure();
     }
     const auto dimS = inputShapeV[Dim(inputTypeV.getRank() - 1)];
     if (dimS % inputChannelAlignment != 0) {
-        log.trace("[{0}] SDPAExtended input channels '{1}' are not aligned", loc, dimS);
+        log.trace("[{0}] Attention input channels '{1}' are not aligned", loc, dimS);
         return mlir::failure();
     }
 
     const auto dimEv = inputShapeV[Dim(inputTypeV.getRank() - 2)];
     if (dimEv % inputChannelAlignment != 0) {
-        log.trace("[{0}] SDPAExtended input channels '{1}' are not aligned", loc, dimEv);
+        log.trace("[{0}] Attention input channels '{1}' are not aligned", loc, dimEv);
         return mlir::failure();
     }
 

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --tiling-strategy-assignment="tiling-mode=ISOLATED" %s | FileCheck %s
-// REQUIRES: arch-NPU40XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --tiling-strategy-assignment="tiling-mode=ISOLATED" %s | FileCheck %s
+// REQUIRES: platform-NPU4000
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 // CHECK-LABEL: @SplitDepthConvWithBigC
@@ -682,10 +682,10 @@ func.func @NCEMatMulSOGAndCTile(%arg0: tensor<16x1x128x1x4xf16, {order = #GNHWC}
 
 // -----
 
-!quantileType = !QuantileFloat.quantileFloat<ui4:f16, {-1.000000e+00,-0.69619280099868774,-0.52507305145263672,-0.39491748809814453,-0.28444138169288635,-0.18477343022823334,-0.091050036251544952,0.000000e+00,0.07958029955625534,0.16093020141124725,0.24611230194568634,0.33791524171829224,0.44070982933044434,0.56261700391769409,0.72295683622360229,1.000000e+00}>
+!quantileType = !QuantileType.quantile<ui4:f16, {-1.000000e+00,-0.69619280099868774,-0.52507305145263672,-0.39491748809814453,-0.28444138169288635,-0.18477343022823334,-0.091050036251544952,0.000000e+00,0.07958029955625534,0.16093020141124725,0.24611230194568634,0.33791524171829224,0.44070982933044434,0.56261700391769409,0.72295683622360229,1.000000e+00}>
 
 // CHECK-LABEL: @TileGatherDMAOnIndices
-// CHECK-SAME:      [[INPUT:%.+]]: tensor<184320x2880x!QuantileFloat.quantileFloat<ui4:f16, {-1.000000e+00,-0.69619280099868774,-0.52507305145263672,-0.39491748809814453,-0.28444138169288635,-0.18477343022823334,-0.091050036251544952,0.000000e+00,0.07958029955625534,0.16093020141124725,0.24611230194568634,0.33791524171829224,0.44070982933044434,0.56261700391769409,0.72295683622360229,1.000000e+00}>
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<184320x2880x!QuantileType.quantile<ui4:f16, {-1.000000e+00,-0.69619280099868774,-0.52507305145263672,-0.39491748809814453,-0.28444138169288635,-0.18477343022823334,-0.091050036251544952,0.000000e+00,0.07958029955625534,0.16093020141124725,0.24611230194568634,0.33791524171829224,0.44070982933044434,0.56261700391769409,0.72295683622360229,1.000000e+00}>
 // CHECK-SAME:      [[INDICES:%.+]]: tensor<23040x1xi64>
 
 func.func @TileGatherDMAOnIndices(%arg0: tensor<184320x2880x!quantileType>, %arg1: tensor<23040x1xi64>) -> tensor<23040x2880x!quantileType> {
@@ -694,4 +694,19 @@ func.func @TileGatherDMAOnIndices(%arg0: tensor<184320x2880x!quantileType>, %arg
 
     // CHECK:       [[GATHERDMA:%.+]] = VPU.GatherDMA([[INPUT]], [[INDICES]]) {axis_value = 0 : i64, batch_dims = 0 : i64, tilingStrategy = [23, 1]}
     // CHECK:       return  [[GATHERDMA]]
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @ConvWithLargeOCTileOverChannelAndHeight
+func.func @ConvWithLargeOCTileOverChannelAndHeight(%arg0: tensor<1x1024x256x4xf16, {order = #NHWC}>) -> tensor<1x18944x256x4xf16, {order = #NHWC}> {
+    %weights = const.Declare tensor<18944x1024x1x1xf16, {order = #NHWC}> = dense<1.0> : tensor<18944x1024x1x1xf16, {order = #NHWC}>
+    %weights_table = const.Declare tensor<18944x1x1x4xsi32> = dense<10> : tensor<18944x1x1x4xsi32>
+    %0 = VPU.NCE.Convolution(%arg0, %weights, %weights_table) {multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverKernel>, pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = -3.4028234663852886E+38 : f64, clamp_high = 3.4028234663852886E+38 : f64, scale = 1.000000e+00 : f64, prelu_alpha = [1.000000e+00], bias = 0.000000e+00 : f64, adder = 0.000000e+00 : f64>, rawFilterShape = [18944, 1024, 1, 1], strides = [1, 1]} : tensor<1x1024x256x4xf16, {order = #NHWC}>, tensor<18944x1024x1x1xf16, {order = #NHWC}>, tensor<18944x1x1x4xsi32> -> tensor<1x18944x256x4xf16, {order = #NHWC}>
+    return %0 : tensor<1x18944x256x4xf16, {order = #NHWC}>
+
+    // CHECK:      VPU.NCE.Convolution
+    // CHECK-SAME: tilingStrategy = [1, 6, 32, 1]
 }

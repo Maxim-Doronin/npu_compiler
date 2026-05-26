@@ -11,7 +11,7 @@
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
-#include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Transforms/WalkPatternRewriteDriver.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_CONVERTMATMULTOCONV
@@ -22,6 +22,13 @@ namespace vpux::IE {
 using namespace vpux;
 
 namespace {
+
+bool shouldConvertMatMulOp(IE::MatMulOp op) {
+    const auto input1Shape = getShape(op.getInput1());
+    const auto input2Shape = getShape(op.getInput2());
+    return (input1Shape.size() == 3 || (input1Shape.size() == 4 && input1Shape[Dim(0)] == 1)) &&
+           input2Shape.size() == 2;
+}
 
 //
 // MatMulToConvAndPermuteCastPass
@@ -81,6 +88,10 @@ private:
 
 mlir::LogicalResult ConvertMatMulToConvPass::MatMulOpConverter::matchAndRewrite(IE::MatMulOp matmulOp,
                                                                                 mlir::PatternRewriter& rewriter) const {
+    if (!shouldConvertMatMulOp(matmulOp)) {
+        return mlir::failure();
+    }
+
     _log.trace("Find matmul 3d {0} at {1}", matmulOp, matmulOp->getLoc());
     auto input1 = matmulOp.getInput1();
     auto input2 = matmulOp.getInput2();
@@ -156,30 +167,10 @@ mlir::LogicalResult ConvertMatMulToConvPass::MatMulOpConverter::matchAndRewrite(
 void ConvertMatMulToConvPass::safeRunOnFunc() {
     auto& ctx = getContext();
 
-    mlir::ConversionTarget target(ctx);
-
-    target.addDynamicallyLegalOp<IE::MatMulOp>([](IE::MatMulOp op) -> bool {
-        const auto input1Shape = getShape(op.getInput1());
-        const auto input2Shape = getShape(op.getInput2());
-        if ((input1Shape.size() == 3 || (input1Shape.size() == 4 && input1Shape[Dim(0)] == 1)) &&
-            input2Shape.size() == 2) {
-            return false;
-        }
-
-        return true;
-    });
-    target.addLegalOp<IE::ConvolutionOp>();
-    target.addLegalOp<IE::PermuteCastOp>();
-    target.addLegalOp<IE::TransposeOp>();
-    target.addLegalOp<IE::ReshapeOp>();
-
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<MatMulOpConverter>(&ctx, _log);
 
-    auto func = getOperation();
-    if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
-        signalPassFailure();
-    }
+    walkAndApplyPatterns(getOperation(), std::move(patterns));
 }
 
 }  // namespace

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 !qElemType = !quant.uniform<u8:f16, 2.4627450980392158>
 !qElemType2 = !quant.uniform<u8:f16, 1.23423>
@@ -275,4 +275,41 @@ func.func @FuseTransposeQuantizationParamsDifferent(%input: tensor<1x512x12x8xf1
     // CHECK-SAME:   {dstElemType = f16} : tensor<1x12x512x8x!qElemType> -> tensor<1x12x512x8xf16>
     // CHECK: return [[DEQUANTIZE]]
 }
+}
+
+// -----
+
+// Canonicalizer: FuseQuantizeWithConvert should NOT fold Convert(si8->f16) + Quantize(f16->u8)
+// when signedness mismatches, even with scale=1 and ZP=0.
+
+!qElemType_u8 = !quant.uniform<u8:f16, 1.000000e+00>
+
+// CHECK-LABEL: @NotFuseQuantizeWithConvertSignednessMismatch
+func.func @NotFuseQuantizeWithConvertSignednessMismatch(%arg0: tensor<1x3x16x16xsi8>) -> tensor<1x3x16x16x!qElemType_u8> {
+    %0 = IE.Convert(%arg0) {dstElemType = f16} : tensor<1x3x16x16xsi8> -> tensor<1x3x16x16xf16>
+    %1 = IE.Quantize(%0) {dstElemType = !qElemType_u8} : tensor<1x3x16x16xf16> -> tensor<1x3x16x16x!qElemType_u8>
+    return %1 : tensor<1x3x16x16x!qElemType_u8>
+
+    // CHECK:       [[CONVERT:%.+]] = IE.Convert
+    // CHECK:       [[QUANT:%.+]] = IE.Quantize([[CONVERT]])
+    // CHECK:       return [[QUANT]]
+}
+
+// -----
+
+// Canonicalizer: FuseQuantizeWithConvert should fold Convert(si8->f16) + Quantize(f16->si8)
+// when signedness matches, scale=1 and ZP=0.
+
+!qElemType_si8 = !quant.uniform<i8:f16, 1.000000e+00>
+
+// CHECK-LABEL: @FuseQuantizeWithConvertSignednessMatch
+func.func @FuseQuantizeWithConvertSignednessMatch(%arg0: tensor<1x3x16x16xsi8>) -> tensor<1x3x16x16x!qElemType_si8> {
+    %0 = IE.Convert(%arg0) {dstElemType = f16} : tensor<1x3x16x16xsi8> -> tensor<1x3x16x16xf16>
+    %1 = IE.Quantize(%0) {dstElemType = !qElemType_si8} : tensor<1x3x16x16xf16> -> tensor<1x3x16x16x!qElemType_si8>
+    return %1 : tensor<1x3x16x16x!qElemType_si8>
+
+    // CHECK:       [[QUANTIZE_CAST:%.+]] = IE.QuantizeCast
+    // CHECK-NOT:   IE.Convert
+    // CHECK-NOT:   IE.Quantize
+    // CHECK:       return [[QUANTIZE_CAST]]
 }

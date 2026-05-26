@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: not vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --debatcher="debatcher-input-coefficients-partitions=[1-2],[2-2]" %s 2>&1 | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: not vpux-opt --split-input-file --init-compiler="platform=%platform%" --debatcher="debatcher-input-coefficients-partitions=[1-2],[2-2]" %s 2>&1 | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 // CHECK: DebatchCoeffDescription expects the batch position to be 0, got: d1 in [1-2]
 func.func @SingleInputSingleOutputBatched(%arg: tensor<6x3x62x62xf32>) -> tensor<6x48x60x57xf32> {

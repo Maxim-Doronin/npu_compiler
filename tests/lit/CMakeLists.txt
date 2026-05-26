@@ -3,8 +3,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-#
-
 vpux_setup_lit_tool()
 
 add_custom_target(copy_lit_tests_script ALL
@@ -21,8 +19,7 @@ vpux_setup_lit_tests(NPU
     PATTERNS "*.mlir" "*.json"
     EXTRA_SOURCES "lit.local.cfg" "*.bin" "*.txt" "*.xml" "*.blob"
     VARS "data_path_npu"
-    PARAMS "arch"
-    PARAMS_DEFAULT_VALUES "NPU37XX"
+    PARAMS "arch" "platform"
     SUBSTITUTIONS "data_path_npu"
 )
 

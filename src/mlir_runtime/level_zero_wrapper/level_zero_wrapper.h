@@ -32,9 +32,10 @@ struct ArgumentDescriptor {
 /* @brief Allocate memory available to the device
  * @param bytes Number of bytes to allocate
  * @param context Context handle
+ * @param exeContext execution context handle
  * @return Pointer to the allocated memory
  */
-NPU_API(void*) npu_level_zero_alloc(int64_t bytes, void* context);
+NPU_API(void*) npu_level_zero_alloc(int64_t bytes, void* context, void* executionContext);
 
 /* @brief Append a memory copy operation to the command list
  * @param src Source buffer
@@ -102,17 +103,19 @@ npu_level_zero_reset_commandlists(void** commandList, int32_t numCommandLists);
 NPU_API(int32_t)
 npu_level_zero_execute_graph(void** inputDescs, int32_t numInputs, void** outputDescs, int32_t numOutputs,
                              void* kernelName, void* kernel, int64_t kernelSize, void* context, void* device,
-                             void* ddiTable, void** commandList, int64_t commandListIndex, void* execCtx);
+                             void* ddiTable, void** commandList, int64_t commandListIndex, void* commandQueue,
+                             void* execCtx);
 
 /* @brief Record inference execution in a command list
  * @param commandList Command list handle
  * @param commandQueue Command queue handle
  * @param fence fence handle for sync
  * @param event event handle for sync
+ * @param exeContext execution context handle
  * @note A graph handle will be obtained from a map using a given kernel pointer
  */
 NPU_API(int32_t)
-npu_level_zero_submit_commandlist(void** commandList, void* commandQueue, void* fence, void* event);
+npu_level_zero_submit_commandlist(void* commandList, void* commandQueue, void* fence, void* event, void* execContext);
 
 /* @brief Deserializes and returns network metadata
  * @param metadata serialized metadata

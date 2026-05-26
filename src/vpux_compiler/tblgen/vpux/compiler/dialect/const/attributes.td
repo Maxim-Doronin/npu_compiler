@@ -681,6 +681,32 @@ def Const_BroadcastAttr : Const_AttrWithStableHash<"Broadcast"> {
 }
 
 //
+// GatherElementsAttr
+//
+
+def Const_GatherElementsAttr : Const_AttrWithStableHash<"GatherElements"> {
+    let summary = "GatherElements constant content";
+
+    let parameters = (ins
+        "mlir::IntegerAttr":$axis,
+        "mlir::DenseElementsAttr":$indices
+    );
+
+    let builders = [
+        AttrBuilderWithInferredContext<
+            (ins "mlir::IntegerAttr":$axis, "mlir::DenseElementsAttr":$indices), [{
+                return $_get(axis.getContext(), axis, indices);
+            }]
+        >
+    ];
+
+    let storageNamespace = "details";
+    let genVerifyDecl = 1;
+    let skipDefaultBuilders = 1;
+    let assemblyFormat = "`<` $axis `,` $indices `>`";
+}
+
+//
 // TransposeAttr
 //
 

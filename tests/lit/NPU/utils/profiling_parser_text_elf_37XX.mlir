@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --mlir-print-debuginfo --init-compiler="vpu-arch=%arch% allow-custom-values=true" --lower-VPUIP-to-ELF %data_path_npu%/profiling-37XX.mlir.txt | vpux-translate --vpu-arch=%arch% --export-ELF -o %t
+// RUN: vpux-opt --mlir-print-debuginfo --init-compiler="platform=%platform% allow-custom-values=true" --lower-VPUIP-to-ELF %data_path_npu%/profiling-37XX.mlir.txt | vpux-translate --platform=%platform% --export-ELF -o %t
 // RUN: prof_parser -b %t -p %data_path_npu%/profiling-0-37XX.bin -f text | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// REQUIRES: platform-NPU3720
 
 // CHECK: Task(DMA): data?t_Parameter/converted_to_f16/_cluster_0                 Time(us): 0.86          Start(us): 0.00
 // CHECK: Task(DMA): data?t_Parameter/converted_to_f16/_cluster_0                 Time(us): 0.88          Start(us): 1.09

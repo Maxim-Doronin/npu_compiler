@@ -24,9 +24,6 @@ struct DefaultHWOptions : public IE::DefaultHWOptionsDialectBase, virtual vpux::
                                       llvm::cl::init(true)};
     BoolOption enableDecomposeGRUSequence{*this, "decompose-gru-sequence",
                                           llvm::cl::desc("Enable decompose-gru-sequence pass"), llvm::cl::init(true)};
-    BoolOption enableFusePermuteQuantizeExpand{*this, "fuse-permute-quantize-expand",
-                                               llvm::cl::desc("Enable fuse-permute-quantize-expand pass"),
-                                               llvm::cl::init(true)};
     BoolOption enableSwapConvertWithSWOp{*this, "swap-convert-with-sw-op",
                                          llvm::cl::desc("Enable swap-convert-with-sw-op pass"), llvm::cl::init(false)};
     BoolOption mergeUnrolledMatmul{*this, "merge-unrolled-matmul", llvm::cl::desc("Enable merging urolled Matmul ops"),
@@ -49,6 +46,10 @@ struct DefaultHWOptions : public IE::DefaultHWOptionsDialectBase, virtual vpux::
 
     BoolOption skipUnrollBatch{*this, "skip-unroll-batch", llvm::cl::desc("Skip unroll on batch dimension"),
                                llvm::cl::init(false)};
+
+    BoolOption enableNCEEltwiseMultiply{*this, "enable-nce-eltwise-multiply",
+                                        llvm::cl::desc("Enable NCE Eltwise for Multiply with [1,C,1,1] shape"),
+                                        llvm::cl::init(false)};
 };
 
 //
@@ -64,8 +65,6 @@ void buildInitialLowPrecisionTransformationsPipeline(mlir::OpPassManager& pm,
 void buildOptimizeSliceOpPipeline(mlir::OpPassManager& pm, Logger log);
 void buildFinalTransformationPipeline(mlir::OpPassManager& pm, const DefaultHWOptions& options,
                                       Logger log = Logger::global());
-
-void buildOutliningPipeline(mlir::OpPassManager& pm, const DefaultHWOptions& options, Logger log = Logger::global());
 
 void buildDefaultHWPipeline(mlir::OpPassManager& pm, const DefaultHWOptions& options, Logger log = Logger::global());
 

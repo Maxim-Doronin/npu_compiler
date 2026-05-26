@@ -79,6 +79,9 @@ const SmallVector<StringLiteral> SW_KERNELS_SUPPORTING_TILING = {"mvn1",
                                                                  "eltwise_bitwise_and",
                                                                  "eltwise_bitwise_not",
                                                                  "eltwise_bitwise_xor",
+                                                                 "eltwise_bitwise_right_shift",
+                                                                 "eltwise_bitwise_left_shift",
+                                                                 "eltwise_squared_difference",
                                                                  "activation_sin",
                                                                  "activation_cos",
                                                                  "activation_exp",
@@ -119,6 +122,7 @@ const SmallVector<StringLiteral> SW_KERNELS_SUPPORTING_TILING = {"mvn1",
                                                                  "rms_norm",
                                                                  "rope",
                                                                  "rope_ilv",
+                                                                 "rope_pairwise",
                                                                  "sdpa",
                                                                  "random_uniform",
                                                                  "grid_sample",
@@ -128,37 +132,22 @@ const SmallVector<StringLiteral> SW_KERNELS_SUPPORTING_TILING = {"mvn1",
                                                                  "activation_softplus",
                                                                  "eltwise_logical_not",
                                                                  "cum_sum",
-                                                                 "sdpa_extended",
+                                                                 "attention",
                                                                  "flash_sdpa",
                                                                  "nv12_to_rgb",
                                                                  "i420_to_rgb",
                                                                  "activation_relu"};
 
-const SmallVector<StringLiteral> SW_KERNELS_SUPPORTING_STRIDE = {
-        "mvn1", "lstm_cell", "lstm_sequence", "lstm_dpu", "reorder", "sdpa_extended", "flash_sdpa"};
+const SmallVector<StringLiteral> SW_KERNELS_SUPPORTING_STRIDE = {"mvn1",    "lstm_cell", "lstm_sequence", "lstm_dpu",
+                                                                 "reorder", "attention", "flash_sdpa"};
 
-const SmallVector<std::string_view> SW_KERNELS_SUPPORTING_SHAVE_BALANCING = {"softmax",
-                                                                             "eltwise_mul",
-                                                                             "activation_sin",
-                                                                             "activation_cos",
-                                                                             "activation_swish",
-                                                                             "activation_softplus",
-                                                                             "activation_clamp",
-                                                                             "convert",
-                                                                             "eltwise_min",
-                                                                             "eltwise_max",
-                                                                             "round_fp16",
-                                                                             "activation_exp",
-                                                                             "eltwise_greater",
-                                                                             "eltwise_greater_equal",
-                                                                             "eltwise_less",
-                                                                             "eltwise_equal",
-                                                                             "eltwise_not_equal",
-                                                                             "eltwise_less_equal",
-                                                                             "eltwise_div",
-                                                                             "prelu_fp16",
-                                                                             "eltwise_logical_not",
-                                                                             "activation_relu"};
+const SmallVector<std::string_view> SW_KERNELS_SUPPORTING_SHAVE_BALANCING = {
+        "softmax",           "eltwise_mul",           "activation_sin",   "activation_cos",
+        "activation_swish",  "activation_softplus",   "activation_clamp", "convert",
+        "eltwise_min",       "eltwise_max",           "round_fp16",       "activation_exp",
+        "eltwise_greater",   "eltwise_greater_equal", "eltwise_less",     "eltwise_equal",
+        "eltwise_not_equal", "eltwise_less_equal",    "eltwise_div",      "eltwise_squared_difference",
+        "prelu_fp16",        "eltwise_logical_not",   "activation_relu"};
 
 const SmallVector<StringLiteral> SW_KERNELS_LAYOUT_AGNOSTIC = {
         "activation_swish", "activation_gelu",     "activation_hswish",   "activation_hardsigmoid",
@@ -174,6 +163,10 @@ const SmallVector<StringLiteral> SW_ACTIVATION_KERNELS = {
         "activation_sin",     "activation_cos",   "activation_exp",         "hswish_fp16",
         "prelu_fp16",         "activation_mish",  "activation_softplus",    "activation_negative",
         "activation_relu"};
+
+const SmallVector<StringLiteral> SW_KERNELS_WITH_BROADCAST = {
+        "eltwise_mul",  "eltwise_div",   "prelu_fp16",        "eltwise_greater",    "eltwise_greater_equal",
+        "eltwise_less", "eltwise_equal", "eltwise_not_equal", "eltwise_less_equal", "eltwise_squared_difference"};
 
 constexpr StringLiteral SW_KERNEL_NAME_PREFIX = "builtin_";
 
@@ -220,9 +213,18 @@ const SmallVector<StringLiteral> SW_KERNELS_NEED_TILING_ALIGNMENT = {"mvn1",
                                                                      "i420_to_rgb",
                                                                      "activation_relu"};
 
-const SmallVector<StringLiteral> SW_KERNELS_USE_DPU = {"lstm_dpu", "sdpa_extended", "flash_sdpa"};
+const SmallVector<StringLiteral> SW_KERNELS_USE_DPU = {"lstm_dpu", "attention", "flash_sdpa"};
+const SmallVector<StringLiteral> SW_KERNELS_IO_DMA = {"activation_atan_dma"};
 
 constexpr StringLiteral vpuTaskTypeAttrName = "VPU.task_type";
+
+// TODO: E#208642, need support more sw kernel dispatching dma
+// Note: The kernel support for activation_dma_sigmoid isn't available, it's added to satisfy LIT
+// Note: This array is used only by NPU50XX and is not required to update this list for other archs
+const SmallVector<StringLiteral> SW_KERNELS_USING_DMA = {"activation_dma_sigmoid"};
+/// Identifies the logical task index for the SW operation. This is used to legalize schedule for SW operations which
+/// can submit DMAs on the fly
+constexpr StringLiteral LOGICAL_TASK_INDEX_ATTR_NAME = "logical_task";
 
 SmallVector<mlir::Attribute> kernelArgsRange(VPUIP::SwKernelOp swKernelOp);
 
@@ -251,8 +253,10 @@ mlir::ModuleOp getVPUSWModule(mlir::ModuleOp module, const Logger& log);
 bool isActivationSwKernelOp(VPUIP::SwKernelOp swKernelOp);
 bool isSwKernelTilingSupported(VPUIP::SwKernelOp swKernelOp);
 bool isSwKernelUseDpu(VPUIP::SwKernelOp swKernelOp);
+bool isIoDmaSwKernel(VPUIP::SwKernelOp swKernelOp);
 bool isDpuShaveKernelType(VPURT::TaskOp taskOp);
 bool isStridedDataAccessSupported(VPUIP::SwKernelOp swKernelOp);
+bool isSwKernelUsingDma(VPUIP::SwKernelOp swKernelOp);
 
 InputTiling backInferSwKernelInputTile(VPUIP::SwKernelOp swKernelOp, const SmallVector<vpux::TileInfo>& outputTiles,
                                        int tileId, Logger log);

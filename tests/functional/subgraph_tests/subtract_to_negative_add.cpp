@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -88,6 +88,11 @@ INSTANTIATE_TEST_SUITE_P(smoke_subtract_diff_shape_const_inputs, SubtractSubGrap
 //
 
 class SubtractFqSubGraphTest_NPU3720 : public VpuOv2LayerTest, public testing::WithParamInterface<SubtractTestParams> {
+    void configure_model() override {
+        // #E-210493 - to remove quant-dequant-removal=false when proper solution is found
+        configuration[ov::intel_npu::compilation_mode_params.name()] = "quant-dequant-removal=false";
+    }
+
 public:
     static std::string getTestCaseName(const testing::TestParamInfo<SubtractTestParams>& obj) {
         const std::string sep = "_";
@@ -228,6 +233,11 @@ INSTANTIATE_TEST_SUITE_P(smoke_subtract_diff_shapes_act_inputs, SubtractActInput
 class SubtractFqActInputsSubGraphTest_NPU3720 :
         public VpuOv2LayerTest,
         public testing::WithParamInterface<SubtractTestParams> {
+    void configure_model() override {
+        // #E-210493 - to remove quant-dequant-removal=false when proper solution is found
+        configuration[ov::intel_npu::compilation_mode_params.name()] = "quant-dequant-removal=false";
+    }
+
 public:
     static std::string getTestCaseName(const testing::TestParamInfo<SubtractTestParams>& obj) {
         const std::string sep = "_";

@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/utils/loop.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
@@ -53,8 +54,8 @@ Const::Content vpux::Const::DequantizeAttr::transform(vpux::Const::Content& inpu
         const auto zeroPoint = uniformType.getZeroPoint();
 
         input.read([&](auto qVals) {
-            if (const auto quantileUniformType = mlir::dyn_cast<mlir::quant::QuantileQuantizedType>(qElemType)) {
-                const auto quantilesLUT = quantileUniformType.getQuantiles();
+            if (const auto quantileStorage = mlir::dyn_cast<vpux::type::QuantileType>(uniformType.getStorageType())) {
+                const auto quantilesLUT = quantileStorage.getQuantiles();
                 for (size_t i = 0; i < realVals.size(); ++i) {
                     const auto qVal = checked_cast<int64_t>(qVals[i]);
                     realVals[i] = dequantizeDouble(quantilesLUT[qVal], scale, zeroPoint);
@@ -106,8 +107,9 @@ Const::Content vpux::Const::DequantizeAttr::transform(vpux::Const::Content& inpu
         // Middle loop goes through the quantized axis. Scale/ZP are updated based on this index.
         // Innermost loop goes through the volume of the innermost dimensions, which share the same quantization
         // parameters.
-        if (const auto quantilePerAxisType = mlir::dyn_cast<mlir::quant::QuantileQuantizedPerAxisType>(qElemType)) {
-            const auto quantilesLUT = quantilePerAxisType.getQuantiles();
+        if (const auto quantileStorageType =
+                    mlir::dyn_cast<vpux::type::QuantileType>(uniformPerAxisType.getStorageType())) {
+            const auto quantilesLUT = quantileStorageType.getQuantiles();
             loop_3d(LoopExecPolicy::Parallel, getContext(), outerSize, quantAxisSize, innerSize,
                     [&](int64_t outerInd, int64_t quantAxisInd, int64_t innerInd) {
                         const auto scale = scales[quantAxisInd];

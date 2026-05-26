@@ -6,10 +6,12 @@
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include <vpux/utils/core/numeric.hpp>
 #include "vpux/compiler/core/attributes/dims_order.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops/convolution.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/dpu.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/shape_manipulation.hpp"
@@ -73,6 +75,28 @@ mlir::Value createWeightsTableTensor(mlir::OpBuilder& builder, mlir::Location lo
     return Const::createConst(builder, loc, dataStorageType, weightsTable);
 }
 
+SmallVector<int32_t> materializeDataPointerTable(mlir::MLIRContext* context, ArrayRef<int32_t> workloadSizes,
+                                                 mlir::Value weights, int32_t weightPtrOffset, int64_t OC,
+                                                 int64_t numClusters) {
+    const auto weightsElemType = mlir::cast<vpux::NDTypeInterface>(weights.getType()).getElementType();
+    auto weightsQuantizedPerChannel = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(weightsElemType);
+
+    SmallVector<int32_t> dataPointerData;
+    if (weightsQuantizedPerChannel) {
+        auto zeroPoints = weightsQuantizedPerChannel.getZeroPoints();
+        auto zeroPointsI8 = to_small_vector(llvm::map_range(zeroPoints, [](int64_t zp) {
+            return static_cast<int8_t>(zp);
+        }));
+        dataPointerData = to_small_vector(createDataPointerTableData<int8_t>(
+                context, workloadSizes, weights, weightPtrOffset, OC, numClusters, zeroPointsI8));
+    } else {
+        dataPointerData = to_small_vector(
+                createDataPointerTableData<int8_t>(context, workloadSizes, weights, weightPtrOffset, OC, numClusters));
+    }
+
+    return dataPointerData;
+}
+
 std::vector<float> createBiasTableData(mlir::Value opInput, mlir::Type outElemType, mlir::Value weights,
                                        const Const::ContentAttr& bias, int64_t OC,
                                        VPU::NCESparsity::BiasConverterCb biasConverter) {
@@ -91,8 +115,8 @@ std::vector<float> createBiasTableData(mlir::Value opInput, mlir::Value opOutput
     return createBiasTableData(opInput, outElemType, weights, bias, OC, biasConverter);
 }
 
-std::vector<int64_t> materializeZeroPointTable(mlir::Type weightsElemType, int64_t OC,
-                                               ArrayRef<int64_t> workloadSizes) {
+SmallVector<int32_t> materializeZeroPointTable(mlir::Type weightsElemType, int64_t OC,
+                                               ArrayRef<int32_t> workloadSizes) {
     auto weightsQuantizedPerChannel = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(weightsElemType);
     auto zeroPoints = weightsQuantizedPerChannel.getZeroPoints();
 
@@ -100,119 +124,175 @@ std::vector<int64_t> materializeZeroPointTable(mlir::Type weightsElemType, int64
         return {};
     }
 
-    // Convert workload sizes from int64_t to int32_t
-    auto workloadSizesInt32 = to_small_vector(llvm::map_range(workloadSizes, [](int64_t size) {
-        return static_cast<int32_t>(size);
-    }));
-
     auto isSigned = weightsQuantizedPerChannel.isSigned();
     // MLIR quantization type system guarantees that zero points are of the storage type
     // (see mlir/include/mlir/Dialect/Quant/IR/QuantBase.td: "zeroPoint: Optional integer value of type storageType")
     auto isZeroPoint4Bit = weightsQuantizedPerChannel.getStorageTypeIntegralWidth() == 4;
 
-    SmallVector<int64_t> zeroPointsData;
+    SmallVector<int32_t> zeroPointsData;
     if (isSigned) {
         auto zeroPointsI8 = to_small_vector(llvm::map_range(zeroPoints, [](int64_t zp) {
             return static_cast<int8_t>(zp);
         }));
 
-        auto zeroPointsDataI8 = createZeroPointTableData<int8_t>(workloadSizesInt32, weightsElemType, OC,
-                                                                 isZeroPoint4Bit, zeroPointsI8);
+        auto zeroPointsDataI8 =
+                createZeroPointTableData<int8_t>(workloadSizes, weightsElemType, OC, isZeroPoint4Bit, zeroPointsI8);
 
         zeroPointsData = to_small_vector(llvm::map_range(zeroPointsDataI8, [](int8_t zp) {
-            return static_cast<int64_t>(zp);
+            return static_cast<int32_t>(zp);
         }));
     } else {
         auto zeroPointsU8 = to_small_vector(llvm::map_range(zeroPoints, [](int64_t zp) {
             return static_cast<uint8_t>(zp);
         }));
 
-        auto zeroPointsDataU8 = createZeroPointTableData<uint8_t>(workloadSizesInt32, weightsElemType, OC,
-                                                                  isZeroPoint4Bit, zeroPointsU8);
+        auto zeroPointsDataU8 =
+                createZeroPointTableData<uint8_t>(workloadSizes, weightsElemType, OC, isZeroPoint4Bit, zeroPointsU8);
 
         zeroPointsData = to_small_vector(llvm::map_range(zeroPointsDataU8, [](uint8_t zp) {
-            return static_cast<int64_t>(zp);
+            return static_cast<int32_t>(zp);
         }));
     }
 
-    return {zeroPointsData.begin(), zeroPointsData.end()};
+    return zeroPointsData;
 }
 
-NewWeightsTableData::NewWeightsTableData(bool useNewWeightTableFormat, mlir::Value opInput, mlir::Type opOutputElemType,
-                                         mlir::Value weights, const Const::ContentAttr& bias, int64_t OC,
+NewWeightsTableData::NewWeightsTableData(bool useNewWeightTableFormat, bool isDataPointerTableSupported,
+                                         bool isZeroPointTableSupported, mlir::Value opInput,
+                                         mlir::Type opOutputElemType, mlir::Value weights,
+                                         const Const::ContentAttr& bias, int64_t OC,
                                          VPU::NCESparsity::PPEConverterCb ppeConverter,
                                          VPU::NCESparsity::BiasConverterCb biasConverter, mlir::FloatAttr constScale) {
-    initializeData(useNewWeightTableFormat, opInput, opOutputElemType, weights, bias, OC, ppeConverter, biasConverter,
-                   constScale);
+    initializeData(useNewWeightTableFormat, isDataPointerTableSupported, isZeroPointTableSupported, opInput,
+                   opOutputElemType, weights, bias, OC, ppeConverter, biasConverter, constScale);
 }
 
-NewWeightsTableData::NewWeightsTableData(bool useNewWeightTableFormat, mlir::Value opInput, mlir::Value opOutput,
+NewWeightsTableData::NewWeightsTableData(bool useNewWeightTableFormat, bool isDataPointerTableSupported,
+                                         bool isZeroPointTableSupported, mlir::Value opInput, mlir::Value opOutput,
                                          mlir::Value weights, const Const::ContentAttr& bias, int64_t OC,
                                          VPU::NCESparsity::PPEConverterCb ppeConverter,
                                          VPU::NCESparsity::BiasConverterCb biasConverter, mlir::FloatAttr constScale) {
     const auto outElemType = mlir::cast<vpux::NDTypeInterface>(opOutput.getType()).getElementType();
 
-    initializeData(useNewWeightTableFormat, opInput, outElemType, weights, bias, OC, ppeConverter, biasConverter,
-                   constScale);
+    initializeData(useNewWeightTableFormat, isDataPointerTableSupported, isZeroPointTableSupported, opInput,
+                   outElemType, weights, bias, OC, ppeConverter, biasConverter, constScale);
 }
 
-void NewWeightsTableData::initializeData(bool useNewWeightTableFormat, mlir::Value opInput, mlir::Type opOutputElemType,
-                                         mlir::Value weights, const Const::ContentAttr& bias, int64_t OC,
+void NewWeightsTableData::initializeData(bool useNewWeightTableFormat, bool isDataPointerTableSupported,
+                                         bool isZeroPointTableSupported, mlir::Value opInput,
+                                         mlir::Type opOutputElemType, mlir::Value weights,
+                                         const Const::ContentAttr& bias, int64_t OC,
                                          VPU::NCESparsity::PPEConverterCb ppeConverter,
                                          VPU::NCESparsity::BiasConverterCb biasConverter, mlir::FloatAttr constScale) {
     // leave vectors empty for archs using the legacy weights table format
     if (useNewWeightTableFormat) {
+        // data-pointer table data will be created in correct-new-weights-table-workloads pass as creation of it
+        // depends on workloads, which we know only after correct-nce-workloads pass. Set here dummy values
+        dataPointerData = isDataPointerTableSupported ? std::vector<int32_t>(OC, 0) : std::vector<int32_t>{};
+
         scaleData = createScaleTableData<float>(opInput, opOutputElemType, weights, OC, ppeConverter, constScale);
         if (bias != nullptr) {
             biasData = createBiasTableData(opInput, opOutputElemType, weights, bias, OC, biasConverter);
         } else {
             biasData = std::vector<float>(OC, 0.0);
         }
+
         // zero-point table data will be created in create-new-weight-tables-data pass as creation of it
         // depends on workloads, which we know only after correct-nce-workloads pass. Set here dummy values
-        zeroPointData = std::vector<int8_t>(OC, 0);
+        zeroPointData = isZeroPointTableSupported ? std::vector<int8_t>(OC, 0) : std::vector<int8_t>{};
     }
 }
 
-NewWeightsTableTensors::NewWeightsTableTensors(bool useNewWeightTableFormat, mlir::OpBuilder& builder,
-                                               mlir::Location loc, mlir::Value opInput, mlir::Type opOutputElemType,
-                                               mlir::Value weights, const Const::ContentAttr& bias,
-                                               ShapeRef weightTableShape, VPU::NCESparsity::PPEConverterCb ppeConverter,
+NewWeightsTableTensors::NewWeightsTableTensors(mlir::Operation* op, bool useNewWeightTableFormat,
+                                               bool isDataPointerTableSupported, bool isZeroPointTableSupported,
+                                               mlir::OpBuilder& builder, mlir::Location loc, mlir::Value opInput,
+                                               mlir::Type opOutputElemType, mlir::Value weights,
+                                               const Const::ContentAttr& bias, ShapeRef weightTableShape,
+                                               VPU::NCESparsity::PPEConverterCb ppeConverter,
                                                VPU::NCESparsity::BiasConverterCb biasConverter,
                                                mlir::FloatAttr constScale) {
-    initializeTensors(useNewWeightTableFormat, builder, loc, opInput, opOutputElemType, weights, bias, weightTableShape,
-                      ppeConverter, biasConverter, constScale);
+    initializeTensors(op, useNewWeightTableFormat, isDataPointerTableSupported, isZeroPointTableSupported, builder, loc,
+                      opInput, opOutputElemType, weights, bias, weightTableShape, ppeConverter, biasConverter,
+                      constScale);
 }
 
-NewWeightsTableTensors::NewWeightsTableTensors(bool useNewWeightTableFormat, mlir::OpBuilder& builder,
-                                               mlir::Location loc, mlir::Value opInput, mlir::Value opOutput,
-                                               mlir::Value weights, const Const::ContentAttr& bias,
-                                               ShapeRef weightTableShape, VPU::NCESparsity::PPEConverterCb ppeConverter,
+NewWeightsTableTensors::NewWeightsTableTensors(mlir::Operation* op, bool useNewWeightTableFormat,
+                                               bool isDataPointerTableSupported, bool isZeroPointTableSupported,
+                                               mlir::OpBuilder& builder, mlir::Location loc, mlir::Value opInput,
+                                               mlir::Value opOutput, mlir::Value weights,
+                                               const Const::ContentAttr& bias, ShapeRef weightTableShape,
+                                               VPU::NCESparsity::PPEConverterCb ppeConverter,
                                                VPU::NCESparsity::BiasConverterCb biasConverter,
                                                mlir::FloatAttr constScale) {
     const auto outElemType = mlir::cast<vpux::NDTypeInterface>(opOutput.getType()).getElementType();
 
-    initializeTensors(useNewWeightTableFormat, builder, loc, opInput, outElemType, weights, bias, weightTableShape,
-                      ppeConverter, biasConverter, constScale);
+    initializeTensors(op, useNewWeightTableFormat, isDataPointerTableSupported, isZeroPointTableSupported, builder, loc,
+                      opInput, outElemType, weights, bias, weightTableShape, ppeConverter, biasConverter, constScale);
 }
 
-void NewWeightsTableTensors::initializeTensors(bool useNewWeightTableFormat, mlir::OpBuilder& builder,
-                                               mlir::Location loc, mlir::Value opInput, mlir::Type opOutputElemType,
-                                               mlir::Value weights, const Const::ContentAttr& bias,
-                                               ShapeRef weightTableShape, VPU::NCESparsity::PPEConverterCb ppeConverter,
+void NewWeightsTableTensors::initializeTensors(mlir::Operation* op, bool useNewWeightTableFormat,
+                                               bool isDataPointerTableSupported, bool isZeroPointTableSupported,
+                                               mlir::OpBuilder& builder, mlir::Location loc, mlir::Value opInput,
+                                               mlir::Type opOutputElemType, mlir::Value weights,
+                                               const Const::ContentAttr& bias, ShapeRef weightTableShape,
+                                               VPU::NCESparsity::PPEConverterCb ppeConverter,
                                                VPU::NCESparsity::BiasConverterCb biasConverter,
                                                mlir::FloatAttr constScale) {
-    const auto newWeightsTableData =
-            NewWeightsTableData(useNewWeightTableFormat, opInput, opOutputElemType, weights, bias,
-                                weightTableShape.totalSize(), ppeConverter, biasConverter, constScale);
+    const auto newWeightsTableData = NewWeightsTableData(
+            useNewWeightTableFormat, isDataPointerTableSupported, isZeroPointTableSupported, opInput, opOutputElemType,
+            weights, bias, weightTableShape.totalSize(), ppeConverter, biasConverter, constScale);
 
     scaleTensor = initializeScaleBiasTensor(builder, loc, newWeightsTableData.scaleData, weightTableShape);
     biasTensor = initializeScaleBiasTensor(builder, loc, newWeightsTableData.biasData, weightTableShape);
-    // zero-point table tensor will be created in create-new-weight-tables-data pass as creation of it
-    // depends on workloads, which we know only after correct-nce-workloads pass. So currently we just initialize it
-    // with dummy values which will be updated
-    zeroPointTensor = initializeZeroPointsTensorWithDummyValues(builder, loc, newWeightsTableData.zeroPointData,
-                                                                weights, weightTableShape.totalSize());
+
+    if (!op) {
+        return;
+    }
+    const auto isWeightsSparse = weights && mlir::isa<VPU::SparseTensorType>(weights.getType());
+    if (mlir::isa<IE::GroupConvolutionOp, VPU::GroupConvolutionOp, VPU::NCEDepthConvolutionOp>(op) &&
+        !isWeightsSparse) {
+        // data-pointer table tensor will be created in correct-new-weights-table-workloads pass as creation of it
+        // depends on workloads, which we know only after correct-nce-workloads pass. So currently we just initialize it
+        // with dummy values which will be updated
+        dataPointerTensor = initializeDataPointerTensorWithDummyValues(
+                builder, loc, newWeightsTableData.dataPointerData, weights, weightTableShape.totalSize());
+    } else if (mlir::isa<IE::GroupConvolutionOp, VPU::GroupConvolutionOp, VPU::NCEDepthConvolutionOp>(op)) {
+        // We can't use zero-point table together with DW convolution as it's not supported in HW.
+        sparsityPointerTensor = nullptr;
+    } else {
+        // zero-point table tensor will be created in create-new-weight-tables-data pass as creation of it
+        // depends on workloads, which we know only after correct-nce-workloads pass. So currently we just initialize it
+        // with dummy values which will be updated
+        zeroPointTensor = initializeZeroPointsTensorWithDummyValues(builder, loc, newWeightsTableData.zeroPointData,
+                                                                    weights, weightTableShape.totalSize());
+    }
+}
+
+mlir::Value NewWeightsTableTensors::initializeDataPointerTensorWithDummyValues(mlir::OpBuilder& builder,
+                                                                               mlir::Location loc,
+                                                                               ArrayRef<int32_t> tableData,
+                                                                               mlir::Value weights, int64_t OC) {
+    if (tableData.empty()) {
+        return nullptr;
+    }
+
+    const auto weightsElemType =
+            weights ? mlir::cast<vpux::NDTypeInterface>(weights.getType()).getElementType() : nullptr;
+    if (!weightsElemType) {
+        return nullptr;
+    }
+
+    // Dummy shape of the data-pointer table (will be expanded based on workloads later)
+    const auto dummyDataPointerTableShape = SmallVector<int64_t>{OC, 1, 1, 1};
+
+    // Create attributes
+    auto weightsElemTypeAttr = mlir::TypeAttr::get(weightsElemType);
+    auto dummyOutputType = mlir::RankedTensorType::get(dummyDataPointerTableShape, getSInt32Type(builder.getContext()));
+    auto dataPointerTableOp = builder.create<VPU::DataPointerTableOp>(loc, dummyOutputType, weightsElemTypeAttr,
+                                                                      /*workloadSizes=*/nullptr,
+                                                                      /*dataPointerTableData=*/nullptr);
+
+    return dataPointerTableOp.getResult();
 }
 
 mlir::Value NewWeightsTableTensors::initializeScaleBiasTensor(mlir::OpBuilder& builder, mlir::Location loc,
@@ -233,7 +313,8 @@ mlir::Value NewWeightsTableTensors::initializeZeroPointsTensorWithDummyValues(ml
     const auto weightsElemType =
             weights ? mlir::cast<vpux::NDTypeInterface>(weights.getType()).getElementType() : nullptr;
 
-    if (auto uniformQuantPerAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(weightsElemType)) {
+    if (auto uniformQuantPerAxisType =
+                mlir::dyn_cast_or_null<mlir::quant::UniformQuantizedPerAxisType>(weightsElemType)) {
         // We will create zero-point table if weights have per-channel zero points
         if (!areAllZeroPointsEqual(uniformQuantPerAxisType)) {
             // Dummy shape of the zero-point table (will be expanded based on workloads later)

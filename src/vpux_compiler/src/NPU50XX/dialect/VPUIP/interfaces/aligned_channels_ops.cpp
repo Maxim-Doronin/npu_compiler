@@ -156,7 +156,7 @@ void vpux::VPUIP::arch50xx::registerAlignedChannelsOpInterfaces(mlir::DialectReg
         IE::ReduceSumOp::attachInterface<AlignedChannelsOpModel<IE::ReduceSumOp>>(*ctx);
         IE::MatMulOp::attachInterface<AlignedChannelsOpModel<IE::MatMulOp>>(*ctx);
         IE::SoftMaxOp::attachInterface<AlignedChannelsOpModel<IE::SoftMaxOp>>(*ctx);
-        IE::SDPAExtendedOp::attachInterface<AlignedChannelsOpModel<IE::SDPAExtendedOp>>(*ctx);
+        IE::AttentionOp::attachInterface<AlignedChannelsOpModel<IE::AttentionOp>>(*ctx);
         IE::FlashSDPAOp::attachInterface<AlignedChannelsOpModel<IE::FlashSDPAOp>>(*ctx);
     });
 }

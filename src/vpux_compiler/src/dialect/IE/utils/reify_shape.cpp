@@ -17,8 +17,6 @@
 
 #include <mlir/Dialect/Tensor/IR/Tensor.h>
 
-#include <openvino/util/common_util.hpp>
-
 using namespace vpux;
 
 // Concatenate dynamic dimensions with static dimensions.

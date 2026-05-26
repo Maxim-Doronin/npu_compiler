@@ -37,6 +37,9 @@ static constexpr int64_t PARALLEL_EXECUTION_THRESHOLD = 4096;
 // Utilities for quantized types
 //
 
+mlir::quant::UniformQuantizedPerAxisType getPerAxisTypeForBlock(
+        mlir::quant::UniformQuantizedSubChannelType subchannelQType, const int64_t blockIndex);
+
 bool isSupportedEltwiseQuantization(mlir::Type lhsElemType, mlir::Type rhsElemType, bool allowDifferentScales,
                                     bool allowDifferentZp, VPU::EltwiseType eltwiseType, LogCb logCb = emptyLogCb);
 
@@ -159,6 +162,12 @@ std::tuple<double, double> getRepresentableRange(mlir::Type lowPrecisionType);
 bool isFloat8(mlir::Type type);
 // Returns true if the given type is a quantized type with 8-bit float storage.
 bool isFloat8Quantized(mlir::Type type);
+
+// Returns true if the given type is a signed 8-bit integer type.
+bool isInt8(mlir::Type type);
+// Returns true if the given type is a signed 8-bit integer quantized type.
+bool isInt8Quantized(mlir::Type type);
+
 // Returns true if the given type is an 4-bit float type.
 bool isFloat4(mlir::Type type);
 // Returns true if the given type is a quantized type with 4-bit float storage.

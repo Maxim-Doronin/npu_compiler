@@ -5,7 +5,9 @@
 
 #include <vpux/compiler/dialect/core/IR/ops.hpp>
 #include <vpux/compiler/dialect/core/transforms/passes.hpp>
+#include <vpux/compiler/dialect/core/types.hpp>
 #include <vpux/compiler/utils/func_dialect.hpp>
+#include <vpux/compiler/utils/types.hpp>
 #include "vpux/compiler/dialect/HostExec/params.hpp"
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/dialect/config/IR/ops.hpp"
@@ -64,6 +66,95 @@ bool hasSpanningEdges(const FuncOrModuleOpSet& from, const FuncOrModuleOpSet& to
 /// Merges the set src into dst.
 void mergeInto(FuncOrModuleOpSet& dst, const FuncOrModuleOpSet& src) {
     dst.insert(src.begin(), src.end());
+}
+
+bool hasDynamicTypeMetadata(vpux::NDTypeInterface type) {
+    return mlir::isa<Core::BoundedTensorType>(type);
+}
+
+// Check a single Core.ReinterpretCast user and return its result type when it carries
+// dynamic-shape metadata (bounds).
+vpux::NDTypeInterface getDynamicTypeFromReinterpretUsers(mlir::Value root) {
+    for (auto* user : root.getUsers()) {
+        auto reinterpretCast = mlir::dyn_cast<Core::ReinterpretCastOp>(user);
+        if (reinterpretCast == nullptr) {
+            continue;
+        }
+
+        auto castType = mlir::dyn_cast<vpux::NDTypeInterface>(reinterpretCast.getResult().getType());
+        if (castType != nullptr && hasDynamicTypeMetadata(castType)) {
+            return castType;
+        }
+    }
+
+    return nullptr;
+}
+
+// Check a single Core.ReinterpretCast producer and return its input type when it carries
+// dynamic-shape metadata.
+vpux::NDTypeInterface getDynamicTypeFromReinterpretInputs(mlir::Value root) {
+    auto reinterpretCast = root.getDefiningOp<Core::ReinterpretCastOp>();
+    if (reinterpretCast == nullptr) {
+        return nullptr;
+    }
+
+    auto castInputType = mlir::dyn_cast<vpux::NDTypeInterface>(reinterpretCast.getInput().getType());
+    if (castInputType != nullptr && hasDynamicTypeMetadata(castInputType)) {
+        return castInputType;
+    }
+
+    return nullptr;
+}
+
+vpux::NDTypeInterface getInputNetworkInfoType(mlir::func::FuncOp funcOp, unsigned argIndex) {
+    VPUX_THROW_WHEN(argIndex >= funcOp.getNumArguments(), "Input index {0} is out of range for function '{1}'",
+                    argIndex, funcOp.getSymName());
+
+    // This pass only propagates dynamic bounds into NetworkInfo when they can be recovered from the
+    // reinterpret-cast.
+    if (auto dynamicType = getDynamicTypeFromReinterpretUsers(funcOp.getArgument(argIndex)); dynamicType != nullptr) {
+        return dynamicType;
+    }
+
+    return nullptr;
+}
+
+vpux::NDTypeInterface getOutputNetworkInfoType(mlir::func::FuncOp funcOp, unsigned resultIndex) {
+    VPUX_THROW_WHEN(resultIndex >= funcOp.getNumResults(), "Output index {0} is out of range for function '{1}'",
+                    resultIndex, funcOp.getSymName());
+
+    // This pass only propagates dynamic bounds into NetworkInfo when they can be recovered from the
+    // reinterpret-cast.
+    for (auto returnOp : funcOp.getOps<mlir::func::ReturnOp>()) {
+        if (resultIndex >= returnOp.getNumOperands()) {
+            continue;
+        }
+
+        // Return operands may be wrapped by reinterpret casts; recover dynamic metadata.
+        auto current = returnOp.getOperand(resultIndex);
+        if (auto dynamicType = getDynamicTypeFromReinterpretInputs(current); dynamicType != nullptr) {
+            return dynamicType;
+        }
+    }
+
+    return nullptr;
+}
+
+mlir::Type buildNetworkInfoType(vpux::NDTypeInterface baseShapeType, vpux::NDTypeInterface recoveredType) {
+    mlir::Type newType = mlir::RankedTensorType::get(baseShapeType.getShape(), baseShapeType.getElementType(), nullptr);
+
+    if (!baseShapeType.getShape().isDynamic() || recoveredType == nullptr) {
+        return newType;
+    }
+
+    const auto bounds = mlir::dyn_cast<Core::BoundedTensorType>(recoveredType);
+    if (bounds == nullptr) {
+        return newType;
+    }
+
+    const auto baseType = mlir::cast<vpux::NDTypeInterface>(newType);
+    const auto typeComponents = TypeComponents().setBounds(Bounds(bounds.getBounds().raw()));
+    return baseType.changeTypeComponents(typeComponents);
 }
 
 //
@@ -448,13 +539,14 @@ void PackNestedModules::createNetInfoForFuncOp(mlir::OpBuilder& builder, mlir::f
     builder.setInsertionPointToStart(&inputRegion.front());
 
     // These will be replaced with core dialect definitions when dynamic strides are removed
-    llvm::StringRef funcArgDynamicStridesAttrName = HOST_EXEC_FUNC_ARG_DYNAMIC_STRIDES_ATTR_NAME;
+    llvm::StringRef funcArgDynamicStridesAttrName = vpux::HostExec::HOST_EXEC_FUNC_ARG_DYNAMIC_STRIDES_ATTR_NAME;
     mlir::StringAttr funcArgDynamicStridesAttrNameAttr = builder.getStringAttr(funcArgDynamicStridesAttrName);
-    llvm::StringRef dynamicStridesAttrName = HOST_EXEC_DYNAMIC_STRIDES_ATTR_NAME;
+    llvm::StringRef dynamicStridesAttrName = vpux::HostExec::HOST_EXEC_DYNAMIC_STRIDES_ATTR_NAME;
 
     for (unsigned i = 0; i < funcType.getNumInputs(); ++i) {
         auto argType = mlir::cast<vpux::NDTypeInterface>(funcType.getInput(i));
-        const auto newType = mlir::RankedTensorType::get(argType.getShape(), argType.getElementType(), nullptr);
+        auto netInfoArgType = getInputNetworkInfoType(funcOp, i);
+        mlir::Type newType = buildNetworkInfoType(argType, netInfoArgType);
         auto name = formatv("in_{0}", i).str();
         auto dataInfoOp = builder.create<net::DataInfoOp>(appendLoc(funcOp.getLoc(), name), name, newType);
 
@@ -473,7 +565,8 @@ void PackNestedModules::createNetInfoForFuncOp(mlir::OpBuilder& builder, mlir::f
 
     for (unsigned i = 0; i < funcType.getNumResults(); ++i) {
         auto resType = mlir::cast<vpux::NDTypeInterface>(funcType.getResult(i));
-        const auto newType = mlir::RankedTensorType::get(resType.getShape(), resType.getElementType(), nullptr);
+        auto netInfoResType = getOutputNetworkInfoType(funcOp, i);
+        mlir::Type newType = buildNetworkInfoType(resType, netInfoResType);
         auto name = formatv("out_{0}", i).str();
         auto dataInfoOp = builder.create<net::DataInfoOp>(appendLoc(funcOp.getLoc(), name), name, newType);
 

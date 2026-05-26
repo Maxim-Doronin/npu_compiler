@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW allow-custom-values=true" --expand-activation-channels --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW allow-custom-values=true" --expand-activation-channels --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU5010
 
 // CHECK-LABEL: @FlashSDPA
 // CHECK-SAME: [[QUERY:%[^, ]+]]: tensor<1x16x117x85xf16>,

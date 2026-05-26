@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -569,38 +569,21 @@ mlir::LogicalResult AlignSliceRewriter::matchAndRewrite(IE::FakeQuantizeOp fqOp,
 
 class AlignScalesPass final : public IE::impl::AlignScalesBase<AlignScalesPass> {
 public:
-    explicit AlignScalesPass(const bool seOpsEnabled, Logger log): _seOpsEnabled(seOpsEnabled) {
+    explicit AlignScalesPass(Logger log) {
         Base::initLogger(log, Base::getArgumentName());
     }
-    mlir::LogicalResult initialize(mlir::MLIRContext* ctx) final;
 
 private:
     void safeRunOnFunc() final;
-
-public:
-    bool _seOpsEnabled;
 };
-
-mlir::LogicalResult AlignScalesPass::initialize(mlir::MLIRContext* ctx) {
-    if (mlir::failed(Base::initialize(ctx))) {
-        return mlir::failure();
-    }
-
-    // When this parameter has a value, it probably comes from LIT test.
-    // Override the default
-    if (seOpsEnabled.hasValue()) {
-        _seOpsEnabled = seOpsEnabled.getValue();
-    }
-
-    return mlir::success();
-}
 
 void AlignScalesPass::safeRunOnFunc() {
     auto& ctx = getContext();
     auto func = getOperation();
+    auto moduleOp = getModuleOp(func);
 
     mlir::RewritePatternSet concatPatterns(&ctx);
-    concatPatterns.add<AlignConcatScalesRewriter>(&ctx, _log, _seOpsEnabled);
+    concatPatterns.add<AlignConcatScalesRewriter>(&ctx, _log, config::hasEnableSEPtrsOperations(moduleOp));
 
     if (mlir::failed(applyPatternsGreedily(func, std::move(concatPatterns), getDefaultGreedyRewriteConfig()))) {
         signalPassFailure();
@@ -619,6 +602,6 @@ void AlignScalesPass::safeRunOnFunc() {
 //
 // createAlignScalesPass
 //
-std::unique_ptr<mlir::Pass> vpux::IE::createAlignScalesPass(const bool seOpsEnabled, Logger log) {
-    return std::make_unique<AlignScalesPass>(seOpsEnabled, log);
+std::unique_ptr<mlir::Pass> vpux::IE::createAlignScalesPass(Logger log) {
+    return std::make_unique<AlignScalesPass>(log);
 }

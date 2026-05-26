@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --optimize-parallel-copies %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --optimize-parallel-copies %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -24,7 +24,7 @@ func.func @OptimizeParallelNonConstCopies(
             outputs(%2 : memref<1x16x112x112xf16, #NHWC, @CMX_NN>)
              -> memref<1x16x112x112xf16, #NHWC, @CMX_NN>
     %4 = memref.alloc() : memref<1x16x112x112xf16, #NHWC, @CMX_NN>
-    %5 = VPUIP.NCEClusterTask <{
+    %5 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1],
             kernel_strides = [1, 1],
@@ -52,7 +52,7 @@ func.func @OptimizeParallelNonConstCopies(
             outputs(%7 : memref<1x16x112x112xf16, #NHWC, @CMX_NN>)
              -> memref<1x16x112x112xf16, #NHWC, @CMX_NN>
     %9 = memref.alloc() : memref<1x16x112x112xf16, #NHWC, @CMX_NN>
-    %10 = VPUIP.NCEClusterTask <{
+    %10 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [1, 1],
             kernel_strides = [1, 1],

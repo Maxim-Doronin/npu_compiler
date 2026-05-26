@@ -12,7 +12,7 @@
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
 
 #include "common/utils.hpp"
-#include "vpux/compiler/init.hpp"
+#include "vpux/compiler/init/dialects_registry.hpp"
 
 #include <mlir/IR/AsmState.h>
 #include <mlir/IR/MLIRContext.h>

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --vertical-fusion-tiling %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW" --vertical-fusion-tiling %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -53,7 +53,7 @@ func.func @VfTilingWithEltwise(%arg0: tensor<1x16x256x256x!qElemType, {order = #
     // CHECK: [[ELTWISETILE0:%.+]] = VPU.NCE.Eltwise([[SLICETILE0]], [[CONV1TILE0]])
     // CHECK-SAME: vf_loop_index = 0 : i64, vf_loop_layer_index = 0 : i64
     // CHECK: [[SLICEARG0TILE1:%.+]] = VPU.Slice [[ARG_0]] [0, 0, 126, 0] [1, 16, 130, 256]
-    // CHECK: [[CONV0TILE1:%.+]] = VPU.NCE.Convolution([[SLICEARG0TILE1]], %arg1)
+    // CHECK: [[CONV0TILE1:%.+]] = VPU.NCE.Convolution([[SLICEARG0TILE1]], [[ARG_1]])
     // CHECK-SAME: {
     // CHECK-SAME:   multiClusterStrategy = #VPU.multi_cluster_strategy<SplitOverHeight>,
     // CHECK-SAME:   pad = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 0 : i64, bottom = 1 : i64>,
@@ -247,16 +247,14 @@ func.func @FallBackToOperandDueToSliceFail(%arg0: tensor<1x16x720x1280xf16, {ord
     // CHECK: [[CONV_0:%.+]] = VPU.NCE.Convolution([[CONV_SLICE_0]], [[WEIGHTS]])
     // CHECK: [[MAXPOOL_0:%.+]] = VPU.NCE.MaxPool([[CONV_0]])
     // CHECK: [[INTERP_0:%.+]] = VPU.Interpolate([[MAXPOOL_0]])
-    // CHECK: [[ELTWISE_SLICE_0:%.+]] = VPU.Slice [[INPUT]] [0, 0, 0, 0] [1, 16, 720, 57]
-    // CHECK: [[ELTWISE_INPUT_0:%.+]] = VPU.Slice [[ELTWISE_SLICE_0]] [0, 0, 0, 0] [1, 16, 720, 40]
+    // CHECK: [[ELTWISE_INPUT_0:%.+]] = VPU.Slice [[INPUT]] [0, 0, 0, 0] [1, 16, 720, 40]
     // CHECK: [[ELTWISE_0:%.+]] = VPU.NCE.Eltwise([[ELTWISE_INPUT_0]], [[INTERP_0]])
 
     // CHECK: [[CONV_SLICE_1:%.+]] = VPU.Slice [[INPUT]] [0, 0, 0, 72] [1, 16, 720, 63]
     // CHECK: [[CONV_1:%.+]] = VPU.NCE.Convolution([[CONV_SLICE_1]], [[WEIGHTS]])
     // CHECK: [[MAXPOOL_1:%.+]] = VPU.NCE.MaxPool([[CONV_1]])
     // CHECK: [[INTERP_1:%.+]] = VPU.Interpolate([[MAXPOOL_1]])
-    // CHECK: [[ELTWISE_SLICE_1:%.+]] = VPU.Slice [[INPUT]] [0, 0, 0, 72] [1, 16, 720, 63]
-    // CHECK: [[ELTWISE_INPUT_1:%.+]] = VPU.Slice [[ELTWISE_SLICE_1]] [0, 0, 0, 8] [1, 16, 720, 40]
+    // CHECK: [[ELTWISE_INPUT_1:%.+]] = VPU.Slice [[INPUT]] [0, 0, 0, 80] [1, 16, 720, 40]
     // CHECK: [[ELTWISE_1:%.+]] = VPU.NCE.Eltwise([[ELTWISE_INPUT_1]], [[INTERP_1]])
 
     // branch2 ~ branch 29
@@ -269,7 +267,6 @@ func.func @FallBackToOperandDueToSliceFail(%arg0: tensor<1x16x720x1280xf16, {ord
     //   "invalid offsets: Input Offset 1182, shape 57 ==> offset: 1200, shape: 40"
     //   The input of ELTWISE_INPUT_30 is arg instead of ELTWISE_SLICE_30
 
-    // CHECK: [[ELTWISE_SLICE_30:%.+]] = VPU.Slice [[INPUT]] [0, 0, 0, 1182] [1, 16, 720, 57]
     // CHECK: [[ELTWISE_INPUT_30:%.+]] = VPU.Slice [[INPUT]] [0, 0, 0, 1200] [1, 16, 720, 40]
     // CHECK: [[ELTWISE_30:%.+]] = VPU.NCE.Eltwise([[ELTWISE_INPUT_30]], [[INTERP_30]])
 
@@ -281,7 +278,6 @@ func.func @FallBackToOperandDueToSliceFail(%arg0: tensor<1x16x720x1280xf16, {ord
     //   "invalid offsets: Input Offset 1218, shape 57 ==> offset: 1240, shape: 40"
     //   The input of ELTWISE_INPUT_31 is arg instead of ELTWISE_SLICE_31
 
-    // CHECK: [[ELTWISE_SLICE_31:%.+]] = VPU.Slice [[INPUT]] [0, 0, 0, 1218] [1, 16, 720, 57]
     // CHECK: [[ELTWISE_INPUT_31:%.+]] = VPU.Slice [[INPUT]] [0, 0, 0, 1240] [1, 16, 720, 40]
     // CHECK: [[ELTWISE_31:%.+]] = VPU.NCE.Eltwise([[ELTWISE_INPUT_31]], [[INTERP_31]])
 

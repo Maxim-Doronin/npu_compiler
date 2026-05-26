@@ -12,7 +12,6 @@
 #include "vpux/compiler/dialect/VPU/IR/ops/internal.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/normalization.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/recurrent.hpp"
-#include "vpux/compiler/dialect/VPU/transforms/factories/sparsity_constraint.hpp"
 #include "vpux/compiler/dialect/VPU/utils/cost_model/cost_model.hpp"
 #include "vpux/compiler/dialect/VPU/utils/dilated_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
@@ -32,6 +31,8 @@
 
 #include <llvm/ADT/TypeSwitch.h>
 #include <mlir/IR/IRMapping.h>
+
+#include "vpux/compiler/dialect/VPU/interfaces/strategies.hpp"
 
 namespace vpux {
 namespace VPU {
@@ -212,6 +213,10 @@ mlir::LogicalResult applyTileStrategy(VPU::TilingBuilderOpInterface origOp, cons
 }
 
 bool hasMultiBranches(mlir::Operation* op) {
+    if (op == nullptr) {
+        return false;
+    }
+
     // not the only result
     if (op->getResults().size() != 1) {
         return true;
@@ -543,7 +548,7 @@ std::optional<std::pair<TilingMode, bool>> getTilingMode(mlir::Operation* op, bo
 }
 
 std::optional<std::pair<size_t, size_t>> getWorkLoadInformationForNCEWithSparseOutput(
-        config::ArchKind arch, ArrayRef<Shape> perClusterShapes, ArrayRef<int64_t> supportedChannels) {
+        mlir::Operation* nceOp, ArrayRef<Shape> perClusterShapes, ArrayRef<int64_t> supportedChannels) {
     auto getWorkloadNum = [&](int64_t channelSupported) {
         size_t wlMaxNumPerCluster = 0;
         size_t wlNumInTotal = 0;
@@ -564,7 +569,9 @@ std::optional<std::pair<size_t, size_t>> getWorkLoadInformationForNCEWithSparseO
         return std::make_pair(wlMaxNumPerCluster, wlNumInTotal);
     };
 
-    auto sparsityConstraint = VPU::getSparsityConstraint(arch);
+    auto ctx = nceOp->getContext();
+    const auto& strategyFactory = VPU::getVPUStrategyFactory(ctx);
+    const auto sparsityConstraint = strategyFactory->getSparsityConstraint();
     for (const auto channelSupported : supportedChannels) {
         if (!sparsityConstraint.areChannelsFitForSESize(channelSupported)) {
             continue;
@@ -664,8 +671,8 @@ bool doesNCEOpChannelSatisfyWorkload(mlir::Operation* nceOp, const TileInfo& out
                 return false;
             }
         }
-        const auto workloadInformation = getWorkLoadInformationForNCEWithSparseOutput(
-                config::getArch(nceOp), perClusterShapes, supportedChannels);
+        const auto workloadInformation =
+                getWorkLoadInformationForNCEWithSparseOutput(nceOp, perClusterShapes, supportedChannels);
         if (!workloadInformation.has_value()) {
             return false;
         }
@@ -862,6 +869,7 @@ VPU::EnableShaveDDRAccessOptimization getShaveDDRAccessOptimizationMode(StringRe
 bool isMultiClusterTilingSupported(mlir::Operation* op) {
     return mlir::isa<VPU::ClusteredOpInterface>(op) &&
            (!IE::hasDynamicTensors(op) || mlir::isa<VPU::LSTMSequenceOp>(op) ||
+            mlir::isa<VPU::SwIoDmaOpInterface>(op) ||
             config::getCompilationMode(op) == config::CompilationMode::HostCompile);
 }
 

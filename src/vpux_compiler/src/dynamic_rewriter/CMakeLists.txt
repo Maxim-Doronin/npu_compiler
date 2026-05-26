@@ -7,10 +7,11 @@ file(GLOB_RECURSE SRC_FILES *.cpp)
 add_npu_library(npu_compiler_dynamic_rewriter
     ${SRC_FILES}
     LINK_LIBS
-    PRIVATE
-        npu_compiler_core
+      PUBLIC
+        mlir-dependencies
         npu_compiler_utils
-        npu_ov_utils
-        npu_llvm_utils
-    PUBLIC
-        mlir-dependencies)
+        npu_core_utils
+        npu_logger
+      PRIVATE
+        npu_compiler_dialect_vpuip
+)

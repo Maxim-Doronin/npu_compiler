@@ -36,9 +36,9 @@ void writeManualStrategyJSON(StringRef fileName, const llvm::json::Value& json) 
 }
 
 llvm::json::Value convertAttrToJSON(mlir::Attribute attr) {
-    if (mlir::isa<vpux::VPU::MultiClusterStrategyAttr>(attr)) {
+    if (mlir::isa_and_nonnull<vpux::VPU::MultiClusterStrategyAttr>(attr)) {
         return stringifyMultiClusterStrategy(mlir::cast<vpux::VPU::MultiClusterStrategyAttr>(attr).getValue());
-    } else if (mlir::isa<mlir::ArrayAttr>(attr)) {
+    } else if (mlir::isa_and_nonnull<mlir::ArrayAttr>(attr)) {
         auto values = Shape(parseIntArrayAttr<int64_t>(mlir::cast<mlir::ArrayAttr>(attr)));
         VPUX_THROW_UNLESS(values.size() <= 5 && values.size() >= 1,
                           "Shape has invalid dimensions than expected ([1-5]), got '{0}'", values.size());
@@ -66,6 +66,8 @@ llvm::json::Value convertAttrToJSON(mlir::Attribute attr) {
         }
 
         return tilingStrategy;
+    } else if (mlir::isa_and_nonnull<VPU::VFScenarioAttr>(attr)) {
+        return stringifyVFScenario(mlir::cast<VPU::VFScenarioAttr>(attr).getValue());
     }
     VPUX_THROW("Conversion from this attribute '{0}' to string not implemented", attr);
 }
@@ -83,6 +85,15 @@ mlir::Attribute convertJSONToAttr(mlir::Attribute oldAttr, const llvm::json::Val
         newShape[Dims4D::Act::H] = static_cast<int64_t>(dimenstions["H"].getAsUINT64().value());
         newShape[Dims4D::Act::W] = static_cast<int64_t>(dimenstions["W"].getAsUINT64().value());
         return getIntArrayAttr(oldAttr.getContext(), newShape);
+    } else if (mlir::isa<VPU::VFScenarioAttr>(oldAttr)) {
+        auto defaultScenario = VPU::VFScenarioAttr::get(oldAttr.getContext(), VPU::VFScenario::MINIMAL);
+        if (!newAttrVal.getAsString().has_value()) {
+            // VF scenario is not configured, return default value
+            return defaultScenario;
+        }
+        auto scenario = symbolizeVFScenario(newAttrVal.getAsString().value());
+        return scenario.has_value() ? VPU::VFScenarioAttr::get(oldAttr.getContext(), scenario.value())
+                                    : defaultScenario;
     }
     VPUX_THROW("Conversion from this attribute '{0}' to string not implemented", oldAttr);
 }
@@ -153,12 +164,17 @@ void createStrategyJSONFromOperations(llvm::json::Value& json,
                 op.second->getName().print(oLayerTypeName);
                 attributeValue = std::move(layerTypeName);
             }
-            if (parentVFOp != nullptr && attribute.first == vpux::tilingStrategy) {
-                // If such layer is encountered, we can no longer find the tilingStrategy in NCEOp
-                auto prevAttrValue = getPreviousAttributeValue(json, opName, attribute.first).value_or("");
-                auto currentAttrValue = convertAttrToJSON(parentVFOp->getAttr(attribute.first));
-                attributeValue = currentAttrValue;
-                updatedVFTiling = prevAttrValue != currentAttrValue;
+            if (parentVFOp != nullptr) {
+                // If such layer is encountered, we can no longer find the tilingStrategy or VF scenario in NCEOp
+                if (attribute.first == vpux::tilingStrategy) {
+                    auto prevAttrValue = getPreviousAttributeValue(json, opName, attribute.first).value_or("");
+                    auto currentAttrValue = convertAttrToJSON(parentVFOp->getAttr(attribute.first));
+                    attributeValue = currentAttrValue;
+                    updatedVFTiling = prevAttrValue != currentAttrValue;
+                } else if (attribute.first == vpux::verticalFusionScenario && parentVFOp.getScenarioAttr() != nullptr) {
+                    auto currentAttrValue = convertAttrToJSON(parentVFOp.getScenarioAttr());
+                    attributeValue = currentAttrValue;
+                }
             }
 
             layerAttributes[attribute.first.str()] = std::move(attributeValue);
@@ -176,6 +192,7 @@ void overwriteManualVFStrategy(llvm::json::Value& manualStrategyValue,
     llvm::json::Object manualStrategyObject = *manualStrategyValue.getAsObject();
     std::unordered_map<std::string, llvm::SmallVector<mlir::Operation*>> vfHashToOps;
     std::unordered_map<std::string, mlir::Attribute> vfHashToTilingAttr;
+    std::unordered_map<std::string, mlir::Attribute> vfHashToVFScenarioAttr;
     for (auto& item : manualStrategyObject) {
         // skip if it's not found in the map
         auto opLoc = item.first.str();
@@ -193,9 +210,9 @@ void overwriteManualVFStrategy(llvm::json::Value& manualStrategyValue,
         // skip if vertical fusion is disabled or not configured
         auto currOpStrategyObject = item.second.getAsObject();
         auto iter = currOpStrategyObject->find(vpux::verticalFusion);
-        auto needManualConfiguration =
+        auto isVFDisabled =
                 iter != currOpStrategyObject->end() && iter->second.getAsString().value_or("True") == "False";
-        if (needManualConfiguration) {
+        if (isVFDisabled) {
             continue;
         }
 
@@ -205,13 +222,22 @@ void overwriteManualVFStrategy(llvm::json::Value& manualStrategyValue,
             continue;
         }
         auto dummyAttr = getIntArrayAttr(op->getContext(), Shape(4));
-        auto manualAttribute = convertJSONToAttr(dummyAttr, iter->second);
+        auto manualTilingAttribute = convertJSONToAttr(dummyAttr, iter->second);
 
         // skip if no vertical fusion hash found
         iter = currOpStrategyObject->find(vpux::verticalFusionHash);
         if (iter == currOpStrategyObject->end()) {
             continue;
         }
+        auto opHash = iter->second.getAsString().value_or("").str();
+
+        // skip if no vertical fusion scenario found
+        iter = currOpStrategyObject->find(vpux::verticalFusionScenario);
+        if (iter == currOpStrategyObject->end()) {
+            continue;
+        }
+        auto dummyVFScheduleTypeAttr = VPU::VFScenarioAttr::get(op->getContext(), VPU::VFScenario::MINIMAL);
+        auto manualVFScheduleTypeAttr = convertJSONToAttr(dummyVFScheduleTypeAttr, iter->second);
 
         // Only try to manually overwrite VF ops before MergeVF pass
         auto parentVerticalFusionOp = op->getParentOfType<VPU::VerticalFusionOp>();
@@ -225,15 +251,30 @@ void overwriteManualVFStrategy(llvm::json::Value& manualStrategyValue,
         if (operations.size() != 1) {
             continue;
         }
-        auto opHash = iter->second.getAsString().value_or("").str();
         auto existedTilingIter = vfHashToTilingAttr.find(opHash);
         if (existedTilingIter == vfHashToTilingAttr.end()) {
-            vfHashToTilingAttr.emplace(opHash, manualAttribute);
-        } else if (existedTilingIter->second != manualAttribute) {
+            vfHashToTilingAttr.emplace(opHash, manualTilingAttribute);
+        } else if (existedTilingIter->second != manualTilingAttribute) {
             Logger::global().warning("Got mismatched tiling strategies for VFRegion: {0}", opHash);
         }
+
+        auto existedScenarioIter = vfHashToVFScenarioAttr.find(opHash);
+        if (existedScenarioIter == vfHashToVFScenarioAttr.end()) {
+            vfHashToVFScenarioAttr.emplace(opHash, manualVFScheduleTypeAttr);
+        } else if (existedScenarioIter->second != manualVFScheduleTypeAttr) {
+            Logger::global().warning("Got mismatched VF scheduling types for VFRegion: {0}", opHash);
+        }
+
         vfHashToOps[opHash].push_back(parentVerticalFusionOp);
     }
+
+    auto isViewOpFusable = [](mlir::Operation* op) {
+        if (auto tilingViewOp = mlir::dyn_cast<VPU::TilingViewLikeOpInterface>(op)) {
+            return tilingViewOp.isVFSupported();
+        }
+        return false;
+    };
+
     for (auto& item : vfHashToOps) {
         auto& ops = item.second;
         llvm::sort(ops, [](mlir::Operation* a, mlir::Operation* b) {
@@ -263,20 +304,26 @@ void overwriteManualVFStrategy(llvm::json::Value& manualStrategyValue,
 
             auto parent = operand.getDefiningOp();
             auto fusedOp = vfOp;
-            while (isPureViewOp(parent) || parent == nearestParent) {
-                mlir::OpBuilder builder(parent);
-                fusedOp = VPU::fuseOpsInBlock(builder, mlir::cast<VPU::VerticalFusionOp>(fusedOp), parent,
-                                              mlir::cast<mlir::ArrayAttr>(vfHashToTilingAttr[item.first]), true);
+            while (parent != nullptr && (isViewOpFusable(parent) || parent == nearestParent)) {
+                mlir::OpBuilder builder(fusedOp);
+                builder.setInsertionPointAfter(fusedOp);
+                auto newFusedOp =
+                        VPU::fuseOpsInBlock(builder, mlir::cast<VPU::VerticalFusionOp>(fusedOp), parent,
+                                            mlir::cast<mlir::ArrayAttr>(vfHashToTilingAttr[item.first]), true);
+                newFusedOp.setScenarioAttr(mlir::cast<VPU::VFScenarioAttr>(vfHashToVFScenarioAttr[item.first]));
+                parent->replaceUsesWithIf(newFusedOp, [&](mlir::OpOperand& operand) {
+                    return operand.getOwner() == fusedOp;
+                });
 
-                if (parent == nearestParent) {
-                    break;
+                fusedOp->replaceAllUsesWith(newFusedOp);
+                fusedOp->erase();
+                fusedOp = newFusedOp.getOperation();
+                auto nextParent = parent == nearestParent ? nullptr : parent->getOperand(0).getDefiningOp();
+                if (parent->use_empty()) {
+                    parent->erase();
                 }
-                parent = parent->getOperand(0).getDefiningOp();
+                parent = nextParent;
             }
-
-            vfOp->replaceAllUsesWith(fusedOp);
-            vfOp->erase();
-            parent->erase();
             ops.push_back(fusedOp);
         }
     }
@@ -285,7 +332,8 @@ void overwriteManualVFStrategy(llvm::json::Value& manualStrategyValue,
 void overwriteManualStrategy(llvm::json::Value& manualStrategyValue,
                              llvm::MapVector<mlir::Location, mlir::Operation*>& operations) {
     DenseMap<mlir::Operation*, std::pair<llvm::json::Value, bool>> vfOpVisited;
-    SmallVector<StringRef> allowedValues = {layerTypeName, verticalFusionHash, verticalFusion, updatedVFTiling};
+    SmallVector<StringRef> allowedValues = {layerTypeName, verticalFusionHash, verticalFusion, updatedVFTiling,
+                                            verticalFusionScenario};
     auto isAllowedAttr = [&allowedValues](std::string& currentType) {
         return std::find(allowedValues.begin(), allowedValues.end(), currentType) != allowedValues.end();
     };

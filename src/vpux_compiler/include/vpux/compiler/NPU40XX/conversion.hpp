@@ -22,13 +22,12 @@ void buildLowerVPUIP2ELFPipeline(mlir::OpPassManager& pm,
                                  Logger log = Logger::global(),
                                  VPU::DPUDryRunMode dpuDryRunMode = VPU::DPUDryRunMode::NONE);
 
-void elfSubsetPipelineVPUMI(mlir::OpPassManager& pm, bool workloadManagementEnable,
-                            WorkloadManagementMode workloadManagementMode, bool enableDumpStatisticsOfWlmOps,
-                            WorkloadManagementBarrierProgrammingMode WorkloadManagementBarrierProgrammingMode,
+void elfSubsetPipelineVPUMI(mlir::OpPassManager& pm, WorkloadManagementMode workloadManagementMode,
+                            bool enableDumpStatisticsOfWlmOps,
+                            WorkloadManagementBarrierProgrammingMode workloadManagementBarrierProgrammingMode,
                             const Logger& log);
 
-void elfSubsetPipelineVPUASM(mlir::OpPassManager& pm, bool workloadManagementEnable, bool disableDmaSwFifo,
-                             const Logger& log);
+void elfSubsetPipelineVPUASM(mlir::OpPassManager& pm, bool disableDmaSwFifo, const Logger& log);
 
 //
 // Registration

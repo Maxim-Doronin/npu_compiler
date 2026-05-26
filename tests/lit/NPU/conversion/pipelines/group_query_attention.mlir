@@ -3,7 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-translate --vpu-arch=%arch% --import-IE ./group_query_attention.xml | FileCheck %s
+// RUN: vpux-translate --platform=%platform% --import-IE ./group_query_attention.xml | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL: module @gqaTest
 // CHECK: net.NetworkInfo entryPoint : @main inputsInfo : {

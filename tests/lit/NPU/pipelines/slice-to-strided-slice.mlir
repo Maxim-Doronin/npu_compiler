@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-translate --vpu-arch=%arch% --import-IE ./IR/slice-to-strided-slice.xml -o %t
+// RUN: vpux-translate --platform=%platform% --import-IE ./IR/slice-to-strided-slice.xml -o %t
 // RUN: FileCheck %s --input-file %t
-// REQUIRES: arch-NPU37XX || arch-NPU40XX
+// REQUIRES: platform-NPU3720 || platform-NPU4000
 
 // CHECK: module @"Slice-8" {
 // CHECK:   net.NetworkInfo entryPoint : @main inputsInfo : {

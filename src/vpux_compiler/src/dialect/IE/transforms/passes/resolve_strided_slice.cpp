@@ -10,7 +10,7 @@
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
-#include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Transforms/WalkPatternRewriteDriver.h>
 #include <openvino/op/util/slice_plan.hpp>
 
 namespace vpux::IE {
@@ -22,6 +22,40 @@ namespace vpux::IE {
 using namespace vpux;
 
 namespace {
+
+bool shouldConvertStridedSliceOp(IE::StridedSliceOp slice) {
+    if (!slice.getBeginsAttr().has_value() || !slice.getEndsAttr().has_value() || !slice.getStridesAttr().has_value()) {
+        return false;
+    }
+
+    // Do not convert dynamic strided slice to IE.Slice with IE.Reshape.
+    // Dynamic strided slice must be converted to an activation shave layer.
+    if (getShape(slice.getInput()).isDynamic()) {
+        return false;
+    }
+
+    auto isOne = [](auto val) {
+        return val == 1;
+    };
+
+    VPUX_THROW_UNLESS(slice.getBeginsAttr().has_value(), "begins_attr is null");
+    VPUX_THROW_UNLESS(slice.getEndsAttr().has_value(), "ends_attr is null");
+    VPUX_THROW_UNLESS(slice.getStridesAttr().has_value(), "strides_attr is null");
+
+    auto inputRank = getShape(slice.getInput()).size();
+    auto beginsRank = slice.getBeginsAttr().value().size();
+    auto endsRank = slice.getEndsAttr().value().size();
+    auto stridesRank = slice.getStridesAttr().value().size();
+
+    const bool hasSameRank = (beginsRank == inputRank) && (endsRank == inputRank) && (stridesRank == inputRank);
+    if (slice.isSimplified() && !llvm::all_of(parseIntArrayAttr<int64_t>(slice.getStridesAttr().value()), isOne) &&
+        hasSameRank) {
+        return false;
+    }
+
+    return !slice.isSimplified() || llvm::all_of(parseIntArrayAttr<int64_t>(slice.getStridesAttr().value()), isOne) ||
+           !hasSameRank;
+}
 
 //
 // ResolveStridedSlicePass
@@ -94,6 +128,10 @@ ov::op::util::SlicePlan ResolveStridedSlicePass::SlicePlanning::getSlicePlan(IE:
 
 mlir::LogicalResult ResolveStridedSlicePass::SlicePlanning::matchAndRewrite(IE::StridedSliceOp origOp,
                                                                             mlir::PatternRewriter& rewriter) const {
+    if (!shouldConvertStridedSliceOp(origOp)) {
+        return mlir::failure();
+    }
+
     _log.trace("Found IE::StridedSlice Operation '{0}'", origOp->getLoc());
 
     auto plan = getSlicePlan(origOp);
@@ -200,50 +238,10 @@ mlir::LogicalResult ResolveStridedSlicePass::SlicePlanning::matchAndRewrite(IE::
 void ResolveStridedSlicePass::safeRunOnFunc() {
     auto& ctx = getContext();
 
-    const auto isLegalOp = [&](IE::StridedSliceOp slice) {
-        if (!slice.getBeginsAttr().has_value() || !slice.getEndsAttr().has_value() ||
-            !slice.getStridesAttr().has_value()) {
-            return true;
-        }
-
-        // Do not convert dynamic strided slice to IE.Slice with IE.Reshape.
-        // Dynamic strided slice must be converted to an activation shave layer.
-        if (getShape(slice.getInput()).isDynamic()) {
-            return true;
-        }
-
-        auto isOne = [](auto val) {
-            return val == 1;
-        };
-
-        VPUX_THROW_UNLESS(slice.getBeginsAttr().has_value(), "begins_attr is null");
-        VPUX_THROW_UNLESS(slice.getEndsAttr().has_value(), "ends_attr is null");
-        VPUX_THROW_UNLESS(slice.getStridesAttr().has_value(), "strides_attr is null");
-
-        auto inputRank = getShape(slice.getInput()).size();
-        auto beginsRank = slice.getBeginsAttr().value().size();
-        auto endsRank = slice.getEndsAttr().value().size();
-        auto stridesRank = slice.getStridesAttr().value().size();
-
-        bool hasSameRank = (beginsRank == inputRank) && (endsRank == inputRank) && (stridesRank == inputRank);
-
-        return slice.isSimplified() &&
-               !llvm::all_of(parseIntArrayAttr<int64_t>(slice.getStridesAttr().value()), isOne) && hasSameRank;
-    };
-
-    mlir::ConversionTarget target(ctx);
-    target.addDynamicallyLegalOp<IE::StridedSliceOp>(isLegalOp);
-    target.addLegalOp<IE::ReshapeOp>();
-    target.addLegalOp<IE::ConcatOp>();
-    target.addLegalOp<IE::SliceOp>();
-
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<SlicePlanning>(&ctx, _log);
 
-    auto func = getOperation();
-    if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
-        signalPassFailure();
-    }
+    walkAndApplyPatterns(getOperation(), std::move(patterns));
 }
 
 }  // namespace

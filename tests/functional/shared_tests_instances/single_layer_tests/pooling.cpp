@@ -200,7 +200,7 @@ class PoolingLayerTest_NPU4000_SOB : public PoolingLayerTestWithUnrollBatchingCo
 
 class PoolingLayerTest_NPU4000_F32 : public PoolingLayerTest_NPU4000 {
     void configure_model() override {
-        configuration[ov::intel_npu::compilation_mode_params.name()] = "convert-precision-to-fp16=false";
+        configuration[ov::intel_npu::compilation_mode_params.name()] = "disabled-passes=convert-precision-to-fp16";
     }
 };
 
@@ -381,20 +381,12 @@ TEST_P(AvgPoolingV16LayerTestCommon, NPU5020_SW) {
 class PoolingLayerTest_HostCompile : public PoolingLayerTest, virtual public VpuOv2LayerTest {};
 
 TEST_P(PoolingLayerTest_HostCompile, NPU4000_HC) {
-    setSkipInferenceCallback([](std::stringstream& skip) {
-        skip << "Host Pipeline does not support inference yet: C#164943";
-    });
-
     setHostCompileMode();
     setPluginCompilerType();
     run(Platform::NPU4000);
 }
 
 TEST_P(PoolingLayerTest_HostCompile, NPU5010_HC) {
-    setSkipInferenceCallback([](std::stringstream& skip) {
-        skip << "Host Pipeline does not support inference yet: C#164943";
-    });
-
     setHostCompileMode();
     setPluginCompilerType();
     run(Platform::NPU5010);
@@ -407,6 +399,11 @@ class PoolingLayerTest_SCFTiling : public PoolingLayerTest, virtual public VpuOv
         configuration["NPU_TILES"] = "1";
     }
 };
+
+TEST_P(PoolingLayerTest_SCFTiling, NPU4000_HW) {
+    setDefaultHardwareMode();
+    run(Platform::NPU4000);
+}
 
 TEST_P(PoolingLayerTest_SCFTiling, NPU5010_HW) {
     setDefaultHardwareMode();
@@ -1443,7 +1440,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_SCFTiling, PoolingLayerTest_SCFTiling, SCFTiling_
 /* ============= HostCompile ============= */
 
 const std::vector<std::vector<ov::test::InputShape>> inShapes = {{
-        generateTestShape(1, 16, 1280_Dyn, 1280),
+        generateTestShape(std::vector<BoundedDim>{1, 16, 1280_Dyn, 1280}, hostCompileSmallShapesLimitationCallback),
 }};
 
 const auto DynamicShapesHostCompile_Params =

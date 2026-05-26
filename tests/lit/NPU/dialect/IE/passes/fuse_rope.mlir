@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --fuse-rope --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --fuse-rope --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL: @FuseRoPE
 // CHECK-SAME:  ([[ARG0:%.+]]: tensor<1x32x1024x128xf32>, [[ARG1:%.+]]: tensor<1x1x1024x128xf32>, [[ARG2:%.+]]: tensor<1x1x1024x128xf32>)
@@ -19,7 +19,7 @@ func.func @FuseRoPE(%arg0: tensor<1x32x1024x128xf32>, %arg1: tensor<1x1x1024x128
     %6 = IE.Add(%0, %5) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x32x1024x128xf32>, tensor<1x32x1024x128xf32> -> tensor<1x32x1024x128xf32>
     return %6 : tensor<1x32x1024x128xf32>
 
-    // CHECK: [[RoPE:%.+]] = IE.RoPE([[ARG0]], [[ARG1]], [[ARG2]]) : tensor<1x32x1024x128xf32>, tensor<1x1x1024x128xf32>, tensor<1x1x1024x128xf32> -> tensor<1x32x1024x128xf32>
+    // CHECK: [[RoPE:%.+]] = IE.RoPE([[ARG0]], [[ARG1]], [[ARG2]]) {mode = #IE.rope_mode<SPLIT_HALF>} : tensor<1x32x1024x128xf32>, tensor<1x1x1024x128xf32>, tensor<1x1x1024x128xf32> -> tensor<1x32x1024x128xf32>
     // CHECK: return [[RoPE]] : tensor<1x32x1024x128xf32>
 
 }
@@ -39,7 +39,7 @@ func.func @FuseRoPEWithDifferentChannel(%arg0: tensor<1x64x1x64xf32>, %arg1: ten
     %6 = IE.Add(%0, %5) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x64x1x64xf32>, tensor<1x64x1x64xf32> -> tensor<1x64x1x64xf32>
     return %6 : tensor<1x64x1x64xf32>
 
-    // CHECK: [[RoPE:%.+]] = IE.RoPE([[ARG0]], [[ARG1]], [[ARG2]]) : tensor<1x64x1x64xf32>, tensor<1x64x1x64xf32>, tensor<1x64x1x64xf32> -> tensor<1x64x1x64xf32>
+    // CHECK: [[RoPE:%.+]] = IE.RoPE([[ARG0]], [[ARG1]], [[ARG2]]) {mode = #IE.rope_mode<SPLIT_HALF>} : tensor<1x64x1x64xf32>, tensor<1x64x1x64xf32>, tensor<1x64x1x64xf32> -> tensor<1x64x1x64xf32>
     // CHECK: return [[RoPE]] : tensor<1x64x1x64xf32>
 }
 
@@ -64,7 +64,7 @@ func.func @FuseRoPEWithReshape(%arg0: tensor<1x64x1x64xf32>, %arg1: tensor<1x64x
     // CHECK-SAME{LITERAL}: {dim_mapping = [[0, 1], [2], [2], [3]], shape_value = [1, 1, 64, 64]} : tensor<1x64x1x64xf32> -> tensor<1x1x64x64xf32>
     // CHECK: [[RESHAPE1:%.+]] = IE.AffineReshape([[ARG1]])
     // CHECK-SAME{LITERAL}: {dim_mapping = [[0, 1], [2], [2], [3]], shape_value = [1, 1, 64, 64]} : tensor<1x64x1x64xf32> -> tensor<1x1x64x64xf32>
-    // CHECK: [[RoPE:%.+]] = IE.RoPE([[RESHAPE0]], [[RESHAPE1]], [[ARG2]]) : tensor<1x1x64x64xf32>, tensor<1x1x64x64xf32>, tensor<1x1x64x64xf32> -> tensor<1x1x64x64xf32>
+    // CHECK: [[RoPE:%.+]] = IE.RoPE([[RESHAPE0]], [[RESHAPE1]], [[ARG2]]) {mode = #IE.rope_mode<SPLIT_HALF>} : tensor<1x1x64x64xf32>, tensor<1x1x64x64xf32>, tensor<1x1x64x64xf32> -> tensor<1x1x64x64xf32>
     // CHECK: return [[RoPE]] : tensor<1x1x64x64xf32>
 }
 
@@ -86,7 +86,7 @@ func.func @FuseRoPEWithHeightOne(%arg0: tensor<1x1x2048xf32>, %arg1: tensor<1x1x
 
     // CHECK: [[RESHAPE:%.+]] = IE.AffineReshape([[ARG0]])
     // CHECK-SAME{LITERAL}: {dim_mapping = [[0], [0], [1, 2, 3]], shape_value = [1, 16, 1, 128]} : tensor<1x1x2048xf32> -> tensor<1x16x1x128xf32>
-    // CHECK: [[ROPE:%.+]] = IE.RoPE([[RESHAPE]], [[ARG1]], [[ARG2]]) : tensor<1x16x1x128xf32>, tensor<1x1x1x128xf32>, tensor<1x1x1x128xf32> -> tensor<1x16x1x128xf32>
+    // CHECK: [[ROPE:%.+]] = IE.RoPE([[RESHAPE]], [[ARG1]], [[ARG2]]) {mode = #IE.rope_mode<SPLIT_HALF>} : tensor<1x16x1x128xf32>, tensor<1x1x1x128xf32>, tensor<1x1x1x128xf32> -> tensor<1x16x1x128xf32>
     // CHECK: return [[ROPE]] : tensor<1x16x1x128xf32>
 }
 
@@ -108,6 +108,64 @@ func.func @FuseRoPEInterleaved(%arg0: tensor<1x1x256x64xf32>, %arg1: tensor<1x1x
   %9 = IE.Add(%0, %8) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x256x64xf32>, tensor<1x1x256x64xf32> -> tensor<1x1x256x64xf32>
   return %9 : tensor<1x1x256x64xf32>
 
-  // CHECK: [[RoPE:%.+]] = IE.RoPE([[ARG0]], [[ARG1]], [[ARG2]]) {is_interleaved} : tensor<1x1x256x64xf32>, tensor<1x1x256x64xf32>, tensor<1x1x256x64xf32> -> tensor<1x1x256x64xf32>
-  // CHECK: return [[RoPE]] : tensor<1x1x256x64xf32>
+    // CHECK: [[RoPE:%.+]] = IE.RoPE([[ARG0]], [[ARG1]], [[ARG2]]) {mode = #IE.rope_mode<INTERLEAVED>} : tensor<1x1x256x64xf32>, tensor<1x1x256x64xf32>, tensor<1x1x256x64xf32> -> tensor<1x1x256x64xf32>
+    // CHECK: return [[RoPE]] : tensor<1x1x256x64xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @FuseRoPEPairwiseFusion
+// CHECK-SAME:  ([[ARG0:%.+]]: tensor<1x256x3x256xf32>, [[ARG1:%.+]]: tensor<1x256x1x128xf32>, [[ARG2:%.+]]: tensor<1x256x1x128xf32>)
+func.func @FuseRoPEPairwiseFusion(%arg0: tensor<1x256x3x256xf32>, %arg1: tensor<1x256x1x128xf32>, %arg2: tensor<1x256x1x128xf32>) -> tensor<1x256x3x256xf32> {
+    %0 = IE.Slice %arg0 [0, 0, 0, 0] [1, 256, 3, 128] : tensor<1x256x3x256xf32> to tensor<1x256x3x128xf32>
+    %1 = IE.Multiply(%0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x256x3x128xf32>, tensor<1x256x1x128xf32> -> tensor<1x256x3x128xf32>
+    %2 = IE.Slice %arg0 [0, 0, 0, 128] [1, 256, 3, 128] : tensor<1x256x3x256xf32> to tensor<1x256x3x128xf32>
+    %3 = IE.Multiply(%2, %arg2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x256x3x128xf32>, tensor<1x256x1x128xf32> -> tensor<1x256x3x128xf32>
+    %4 = IE.Subtract(%1, %3) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x256x3x128xf32>, tensor<1x256x3x128xf32> -> tensor<1x256x3x128xf32>
+    %5 = IE.Multiply(%0, %arg2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x256x3x128xf32>, tensor<1x256x1x128xf32> -> tensor<1x256x3x128xf32>
+    %6 = IE.Multiply(%2, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x256x3x128xf32>, tensor<1x256x1x128xf32> -> tensor<1x256x3x128xf32>
+    %7 = IE.Add(%5, %6) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x256x3x128xf32>, tensor<1x256x3x128xf32> -> tensor<1x256x3x128xf32>
+    %8 = IE.Concat(%4, %7) {static_offsets = [[0, 0, 0, 0], [0, 0, 0, 128]]} : tensor<1x256x3x128xf32>, tensor<1x256x3x128xf32> -> tensor<1x256x3x256xf32>
+    return %8 : tensor<1x256x3x256xf32>
+
+    // CHECK: [[RoPE:%.+]] = IE.RoPE([[ARG0]], [[ARG1]], [[ARG2]]) {mode = #IE.rope_mode<PAIRWISE>} : tensor<1x256x3x256xf32>, tensor<1x256x1x128xf32>, tensor<1x256x1x128xf32> -> tensor<1x256x3x256xf32>
+    // CHECK: return [[RoPE]] : tensor<1x256x3x256xf32>
+}
+
+// -----
+
+// TODO: Fix E#211377 and fuse this test case
+// CHECK-LABEL: @NotFuseRoPEPairwiseUnsupportedHeight
+func.func @NotFuseRoPEPairwiseUnsupportedHeight(%arg0: tensor<1x256x2x256xf32>, %arg1: tensor<1x256x1x128xf32>, %arg2: tensor<1x256x1x128xf32>) -> tensor<1x256x2x256xf32> {
+    %0 = IE.Slice %arg0 [0, 0, 0, 0] [1, 256, 2, 128] : tensor<1x256x2x256xf32> to tensor<1x256x2x128xf32>
+    %1 = IE.Multiply(%0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x256x2x128xf32>, tensor<1x256x1x128xf32> -> tensor<1x256x2x128xf32>
+    %2 = IE.Slice %arg0 [0, 0, 0, 128] [1, 256, 2, 128] : tensor<1x256x2x256xf32> to tensor<1x256x2x128xf32>
+    %3 = IE.Multiply(%2, %arg2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x256x2x128xf32>, tensor<1x256x1x128xf32> -> tensor<1x256x2x128xf32>
+    %4 = IE.Subtract(%1, %3) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x256x2x128xf32>, tensor<1x256x2x128xf32> -> tensor<1x256x2x128xf32>
+    %5 = IE.Multiply(%0, %arg2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x256x2x128xf32>, tensor<1x256x1x128xf32> -> tensor<1x256x2x128xf32>
+    %6 = IE.Multiply(%2, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x256x2x128xf32>, tensor<1x256x1x128xf32> -> tensor<1x256x2x128xf32>
+    %7 = IE.Add(%5, %6) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x256x2x128xf32>, tensor<1x256x2x128xf32> -> tensor<1x256x2x128xf32>
+    %8 = IE.Concat(%4, %7) {static_offsets = [[0, 0, 0, 0], [0, 0, 0, 128]]} : tensor<1x256x2x128xf32>, tensor<1x256x2x128xf32> -> tensor<1x256x2x256xf32>
+    return %8 : tensor<1x256x2x256xf32>
+
+    // CHECK-NOT: IE.RoPE
+}
+
+// -----
+
+// TODO: Fix E#211377 and fuse this test case
+// CHECK-LABEL: @NotFuseRoPEPairwiseUnsupportedChannel
+func.func @NotFuseRoPEPairwiseUnsupportedChannel(%arg0: tensor<1x1x3x256xf32>, %arg1: tensor<1x1x1x128xf32>, %arg2: tensor<1x1x1x128xf32>) -> tensor<1x1x3x256xf32> {
+    %0 = IE.Slice %arg0 [0, 0, 0, 0] [1, 1, 3, 128] : tensor<1x1x3x256xf32> to tensor<1x1x3x128xf32>
+    %1 = IE.Multiply(%0, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x3x128xf32>, tensor<1x1x1x128xf32> -> tensor<1x1x3x128xf32>
+    %2 = IE.Slice %arg0 [0, 0, 0, 128] [1, 1, 3, 128] : tensor<1x1x3x256xf32> to tensor<1x1x3x128xf32>
+    %3 = IE.Multiply(%2, %arg2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x3x128xf32>, tensor<1x1x1x128xf32> -> tensor<1x1x3x128xf32>
+    %4 = IE.Subtract(%1, %3) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x3x128xf32>, tensor<1x1x3x128xf32> -> tensor<1x1x3x128xf32>
+    %5 = IE.Multiply(%0, %arg2) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x3x128xf32>, tensor<1x1x1x128xf32> -> tensor<1x1x3x128xf32>
+    %6 = IE.Multiply(%2, %arg1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x3x128xf32>, tensor<1x1x1x128xf32> -> tensor<1x1x3x128xf32>
+    %7 = IE.Add(%5, %6) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1x3x128xf32>, tensor<1x1x3x128xf32> -> tensor<1x1x3x128xf32>
+    %8 = IE.Concat(%4, %7) {static_offsets = [[0, 0, 0, 0], [0, 0, 0, 128]]} : tensor<1x1x3x128xf32>, tensor<1x1x3x128xf32> -> tensor<1x1x3x256xf32>
+    return %8 : tensor<1x1x3x256xf32>
+
+    // CHECK-NOT: IE.RoPE
 }

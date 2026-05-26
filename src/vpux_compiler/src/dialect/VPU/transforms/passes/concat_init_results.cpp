@@ -258,7 +258,10 @@ void ConcatInitResults::safeRunOnModule() {
         // splits that are going into the main function (order-wise).
         data.topLevelMainArgs = convertSplitsToMainConstArgs(splits);
 
-        llvm::sort(splits);
+        // TODO: move stable-sort inside WeigbhtsSeparationInfo once we get rid
+        // of the topLevelMainArgs
+        std::stable_sort(splits.begin(), splits.end());
+
         const auto slicedSplits = VPU::sliceAccordingToMemoryLimit(_log, splits, _memoryLimit);
         llvm::transform(slicedSplits, std::back_inserter(data.slicedSplits), convertSplitsToMainConstArgs);
 

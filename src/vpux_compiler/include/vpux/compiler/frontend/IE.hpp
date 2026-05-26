@@ -7,11 +7,11 @@
 
 #include "vpux/compiler/dialect/IE/IR/attributes.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
-#include "vpux/compiler/init.hpp"
-#include "vpux/utils/IE/hash.hpp"
+#include "vpux/compiler/init/dialects_registry.hpp"
 #include "vpux/utils/core/array_ref.hpp"
 #include "vpux/utils/core/small_vector.hpp"
 #include "vpux/utils/logger/logger.hpp"
+#include "vpux/utils/ov/hash.hpp"
 
 #include <mlir/Dialect/Func/IR/FuncOps.h>
 #include <mlir/IR/BuiltinOps.h>
@@ -261,6 +261,10 @@ private:
     mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::op::v13::BitwiseOr>& origNode);
     mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::op::v13::BitwiseXor>& origNode);
     mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::op::v13::BitwiseNot>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder,
+                               const std::shared_ptr<ov::op::v15::BitwiseLeftShift>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder,
+                               const std::shared_ptr<ov::op::v15::BitwiseRightShift>& origNode);
     mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::LogicalNot>& origNode);
     mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::LogicalOr>& origNode);
     mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset1::LogicalXor>& origNode);
@@ -317,6 +321,7 @@ private:
     mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::op::Op>& origNode);
     mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset10::IsNaN>& origNode);
     mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset10::IsInf>& origNode);
+    mlir::Operation* parseNode(mlir::OpBuilder& builder, const std::shared_ptr<ov::opset10::IsFinite>& origNode);
 
     SmallVector<mlir::Value> getInputs(const OrigNodePtr& node);
     void addOutputs(const OrigNodePtr& node, mlir::Operation* op);
@@ -336,6 +341,7 @@ private:
     IE::ProposalAttr importProposalAttrs(const ov::op::v0::Proposal::Attributes& val);
     IE::ReverseModeAttr importReverseMode(const ov::op::v1::Reverse::Mode mode);
     IE::OneHotModeAttr importOneHotMode(const ov::op::v16::OneHot::NegativeIndicesMode mode);
+    IE::RoPEModeAttr importRoPEMode(const ov::op::internal::RoPE::Config& cfg);
     IE::InterpolateAttr importInterpolateAttrs(const ov::opset4::Interpolate::InterpolateAttrs& val);
     IE::DetectionOutputAttr importDetectionOutputAttrs(const ov::op::v0::DetectionOutput::Attributes& val);
     IE::ExperimentalDetectronROIFeatureExtractorAttr importExpDetectronROIFeatureExtractAttrs(
@@ -378,7 +384,7 @@ private:
 
 template <class NodeType>
 mlir::Operation* NGraphImporter::parseDispatch(mlir::OpBuilder& builder, const OrigNodePtr& origNode) {
-    auto targetPtr = std::dynamic_pointer_cast<NodeType>(origNode);
+    auto targetPtr = ov::as_type_ptr<NodeType>(origNode);
     OPENVINO_ASSERT(targetPtr != nullptr);
     return parseNode(builder, targetPtr);
 }

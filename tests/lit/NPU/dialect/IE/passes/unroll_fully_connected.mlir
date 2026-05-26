@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --unroll-fully-connected %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --unroll-fully-connected %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 #CN = affine_map<(d0, d1) -> (d1, d0)>
 
@@ -1012,4 +1012,116 @@ func.func @AccumulateMatmulWithDPU(%LHS_1: tensor<1024x3584xf32>,
 
     return %GEMM : tensor<1024x512xf32>
     // CHECK:   return [[ADD_3]] : tensor<1024x512xf32>
+}
+
+
+// -----
+
+!qElemType = !quant.uniform<i4:f16, 1.000000e+00>
+
+// CHECK-LABEL: @UnrollMatMulForI4DynamicDequantize
+// CHECK-SAME:   [[WEIGHTS:%arg[0-9]+]]: tensor<1x1024x128x!qElemType>,
+// CHECK-SAME:   [[SCALE_1:%arg[0-9]+]]: tensor<1x1024x1xf16>,
+// CHECK-SAME:   [[SCALE_2:%arg[0-9]+]]: tensor<1x1024x1xf16>,
+// CHECK-SAME:   [[SCALE_3:%arg[0-9]+]]: tensor<1x1024x1xf16>,
+// CHECK-SAME:   [[SCALE_4:%arg[0-9]+]]: tensor<1x1024x1xf16>,
+// CHECK-SAME:   [[SCALE_5:%arg[0-9]+]]: tensor<1x1024x1xf16>,
+// CHECK-SAME:   [[SCALE_6:%arg[0-9]+]]: tensor<1x1024x1xf16>,
+// CHECK-SAME:   [[SCALE_7:%arg[0-9]+]]: tensor<1x1024x1xf16>,
+// CHECK-SAME:   [[SCALE_8:%arg[0-9]+]]: tensor<1x1024x1xf16>,
+// CHECK-SAME:   [[LHS:%arg[0-9]+]]: tensor<1x1024xf16>
+func.func @UnrollMatMulForI4DynamicDequantize(
+        %WEIGHTS: tensor<1x1024x128x!qElemType>,
+        %SCALE_1: tensor<1x1024x1xf16>, %SCALE_2: tensor<1x1024x1xf16>,
+        %SCALE_3: tensor<1x1024x1xf16>, %SCALE_4: tensor<1x1024x1xf16>,
+        %SCALE_5: tensor<1x1024x1xf16>, %SCALE_6: tensor<1x1024x1xf16>,
+        %SCALE_7: tensor<1x1024x1xf16>, %SCALE_8: tensor<1x1024x1xf16>,
+        %LHS: tensor<1x1024xf16>
+    ) -> tensor<1x1024xf16> {
+
+    %RHS_1 = IE.DynamicDequantize(%WEIGHTS, %SCALE_1) {dstElemType = f16} : tensor<1x1024x128x!qElemType>, tensor<1x1024x1xf16> -> tensor<1x1024x128xf16>
+    %RHS_2 = IE.DynamicDequantize(%WEIGHTS, %SCALE_2) {dstElemType = f16} : tensor<1x1024x128x!qElemType>, tensor<1x1024x1xf16> -> tensor<1x1024x128xf16>
+    %RHS_3 = IE.DynamicDequantize(%WEIGHTS, %SCALE_3) {dstElemType = f16} : tensor<1x1024x128x!qElemType>, tensor<1x1024x1xf16> -> tensor<1x1024x128xf16>
+    %RHS_4 = IE.DynamicDequantize(%WEIGHTS, %SCALE_4) {dstElemType = f16} : tensor<1x1024x128x!qElemType>, tensor<1x1024x1xf16> -> tensor<1x1024x128xf16>
+    %RHS_5 = IE.DynamicDequantize(%WEIGHTS, %SCALE_5) {dstElemType = f16} : tensor<1x1024x128x!qElemType>, tensor<1x1024x1xf16> -> tensor<1x1024x128xf16>
+    %RHS_6 = IE.DynamicDequantize(%WEIGHTS, %SCALE_6) {dstElemType = f16} : tensor<1x1024x128x!qElemType>, tensor<1x1024x1xf16> -> tensor<1x1024x128xf16>
+    %RHS_7 = IE.DynamicDequantize(%WEIGHTS, %SCALE_7) {dstElemType = f16} : tensor<1x1024x128x!qElemType>, tensor<1x1024x1xf16> -> tensor<1x1024x128xf16>
+    %RHS_8 = IE.DynamicDequantize(%WEIGHTS, %SCALE_8) {dstElemType = f16} : tensor<1x1024x128x!qElemType>, tensor<1x1024x1xf16> -> tensor<1x1024x128xf16>
+
+    %CONCAT = IE.Concat(%RHS_1, %RHS_2, %RHS_3, %RHS_4, %RHS_5, %RHS_6, %RHS_7, %RHS_8) {
+        per_axis = #IE.Concat<axis = 0 : i64>
+    } : tensor<1x1024x128xf16>, tensor<1x1024x128xf16>, tensor<1x1024x128xf16>, tensor<1x1024x128xf16>,
+        tensor<1x1024x128xf16>, tensor<1x1024x128xf16>, tensor<1x1024x128xf16>, tensor<1x1024x128xf16>
+        -> tensor<8x1024x128xf16>
+
+    %TRANSPOSE = IE.Transpose(%CONCAT) {order_value = affine_map<(d0, d1, d2) -> (d1, d0, d2)>} : tensor<8x1024x128xf16> -> tensor<1024x8x128xf16>
+
+    %RESHAPE = IE.AffineReshape(%TRANSPOSE) {
+        dim_mapping = [[0], [1], [1]],
+        shape_value = [1024, 1024]
+    } : tensor<1024x8x128xf16> -> tensor<1024x1024xf16>
+
+    %GEMM = IE.FullyConnected(%LHS, %RESHAPE) : tensor<1x1024xf16>, tensor<1024x1024xf16> -> tensor<1x1024xf16>
+
+    return %GEMM : tensor<1x1024xf16>
+
+    // CHECK:   [[DDQ_1:%.+]] = IE.DynamicDequantize([[WEIGHTS]], [[SCALE_1]])
+    // CHECK:   [[DDQ_2:%.+]] = IE.DynamicDequantize([[WEIGHTS]], [[SCALE_2]])
+    // CHECK:   [[DDQ_3:%.+]] = IE.DynamicDequantize([[WEIGHTS]], [[SCALE_3]])
+    // CHECK:   [[DDQ_4:%.+]] = IE.DynamicDequantize([[WEIGHTS]], [[SCALE_4]])
+    // CHECK:   [[DDQ_5:%.+]] = IE.DynamicDequantize([[WEIGHTS]], [[SCALE_5]])
+    // CHECK:   [[DDQ_6:%.+]] = IE.DynamicDequantize([[WEIGHTS]], [[SCALE_6]])
+    // CHECK:   [[DDQ_7:%.+]] = IE.DynamicDequantize([[WEIGHTS]], [[SCALE_7]])
+    // CHECK:   [[DDQ_8:%.+]] = IE.DynamicDequantize([[WEIGHTS]], [[SCALE_8]])
+
+    // CHECK:   [[RESHAPE_RHS_1:%.+]] = IE.Reshape([[DDQ_1]]) {shape_value = [1024, 128]} : tensor<1x1024x128xf16> -> tensor<1024x128xf16>
+    // CHECK:   [[RESHAPE_RHS_2:%.+]] = IE.Reshape([[DDQ_2]]) {shape_value = [1024, 128]} : tensor<1x1024x128xf16> -> tensor<1024x128xf16>
+    // CHECK:   [[RESHAPE_RHS_3:%.+]] = IE.Reshape([[DDQ_3]]) {shape_value = [1024, 128]} : tensor<1x1024x128xf16> -> tensor<1024x128xf16>
+    // CHECK:   [[RESHAPE_RHS_4:%.+]] = IE.Reshape([[DDQ_4]]) {shape_value = [1024, 128]} : tensor<1x1024x128xf16> -> tensor<1024x128xf16>
+    // CHECK:   [[RESHAPE_RHS_5:%.+]] = IE.Reshape([[DDQ_5]]) {shape_value = [1024, 128]} : tensor<1x1024x128xf16> -> tensor<1024x128xf16>
+    // CHECK:   [[RESHAPE_RHS_6:%.+]] = IE.Reshape([[DDQ_6]]) {shape_value = [1024, 128]} : tensor<1x1024x128xf16> -> tensor<1024x128xf16>
+    // CHECK:   [[RESHAPE_RHS_7:%.+]] = IE.Reshape([[DDQ_7]]) {shape_value = [1024, 128]} : tensor<1x1024x128xf16> -> tensor<1024x128xf16>
+    // CHECK:   [[RESHAPE_RHS_8:%.+]] = IE.Reshape([[DDQ_8]]) {shape_value = [1024, 128]} : tensor<1x1024x128xf16> -> tensor<1024x128xf16>
+
+    // CHECK:   [[LHS_SLICE_1:%.+]] = IE.Slice [[LHS]] [0, 0] [1, 128] : tensor<1x1024xf16> to tensor<1x128xf16>
+    // CHECK:   [[LHS_SLICE_2:%.+]] = IE.Slice [[LHS]] [0, 128] [1, 128] : tensor<1x1024xf16> to tensor<1x128xf16>
+    // CHECK:   [[LHS_SLICE_3:%.+]] = IE.Slice [[LHS]] [0, 256] [1, 128] : tensor<1x1024xf16> to tensor<1x128xf16>
+    // CHECK:   [[LHS_SLICE_4:%.+]] = IE.Slice [[LHS]] [0, 384] [1, 128] : tensor<1x1024xf16> to tensor<1x128xf16>
+    // CHECK:   [[LHS_SLICE_5:%.+]] = IE.Slice [[LHS]] [0, 512] [1, 128] : tensor<1x1024xf16> to tensor<1x128xf16>
+    // CHECK:   [[LHS_SLICE_6:%.+]] = IE.Slice [[LHS]] [0, 640] [1, 128] : tensor<1x1024xf16> to tensor<1x128xf16>
+    // CHECK:   [[LHS_SLICE_7:%.+]] = IE.Slice [[LHS]] [0, 768] [1, 128] : tensor<1x1024xf16> to tensor<1x128xf16>
+    // CHECK:   [[LHS_SLICE_8:%.+]] = IE.Slice [[LHS]] [0, 896] [1, 128] : tensor<1x1024xf16> to tensor<1x128xf16>
+
+    // CHECK:   [[GEMM_1:%.+]] = IE.FullyConnected([[LHS_SLICE_1]], [[RESHAPE_RHS_1]]) : tensor<1x128xf16>, tensor<1024x128xf16> -> tensor<1x1024xf16>
+    // CHECK:   [[GEMM_RESHAPE_1:%.+]] = IE.Reshape([[GEMM_1]]) {shape_value = [1, 1, 1, 1024]} : tensor<1x1024xf16> -> tensor<1x1x1x1024xf16>
+
+    // CHECK:   [[GEMM_2:%.+]] = IE.FullyConnected([[LHS_SLICE_2]], [[RESHAPE_RHS_2]]) : tensor<1x128xf16>, tensor<1024x128xf16> -> tensor<1x1024xf16>
+    // CHECK:   [[GEMM_RESHAPE_2:%.+]] = IE.Reshape([[GEMM_2]]) {shape_value = [1, 1, 1, 1024]} : tensor<1x1024xf16> -> tensor<1x1x1x1024xf16>
+
+    // CHECK:   [[GEMM_3:%.+]] = IE.FullyConnected([[LHS_SLICE_3]], [[RESHAPE_RHS_3]]) : tensor<1x128xf16>, tensor<1024x128xf16> -> tensor<1x1024xf16>
+    // CHECK:   [[GEMM_RESHAPE_3:%.+]] = IE.Reshape([[GEMM_3]]) {shape_value = [1, 1, 1, 1024]} : tensor<1x1024xf16> -> tensor<1x1x1x1024xf16>
+
+    // CHECK:   [[GEMM_4:%.+]] = IE.FullyConnected([[LHS_SLICE_4]], [[RESHAPE_RHS_4]]) : tensor<1x128xf16>, tensor<1024x128xf16> -> tensor<1x1024xf16>
+    // CHECK:   [[GEMM_RESHAPE_4:%.+]] = IE.Reshape([[GEMM_4]]) {shape_value = [1, 1, 1, 1024]} : tensor<1x1024xf16> -> tensor<1x1x1x1024xf16>
+
+    // CHECK:   [[GEMM_5:%.+]] = IE.FullyConnected([[LHS_SLICE_5]], [[RESHAPE_RHS_5]]) : tensor<1x128xf16>, tensor<1024x128xf16> -> tensor<1x1024xf16>
+    // CHECK:   [[GEMM_RESHAPE_5:%.+]] = IE.Reshape([[GEMM_5]]) {shape_value = [1, 1, 1, 1024]} : tensor<1x1024xf16> -> tensor<1x1x1x1024xf16>
+
+    // CHECK:   [[GEMM_6:%.+]] = IE.FullyConnected([[LHS_SLICE_6]], [[RESHAPE_RHS_6]]) : tensor<1x128xf16>, tensor<1024x128xf16> -> tensor<1x1024xf16>
+    // CHECK:   [[GEMM_RESHAPE_6:%.+]] = IE.Reshape([[GEMM_6]]) {shape_value = [1, 1, 1, 1024]} : tensor<1x1024xf16> -> tensor<1x1x1x1024xf16>
+
+    // CHECK:   [[GEMM_7:%.+]] = IE.FullyConnected([[LHS_SLICE_7]], [[RESHAPE_RHS_7]]) : tensor<1x128xf16>, tensor<1024x128xf16> -> tensor<1x1024xf16>
+    // CHECK:   [[GEMM_RESHAPE_7:%.+]] = IE.Reshape([[GEMM_7]]) {shape_value = [1, 1, 1, 1024]} : tensor<1x1024xf16> -> tensor<1x1x1x1024xf16>
+
+    // CHECK:   [[GEMM_8:%.+]] = IE.FullyConnected([[LHS_SLICE_8]], [[RESHAPE_RHS_8]]) : tensor<1x128xf16>, tensor<1024x128xf16> -> tensor<1x1024xf16>
+    // CHECK:   [[GEMM_RESHAPE_8:%.+]] = IE.Reshape([[GEMM_8]]) {shape_value = [1, 1, 1, 1024]} : tensor<1x1024xf16> -> tensor<1x1x1x1024xf16>
+
+    // CHECK:   [[CONCAT_OUT:%.+]] = IE.Concat([[GEMM_RESHAPE_1]], [[GEMM_RESHAPE_2]], [[GEMM_RESHAPE_3]], [[GEMM_RESHAPE_4]], [[GEMM_RESHAPE_5]], [[GEMM_RESHAPE_6]], [[GEMM_RESHAPE_7]], [[GEMM_RESHAPE_8]])
+    // CHECK-SAME:  {per_axis = #IE.Concat<axis = 1 : i64>}
+    // CHECK-SAME:  -> tensor<1x8x1x1024xf16>
+
+    // CHECK:   [[REDUCE_SUM:%.+]] = IE.ReduceSum([[CONCAT_OUT]]) {axes_value = [1]} : tensor<1x8x1x1024xf16> -> tensor<1x1x1024xf16>
+    // CHECK:   [[RESHAPE_OUT:%.+]] = IE.Reshape([[REDUCE_SUM]]) {shape_value = [1, 1024]} : tensor<1x1x1024xf16> -> tensor<1x1024xf16>
+
+    // CHECK:   return [[RESHAPE_OUT]] : tensor<1x1024xf16>
 }

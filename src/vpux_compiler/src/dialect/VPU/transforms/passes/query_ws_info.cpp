@@ -6,6 +6,7 @@
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/weights_separation.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
+#include "vpux/utils/core/scope_exit.hpp"
 
 #include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/BuiltinDialect.h>
@@ -44,12 +45,19 @@ private:
 };
 
 void QueryWSInfo::safeRunOnModule() {
+    auto moduleOp = getOperation();
+
+    VPU::WeightsSeparationInfo::Options options;
+    VPU::WeightsSeparationInfo::setOptions(moduleOp, options);
+    VPUX_SCOPE_EXIT {
+        VPU::WeightsSeparationInfo::removeOptions(moduleOp);
+    };
+
     const auto& info = getAnalysis<VPU::WeightsSeparationInfo>();
     auto splits = info.getCollectedSplits();
-    llvm::sort(splits);
+    std::stable_sort(splits.begin(), splits.end());
     auto slicedSplits = VPU::sliceAccordingToMemoryLimit(_log, splits, getMemoryLimit());
 
-    auto moduleOp = getOperation();
     moduleOp->setAttr("VPU.WsTotalInitPartCount", getIntAttr(&getContext(), slicedSplits.size()));
 }
 

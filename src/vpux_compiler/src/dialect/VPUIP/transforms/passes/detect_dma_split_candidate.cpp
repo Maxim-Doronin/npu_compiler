@@ -304,7 +304,7 @@ void DetectDMASplitCandidate::safeRunOnFunc() {
         const auto dmaPort = dmaOp.getPort().value();
         const auto channelType = dmaOp.getChannelType();
 
-        if (dmaOp.getSplitCandidate()) {
+        if (dmaOp.getSplitCandidate().has_value()) {
             _log.trace("DMA at '{0}' has been assigned with SplitCandidate attribute already", dmaOp->getLoc());
             return;
         }

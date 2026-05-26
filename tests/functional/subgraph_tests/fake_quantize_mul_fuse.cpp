@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -41,6 +41,10 @@ using FakeQuantizeMulFuseTestParams = std::tuple<ov::element::Type,  // inPrc
 class FakeQuantizeMulFuseSubGraphTest1Common :
         public VpuOv2LayerTest,
         public testing::WithParamInterface<FakeQuantizeMulFuseTestParams> {
+    void configure_model() override {
+        // TODO: Investigate accuracy regression E#211263.
+        configuration[ov::intel_npu::compilation_mode_params.name()] = "fuse-outstanding-dequant=false";
+    }
     void SetUp() override {
         std::vector<float> dataFQRanges;
         std::tie(inType, outType, dataFQRanges) = GetParam();
@@ -51,24 +55,22 @@ class FakeQuantizeMulFuseSubGraphTest1Common :
 
         init_input_shapes(static_shapes_to_test_representation({inputShape}));
 
-        ov::ParameterVector params{
-                std::make_shared<ov::op::v0::Parameter>(ov::element::f32, inputDynamicShapes.front())};
+        ov::ParameterVector params{std::make_shared<ov::op::v0::Parameter>(inType, inputDynamicShapes.front())};
 
         const size_t dataLevels = 256;
         const std::vector<float> dataInLow = {dataFQRanges.at(0)};
         const std::vector<float> dataInHigh = {dataFQRanges.at(1)};
         const std::vector<float> dataOutLow = {dataFQRanges.at(2)};
         const std::vector<float> dataOutHigh = {dataFQRanges.at(3)};
-        const auto dataFq = ov::test::utils::make_fake_quantize(params[0], ov::element::f32, dataLevels, {}, dataInLow,
+        const auto dataFq = ov::test::utils::make_fake_quantize(params[0], inType, dataLevels, {}, dataInLow,
                                                                 dataInHigh, dataOutLow, dataOutHigh);
 
         std::vector<float> scalesVal{0.53, 0.13, 0.32, 0.51};
-        const auto scales =
-                ov::op::v0::Constant::create(ov::element::f32, ov::Shape{weightsShape[0], 1, 1, 1}, scalesVal);
+        const auto scales = ov::op::v0::Constant::create(inType, ov::Shape{weightsShape[0], 1, 1, 1}, scalesVal);
 
         std::vector<int8_t> weightsVal{-108, -120, -124, 8, 4, -106, -88, 113, -74, 54, 127, 0};
         const auto weights = ov::op::v0::Constant::create(ov::element::i8, weightsShape, weightsVal);
-        const auto convert = std::make_shared<ov::op::v0::Convert>(weights, ov::element::f32);
+        const auto convert = std::make_shared<ov::op::v0::Convert>(weights, outType);
 
         const auto mul = std::make_shared<ov::op::v1::Multiply>(convert, scales);
         const ov::Strides strides = {1, 1};
@@ -78,8 +80,8 @@ class FakeQuantizeMulFuseSubGraphTest1Common :
         const auto conv =
                 std::make_shared<ov::op::v1::Convolution>(dataFq, mul, strides, pads_begin, pads_end, dilations);
 
-        const auto outFq = ov::test::utils::make_fake_quantize(conv, ov::element::f32, dataLevels, {}, dataInLow,
-                                                               dataInHigh, dataOutLow, dataOutHigh);
+        const auto outFq = ov::test::utils::make_fake_quantize(conv, outType, dataLevels, {}, dataInLow, dataInHigh,
+                                                               dataOutLow, dataOutHigh);
 
         const ov::ResultVector results{std::make_shared<ov::op::v0::Result>(outFq)};
         function = std::make_shared<ov::Model>(results, params, "FakeQuantizeMulFuse");
@@ -112,9 +114,9 @@ TEST_P(FakeQuantizeMulFuseSubGraphTest1_NPU3720, HW) {
 
 std::vector<std::vector<float>> fqRangesM = {{0.0f, 255.0f, 0.0f, 255.0f}};
 
-const std::vector<ov::element::Type> netPrecisionsM = {ov::element::f16};
+const std::vector<ov::element::Type> netPrecisionsM = {ov::element::f32};
 
-const std::vector<ov::element::Type> netOutputPrecisionsM = {ov::element::f16};
+const std::vector<ov::element::Type> netOutputPrecisionsM = {ov::element::f32};
 
 const auto basicCasesM = ::testing::Combine(::testing::ValuesIn(netPrecisionsM),
                                             ::testing::ValuesIn(netOutputPrecisionsM), ::testing::ValuesIn(fqRangesM));

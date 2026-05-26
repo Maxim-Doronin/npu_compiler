@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --swap-operations %s | FileCheck %s
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --run-mem-permute-processing-rewriters="rewriter=swap-operations-set" %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --swap-operations %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --run-mem-permute-processing-rewriters="rewriter=swap-operations-set" %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 #NHCW = affine_map<(d0, d1, d2, d3) -> (d0, d2, d1, d3)>
 
@@ -1027,6 +1027,43 @@ func.func @NotSwapGatherChannelWiseQuantizeCast(%arg0: tensor<184320x2880xsi4>, 
 
 // -----
 
+#NHCW = affine_map<(d0, d1, d2, d3) -> (d0, d2, d1, d3)>
+
+// CHECK-LABEL: @SwapReLUwithInterpolate
+module @SwapReLUwithInterpolate {
+
+config.PipelineOptions @Options {
+        config.Option @config.EnableSEPtrsOperations : true 
+    }
+
+// CHECK: func.func @main
+// CHECK-SAME:     ([[ARG0:%.+]]: tensor<16x512x1x1xf16>, [[ARG1:%.+]]: tensor<1024x512x1x1xf16>)
+func.func @main(%arg0: tensor<16x512x1x1xf16>, %arg1: tensor<1024x512x1x1xf16>) -> tensor<1x16x2048x2xf16> {
+    %0 = IE.Convolution(%arg0, %arg1) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<16x512x1x1xf16>, tensor<1024x512x1x1xf16> -> tensor<16x1024x1x1xf16>
+    %1 = IE.AffineReshape(%0) {dim_mapping = [[0, 1], [2], [3], [3]], shape_value = [1, 16, 1024, 1]} : tensor<16x1024x1x1xf16> -> tensor<1x16x1024x1xf16>
+    %2 = IE.Interpolate(%1) {attr = #IE.Interpolate<antialias = false, coord_mode = <ASYMMETRIC>, cube_coeff = -7.500000e-01 : f64, mode = <NEAREST>, nearest_mode = <SIMPLE>,
+         pads_begin = [0, 0, 0, 0], pads_end = [0, 0, 0, 0], shape_calc_mode = <SIZES>>, axes_attr = [2, 3],
+         operandSegmentSizes = array<i32: 1, 0, 0, 0>, scales_attr = [2.000000e+00, 2.000000e+00], sizes_attr = [2048, 2]
+         } : tensor<1x16x1024x1xf16> -> tensor<1x16x2048x2xf16>
+    %3 = IE.ReLU(%2) : tensor<1x16x2048x2xf16> -> tensor<1x16x2048x2xf16>
+
+    return %3 : tensor<1x16x2048x2xf16>
+
+    // CHECK: IE.Convolution
+    // CHECK-SAME: tensor<16x512x1x1xf16>, tensor<1024x512x1x1xf16> -> tensor<16x1024x1x1xf16>
+    // CHECK: IE.ReLU
+    // CHECK-SAME: tensor<16x1024x1x1xf16> -> tensor<16x1024x1x1xf16>
+    // CHECK: IE.AffineReshape
+    // CHECK-SAME: tensor<16x1024x1x1xf16> -> tensor<1x16x1024x1xf16>
+    // CHECK: IE.Interpolate
+    // CHECK-SAME: tensor<1x16x1024x1xf16> -> tensor<1x16x2048x2xf16>
+
+}
+
+}
+
+// -----
+
 // CHECK-LABEL: @SwapWithScaleShift
 // CHECK-SAME:        [[INPUT:%arg[0-9]]]: tensor<1x64x64x64xf16>
 func.func @SwapWithScaleShift(%arg0: tensor<1x64x64x64xf16>) -> tensor<1x64x64x4096xf16> {
@@ -1077,23 +1114,57 @@ func.func @SwapWithPointScaleShift(%arg0: tensor<1x64x64x64xf16>) -> tensor<1x64
 
 // -----
 
-!qElemType = !quant.uniform<u8:f16, 2.0>
-!qElemType1 = !quant.uniform<u8:f16, 1.0>
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
-// CHECK-LABEL: @DoNotSwapTransposeWithLeakyReluQuantized
-// CHECK-SAME:        [[ARG0:%arg[0-9]]]: tensor<1x16x3x180xf16>
-func.func @DoNotSwapTransposeWithLeakyReluQuantized(%arg0: tensor<1x16x3x180xf16>) -> tensor<1x96x1x30x!qElemType> {
-    %0 = IE.AvgPool(%arg0) {exclude_pads, kernel_size = [3, 1], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, static_scale = 1.010000e+02 : f32, strides = [1, 1]} : tensor<1x16x3x180xf16> -> tensor<1x16x1x180x!qElemType1>
-    %1 = IE.Transpose(%0) {order_value = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>} : tensor<1x16x1x180x!qElemType1> -> tensor<1x1x180x16x!qElemType1>
-    %2 = IE.Reshape(%1) {shape_value = [1, 1, 30, 96]} : tensor<1x1x180x16x!qElemType1> -> tensor<1x1x30x96x!qElemType1>
-    %3 = IE.LeakyRelu(%2) {negative_slope = 2.0e-01 : f64} : tensor<1x1x30x96x!qElemType1> -> tensor<1x1x30x96x!qElemType>
-    %4 = IE.Transpose(%3) {order_value = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>} : tensor<1x1x30x96x!qElemType> -> tensor<1x96x1x30x!qElemType>
-    return %4 : tensor<1x96x1x30x!qElemType>
+// CHECK-LABEL: func.func @SwapWithPostOpOverCastOps(
 
-    // CHECK: IE.Transpose
-    // CHECK-SAME: tensor<1x16x1x180x!qElemType1> -> tensor<1x1x180x16x!qElemType1>
-    // CHECK: IE.LeakyRelu
-    // CHECK-SAME: tensor<1x1x30x96x!qElemType1> -> tensor<1x1x30x96x!qElemType>
-    // CHECK: IE.Transpose
-    // CHECK-SAME: tensor<1x1x30x96x!qElemType> -> tensor<1x96x1x30x!qElemType>
+func.func @SwapWithPostOpOverCastOps(%arg0: tensor<1x1024x56x56xf16, {order = #NHWC}>) -> tensor<16x64x56x56xf16> {
+   %0 = IE.Add(%arg0, %arg0) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x1024x56x56xf16, {order = #NHWC}>, tensor<1x1024x56x56xf16, {order = #NHWC}> -> tensor<1x1024x56x56xf16, {order = #NHWC}>
+   %1 = IE.ShapeCast {shape = [1, 56, 1024, 56]} inputs(%0 : tensor<1x1024x56x56xf16, {order = #NHWC}>) -> tensor<1x56x1024x56xf16, {order = #NHWC}>
+   %2 = IE.PermuteCast(%1) {dst_order = #NCHW, mem_perm = #NCHW} : tensor<1x56x1024x56xf16, {order = #NHWC}> -> tensor<1x1024x56x56xf16>
+   %3 = IE.ShapeCast {shape = [16, 64, 56, 56]} inputs(%2 : tensor<1x1024x56x56xf16>) -> tensor<16x64x56x56xf16>
+   %4 = IE.ReLU(%3) : tensor<16x64x56x56xf16> -> tensor<16x64x56x56xf16>
+   return %4 : tensor<16x64x56x56xf16>
+
+    // CHECK:       IE.Add
+    // CHECK-NEXT:       IE.ReLU
+    // CHECK-NEXT:       IE.ShapeCast
+    // CHECK-NEXT:       IE.PermuteCast
+    // CHECK-NEXT:       IE.ShapeCast
+    // CHECK-NEXT:       return
+}
+
+// -----
+
+!qElemType = !quant.uniform<u8:f16, 0.017696142196655273:36>
+!qElemType1 = !quant.uniform<u8:f16, 0.027488257838230508:115>
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @SwapLeakyReluAcrossTransposeAndReshape
+// CHECK-SAME:     ([[INPUT:%.+]]: tensor<1x16x3x180xf16>)
+func.func @SwapLeakyReluAcrossTransposeAndReshape(%arg0: tensor<1x16x3x180xf16>) -> tensor<1x1x30x96x!qElemType1> {
+    %0 = IE.AvgPool(%arg0) {
+            exclude_pads,
+            kernel_size = [3, 1],
+            pads_begin = [0, 0],
+            pads_end = [0, 0],
+            rounding_type = #IE.rounding_type<FLOOR>,
+            strides = [1, 1]
+         } : tensor<1x16x3x180xf16> -> tensor<1x16x1x180x!qElemType>
+    %1 = IE.Transpose(%0) {order_value = #NHWC} : tensor<1x16x1x180x!qElemType> -> tensor<1x1x180x16x!qElemType>
+    %2 = IE.Reshape(%1) {shape_value = [1, 1, 30, 96]} : tensor<1x1x180x16x!qElemType> -> tensor<1x1x30x96x!qElemType>
+    %3 = IE.LeakyRelu(%2) {negative_slope = 2.000000e-01 : f64} : tensor<1x1x30x96x!qElemType> -> tensor<1x1x30x96x!qElemType1>
+    return %3 : tensor<1x1x30x96x!qElemType1>
+
+    // CHECK:       [[AVGPOOL:%.+]] = IE.AvgPool([[INPUT]])
+    // CHECK-SAME:      -> tensor<1x16x1x180x!qElemType1>
+    // CHECK:       [[LRELU:%.+]] = IE.LeakyRelu([[AVGPOOL]]) {negative_slope = 2.000000e-01 : f64}
+    // CHECK-SAME:      tensor<1x16x1x180x!qElemType1> -> tensor<1x16x1x180x!qElemType>
+    // CHECK:       [[TRANSPOSE:%.+]] = IE.Transpose([[LRELU]]) {order_value = #NHWC}
+    // CHECK-SAME:      tensor<1x16x1x180x!qElemType> -> tensor<1x1x180x16x!qElemType>
+    // CHECK:       [[RESHAPE:%.+]] = IE.Reshape([[TRANSPOSE]]) {shape_value = [1, 1, 30, 96]}
+    // CHECK-SAME:      tensor<1x1x180x16x!qElemType> -> tensor<1x1x30x96x!qElemType>
+    // CHECK:       return [[RESHAPE]] : tensor<1x1x30x96x!qElemType>
 }

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --add-buffers-for-net-results="use-memref-for-host-function-bufferization=true" %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --add-buffers-for-net-results="use-memref-for-host-function-bufferization=true" %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL: @Network
 module @Network {
@@ -146,5 +146,61 @@ module @NestedFunction {
         // CHECK: [[NESTED_CALL:%.+]] = Core.NestedCall [[NESTED_MODULE_NAME]]::[[FUNC_NAME]]([[ARG0]], [[ALLOC]]) : (memref<1x1000xf16>, memref<1x1000xf16>) -> memref<1x1000xf16>
         // CHECK: memref.copy [[NESTED_CALL]], [[ARG1]] : memref<1x1000xf16> to memref<1x1000xf16>
         // CHECK: return [[ARG1]] : memref<1x1000xf16>
+    }
+}
+
+// -----
+
+// CHECK-LABEL: @AddBuffersForStridedMemref
+module @AddBuffersForStridedMemref {
+    net.NetworkInfo entryPoint : @main
+    inputsInfo : {
+        DataInfo "input" : tensor<1x3x?x?xf32>
+    } outputsInfo : {
+        DataInfo "output" : tensor<1x?x?x16xf32>
+    }
+
+    module @Module0 {
+        // CHECK: func.func @kernel([[ARG0:%.+]]: memref<1x3x64x128xf32, strided<[?, ?, ?, ?], offset: ?>>, [[ARG1:%.+]]: memref<1x3x64x128xf32, strided<[?, ?, ?, ?], offset: ?>>) -> memref<1x3x64x128xf32, strided<[?, ?, ?, ?], offset: ?>>
+        func.func @kernel(%main: memref<1x3x64x128xf32, strided<[?, ?, ?, ?], offset: ?>>)
+            -> memref<1x3x64x128xf32, strided<[?, ?, ?, ?], offset: ?>> {
+            return %main : memref<1x3x64x128xf32, strided<[?, ?, ?, ?], offset: ?>>
+
+            // CHECK: [[COPY:%.+]] = VPUIP.Copy inputs([[ARG0]] : memref<1x3x64x128xf32, strided<[?, ?, ?, ?], offset: ?>>) outputs([[ARG1]] : memref<1x3x64x128xf32, strided<[?, ?, ?, ?], offset: ?>>) -> memref<1x3x64x128xf32, strided<[?, ?, ?, ?], offset: ?>>
+            // CHECK: return [[COPY]] : memref<1x3x64x128xf32, strided<[?, ?, ?, ?], offset: ?>>
+        }
+    }
+
+    // CHECK: func.func @main([[ARG0:%.+]]: memref<1x3x?x?xf32>, [[ARG1:%.+]]: memref<1x3x?x?xf32>) -> memref<1x3x?x?xf32>
+    func.func @main(%arg: memref<1x3x?x?xf32>) -> memref<1x3x?x?xf32> {
+        %c3 = arith.constant 3 : index
+        %c2 = arith.constant 2 : index
+        %h  = arith.constant 64 : index
+        %w  = arith.constant 128 : index
+
+        %dim2 = memref.dim %arg, %c2 : memref<1x3x?x?xf32>
+        %dim3 = memref.dim %arg, %c3 : memref<1x3x?x?xf32>
+
+        %alloc = memref.alloc(%dim2, %dim3) : memref<1x3x?x?xf32>
+
+        %subview = memref.subview %arg[0, 0, %h, %w] [1, 3, 64, 128] [1, 1, 1, 1]
+                         : memref<1x3x?x?xf32> to memref<1x3x64x128xf32, strided<[?, ?, ?, 1], offset: ?>>
+        %casted = memref.cast %subview: memref<1x3x64x128xf32, strided<[?, ?, ?, 1], offset: ?>> to memref<1x3x64x128xf32, strided<[?, ?, ?, ?], offset: ?>>
+
+        %result = Core.NestedCall @Module0::@kernel(%casted)
+                : (memref<1x3x64x128xf32, strided<[?, ?, ?, ?], offset: ?>>)
+                -> memref<1x3x64x128xf32, strided<[?, ?, ?, ?], offset: ?>>
+
+        %alloc_subview = memref.subview %alloc[0, 0, %h, %w] [1, 3, 64, 128] [1, 1, 1, 1]
+                       : memref<1x3x?x?xf32>
+                       to memref<1x3x64x128xf32, strided<[?, ?, ?, 1], offset: ?>>
+
+        return %alloc : memref<1x3x?x?xf32>
+
+        // CHECK: [[ALLOC:%.+]] = memref.alloc() : memref<1x3x64x128xf32>
+        // CHECK: [[CAST:%.+]] = memref.cast [[ALLOC]] : memref<1x3x64x128xf32> to memref<1x3x64x128xf32, strided<[?, ?, ?, ?], offset: ?>>
+        // CHECK: Core.NestedCall @Module0::@kernel({{[^,]+}}, [[CAST]])
+        // CHECK: memref.copy {{%.+}}, [[ARG1]] : memref<1x3x?x?xf32> to memref<1x3x?x?xf32>
+        // CHECK: return [[ARG1]] : memref<1x3x?x?xf32>
     }
 }

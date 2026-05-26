@@ -13,15 +13,16 @@
 #include <openvino/core/type/element_type.hpp>
 #include <openvino/opsets/opset1.hpp>
 #include <openvino/opsets/opset8.hpp>
+#include <shared_test_classes/base/ov_subgraph.hpp>
 
 namespace ov::test {
 
 PRETTY_PARAM(InputType, ov::element::Type);
+PRETTY_PARAM(IndicesType, ov::element::Type);
 PRETTY_PARAM(AxisType, int32_t);
 
 using GatherInputType = std::tuple<ov::test::InputShape, ov::test::InputShape>;
-using DynamicGatherTestParams = std::tuple<GatherInputType, InputType, AxisType>;
-
+using DynamicGatherTestParams = std::tuple<GatherInputType, InputType, IndicesType, AxisType>;
 //
 // DynamicGatherLayerTest
 //
@@ -41,10 +42,12 @@ public:
         const auto& indicesPartialShape = indicesInput.get_partial_shape();
         auto indicesShape =
                 indicesPartialShape.is_dynamic() ? targetInputStaticShapes.back() : indicesPartialShape.to_shape();
-
         ov::Tensor dataTensor = ov::test::utils::create_and_fill_tensor(dataInput.get_element_type(), dataShape);
+
+        auto axis = std::get<3>(this->GetParam());
+        auto range = static_cast<uint32_t>(dataShape[axis.value()]);
         ov::Tensor indicesTensor =
-                ov::test::utils::create_and_fill_tensor(indicesInput.get_element_type(), indicesShape, {0, 2});
+                ov::test::utils::create_and_fill_tensor(indicesInput.get_element_type(), indicesShape, {0, range});
 
         inputs.insert({dataInput.get_node_shared_ptr(), dataTensor});
         inputs.insert({indicesInput.get_node_shared_ptr(), indicesTensor});
@@ -71,10 +74,10 @@ protected:
     }
 
     void SetUp() override {
-        const auto& [inputShapes, type, axis] = this->GetParam();
+        const auto& [inputShapes, dataType, indicesType, axis] = this->GetParam();
         auto [dataParamShape, indicesParamShape] = getParamShapes(inputShapes);
-        auto dataParam = std::make_shared<ov::opset1::Parameter>(type.value(), dataParamShape);
-        auto indicesParam = std::make_shared<ov::opset1::Parameter>(ov::element::i64, indicesParamShape);
+        auto dataParam = std::make_shared<ov::opset1::Parameter>(dataType.value(), dataParamShape);
+        auto indicesParam = std::make_shared<ov::opset1::Parameter>(indicesType.value(), indicesParamShape);
         auto axisParam = ov::op::v0::Constant::create(ov::element::i32, Shape{}, std::vector<int32_t>{axis.value()});
         auto gather = std::make_shared<ov::op::v8::Gather>(dataParam, indicesParam, axisParam);
         function = std::make_shared<ov::Model>(gather, ov::ParameterVector{dataParam, indicesParam}, "DynamicGather");
@@ -104,14 +107,16 @@ TEST_P(DynamicGatherLayerTest, NPU5020_HW) {
     run(Platform::NPU5020);
 }
 
-const std::vector<InputType> inputPrecision = {ov::element::f16};
-const std::vector<AxisType> inputAxis = {0};
+const std::vector<InputType> inputPrecision = {ov::element::f16, ov::element::i64};
+const std::vector<IndicesType> indicesPrecision = {ov::element::u64};
+const std::vector<AxisType> inputAxis = {0, 1};
 const std::vector<GatherInputType> inShapes = {{generateTestShape(2, 128), generateTestShape(2, 128_Dyn)},
                                                {generateTestShape(2, 128_Dyn), generateTestShape(2, 128)},
-                                               {generateTestShape(2, 128_Dyn), generateTestShape(2, 128_Dyn)}};
+                                               {generateTestShape(2, 128_Dyn), generateTestShape(2, 128_Dyn)},
+                                               {generateTestShape(1, 128_Dyn, 16), generateTestShape(128_Dyn)}};
 
 INSTANTIATE_TEST_SUITE_P(smoke_DynamicGather, DynamicGatherLayerTest,
                          ::testing::Combine(::testing::ValuesIn(inShapes), ::testing::ValuesIn(inputPrecision),
-                                            ::testing::ValuesIn(inputAxis)),
+                                            ::testing::ValuesIn(indicesPrecision), ::testing::ValuesIn(inputAxis)),
                          PrintTestCaseName());
 }  // namespace ov::test

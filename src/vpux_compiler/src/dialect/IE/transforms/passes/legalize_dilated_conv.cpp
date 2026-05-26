@@ -485,17 +485,24 @@ private:
 
 bool isLegalGroupConvOpImpl(IE::GroupConvolutionOp op, bool enableDilatedGroupConv, Logger log) {
     const auto dilations = parseIntArrayAttr<int64_t>(op.getDilations());
+
+    if (dilations[Dims4D::Dilation::X.ind()] == 1 && dilations[Dims4D::Dilation::Y.ind()] == 1) {
+        return true;
+    }
+    if (!enableDilatedGroupConv) {
+        return false;
+    }
+
     const auto logCb = [&](const formatv_object_base& msg) {
         log.trace("{0}", msg.str());
     };
-    if ((dilations[Dims4D::Dilation::X.ind()] == 1 && dilations[Dims4D::Dilation::Y.ind()] == 1)) {
-        return true;
-    }
-    auto isDilationSupported = enableDilatedGroupConv ? VPU::isSupportedSEPDilatedConv(op, logCb, /*checkLayout=*/false,
-                                                                                       /*checkChannelAlignment=*/false)
-                                                      : false;
 
-    return isDilationSupported;
+    auto seOp = mlir::dyn_cast<IE::SEOpInterface>(op.getOperation());
+    if (!seOp) {
+        log.trace("Group convolution with dilation is not supported.");
+        return false;
+    }
+    return seOp.isSupported(logCb);
 }
 
 bool isLegalConvOp(IE::ConvolutionOp op) {

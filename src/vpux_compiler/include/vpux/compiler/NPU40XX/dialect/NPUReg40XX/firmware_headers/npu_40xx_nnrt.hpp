@@ -21,6 +21,7 @@ namespace npu40xx {
 #include <details/api/vpu_nnrt_api_40xx.h>
 #include <details/api/vpu_nnrt_wlm.h>
 #include <details/api/vpu_pwrmgr_api.h>
+#include <details/api/vpu_nnrt_shavert.h>
 
 static constexpr size_t NNRT_API_UD2024_44_MAJOR_VERSION = 11;
 static constexpr size_t NNRT_API_UD2024_44_MINOR_VERSION = 4;
@@ -33,6 +34,8 @@ static constexpr size_t NNRT_API_WLM_BARRIER_FIFO_PATCH_VERSION = 0;
 
 static constexpr auto VPU_METADATA_STORAGE_START = static_cast<uint32_t>(npu40xx::nn_public::align_storage(alignof(npu40xx::nn_public::VpuDPUInvariant),
                                                                  npu40xx::nn_public::VPU_METADATA_STORAGE_ADDR));
+
+#define VPU_CONCAT_NNRT_API_VER(MAJOR, MINOR) (((MAJOR) << 16) | (MINOR))
 
 // clang-format on
 

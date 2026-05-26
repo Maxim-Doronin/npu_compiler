@@ -7,7 +7,6 @@
 #include "vpux/compiler/dialect/IE/IR/ops/data_movement.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/image.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
-#include "vpux/compiler/dialect/VPU/utils/se_padding_utils.hpp"
 #include "vpux/compiler/dialect/const/utils/affine_reshape.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
@@ -49,12 +48,10 @@ void vpux::IE::propagateElementTypeUp(IE::LayerDataInfo<mlir::Type>& info) {
 bool vpux::IE::isSupportedNearestNCEInterpolate(IE::InterpolateOp interpolateOp, vpux::LogCb logCb) {
     const auto inputShape = getShape(interpolateOp.getInput());
     const auto outShape = getShape(interpolateOp.getOutput());
-
+    auto seOp = mlir::dyn_cast<IE::SEOpInterface>(interpolateOp.getOperation());
     if (interpolateOp.getAttr().getMode().getValue() == IE::InterpolateMode::NEAREST &&
         (outShape[Dims4D::Act::W] > inputShape[Dims4D::Act::W]) &&
-        (outShape[Dims4D::Act::H] > inputShape[Dims4D::Act::H]) &&
-        VPU::NCEInterpolateOp::isSupported(interpolateOp, logCb, /*checkLayout=*/false,
-                                           /*checkChannelAlignment=*/false, /*checkBatch=*/false)) {
+        (outShape[Dims4D::Act::H] > inputShape[Dims4D::Act::H]) && seOp && seOp.isSupported(logCb)) {
         return true;
     }
 
@@ -71,8 +68,8 @@ bool vpux::IE::isSupportedElemTypeInfoCase(mlir::Operation* op, bool seOpsEnable
                 return seOpsEnabled && isSupportedNearestNCEInterpolate(origOp, logCb);
             })
             .Case<IE::PadOp>([&](IE::PadOp origOp) {
-                return seOpsEnabled &&
-                       VPU::isSupportedSEPPadOp(origOp, logCb, /*checkLayout=*/false, /*checkChannelAlignment=*/false);
+                auto seOp = mlir::dyn_cast<IE::SEOpInterface>(origOp.getOperation());
+                return seOpsEnabled && seOp && seOp.isSupported(logCb);
             })
             .Default([](mlir::Operation*) {
                 return true;
@@ -172,23 +169,7 @@ void vpux::IE::propagateElemTypeUpForTransposeOp(IE::TransposeOp transpose, IE::
     const auto origAxis = perAxisType.getQuantizedDimension();
     const auto newAxis = static_cast<int32_t>(DimsOrder::fromAffineMap(inversePermutation).dimPos(Dim(origAxis)));
 
-    mlir::Type inType = nullptr;
-    if (const auto perAxisQuantileQType =
-                mlir::dyn_cast_or_null<mlir::quant::QuantileQuantizedPerAxisType>(outputElemType)) {
-        inType = mlir::quant::QuantileQuantizedPerAxisType::get(
-                perAxisQuantileQType.getFlags(), perAxisQuantileQType.getStorageType(),
-                perAxisQuantileQType.getQuantileType(), perAxisQuantileQType.getExpressedType(),
-                perAxisQuantileQType.getQuantiles(), perAxisQuantileQType.getScales(),
-                perAxisQuantileQType.getZeroPoints(), newAxis, perAxisQuantileQType.getStorageTypeMin(),
-                perAxisQuantileQType.getStorageTypeMax());
-    } else {
-        inType = mlir::quant::UniformQuantizedPerAxisType::get(
-                perAxisType.getFlags(), perAxisType.getStorageType(), perAxisType.getExpressedType(),
-                perAxisType.getScales(), perAxisType.getZeroPoints(), newAxis, perAxisType.getStorageTypeMin(),
-                perAxisType.getStorageTypeMax());
-    }
-
-    info.setInput(0, inType);
+    info.setInput(0, changeAxis(outputElemType, newAxis));
 }
 
 void vpux::IE::propagateElemTypeUpForExpandDilatedOp(IE::ExpandDilatedOp expandDilated,
@@ -434,21 +415,7 @@ mlir::Type vpux::IE::inferElemTypeReorder(IE::ReorderOpAdaptor reorder, mlir::Ty
     const auto memPerm = vpux::getPermutationFromOrders(inOrder, outOrder, ctx);
 
     const auto outAxis = DimsOrder::fromAffineMap(memPerm).toPermutation()[inputAxis];
-
-    if (const auto perAxisQuantileQType =
-                mlir::dyn_cast_or_null<mlir::quant::QuantileQuantizedPerAxisType>(inputElemType)) {
-        return mlir::quant::QuantileQuantizedPerAxisType::get(
-                perAxisQuantileQType.getFlags(), perAxisQuantileQType.getStorageType(),
-                perAxisQuantileQType.getQuantileType(), perAxisQuantileQType.getExpressedType(),
-                perAxisQuantileQType.getQuantiles(), perAxisQuantileQType.getScales(),
-                perAxisQuantileQType.getZeroPoints(), outAxis.ind(), perAxisQuantileQType.getStorageTypeMin(),
-                perAxisQuantileQType.getStorageTypeMax());
-    }
-
-    return mlir::quant::UniformQuantizedPerAxisType::get(
-            perAxisQType.getFlags(), perAxisQType.getStorageType(), perAxisQType.getExpressedType(),
-            perAxisQType.getScales(), perAxisQType.getZeroPoints(), outAxis.ind(), perAxisQType.getStorageTypeMin(),
-            perAxisQType.getStorageTypeMax());
+    return changeAxis(inputElemType, outAxis.ind());
 }
 
 //
@@ -463,19 +430,5 @@ mlir::Type vpux::IE::inferElemTypeTranspose(mlir::AffineMap map, mlir::Type inpu
 
     const auto origAxis = perAxisQType.getQuantizedDimension();
     const auto newAxis = DimsOrder::fromAffineMap(map).dimPos(Dim(origAxis));
-
-    if (const auto perAxisQuantileQType =
-                mlir::dyn_cast_or_null<mlir::quant::QuantileQuantizedPerAxisType>(inputElemType)) {
-        return mlir::quant::QuantileQuantizedPerAxisType::get(
-                perAxisQuantileQType.getFlags(), perAxisQuantileQType.getStorageType(),
-                perAxisQuantileQType.getQuantileType(), perAxisQuantileQType.getExpressedType(),
-                perAxisQuantileQType.getQuantiles(), perAxisQuantileQType.getScales(),
-                perAxisQuantileQType.getZeroPoints(), newAxis, perAxisQuantileQType.getStorageTypeMin(),
-                perAxisQuantileQType.getStorageTypeMax());
-    }
-
-    return mlir::quant::UniformQuantizedPerAxisType::get(
-            perAxisQType.getFlags(), perAxisQType.getStorageType(), perAxisQType.getExpressedType(),
-            perAxisQType.getScales(), perAxisQType.getZeroPoints(), newAxis, perAxisQType.getStorageTypeMin(),
-            perAxisQType.getStorageTypeMax());
+    return changeAxis(inputElemType, newAxis);
 }

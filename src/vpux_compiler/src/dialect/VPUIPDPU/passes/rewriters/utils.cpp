@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/VPUIPDPU/rewriters/utils.hpp"
+#include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/compiler/dialect/VPUASM/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIPDPU/attributes.hpp"
@@ -87,18 +88,26 @@ mlir::Type getBaseType(mlir::Type type, bool isPalletModeEnabled) {
     }
 
     if (isPalletModeEnabled) {
-        VPUX_THROW_UNLESS(
-                mlir::isa<mlir::quant::QuantileQuantizedType>(type) ||
-                        mlir::isa<mlir::quant::QuantileQuantizedPerAxisType>(type),
-                "Pallet mode requires weights to be of QuantileQuantizedType or QuantileQuantizedPerAxisType, "
-                "containing the quantile look up table");
+        // Lambda to check if a type is UniformQuantized(PerAxis) with QuantileType storage
+        auto isQuantileType = [](mlir::Type ty) -> bool {
+            if (mlir::isa<mlir::quant::UniformQuantizedType, mlir::quant::UniformQuantizedPerAxisType>(ty)) {
+                const auto quantized = mlir::cast<mlir::quant::QuantizedType>(ty);
+                return mlir::isa<vpux::type::QuantileType>(quantized.getStorageType());
+            }
+            return false;
+        };
+
+        VPUX_THROW_UNLESS(isQuantileType(type),
+                          "Pallet mode requires weights to be of UniformQuantizedType with storage of "
+                          "QuantileType or UniformQuantizedPerAxisType with storage of QuantileType, "
+                          "containing the quantile look up table");
 
         // In case of palletization the actual de-palletized weight type is contained in the quantileType field
-        if (auto quantType = mlir::dyn_cast<mlir::quant::QuantileQuantizedType>(type)) {
-            return quantType.getQuantileType();
-        }
-        if (auto quantType = mlir::dyn_cast<mlir::quant::QuantileQuantizedPerAxisType>(type)) {
-            return quantType.getQuantileType();
+        if (mlir::isa<mlir::quant::UniformQuantizedType, mlir::quant::UniformQuantizedPerAxisType>(type)) {
+            auto quantized = mlir::cast<mlir::quant::QuantizedType>(type);
+            if (const auto quantileStorageType = mlir::dyn_cast<vpux::type::QuantileType>(quantized.getStorageType())) {
+                return quantileStorageType.getQuantileType();
+            }
         }
     }
 
@@ -216,7 +225,11 @@ int64_t getZeroPoint(vpux::NDTypeInterface type) {
     int64_t zeroPointVal = 0;
     auto elemType = type.getElementType();
     if (auto qType = mlir::dyn_cast<mlir::quant::QuantizedType>(elemType)) {
-        if (auto intType = mlir::dyn_cast<mlir::IntegerType>(qType.getStorageType())) {
+        auto storageType = qType.getStorageType();
+        if (const auto quantileStorageType = mlir::dyn_cast<vpux::type::QuantileType>(storageType)) {
+            storageType = quantileStorageType.getStorageType();
+        }
+        if (auto intType = mlir::dyn_cast<mlir::IntegerType>(storageType)) {
             if (intType.getWidth() == 8) {
                 zeroPointVal = VPUIPDPU::getZeroPoints<uint8_t>(type.getElementType())[0];
             } else if (intType.getWidth() == 16) {

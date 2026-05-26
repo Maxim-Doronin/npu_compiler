@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --convert-reduce-to-pooling %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW" --convert-reduce-to-pooling %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL: @ConvertReduceMeanToPooling4D
 // CHECK-SAME: [[INPUT:%.+]]: tensor<1x1x1x50xf16>
@@ -304,4 +304,75 @@ func.func @ConvertReduceSumToPoolingOnBatchDim(%arg0: tensor<8x1x4x256xf16>) -> 
   // CHECK:    [[RESHAPED_OUT:%.+]] = IE.Reshape([[TRANSPOSED_OUT]]) {shape_value = [1, 4, 256]} : tensor<1x1x64x16xf16> -> tensor<1x4x256xf16>
 
   // CHECK:    return [[RESHAPED_OUT]] : tensor<1x4x256xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @ConvertReduceMeanToPoolingWithNonConsecutiveAxes
+// CHECK-SAME: [[INPUT:%.+]]: tensor<1x3136x64xf16>
+func.func @ConvertReduceMeanToPoolingWithNonConsecutiveAxes(%arg0: tensor<1x3136x64xf16>) -> tensor<3136xf16> {
+  %0 = IE.ReduceMean(%arg0) {axes_value = [0, 2]} : tensor<1x3136x64xf16> -> tensor<3136xf16>
+  return %0 : tensor<3136xf16>
+
+  // CHECK-NOT:   ReduceMean
+  // CHECK:    [[RESHAPE_IN:%.+]] = IE.Reshape([[INPUT]]) {shape_value = [1, 3136, 8, 8]} : tensor<1x3136x64xf16> -> tensor<1x3136x8x8xf16>
+  // CHECK:    [[AVGPOOL:%.+]] = IE.AvgPool([[RESHAPE_IN]]) {exclude_pads, kernel_size = [8, 8], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x3136x8x8xf16> -> tensor<1x3136x1x1xf16>
+  // CHECK:    [[RESHAPE_OUT:%.+]] = IE.Reshape([[AVGPOOL]]) {shape_value = [1, 3136, 1]} : tensor<1x3136x1x1xf16> -> tensor<1x3136x1xf16>
+  // CHECK:    [[RESHAPE_OUT_1:%.+]] = IE.Reshape([[RESHAPE_OUT]]) {shape_value = [3136]} : tensor<1x3136x1xf16> -> tensor<3136xf16>
+  // CHECK:    return [[RESHAPE_OUT_1]] : tensor<3136xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @ConvertReduceSumToPoolingWithNonConsecutiveAxes
+// CHECK-SAME: [[INPUT:%.+]]: tensor<1x3136x64xf16>
+func.func @ConvertReduceSumToPoolingWithNonConsecutiveAxes(%arg0: tensor<1x3136x64xf16>) -> tensor<3136xf16> {
+  %0 = IE.ReduceSum(%arg0) {axes_value = [0, 2]} : tensor<1x3136x64xf16> -> tensor<3136xf16>
+  return %0 : tensor<3136xf16>
+
+  // CHECK-NOT: ReduceSum
+
+  // CHECK-DAG: [[SCALE:%.+]] = const.Declare tensor<1xf16> = dense<6.400000e+01> : tensor<1xf16>
+  // CHECK:     [[RESHAPE_IN:%.+]] = IE.Reshape([[INPUT]]) {shape_value = [1, 3136, 8, 8]} : tensor<1x3136x64xf16> -> tensor<1x3136x8x8xf16>
+  // CHECK:     [[AVGPOOL:%.+]] = IE.AvgPool([[RESHAPE_IN]]) {exclude_pads, kernel_size = [8, 8], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x3136x8x8xf16> -> tensor<1x3136x1x1xf16>
+  // CHECK:     [[MUL:%.+]] = IE.Multiply([[AVGPOOL]], [[SCALE]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1x3136x1x1xf16>, tensor<1xf16> -> tensor<1x3136x1x1xf16>
+  // CHECK:     [[RESHAPE_OUT:%.+]] = IE.Reshape([[MUL]]) {shape_value = [1, 3136, 1]} : tensor<1x3136x1x1xf16> -> tensor<1x3136x1xf16>
+  // CHECK:     [[RESHAPE_OUT_1:%.+]] = IE.Reshape([[RESHAPE_OUT]]) {shape_value = [3136]} : tensor<1x3136x1xf16> -> tensor<3136xf16>
+  // CHECK:     return [[RESHAPE_OUT_1]] : tensor<3136xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @ConvertReduceMinToPoolingWithNonConsecutiveAxes
+// CHECK-SAME: [[INPUT:%.+]]: tensor<1x3136x64xf16>
+func.func @ConvertReduceMinToPoolingWithNonConsecutiveAxes(%arg0: tensor<1x3136x64xf16>) -> tensor<3136xf16> {
+  %0 = IE.ReduceMin(%arg0) {axes_value = [0, 2]} : tensor<1x3136x64xf16> -> tensor<3136xf16>
+  return %0 : tensor<3136xf16>
+
+  // CHECK-NOT:   ReduceMin
+
+  // CHECK:    [[RESHAPE_IN:%.+]] = IE.Reshape([[INPUT]]) {shape_value = [1, 3136, 8, 8]} : tensor<1x3136x64xf16> -> tensor<1x3136x8x8xf16>
+  // CHECK:    [[NEG:%.+]] = IE.Negative([[RESHAPE_IN]]) : tensor<1x3136x8x8xf16> -> tensor<1x3136x8x8xf16>
+  // CHECK:    [[MAX_POOL:%.+]] = IE.MaxPool([[NEG]]) {kernel_size = [8, 8], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x3136x8x8xf16> -> tensor<1x3136x1x1xf16>
+  // CHECK:    [[NEG_OUT:%.+]] = IE.Negative([[MAX_POOL]]) : tensor<1x3136x1x1xf16> -> tensor<1x3136x1x1xf16>
+  // CHECK:    [[RESHAPE_OUT:%.+]] = IE.Reshape([[NEG_OUT]]) {shape_value = [1, 3136, 1]} : tensor<1x3136x1x1xf16> -> tensor<1x3136x1xf16>
+  // CHECK:    [[RESHAPE_OUT_1:%.+]] = IE.Reshape([[RESHAPE_OUT]]) {shape_value = [3136]} : tensor<1x3136x1xf16> -> tensor<3136xf16>
+  // CHECK:    return [[RESHAPE_OUT_1]] : tensor<3136xf16>
+}
+
+// -----
+
+// CHECK-LABEL: @ConvertReduceMaxToPoolingWithNonConsecutiveAxes
+// CHECK-SAME: [[INPUT:%.+]]: tensor<1x3136x64xf16>
+func.func @ConvertReduceMaxToPoolingWithNonConsecutiveAxes(%arg0: tensor<1x3136x64xf16>) -> tensor<3136xf16> {
+  %0 = IE.ReduceMax(%arg0) {axes_value = [0, 2]} : tensor<1x3136x64xf16> -> tensor<3136xf16>
+  return %0 : tensor<3136xf16>
+
+  // CHECK-NOT:   ReduceMax
+
+  // CHECK:    [[RESHAPE_IN:%.+]] = IE.Reshape([[INPUT]]) {shape_value = [1, 3136, 8, 8]} : tensor<1x3136x64xf16> -> tensor<1x3136x8x8xf16>
+  // CHECK:    [[MAX_POOL:%.+]] = IE.MaxPool([[RESHAPE_IN]]) {kernel_size = [8, 8], pads_begin = [0, 0], pads_end = [0, 0], rounding_type = #IE.rounding_type<FLOOR>, strides = [1, 1]} : tensor<1x3136x8x8xf16> -> tensor<1x3136x1x1xf16>
+  // CHECK:    [[RESHAPE_OUT:%.+]] = IE.Reshape([[MAX_POOL]]) {shape_value = [1, 3136, 1]} : tensor<1x3136x1x1xf16> -> tensor<1x3136x1xf16>
+  // CHECK:    [[RESHAPE_OUT_1:%.+]] = IE.Reshape([[RESHAPE_OUT]]) {shape_value = [3136]} : tensor<1x3136x1xf16> -> tensor<3136xf16>
+  // CHECK:    return [[RESHAPE_OUT_1]] : tensor<3136xf16>
 }

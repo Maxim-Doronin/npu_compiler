@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --add-profiling-section %s | FileCheck %s
-// REQUIRES: arch-NPU40XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --add-profiling-section %s | FileCheck %s
+// REQUIRES: platform-NPU4000
 
 module @AddProfilingSection {
     net.NetworkInfo entryPoint : @main inputsInfo : {
@@ -14,7 +14,7 @@ module @AddProfilingSection {
     } profilingOutputsInfo : {
     }
     func.func @main() {
-        ELF.Main @ELFMain {
+        ELF.Main {
             VPUASM.ProfilingMetadata @ProfilingMetadata {metadata = dense<1> : vector<184xui8>}
         }
         return

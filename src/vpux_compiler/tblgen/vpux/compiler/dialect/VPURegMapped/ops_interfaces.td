@@ -196,6 +196,21 @@ def VPURegMapped_NPURegDescriptorOpInterface: OpInterface<"NPURegDescriptorOpInt
 // SerializedVersionInterface
 //
 
+def VPURegMapped_MIVersionInterface : OpInterface<"MIVersionInterface"> {
+    let description = "Interface for ops that serve as a provider of Mapped Inference version.";
+    let cppNamespace = "vpux::VPURegMapped";
+
+    let methods = [
+        InterfaceMethod<
+            "Get version of the current op.",
+            "elf::Version",
+            "getVersion", (ins), [{}], [{
+                return ::elf::Version{$_op.getMajor(), $_op.getMinor(), $_op.getPatch()};
+            }]
+        >
+    ];
+}
+
 def VPURegMapped_SerializedVersionInterface : OpInterface<"SerializedVersionInterface"> {
     let description = "Update version info inside ops that contain that info";
     let cppNamespace = "vpux::VPURegMapped";

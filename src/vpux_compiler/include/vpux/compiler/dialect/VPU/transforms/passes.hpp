@@ -159,15 +159,13 @@ struct TilingOptions : mlir::PassPipelineOptions<TilingOptions> {
             ::llvm::cl::desc("Option for enabling WLM enqueue barriers search algorithm at VPURT. To be used only for "
                              "experiments."),
             ::llvm::cl::init(WorkloadManagementMode::PWLM_V0_1_PAGES),
-            ::llvm::cl::values(clEnumValN(WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES",
-                                          "WLM with split into subgraphs (pages)"),
-                               clEnumValN(WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO",
-                                          "WLM enqueue barriers search algorithm at VPURT ENABLED"),
-                               clEnumValN(WorkloadManagementMode::PWLM_V0_1_PAGES, "PWLM_V0_1_PAGES",
-                                          "PWLM with split into subgraphs (pages)"),
-                               clEnumValN(WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA",
-                                          "WLM enqueue barriers search algorithm at VPURT DISABLED. Use LCA based "
-                                          "enqueue algorithm at VPUMI"))};
+            ::llvm::cl::values(
+                    clEnumValN(WorkloadManagementMode::PWLM_V0_1_PAGES, "PWLM_V0_1_PAGES",
+                               "PWLM with split into subgraphs (pages)"),
+                    clEnumValN(WorkloadManagementMode::PWLM_V0_1_PAGES, "PWLM_V0_LCA",
+                               "This is a deprecated WLM mode which is no longer supported. The option is kept for "
+                               "backwards compatibility only and the mode redirects to PWLM_V0_1_PAGES mode, which has "
+                               "the same vpu-fw compatibility but offers numerous stability improvements."))};
 
     TilingOptions() = default;
 
@@ -188,6 +186,9 @@ struct ScfComputeOpsOutliningOptions : mlir::PassPipelineOptions<ScfComputeOpsOu
 
     BoolOption enableCascadedUnrolling{*this, "cascaded-unrolling", llvm::cl::desc("Enable cascaded loop unrolling"),
                                        llvm::cl::init(false)};
+
+    BoolOption enableAutoUnrolling{*this, "auto-unrolling", llvm::cl::desc("Enable automatic unrolling factor"),
+                                   llvm::cl::init(false)};
 
     ScfComputeOpsOutliningOptions() = default;
 };
@@ -218,6 +219,20 @@ struct InitCompilerOptions : mlir::PassPipelineOptions<InitCompilerOptions> {
     // SetupBarrierVariantConstraints pass options
     BoolOption workloadManagementEnable{*this, "workload-management-enable",
                                         llvm::cl::desc("Enable partial workload management"), llvm::cl::init(true)};
+
+    mlir::detail::PassOptions::Option<WorkloadManagementBarrierProgrammingMode>
+            workloadManagementBarrierProgrammingMode{
+                    *this, "workload-management-barrier-programming-mode",
+                    ::llvm::cl::desc(
+                            "Option for enabling different barrier programming algorithms. To be used only for "
+                            "experiments."),
+                    ::llvm::cl::values(
+                            clEnumValN(WorkloadManagementBarrierProgrammingMode::LEGACY, "LEGACY", "Legacy Mode"),
+                            clEnumValN(WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED,
+                                       "ALL_BARRIER_DMAS_SCHEDULED", "Compiler generates DMAs to program all barriers"),
+                            clEnumValN(WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED_4K,
+                                       "ALL_BARRIER_DMAS_SCHEDULED_4K",
+                                       "Compiler generates DMAs to program all barriers leveraging 4K barrier block"))};
 
     BoolOption enableSwKernelFifoPerShaveEngine{*this, "enable-sw-kernel-fifo-per-shave-engine",
                                                 llvm::cl::desc("Enable dedicated FIFO for each ActShave engine"),
@@ -257,7 +272,7 @@ struct InitCompilerOptions : mlir::PassPipelineOptions<InitCompilerOptions> {
                                                   llvm::cl::init(false)};
 
     BoolOption enableAdaptiveStripping{*this, "enable-adaptive-stripping", llvm::cl::desc("Enable adaptive stripping"),
-                                       llvm::cl::init(false)};
+                                       llvm::cl::init(true)};
 
     BoolOption enableQDQOptimizationAggressive{*this, "enable-qdq-optimization-aggressive",
                                                llvm::cl::desc("Enable aggressive QDQ optimizations"),
@@ -303,6 +318,10 @@ struct InitCompilerOptions : mlir::PassPipelineOptions<InitCompilerOptions> {
             llvm::cl::init(false)};
 
     BoolOption enableProfiling{*this, "enable-profiling", llvm::cl::desc("Enable profiling"), llvm::cl::init(false)};
+
+    StrOption disabledPasses{*this, "disabled-passes",
+                             llvm::cl::desc("Regex for disabling specific passes in the compiler pipeline"),
+                             llvm::cl::init("")};
 
     InitCompilerOptions() = default;
 
@@ -374,6 +393,8 @@ std::unique_ptr<mlir::Pass> createAdjustForOptimizedLayersPass(Logger log = Logg
 std::unique_ptr<mlir::Pass> createInitResourcesPass();
 std::unique_ptr<mlir::Pass> createInitResourcesPass(const InitCompilerOptions& initCompilerOptions,
                                                     Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createRegisterPassDisablingExecutionContextPass(
+        const InitCompilerOptions& initCompilerOptions = {}, Logger log = Logger::global());
 
 std::unique_ptr<mlir::Pass> createDMATaskProfilingReserveMemPass(const std::string& enableDMAProfiling = "false",
                                                                  Logger log = Logger::global());
@@ -381,7 +402,7 @@ std::unique_ptr<mlir::Pass> createCompressDmaReserveMemPass(Logger log = Logger:
 std::unique_ptr<mlir::Pass> createSWKernelInstructionPrefetchReserveMemForDummyKernelsPass(
         Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createSWKernelDataPrefetchReserveMemPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createShaveStacksReserveMemPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createCMXStackFramesReserveMemPass(Logger log = Logger::global());
 
 std::unique_ptr<mlir::Pass> createOptimizeSharedInputCopyForConcatPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createCMXConcatPass(Logger log = Logger::global());
@@ -403,27 +424,24 @@ std::unique_ptr<mlir::Pass> createMultiClusterStrategyAssignmentPass(
         bool enablePrefetchTiling = true, const int clusteredOpThreshold = CLUSTERED_OP_THRESHOLD_FOR_TILING_CACHE,
         StringRef mcOptimizationScope = "subgraph", Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createManualStrategyUtilsPass();
-std::unique_ptr<mlir::Pass> createManualStrategyUtilsPass(bool writeStrategyToJSON,
-                                                          StringRef writeStrategyFileLocation = "strategy_out.json",
-                                                          bool readStrategyFromJSON = false,
-                                                          StringRef readStrategyFileLocation = "strategy_in.json",
-
-                                                          Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createManualStrategyUtilsPass(bool writeStrategyToJSON,
-                                                          StringRef writeStrategyFileLocation = "strategy_out.json",
-                                                          bool readStrategyFromJSON = false,
-                                                          StringRef readStrategyFileLocation = "strategy_in.json",
-                                                          bool updateStrategyForOutputPipelining = false,
-                                                          Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createManualStrategyUtilsPass(
-        bool writeStrategyToJSON, StringRef writeStrategyFileLocation = "strategy_out.json",
-        bool readStrategyFromJSON = false, StringRef readStrategyFileLocation = "strategy_in.json",
+        bool writeStrategyToJSON, StringRef writeStrategyFileLocation = writeStrategyDefaultFileLocation,
+        bool readStrategyFromJSON = false, StringRef readStrategyFileLocation = readStrategyDefaultFileLocation,
+
+        Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createManualStrategyUtilsPass(
+        bool writeStrategyToJSON, StringRef writeStrategyFileLocation = writeStrategyDefaultFileLocation,
+        bool readStrategyFromJSON = false, StringRef readStrategyFileLocation = readStrategyDefaultFileLocation,
+        bool updateStrategyForOutputPipelining = false, Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createManualStrategyUtilsPass(
+        bool writeStrategyToJSON, StringRef writeStrategyFileLocation = writeStrategyDefaultFileLocation,
+        bool readStrategyFromJSON = false, StringRef readStrategyFileLocation = readStrategyDefaultFileLocation,
         bool dumpStrategyToLog = false, bool updateStrategyForOutputPipelining = false, Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createManualStrategyUtilsPass(
-        bool writeStrategyToJSON, StringRef writeStrategyFileLocation = "strategy_out.json",
-        bool readStrategyFromJSON = false, StringRef readStrategyFileLocation = "strategy_in.json",
+        bool writeStrategyToJSON, StringRef writeStrategyFileLocation = writeStrategyDefaultFileLocation,
+        bool readStrategyFromJSON = false, StringRef readStrategyFileLocation = readStrategyDefaultFileLocation,
         bool dumpStrategyToLog = false, bool updateStrategyForOutputPipelining = false,
-        std::string contextId = "default", Logger log = Logger::global());
+        const std::string& contextId = "default", Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createDetectionOutputDecompositionPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createSplitGRUSequencePass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createTileLSTMSequencePass(Logger log = Logger::global());
@@ -522,9 +540,8 @@ std::unique_ptr<mlir::Pass> createVerticalFusionOutliningPass(const TilingOption
 std::unique_ptr<mlir::Pass> createUnrollUnusedVerticalFusionRegionPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createEnsureNCEOpsSizeRequirementsPass(
         bool enableOutputEnsurance = true, bool enableDequantWeightEnsuranceBeforeStrategy = true,
-        bool skipNonConvOC = false, Logger log = Logger::global());
+        StringRef skipConvOC = "SKIP_NONE", StringRef skipEltwiseOC = "SKIP_NONE", Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createConvolutionSplitOverInputChannelPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createFuseClampPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createFuseConvertPass(Logger log = Logger::global());
 
 // If optimizeOnlyOuterConcat is true, only optimize when concat dimension is the highest dimension
@@ -536,7 +553,7 @@ std::unique_ptr<mlir::Pass> createStrategyManagerImplPass(bool enablePrefetchTil
 std::unique_ptr<mlir::Pass> createEfficientIROrderPass(bool enableReorderConcatBranches = false,
                                                        Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createRemoveOutputSparseToAvoidSuboptimalDPUWorkloadsPass(Logger log = Logger::global());
-std::unique_ptr<mlir::Pass> createFlashSDPATilingStrategyEstimationPass(Logger log = Logger::global());
+std::unique_ptr<mlir::Pass> createFlashSDPATilingPass(bool enablePipelining = true, Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createUnrollFlashSDPAPass(Logger log = Logger::global());
 
 void buildActivationSparsityPipeline(mlir::OpPassManager& pm, const VPU::ActivationSparsityOptions& options,
@@ -552,7 +569,7 @@ void buildTilingPipeline(mlir::OpPassManager& pm, const VPU::TilingOptions& opti
 
 void buildScfComputeOpsOutliningPipeline(mlir::OpPassManager& pm, const vpux::StrOption& loopUnrollFactor,
                                          bool enableProfiling, const vpux::BoolOption& enableCascadedUnrolling,
-                                         Logger log = Logger::global());
+                                         const vpux::BoolOption& enableAutoUnrolling, Logger log = Logger::global());
 
 //
 // Strategy Pipeline
@@ -625,9 +642,6 @@ std::unique_ptr<mlir::Pass> createConcatInitResultsPass(StringRef wsExtractionMo
 // DefaultHWOptions(for all devices)
 //
 struct DefaultHWOptionsDialectBase : public virtual vpux::DefaultHWOptionsBase {
-    BoolOption enableInPlaceEltwise{*this, "enable-in-place-eltwise",
-                                    llvm::cl::desc("Enable inplace eltwise op execution"), llvm::cl::init(true)};
-
     BoolOption enableSMPipeline{*this, "enable-SM-Pipeline", llvm::cl::desc("Enable Strategy Manager pipeline"),
                                 llvm::cl::init(false)};
 
@@ -651,15 +665,6 @@ struct DefaultHWOptionsDialectBase : public virtual vpux::DefaultHWOptionsBase {
     // TilingOptions
     BoolOption enableVerticalFusion{*this, "vertical-fusion", llvm::cl::desc("Enable vertical fusion feature"),
                                     llvm::cl::init(true)};
-
-    BoolOption readStrategyFromJson{*this, "read-strategy-from-json",
-                                    llvm::cl::desc("Read the multiclustering and tiling strategy from a JSON file"),
-                                    llvm::cl::init(false)};
-
-    BoolOption writeStrategyToJson{*this, "write-strategy-to-json",
-                                   llvm::cl::desc("Write the multiclustering and tiling strategy to a JSON file"),
-                                   llvm::cl::init(false)};
-
     BoolOption dumpStrategyToLog{*this, "dump-strategy-to-log",
                                  llvm::cl::desc("Dump the multiclustering and tiling strategy to log info"),
                                  llvm::cl::init(false)};
@@ -680,7 +685,8 @@ std::unique_ptr<mlir::Pass> createConvertVPUOpsToUpstreamOpsPass(Logger log = Lo
 std::unique_ptr<mlir::Pass> createRestorePadAttrAfterSCFTilingPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createAdjustBlockSizeForScfTilingPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createUnrollSCFLoopPass(StringRef loopUnrollFactor = "",
-                                                    bool enableCascadedUnrolling = true, Logger log = Logger::global());
+                                                    bool enableCascadedUnrolling = true,
+                                                    bool enableAutoUnrolling = false, Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createFullUnrollSCFLoopPass(Logger log = Logger::global());
 std::unique_ptr<mlir::Pass> createSCFLoopAnalysisAndDebugPass(Logger log = Logger::global());
 

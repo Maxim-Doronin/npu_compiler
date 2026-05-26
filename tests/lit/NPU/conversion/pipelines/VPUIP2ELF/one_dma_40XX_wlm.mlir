@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --lower-VPUIP-to-ELF %s | FileCheck %s
-// REQUIRES: arch-NPU40XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --lower-VPUIP-to-ELF %s | FileCheck %s
+// REQUIRES: platform-NPU4000
 
 module @OneDMAWithoutAttributes {
     net.NetworkInfo entryPoint : @main inputsInfo : {
@@ -31,7 +31,7 @@ module @OneDMAWithoutAttributes {
     }
     return %arg1 : memref<1x2x3x4xf16, @DDR>
   }
-  // CHECK:       ELF.Main @ELFMain
+  // CHECK:       ELF.Main
   // CHECK-DAG:       ELF.CreateLogicalSection @io.NetworkInput.0
   // CHECK-DAG:       ELF.CreateLogicalSection @io.NetworkOutput.0
 

@@ -471,6 +471,59 @@ VPUIP::GenericReshapeOp convertMemPermuteHCWNAsDMA(VPUIP::SwKernelOp swKernelOp,
     return rewriter.create<VPUIP::GenericReshapeOp>(swKernelOp->getLoc(), outType, secondPermDmaOp);
 }
 
+//
+// Convert MemPermute NCHW->CNWH to 2 permuteDMAs
+// MemPermute NCHW->CNWH, Permute pattern: [d0, d1, d2, d3] -> [d1, d0, d3, d2]
+// For example, MemPermute NCHW->CNWH:
+//            Input                            :    4x86x256x4xf16#NCHW
+//              |
+//           MemPermute                        :    memPerm: (d0, d1, d2, d3) -> (d1, d0, d3, d2)
+//              |
+//            Output                           :    86x4x4x256xf16#CNWH
+// Convert to:
+//            Input                            :    4x86x256x4xf16#NCHW
+//              |
+//         GenericReshape 1                    :    1x344x256x4xf16#NCHW
+//              |
+//         PermuteDMA 1                        :    1x344x4x256xf16#NCHW ([0, 1, 3, 2]: NCWH)
+//              |
+//         GenericReshape 2                    :    1x4x86x1024xf16#NCHW
+//              |
+//         PermuteDMA 2                        :    1x86x4x1024xf16#NCHW ([0, 2, 1, 3]: NHCW)
+//              |
+//         GenericReshape 3                    :    86x4x4x256xf16#NCHW
+//              |
+//            Output                           :    86x4x4x256xf16#NCHW
+//
+VPUIP::GenericReshapeOp convertMemPermuteCNWHAsDMA(VPUIP::SwKernelOp swKernelOp, mlir::Value input,
+                                                   mlir::PatternRewriter& rewriter) {
+    const auto outType = mlir::cast<vpux::NDTypeInterface>(swKernelOp->getResult(0).getType());
+    // Create genericReshapeOp for first permuteDMAOp: merge N*C -> [1, N*C, H, W]
+    const auto mergedPerm = DimsOrder::NHCW.toAffineMap(rewriter.getContext());
+    auto inGenReshapeOp = createGenericReshape(swKernelOp, input, outType, mergedPerm, rewriter);
+    auto inGenReshapeType = mlir::dyn_cast<vpux::NDTypeInterface>(inGenReshapeOp.getOutput().getType());
+    // Create first permuteDMAOp: permutation is [d0, d1, d3, d2] (NCWH, swap H<->W)
+    auto firstPermDmaOp =
+            createPermuteDMA(swKernelOp, inGenReshapeOp, inGenReshapeType, DimsOrder::NCWH, outType, rewriter);
+    auto firstPermDMAType = mlir::dyn_cast<vpux::NDTypeInterface>(firstPermDmaOp.getOutput().getType());
+    // Create genericReshapeOp for second permuteDMAOp: [1, N*C, W, H] -> [1, N, C, W*H]
+    // The N*C block is N-major in memory, so we split it as [N, C] and keep W*H fused.
+    auto midGenReshapeType = firstPermDMAType;
+    auto inMemShape = Shape(mlir::cast<vpux::NDTypeInterface>(input.getType()).getMemShape().raw());
+    auto midGenReshapeNewMemShape = Shape({1, inMemShape[Dims4D::Act::N], inMemShape[Dims4D::Act::C],
+                                           inMemShape[Dims4D::Act::W] * inMemShape[Dims4D::Act::H]});
+    midGenReshapeType =
+            VPUIP::changeShapeWithMemShape(&midGenReshapeType, midGenReshapeNewMemShape, outType.getDimsOrder());
+    auto midGenReshapeOp =
+            rewriter.create<VPUIP::GenericReshapeOp>(swKernelOp->getLoc(), midGenReshapeType, firstPermDmaOp);
+    auto midGenReshapeOutType = mlir::dyn_cast<vpux::NDTypeInterface>(midGenReshapeOp.getOutput().getType());
+    // Create second permuteDMAOp: permutation is [d0, d2, d1, d3] (NHCW, swap N<->C)
+    auto secondPermDmaOp =
+            createPermuteDMA(swKernelOp, midGenReshapeOp, midGenReshapeOutType, DimsOrder::NHCW, outType, rewriter);
+    // Create genericReshapeOp for output
+    return rewriter.create<VPUIP::GenericReshapeOp>(swKernelOp->getLoc(), outType, secondPermDmaOp);
+}
+
 mlir::LogicalResult ConvertToDMAPass::SwKernelMemPermuteConverter::matchAndRewrite(
         VPUIP::SwKernelOp swKernelOp, mlir::PatternRewriter& rewriter) const {
     if (!VPUIP::isMemPermSwKernel(swKernelOp)) {
@@ -543,6 +596,12 @@ mlir::LogicalResult ConvertToDMAPass::SwKernelMemPermuteConverter::matchAndRewri
                memPerm.value() == DimsOrder::WCHN.toAffineMap(rewriter.getContext())) {
         // Convert MemPermute NCHW->WCHN to 2 permuteDMAs
         auto newOp = convertMemPermuteWCHNAsDMA(swKernelOp, input, rewriter);
+        rewriter.replaceOp(swKernelOp, newOp.getOutput());
+
+        return mlir::success();
+    } else if (mergedPerm == DimsOrder::CNWH.toAffineMap(rewriter.getContext())) {
+        // Convert MemPermute NCHW->CNWH to 2 permuteDMAs
+        auto newOp = convertMemPermuteCNWHAsDMA(swKernelOp, input, rewriter);
         rewriter.replaceOp(swKernelOp, newOp.getOutput());
 
         return mlir::success();
@@ -990,11 +1049,29 @@ void ConvertToDMAPass::safeRunOnFunc() {
             return true;
         }
 
-        const auto inputType = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType());
+        auto input = op->getOperand(0);
+        const auto inputType = mlir::cast<vpux::NDTypeInterface>(input.getType());
         const auto outputType = mlir::cast<vpux::NDTypeInterface>(op->getResult(0).getType());
 
-        if (vpux::isSubByteType(inputType.getElementType())) {
-            return true;
+        if (auto quantizedType = mlir::dyn_cast_if_present<mlir::quant::QuantizedType>(inputType.getElementType())) {
+            if (vpux::isSubByteType(inputType.getElementType())) {
+                const auto bitWidth = quantizedType.getStorageTypeIntegralWidth();
+                const auto elementsInOneByte = CHAR_BIT / bitWidth;
+
+                const auto inputShape = getShape(input);
+
+                const auto isNAlign =
+                        inputShape[Dims4D::Act::N] == 1 || inputShape[Dims4D::Act::N] % elementsInOneByte == 0;
+                const auto isCAlign =
+                        inputShape[Dims4D::Act::C] == 1 || inputShape[Dims4D::Act::C] % elementsInOneByte == 0;
+                const auto isHAlign =
+                        inputShape[Dims4D::Act::H] == 1 || inputShape[Dims4D::Act::H] % elementsInOneByte == 0;
+                const auto isWAlign =
+                        inputShape[Dims4D::Act::W] == 1 || inputShape[Dims4D::Act::W] % elementsInOneByte == 0;
+                if (!isNAlign || !isCAlign || !isHAlign || !isWAlign) {
+                    return true;
+                }
+            }
         }
 
         if (mlir::isa<VPUIP::SwKernelOp>(op)) {

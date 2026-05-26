@@ -1,12 +1,12 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include <gtest/gtest.h>
 #include <iostream>
 #include <random>
-#include "vpux/utils/algorithms/simulated_annealing.hpp"
+#include "vpux/utils/algorithm/simulated_annealing.hpp"
 
 using AlgorithmLibraryUnitTests = ::testing::Test;
 

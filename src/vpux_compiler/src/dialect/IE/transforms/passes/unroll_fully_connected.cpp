@@ -367,6 +367,7 @@ bool isBeneficialToUseReduceSumForAccumulate(IE::FullyConnectedOp origOp) {
 
 bool UnrollFullyConnected::isUnrollingBeneficial(IE::FullyConnectedOp origOp, mlir::ValueRange concatInputs) const {
     auto nestedLog = _log.nest();
+    const auto fcInputShape = getShape(origOp.getInput());
     if (auto fqParent = concatInputs.front().getDefiningOp<IE::FakeQuantizeOp>()) {
         const auto levels = fqParent.getLevels();
 
@@ -390,6 +391,11 @@ bool UnrollFullyConnected::isUnrollingBeneficial(IE::FullyConnectedOp origOp, ml
                 return false;
             }
         }
+
+        // If input is dynamic dequant operation, it is always beneficial to unroll for KV cache model
+        if (fcInputShape[Dim(0)] == 1) {
+            return true;
+        }
     }
 
     if (auto dequant = concatInputs.front().getDefiningOp<IE::DequantizeOp>()) {
@@ -401,7 +407,6 @@ bool UnrollFullyConnected::isUnrollingBeneficial(IE::FullyConnectedOp origOp, ml
         }
     }
 
-    const auto fcInputShape = getShape(origOp.getInput());
     const auto inputChannels = fcInputShape[Dim(1)];
     // Input channels are over supported DPU dim size, favor unrolling the op as input channels will need to be
     // splitted in fp16 case as well anyway

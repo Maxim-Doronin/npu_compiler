@@ -4,8 +4,8 @@
 //
 
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-groupconv-to-conv %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --convert-groupconv-to-conv %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL: @ConvertGroupConvToSingleConv
 // CHECK-SAME:    ([[ARG_0:%[^:]+]]: tensor<1x64x80x80xf16>)
@@ -384,6 +384,36 @@ func.func @ConvertGroupConvWithBigFilterToMultiConv(%arg0: tensor<1x2048x16x16xf
     // CHECK-SAME:      : tensor<1x512x16x16xf16>, tensor<1x512x16x16xf16>, tensor<1x512x16x16xf16>, tensor<1x512x16x16xf16>
     // CHECK-SAME:      -> tensor<1x2048x16x16xf16>
     // CHECK:       return [[RESULT]]
+}
+
+// -----
+
+// CHECK-LABEL: @ConvertPerTensorGroupConvToSingleConv
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<1x64x80x80xf16>
+func.func @ConvertPerTensorGroupConvToSingleConv(%arg0: tensor<1x64x80x80xf16>) -> tensor<1x64x80x80xf16> {
+    %weights = const.Declare tensor<64x16x1x3xf16> = dense<1.0> : tensor<64x16x1x3xf16>
+    %weights_low = const.Declare tensor<1x1x1x1xf16> = dense<-1.270000e+02> : tensor<1x1x1x1xf16>
+    %weights_high = const.Declare tensor<1x1x1x1xf16> = dense<1.270000e+02> : tensor<1x1x1x1xf16>
+    %fq_weights = IE.FakeQuantize(%weights, %weights_low, %weights_high, %weights_low, %weights_high) {
+                    auto_broadcast = #IE.auto_broadcast_type<NUMPY>,
+                    levels = 255 : i64
+                } : tensor<64x16x1x3xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<64x16x1x3xf16>
+    %reshape = IE.Reshape(%fq_weights) {shape_value = [64, 16, 3, 1]} : tensor<64x16x1x3xf16> -> tensor<64x16x3x1xf16>
+
+    %result = IE.GroupConvolution(%arg0, %reshape) {dilations = [1, 1], groups = 4 : i64, pads_begin = [1, 0], pads_end = [1, 0], strides = [1, 1]} : tensor<1x64x80x80xf16>, tensor<64x16x3x1xf16> -> tensor<1x64x80x80xf16>
+
+    return %result : tensor<1x64x80x80xf16>
+
+    // CHECK-NOT:   IE.GroupConvolution
+    // CHECK-DAG: [[FQ:%.+]] = const.Declare tensor<64x16x1x3xf16> = dense<1.000000e+00> : tensor<64x16x1x3xf16>
+    // CHECK-DAG: [[FQ_LOW:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<-1.270000e+02> : tensor<1x1x1x1xf16>
+    // CHECK-DAG: [[FQ_HIGH:%.+]] = const.Declare tensor<1x1x1x1xf16> = dense<1.270000e+02> : tensor<1x1x1x1xf16>
+    // CHECK: [[FQ_WEIGHTS:%.+]] = IE.FakeQuantize([[FQ]], [[FQ_LOW]], [[FQ_HIGH]], [[FQ_LOW]], [[FQ_HIGH]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 255 : i64} : tensor<64x16x1x3xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<64x16x1x3xf16>
+    // CHECK: [[RESHAPE:%.+]] = IE.Reshape([[FQ_WEIGHTS]]) {shape_value = [64, 16, 3, 1]} : tensor<64x16x1x3xf16> -> tensor<64x16x3x1xf16>
+    // CHECK: [[EXPANDED_FQ:%.+]] = IE.FakeQuantize({{%.+}}, [[FQ_LOW]], [[FQ_HIGH]], [[FQ_LOW]], [[FQ_HIGH]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>, levels = 255 : i64} : tensor<64x64x3x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16>, tensor<1x1x1x1xf16> -> tensor<64x64x3x1xf16>
+    // CHECK: [[CONV:%.+]] = IE.Convolution([[INPUT]], [[EXPANDED_FQ]]) {dilations = [1, 1], pads_begin = [1, 0], pads_end = [1, 0], strides = [1, 1]} : tensor<1x64x80x80xf16>, tensor<64x64x3x1xf16> -> tensor<1x64x80x80xf16>
+
+    // CHECK:       return [[CONV]]
 }
 
 // -----

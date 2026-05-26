@@ -32,7 +32,7 @@ Please note that this diagram does not show all libraries and dependencies in th
 - `core` – data structures required by compiler;
 - `utils` – helpers to work with core data structures;
 - `profiling_utils` – contains several model profiling infrastructure components within `::vpux::profiling` namespace;
-- etc.
+- `npu_ov_utils`, `npu_logger`, `npu_llvm_utils`, `npu_core_utils`, `npu_algo_utils` are more fundamental components that will be used by many other components, not limited to the compiler.
 
 The common part can also be split into components where the core piece is the dialect library. This scheme is used for the `IE`, `VPU`, `VPUIP`, `VPURT`, and `ELF` dialects:
 - `[dialectName]_IR` – dialect operations, attributes and types;
@@ -48,54 +48,11 @@ The platform-specific part includes both open and closed code: constants (e.g., 
 
 These are fully platform-agnostic passes. This means you will get the same result for any input IR regardless of the platform version. Such passes have to be placed in a common part. Please refer to [primer_mlir](primer_mlir.md#passes) to get more information.
 
-### Platform-specific passes
-
-Hardware specific passes are designed to work on a particular platform. From the development perspective, the only difference is that it is necessary to use the appropriate folder.
-
-You are allowed to reuse passes from an older IP generation for a newer one if the required feature is a strict superset:
-
-```C++
-// 50XX
-void vpux::buildDefaultHWModePipeline(mlir::OpPassManager& pm, const DefaultHWOptions50XX& options, Logger log) {
-    // ...
-    // Use pass from previous version here
-    pm.addPass(IE::arch40xx::createHwSpecific1Pass(log));
-    IE::buildName1Pipeline(pm, log);
-    // ...
-}
-```
-
-Platform-specific passes must also be registered in [vpux-opt](../../../../tools/vpux-opt/vpux-opt.cpp) for validation purposes. In order to do this private platform should implement `IPassesRegistry` interface:
-
-Then `registerPasses` method of the appropriate implementation will be called:
-
-```C++
-const auto passesRegistry = vpux::createPassesRegistry(archKind);
-passesRegistry->registerPasses();
-```
-
 ### "Mixed" passes
 
 Mixed passes share a common core algorithm but utilise platform-specific information to make decisions. Simply put, the same input IR produces different results across platforms.
 
 If the pass logic differs between public platforms, you can use "standard" `if/else` or `switch/case` statements:
-
-```cpp
-// Assume:
-//  - 37XX, 40XX and 50XX are public
-
-// OK: special logic for a specific public platform
-if(archKind == ArchKind::NPU37XX) {
-    // do something for 37XX
-}
-
-// OK: special logic for multiple public platforms
-if(archKind <= ArchKind::NPU40XX) {
-    // do something for 37XX and 40XX
-} else {
-    // do something for 50XX
-}
-```
 
 It’s worth noting that the information in the sections below is still useful when working with public platforms, as it can offer insights into writing flexible, platform-independent code. The core concept is to rely on [OOP](https://en.wikipedia.org/wiki/Object-oriented_programming) principles and, in particular, the [Strategy behavioral pattern](https://refactoring.guru/design-patterns/strategy). The main advantage of this pattern is that when a new platform is introduced, you don’t need to modify the pass code to change its behavior — adding a new implementation of the interface is enough. This approach helps maintain compliance with the Open/Closed Principle ([OCP](https://en.wikipedia.org/wiki/Open%E2%80%93closed_principle)).
 
@@ -159,7 +116,7 @@ def IE_MultiplyOp :
 
 This approach has a couple of drawback: 
 - in particular, in the above example, where the interface is declared for `MultiplyOp`, this automatically means that the operation supports `post-ops` for all platforms, since it can be casted to `IE::LayerWithPostOpInterface`. At the same time it is possible that `MultiplyOp` supports a specific `post-op` type(e.g. `ReLu`) for the `50XX+`, but not for `37XX` and `40XX`;
-- operation can support defferent `post-ops` depending on platform, so we will have to use `ArchKind` again to implement the interface.
+- operation can support different `post-ops` depending on platform, so we will have to use `ArchKind` again to implement the interface.
 
 To eliminate these drawbacks, we can use another option provided by `MLIR` and attach models(implementation of the interface) dynamically during network compilation, without modifying the .td files:
 
@@ -198,23 +155,55 @@ interfacesRegistry->registerInterfaces(registry);
 
 #### Rewriter-based approach
 
-In this example, the different behavior of the pass for different platforms is achieved by adding special rewriters. In the following example `FuseQuantizedOps` pass uses an instance of [`IGreedilyPassStrategy`](../../include/vpux/compiler/core/interfaces/rewriter_pattern_strategies.hpp) in order to retrieve patterns:
+In this approach, the different behavior of the pass for different platforms is achieved by adding special rewriters,
+and this is achieved by using a platform-specific dialect [
+`StrategyFactory`](../../src/NPU50XX/dialect/IE/strategies_initializer.cpp).
+The factory is created in the platform-specific initialize before starting the pipeline.
+Then the factory is stored in the MLIR context using the dialect `StrategyFactoryCache` which is a MLIR dialect interface:
+
+```c++
+// This function is called before the pipeline is started.
+void vpux::IE::StrategiesInitializer50XX::initialize(mlir::MLIRContext* context) {
+    auto factory = std::make_unique<IE::StrategyFactory50XX>();
+    // The factory is stored using a dialect interface, which is unique.
+    IE::setIEStrategyFactory(context, std::move(factory));
+}
+```
+
+The diagram below illustrates the dependencies between initialize function, `StrategyFactory` and `StrategyFactoryCache`:
+
+<p align="center">
+  <img src="images/strategy_factory.png" width="80%"><br>
+  <em>Strategy cache dependencies</em>
+</p>
+
+When the pass is executed, it retrieves the registered `StrategyFactory` from the context and uses it to get the strategy
+and its patterns for the pass.
+
+In the example of `FuseQuantizedOpsPass`, the different behavior of the pass for different platforms is achieved by
+adding special rewriters in the `addPatterns`.
+The pass retrieves an instance of `StrategyFactory` via `IE::getIEStrategyFactory(&ctx)`, and then obtains the
+`FuseQuantizedOpsStrategy` from it.
+The rewriters are added to the pattern set by calling `strategy->addPatterns(patterns, _log)`.
+Each strategy has its own implementation of addPatterns, enabling different rewriters per platform. For example, some
+rewriters may be added for 50XX but omitted for 37XX and 40XX due to hardware limitations. Alternatively, the same
+rewriter may be added for all platforms but with different parameters.
 
 ```C++
 void FuseQuantizedOpsPass::safeRunOnFunc() {
+    auto& ctx = getContext();
     auto func = getOperation();
+
     mlir::RewritePatternSet patterns(&ctx);
 
-    // creating an instance of IGreedilyPassStrategy
-    auto strategy = vpux::IE::createFuseQuantizedOpsStrategy(
-                    &ctx, func, _seOpsEnabled, _seExperimentalOpsEnabled);
-    // register platform-specific rewriters using the strategy
+    // Retrieving factory cache from the context.
+    const auto& strategyFactory = IE::getIEStrategyFactory(&ctx);
+    // Creating an instance of IGreedilyPassStrategy.
+    auto strategy = strategyFactory->getFuseQuantizedOpsStrategy(_seOpsEnabled, _seExperimentalOpsEnabled);
+    // Register platform-specific rewriters using the strategy.
     strategy->addPatterns(patterns, _log);
 
-    if (mlir::failed(applyPatternsGreedily(func, 
-            std::move(patterns), getDefaultGreedyRewriteConfig()))) {
-        signalPassFailure();
-    }
+    collectOpsAndApplyPatterns(func, std::move(patterns));
 }
 ```
 
@@ -255,7 +244,7 @@ void FuseQuantizedOpsStrategy::addPatterns(mlir::RewritePatternSet& patterns, Lo
 }
 ```
 
-The diagram below illustrates the dependencies between these classes: 
+The diagram below illustrates the dependencies between these classes:
 
 <p align="center">
   <img src="images/rewriter_base.png" width="70%"><br>
@@ -267,7 +256,7 @@ Another [`IConversionPassStrategy`](../../include/vpux/compiler/core/interfaces/
 Rewriters can also depend on interfaces to write them in the most general form — kind of combination with [MLIR-based strategy](#mlir-based-strategy).
 
 ```MLIR
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=NPU40XX allow-custom-values=true" --unroll-distributed-ops-VPUX40XX  %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="platform=NPU4000 allow-custom-values=true" --unroll-distributed-ops-VPUX40XX  %s | FileCheck %s
 ```
 
 More detailed information about vpux-opt can be found in the [how_to_test.md](../../../../guides/how_to_test.md) document.

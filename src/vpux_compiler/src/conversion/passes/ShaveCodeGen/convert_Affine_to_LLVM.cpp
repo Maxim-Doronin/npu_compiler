@@ -194,6 +194,26 @@ void ConvertAffine2LLVMPass::safeRunOnModule() {
         funcUseMap[kernelFunc].push_back(swKernelOp);
     });
 
+    // After adding support for Quantize/Dequantize per channel/axis for SCG
+    // the scale constants are stored in memref.global, which is outside of
+    // func.func modules - this ensures that they are also lowered to LLVM
+    // E204326 [ShaveCodeGen] Remove global ops/Move them to capsule arguments
+    mlir::RewritePatternSet patterns(&ctx);
+    mlir::populateFinalizeMemRefToLLVMConversionPatterns(typeConverter, patterns);
+    mlir::FrozenRewritePatternSet frozenPatterns(std::move(patterns));
+
+    // Collect GlobalOps first to avoid iterator invalidation
+    llvm::SmallVector<mlir::memref::GlobalOp> globalOps;
+    module.walk([&](mlir::memref::GlobalOp globalOp) {
+        globalOps.push_back(globalOp);
+    });
+
+    for (auto globalOp : globalOps) {
+        if (failed(applyFullConversion(globalOp, target, frozenPatterns))) {
+            signalPassFailure();
+        }
+    }
+
     for (auto funcOp :
          llvm::make_early_inc_range(vpuSwmoduleOp.getOperation()->getRegion(0).getOps<mlir::func::FuncOp>())) {
         if (funcOp.getBlocks().size() == 0 && !funcOp->hasAttr(ShaveCodeGen::IntrinsicAttrName)) {

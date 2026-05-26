@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "vpux/compiler/dialect/IE/interfaces/map_bilinear_interpolate_on_dpu_strategy.hpp"
 #include "vpux/compiler/dialect/IE/utils/interpolate_utils.hpp"
 
 #include <mlir/IR/PatternMatch.h>
@@ -19,8 +20,9 @@ bool isLegalInterpolateOp(IE::InterpolateOp op, bool interpolateAsSEOp, LogCb lo
 
 class MapBilinearInterpolateOnDPUBaseRewriter : public mlir::OpRewritePattern<IE::InterpolateOp> {
 public:
-    MapBilinearInterpolateOnDPUBaseRewriter(mlir::MLIRContext* ctx, Logger log)
-            : mlir::OpRewritePattern<IE::InterpolateOp>(ctx), _log(log) {
+    MapBilinearInterpolateOnDPUBaseRewriter(mlir::MLIRContext* ctx,
+                                            const IE::IMapBilinearInterpolateOnDPUStrategy* strategy, Logger log)
+            : mlir::OpRewritePattern<IE::InterpolateOp>(ctx), _strategy(strategy), _log(log) {
         setDebugName("MapBilinearInterpolateOnDPURewriter");
     }
 
@@ -33,6 +35,7 @@ private:
                             vpux::NDTypeInterface outType, int64_t inputSize, int64_t outputSize, vpux::Dim axis,
                             IE::MapCoordFuncT mapCoord) const;
 
+    const IE::IMapBilinearInterpolateOnDPUStrategy* _strategy;
     Logger _log;
 };
 

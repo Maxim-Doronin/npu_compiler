@@ -4,7 +4,6 @@
 //
 
 #include "vpux/compiler/locverif/locations_verifier.hpp"
-#include "vpux/compiler/core/developer_build_utils.hpp"
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/shape_manipulation.hpp"
@@ -24,6 +23,7 @@
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/strings.hpp"
+#include "vpux/utils/core/developer_build_utils.hpp"
 #include "vpux/utils/core/type_traits.hpp"
 #include "vpux/utils/profiling/common.hpp"
 

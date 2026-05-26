@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
 !InputDistributed = !VPUIP.DistributedBuffer<
@@ -72,7 +72,7 @@ func.func @ParsePrintDistributedBufferConvertDMA(%input: !Input_DDR) -> !Output_
     //CHECK:        [[INPUT_CMX:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x32x16x16xf16, #NHWC, @CMX_NN,
     //CHECK-SAME:                           {mode = "OVERLAPPED", num_tiles = [1, 1, 4, 1], kernel = [3, 3],
     //CHECK-SAME:                           pads = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, strides = [1, 1], num_clusters = 4 : i64}>
-    //CHECK:        %token = async.execute attributes {VPUIP.executor = @DMA_NN, VPUIP.num_units = 1 : i64, "async-deps-index" = 0 : i64} {
+    //CHECK:        async.execute attributes {VPUIP.executor = @DMA_NN, VPUIP.num_units = 1 : i64, "async-deps-index" = 0 : i64} {
     //CHECK:              VPUIP.ConvertDMA
     //CHECK-SAME:                          inputs([[ARG_0]] : memref<1x32x16x16xf32, #NHWC, @DDR>
     //CHECK-SAME:                          outputs([[INPUT_CMX]] : !VPUIP.DistributedBuffer
@@ -82,15 +82,15 @@ func.func @ParsePrintDistributedBufferConvertDMA(%input: !Input_DDR) -> !Output_
     //CHECK:        [[OUTPUT_CMX:%.+]] = VPURT.AllocDistributed -> !VPUIP.DistributedBuffer<1x32x16x16xf32, #NHWC, @CMX_NN,
     //CHECK-SAME:                           {mode = "OVERLAPPED", num_tiles = [1, 1, 4, 1], kernel = [3, 3],
     //CHECK-SAME:                           pads = #VPU.Padding<left = 1 : i64, right = 1 : i64, top = 1 : i64, bottom = 1 : i64>, strides = [1, 1], num_clusters = 4 : i64}>
-    //CHECK:        %token_0 = async.execute attributes {VPUIP.executor = @SHAVE_ACT, "async-deps-index" = 1 : i64} {
-    //CHECK:              %results = VPUIP.SW.Kernel
+    //CHECK:        async.execute attributes {VPUIP.executor = @SHAVE_ACT, "async-deps-index" = 1 : i64} {
+    //CHECK:              VPUIP.SW.Kernel
     //CHECK-SAME:                          inputs([[INPUT_CMX]] as {{%[^:]+}}: !VPUIP.DistributedBuffer
     //CHECK-SAME:                          outputs([[OUTPUT_CMX]] as {{%[^:]+}}: !VPUIP.DistributedBuffer
     //CHECK:              async.yield
     //CHECK:        }
 
     //CHECK:        [[OUTPUT:%.+]] = memref.alloc() : memref<1x32x16x16xf16, #NHWC, @DDR>
-    //CHECK:        %token_1 = async.execute attributes {VPUIP.executor = @DMA_NN, VPUIP.num_units = 1 : i64, "async-deps-index" = 0 : i64} {
+    //CHECK:        async.execute attributes {VPUIP.executor = @DMA_NN, VPUIP.num_units = 1 : i64, "async-deps-index" = 0 : i64} {
     //CHECK:              VPUIP.ConvertDMA
     //CHECK-SAME:                          inputs([[OUTPUT_CMX]] : !VPUIP.DistributedBuffer
     //CHECK-SAME:                          outputs([[OUTPUT]] : memref<1x32x16x16xf16, #NHWC, @DDR>

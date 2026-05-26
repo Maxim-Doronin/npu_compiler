@@ -9,8 +9,8 @@
 //  `ReifyRankedShapedTypeOpInterface` in terms of shapes of its operands
 // - outline-dim-operations: outlines these tensor and arith operations to the new output_shape func
 
-// RUN: vpux-opt --split-input-file --vpu-arch=%arch% --extract-return-shapes --resolve-shaped-type-result-dims --outline-dim-operations --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --platform=%platform% --extract-return-shapes --resolve-shaped-type-result-dims --outline-dim-operations --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 

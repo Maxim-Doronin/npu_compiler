@@ -9,7 +9,7 @@
 #include "vpux/compiler/dialect/IE/transforms/passes.hpp"
 #include "vpux/compiler/dialect/IE/utils/transpose_op_utils.hpp"
 
-#include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Transforms/WalkPatternRewriteDriver.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_SWAPMVNWITHTRANSPOSE
@@ -20,6 +20,29 @@ namespace vpux::IE {
 using namespace vpux;
 
 namespace {
+
+bool shouldConvertMVNOp(IE::MVNOp op) {
+    if (!op->hasOneUse()) {
+        return false;
+    }
+
+    if (op.getAcrossChannels()) {
+        return false;
+    }
+
+    auto prevTranspoe = op.getInput().getDefiningOp<IE::TransposeOp>();
+    auto nextTranspoe = mlir::dyn_cast<IE::TransposeOp>(*op.getOutput().getUsers().begin());
+    if (!prevTranspoe || !nextTranspoe || !prevTranspoe.getOutput().hasOneUse() ||
+        !nextTranspoe.getOutput().hasOneUse()) {
+        return false;
+    }
+
+    if (!vpux::IE::isWHSwappingTranspose(prevTranspoe) || !vpux::IE::isWHSwappingTranspose(nextTranspoe)) {
+        return false;
+    }
+
+    return !mlir::isa<mlir::BlockArgument>(prevTranspoe.getInput());
+}
 
 //
 // SwapMVNWithTranspose
@@ -66,6 +89,10 @@ The benifits are:
 */
 mlir::LogicalResult SwapMVNWithTranspose::OpSwapConverter::matchAndRewrite(IE::MVNOp origOp,
                                                                            mlir::PatternRewriter& rewriter) const {
+    if (!shouldConvertMVNOp(origOp)) {
+        return mlir::failure();
+    }
+
     const auto mvnIn = origOp.getInput();
     auto origTransposeOp = mvnIn.getDefiningOp<IE::TransposeOp>();
     auto mvnOp =
@@ -80,43 +107,12 @@ mlir::LogicalResult SwapMVNWithTranspose::OpSwapConverter::matchAndRewrite(IE::M
 }
 
 void SwapMVNWithTranspose::safeRunOnFunc() {
-    auto func = getOperation();
-
     auto& ctx = getContext();
-
-    const auto isLegalOp = [](IE::MVNOp op) -> bool {
-        if (!op->hasOneUse()) {
-            return true;
-        }
-
-        if (op.getAcrossChannels()) {
-            return true;
-        }
-
-        auto prevTranspoe = op.getInput().getDefiningOp<IE::TransposeOp>();
-        auto nextTranspoe = mlir::dyn_cast<IE::TransposeOp>(*op.getOutput().getUsers().begin());
-        if (!prevTranspoe || !nextTranspoe || !prevTranspoe.getOutput().hasOneUse() ||
-            !nextTranspoe.getOutput().hasOneUse()) {
-            return true;
-        }
-
-        if (vpux::IE::isWHSwappingTranspose(prevTranspoe) && vpux::IE::isWHSwappingTranspose(nextTranspoe)) {
-            return mlir::isa<mlir::BlockArgument>(prevTranspoe.getInput());
-        }
-
-        return true;
-    };
-
-    mlir::ConversionTarget target(ctx);
-    target.addDynamicallyLegalOp<IE::MVNOp>(isLegalOp);
-    target.addLegalOp<IE::TransposeOp>();
 
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<SwapMVNWithTranspose::OpSwapConverter>(&ctx, _log);
 
-    if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
-        signalPassFailure();
-    }
+    walkAndApplyPatterns(getOperation(), std::move(patterns));
 }
 
 }  // namespace

@@ -23,10 +23,10 @@ mlir::LogicalResult net::DataInfoOp::verify() {
     const auto precision = opUserType.getElementType();
 
     if (!(precision.isSignedInteger() || precision.isUnsignedInteger() || precision.isSignlessInteger() ||
-          mlir::isa<mlir::FloatType>(precision) || mlir::isa<type::QuantileFloatType>(precision))) {
+          mlir::isa<mlir::FloatType>(precision) || mlir::isa<type::QuantileType>(precision))) {
         return errorAt(
                 op,
-                "Operation has unsupported userType precision '{0}', it must be either Float, Integer or QuantileFloat",
+                "Operation has unsupported userType precision '{0}', it must be either Float, Integer or QuantileType",
                 precision);
     }
 

@@ -3,10 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --vpu-arch=%arch% --convert-VPUASM-to-NPUReg50XX %s | FileCheck %s
-// REQUIRES: dev-build && arch-NPU50XX
+// RUN: vpux-opt --split-input-file --platform=%platform% --convert-VPUASM-to-NPUReg50XX %s | FileCheck %s
+// REQUIRES: dev-build && platform-NPU5010
 
-module @mainModule attributes {config.arch = #config.arch_kind<NPU50XX>} {
+module @mainModule attributes {config.platform = #config.platform<NPU5010>} {
   config.ExecutorResource 1 of @DMA_NN
   config.Resources 1 of @NCE at 6.000000e+02 MHz
   net.NetworkInfo entryPoint : @dma_compressed_constant inputsInfo : {
@@ -15,7 +15,7 @@ module @mainModule attributes {config.arch = #config.arch_kind<NPU50XX>} {
     DataInfo "output_1" : tensor<1024x16x1x1xf16>
   }
   func.func @dma_compressed_constant() {
-    ELF.Main @ELFMain {
+    ELF.Main {
       ELF.CreateLogicalSection @io.NetworkInput0 aligned(1) secType(SHT_NOBITS) secFlags(VPU_SHF_USERINPUT) secLocation(<NetworkInput>) {
         VPUASM.DeclareBuffer @DeclareBuffer0 !VPUASM.Buffer< "NetworkInput"[0] <0> : memref<1024x16x1x1xf16, @DDR> :  swizzling(0)>
       }

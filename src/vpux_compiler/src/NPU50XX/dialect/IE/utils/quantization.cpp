@@ -6,12 +6,17 @@
 #include "vpux/compiler/NPU50XX/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/activation.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/eltwise.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops/pooling.hpp"
 #include "vpux/compiler/dialect/IE/utils/quantization.hpp"
 #include "vpux/compiler/dialect/VPU/utils/nce_invariant.hpp"
 
 using namespace vpux;
 
 bool IE::arch50xx::isMixPrecisionSupported(mlir::Operation* origOp, const bool, Logger log) {
+    if (mlir::isa<IE::MaxPoolOp>(origOp)) {
+        return false;
+    }
+
     if (!mlir::isa<IE::LayerWithPostOpInterface>(origOp)) {
         return false;
     }

@@ -40,11 +40,6 @@ SmallVector<mlir::Operation*> TilingContext::applySCFTilingAndFusion(mlir::Rewri
 }
 
 bool isSCFSupported(mlir::Operation* operation) {
-    // E-162801 extend for operations with > 1 output
-    if (operation->getNumResults() > 1) {
-        return false;
-    }
-
     const auto outShape = getShape(operation->getResult(0));
 
     if (outShape.isDynamic() && !mlir::isa<mlir::ReifyRankedShapedTypeOpInterface>(operation)) {

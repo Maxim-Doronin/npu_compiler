@@ -18,12 +18,22 @@ namespace npu40xx {
 using namespace vpux;
 
 constexpr bool shaveControlsDpuValue = false;
+constexpr bool shaveDpuNeedWeightTable = false;
 
 bool VPU::getShaveControlsDpu(config::ArchKind arch) {
     if (arch == config::ArchKind::NPU50XX) {
         return VPU::arch50xx::getShaveControlsDpuConstraint();
     }
+
     return shaveControlsDpuValue;
+}
+
+bool VPU::getShaveDpuNeedWeightTable(config::ArchKind arch) {
+    if (arch == config::ArchKind::NPU50XX) {
+        return VPU::arch50xx::getShaveDpuNeedWeightTable();
+    }
+
+    return shaveDpuNeedWeightTable;
 }
 
 size_t VPU::getDpuDebugDataSize(config::ArchKind /*arch*/) {

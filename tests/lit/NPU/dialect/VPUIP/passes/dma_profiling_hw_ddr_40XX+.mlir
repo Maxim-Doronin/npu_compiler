@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --dma-task-profiling-hw-ddr="dma-profiling=true" %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --dma-task-profiling-hw-ddr="dma-profiling=true" %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 !dataType = memref<1x16x4x4xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, [@CMX_NN, 0]>
 
@@ -84,7 +84,16 @@ module @DMAGraph {
 // CHECK-SAME:        inputs([[BUF_DATA_1]] :
 // CHECK-SAME:        outputs([[ARG_1]] :
 
+//
 // DMA HWP DDR2DDR data copy
+//
+
+// First check syncDMA inserted before DDR2DDR copy
+// CHECK:  VPURT.Task
+// CHECK-SAME:        waits([[PROF_BAR]] : !VPURT.Barrier)
+// CHECK-NEXT:    VPUIP.SyncDMA
+
+// Next check DDR2DDR copy
 // CHECK:  VPURT.Task
 // CHECK-SAME:        waits([[PROF_BAR]] : !VPURT.Barrier)
 // CHECK-NEXT:    VPUIP.NNDMA
@@ -202,7 +211,16 @@ module @DMAComplexGraph {
 // CHECK-SAME:        inputs([[DDR_BUF_DATA_1]] :
 // CHECK-SAME:        outputs([[ARG_1]] :
 
+//
 // DMA HWP DDR2DDR data copy
+//
+
+// First check syncDMA inserted before DDR2DDR copy
+// CHECK:  VPURT.Task
+// CHECK-SAME:        waits([[PROF_BAR]] : !VPURT.Barrier)
+// CHECK-NEXT:    VPUIP.SyncDMA
+
+// Next check DDR2DDR copy
 // CHECK:  VPURT.Task
 // CHECK-SAME:        waits([[PROF_BAR]]
 // CHECK-NEXT:    VPUIP.NNDMA

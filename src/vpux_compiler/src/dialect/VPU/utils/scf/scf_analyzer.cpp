@@ -151,7 +151,7 @@ int64_t OffsetSizeStrideOpDebugInfo::computeHash() const {
 
 llvm::SmallVector<mlir::NamedAttribute> getDynamicDimAttributeDict(ArrayRef<mlir::OpFoldResult> values,
                                                                    ArrayRef<SmallVector<int64_t>> evaluatedValues,
-                                                                   mlir::MLIRContext* ctx, std::string prefix,
+                                                                   mlir::MLIRContext* ctx, const std::string& prefix,
                                                                    const vpux::Logger& log) {
     llvm::SmallVector<mlir::NamedAttribute> dimAttrs;
     for (auto [dimIdx, value] : llvm::enumerate(values)) {

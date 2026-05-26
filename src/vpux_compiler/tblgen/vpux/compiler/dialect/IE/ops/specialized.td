@@ -761,7 +761,7 @@ def IE_RoPEOp :
         RankedTensorOf<[F16, F32, F64]>:$input_cos,
         RankedTensorOf<[F16, F32, F64]>:$input_sin,
 
-        UnitAttr:$is_interleaved
+        IE_RoPEModeAttr:$mode
      );
 
     let results = (outs
@@ -782,8 +782,9 @@ def IE_SDPAOp :
         RankedTensorOf<[F16, F32]>:$inputQ,
         RankedTensorOf<[F16, F32]>:$inputK,
         RankedTensorOf<[F16, F32]>:$inputV,
-        Optional<RankedTensorOf<[F16, F32]>>:$inputMask,
+        Optional<RankedTensorOf<[F16, F32, Bool8]>>:$inputMask,
         Optional<RankedTensorOf<[F16, F32]>>:$inputScale,
+        Optional<RankedTensorOf<[F16, F32]>>:$inputSink,
 
         UnitAttr:$causal
      );
@@ -795,9 +796,9 @@ def IE_SDPAOp :
     let hasCanonicalizer = 1;
 }
 
-def IE_SDPAExtendedOp :
+def IE_AttentionOp :
         IE_LayerOp<
-            "SDPAExtended",
+            "Attention",
             [
                 AttrSizedOperandSegments
             ]
@@ -808,8 +809,9 @@ def IE_SDPAExtendedOp :
         RankedTensorOf<[F16, F32]>:$inputQ,
         RankedTensorOf<[F16, F32]>:$inputK,
         RankedTensorOf<[F16, F32]>:$inputV,
-        Optional<RankedTensorOf<[F16, F32]>>:$inputMask,
+        Optional<RankedTensorOf<[F16, F32, Bool8]>>:$inputMask,
         Optional<RankedTensorOf<[F16, F32]>>:$inputScale,
+        Optional<RankedTensorOf<[F16, F32]>>:$inputSink,
         Optional<RankedTensorOf<[F16, F32]>>:$inputBias,
 
         OptionalAttr<IntAttr>:$padSizeS

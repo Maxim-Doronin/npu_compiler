@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/VPU/transforms/factories/wlm_register_config.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 #include "vpux/compiler/dialect/VPU/utils/wlm_constraint_utils.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/config/IR/ops.hpp"
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
@@ -48,6 +49,10 @@ public:
                    workloadManagementStatus, statusFromInitCompiler);
         workloadManagementStatus = statusFromInitCompiler;
 
+        if (initCompilerOptions.workloadManagementBarrierProgrammingMode.hasValue()) {
+            _workloadManagementBarrierProgrammingMode = initCompilerOptions.workloadManagementBarrierProgrammingMode;
+        }
+
         initializeFromOptions();
     }
 
@@ -63,6 +68,8 @@ private:
 private:
     bool _allowCustomValues = false;
     bool _enableSwFifoPerShave = false;
+    WorkloadManagementBarrierProgrammingMode _workloadManagementBarrierProgrammingMode =
+            WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED_4K;
 };
 
 template <typename T>
@@ -182,7 +189,8 @@ void SetupNpuConstraintPass::safeRunOnModule() {
     addConstraint(optionsBuilder, pipelineOptionsOp, config::BARR_MAX_VARIANT_COUNT, barrVariantCount,
                   _allowCustomValues);
 
-    auto regConfig = vpux::VPU::getRegisterConfig(arch);
+    auto regConfig = vpux::VPU::getRegisterConfig(arch, moduleOp);
+
     auto shvRegAddrs = regConfig.getSHVRegisterAddrs();
     auto dpuRegAddrs = regConfig.getDPURegisterAddrs();
     auto barrierFifoAddr = regConfig.getNCEBarrierFifoAddr();
@@ -197,6 +205,7 @@ void SetupNpuConstraintPass::safeRunOnModule() {
     // Get Maximum available space in CMX Metadata for various descriptor types
     auto maxVariants = vpux::VPU::getDefaultTaskListCount(VPU::TaskType::DPUVariant, arch);
     auto maxInvariants = vpux::VPU::getDefaultTaskListCount(VPU::TaskType::DPUInvariant, arch);
+    auto maxDMAs = vpux::VPU::getDefaultTaskListCount(VPU::TaskType::DMA, arch);
 
     auto numShvExecutorsPerTile = [&] {
         auto tileOp = config::getTileExecutor(moduleOp);
@@ -225,6 +234,8 @@ void SetupNpuConstraintPass::safeRunOnModule() {
                   maxActKernelInvocation, _allowCustomValues);
     addConstraint(optionsBuilder, pipelineOptionsOp, config::METADATA_MAX_KERNEL_RANGE_COUNT, maxActKernelRange,
                   _allowCustomValues);
+    addConstraint(optionsBuilder, pipelineOptionsOp, config::METADATA_MAX_DMA_COUNT, maxDMAs, _allowCustomValues);
+
     if (!vpux::config::isArchVPUX3XXX(arch)) {
         auto maxMediaCount = vpux::VPU::getDefaultTaskListCount(VPU::TaskType::M2I, arch);
         addConstraint(optionsBuilder, pipelineOptionsOp, config::METADATA_MAX_MEDIA_COUNT, maxMediaCount,

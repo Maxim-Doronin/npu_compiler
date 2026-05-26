@@ -11,12 +11,14 @@
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 
 #include "vpux/compiler/dialect/VPU/IR/ops/data_movement.hpp"
+#include "vpux/compiler/dialect/VPU/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/specialized.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPU/transforms/passes.hpp"
 
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "vpux/compiler/dialect/VPU/utils/permute_utils.hpp"
 #include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 #include "vpux/compiler/utils/error.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
@@ -59,16 +61,14 @@ OffsetSizePair updateOffsetAndSize(VPU::PermuteCastOp permuteCastOp, ArrayRef<in
     auto permuteCastInType = mlir::cast<NDTypeInterface>(permuteCastOp.getInput().getType());
     auto permuteCastOutType = mlir::cast<NDTypeInterface>(permuteCastOp.getResult().getType());
 
-    auto permuteArr = [&](ArrayRef<int64_t> arr) {
-        const auto arrInMemOrder = permuteCastInType.getDimsOrder().toMemoryOrder(Shape(arr));
-        const auto arrPermutedInMemOrder = applyPerm(arrInMemOrder, permuteCastOp.getMemPerm());
-        return permuteCastOutType.getDimsOrder().toLogicalOrder(arrPermutedInMemOrder).raw();
-    };
+    const auto offsets = Shape(origOffsets);
+    const auto sizes = Shape(origSizes);
+    const auto newOffsets =
+            VPU::inferShapeThroughPermute(offsets, permuteCastInType, permuteCastOutType, permuteCastOp.getMemPerm());
+    const auto newSizes =
+            VPU::inferShapeThroughPermute(sizes, permuteCastInType, permuteCastOutType, permuteCastOp.getMemPerm());
 
-    const auto newOffsets = permuteArr(origOffsets);
-    const auto newSizes = permuteArr(origSizes);
-
-    return {newOffsets, newSizes};
+    return {to_small_vector(newOffsets), to_small_vector(newSizes)};
 }
 
 void moveOpInsideForLoop(VPU::ViewLikeOpInterface viewLikeOp, mlir::tensor::InsertSliceOp insertSliceOp) {
@@ -91,7 +91,7 @@ void moveOpInsideForLoop(VPU::ViewLikeOpInterface viewLikeOp, mlir::tensor::Inse
         insertSliceOp.setStaticSizes(newSizes);
     } else if (auto sliceOp = mlir::dyn_cast<VPU::SliceOp>(viewLikeOp.getOperation())) {
         insertSliceOp.setStaticSizes(viewLikeOutType.getShape().raw());
-    } else {
+    } else if (!mlir::isa<VPU::QuantizeCastOp>(viewLikeOp.getOperation())) {
         VPUX_THROW("Unsupported operator is being moved inside for loop");
     }
 }
@@ -136,16 +136,16 @@ void SCFFuseLastViewLikeOpPass::safeRunOnFunc() {
 
     func->walk<mlir::WalkOrder::PreOrder>([&](VPU::ViewLikeOpInterface viewLikeOp) {
         mlir::Operation* op = viewLikeOp.getOperation();
-        if (!mlir::isa<VPU::PermuteCastOp>(op) && !mlir::isa<VPU::SliceOp>(op)) {
-            _log.trace("Skipping non-PermuteCast and non-Slice view-like op at '{0}'", viewLikeOp->getLoc());
+        if (!mlir::isa<VPU::PermuteCastOp, VPU::SliceOp, VPU::QuantizeCastOp>(op)) {
+            _log.trace("Skipping unsupported view-like op at '{0}'", viewLikeOp->getLoc());
             return;
         }
         const auto& nestedLog = _log.nest();
         _log.trace("Got '{0}' at '{1}'", viewLikeOp->getName(), viewLikeOp->getLoc());
 
         mlir::Operation* user = *viewLikeOp->getResult(0).getUsers().begin();
-        if (!mlir::isa<mlir::func::ReturnOp>(user)) {
-            nestedLog.trace("Not used by a return operation");
+        if (!mlir::isa<mlir::func::ReturnOp, VPU::ViewLikeOpInterface>(user)) {
+            nestedLog.trace("Not used by a return or another view-like op");
             return;
         }
 
@@ -169,15 +169,15 @@ void SCFFuseLastViewLikeOpPass::safeRunOnFunc() {
         }
 
         viewLikeOp->replaceAllUsesWith(forOp.getResults());
-
-        if (viewLikeOp->getUses().empty()) {
-            viewLikeOpsToErase.push_back(viewLikeOp);
-        }
+        viewLikeOp->dropAllReferences();
+        viewLikeOpsToErase.push_back(viewLikeOp);
         nestedLog.trace("Successfully fused last view op into scf::ForOp.");
     });
 
-    for (auto viewLikeOp : llvm::make_early_inc_range(viewLikeOpsToErase)) {
-        viewLikeOp->erase();
+    for (auto viewLikeOp : llvm::reverse(viewLikeOpsToErase)) {
+        if (viewLikeOp->getUses().empty()) {
+            viewLikeOp->erase();
+        }
     }
 }
 

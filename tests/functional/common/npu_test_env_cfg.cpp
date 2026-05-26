@@ -1,11 +1,11 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "common/npu_test_env_cfg.hpp"
 #include "intel_npu/config/options.hpp"
-#include "vpux/utils/IE/config.hpp"
+#include "vpux/utils/ov/config.hpp"
 
 #include <cstdlib>
 #include <stdexcept>

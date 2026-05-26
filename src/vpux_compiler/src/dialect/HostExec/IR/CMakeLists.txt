@@ -9,10 +9,15 @@ file(GLOB_RECURSE SRC_FILES *.cpp)
 add_npu_library(${TARGET_NAME}
     ${SRC_FILES}
     DIALECT_LIB
-    LINK_LIBS PRIVATE
+    LINK_LIBS
+      PUBLIC
+        npu_compiler_dialect_core
+        npu_core_utils
         npu_compiler_core
         npu_compiler_utils
-        npu_llvm_utils
-        npu_ov_utils
+        openvino::npu_al
+      PRIVATE
         npu_elf
-        openvino::npu_al)
+        npu_compiler_dialect_config
+        npu_compiler_dialect_const
+)

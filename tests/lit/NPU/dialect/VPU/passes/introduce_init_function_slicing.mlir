@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --introduce-init-function="ws-extraction-mode=gen-init init-part=0 memory-limit=1000" --verify-diagnostics %s | FileCheck --check-prefix=CHECK-BIG-LIMIT %s
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --introduce-init-function="ws-extraction-mode=gen-init init-part=0 memory-limit=4" --verify-diagnostics %s | FileCheck --check-prefix=CHECK-SMALL-LIMIT %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --construct-ws-analysis --introduce-init-function="ws-extraction-mode=gen-init init-part=0 memory-limit=1000" --verify-diagnostics %s | FileCheck --check-prefix=CHECK-BIG-LIMIT %s
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --construct-ws-analysis --introduce-init-function="ws-extraction-mode=gen-init init-part=0 memory-limit=4" --verify-diagnostics %s | FileCheck --check-prefix=CHECK-SMALL-LIMIT %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // Note: these tests verify init schedule slicing. They are not supposed to test
 // everything but rather test the bare minimum, focusing on the slicing logic.
@@ -77,13 +77,13 @@ module @SameBlobConstants {
 
     // Note: large limit results in single init function being present
 
-    // CHECK-BIG-LIMIT: func.func @init([[NEWSHAPE:%.+]]: tensor<4xf16>, [[ORIG:%.+]]: tensor<2x2xf16>, [[NEWTYPE:%.+]]: tensor<2x2xi16>)
+    // CHECK-BIG-LIMIT: func.func @init([[ORIG:%.+]]: tensor<2x2xf16>, [[NEWSHAPE:%.+]]: tensor<4xf16>, [[NEWTYPE:%.+]]: tensor<2x2xi16>)
 
 
     // Note: small limit still results in single init function, because
     //       same-blob constants must not be split (due to compiler-plugin contract)
 
-    // CHECK-SMALL-LIMIT: func.func @init([[NEWSHAPE:%.+]]: tensor<4xf16>, [[ORIG:%.+]]: tensor<2x2xf16>, [[NEWTYPE:%.+]]: tensor<2x2xi16>)
+    // CHECK-SMALL-LIMIT: func.func @init([[ORIG:%.+]]: tensor<2x2xf16>, [[NEWSHAPE:%.+]]: tensor<4xf16>, [[NEWTYPE:%.+]]: tensor<2x2xi16>)
 
     func.func @main(%dummy: tensor<2x2xf16>) -> tensor<2x2xf16> {
         %orig = const.Declare tensor<2x2xf16> = dense_resource<vpux_ow_0> : tensor<2x2xf16>,

@@ -4,7 +4,9 @@
 //
 
 #include "vpux/compiler/dialect/VPURT/utils/barrier_legalization_utils.hpp"
+#include "vpux/compiler/dialect/VPUIP/IR/ops.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/types.hpp"
+#include "vpux/compiler/dialect/VPUIP/utils/utils.hpp"
 #include "vpux/compiler/dialect/VPURT/interfaces/barrier_simulator.hpp"
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/utils/dma.hpp"
@@ -405,9 +407,16 @@ bool VPURT::addFinalBarrierIfNotExists(mlir::func::FuncOp funcOp, Logger log) {
 
         for (auto taskQueueFirstAndLastOp : vpux::VPURT::getTaskQueuesFirstAndLastOp(funcOp)) {
             auto& lastOpInQueue = taskQueueFirstAndLastOp.second.second;
-            if (lastOpInQueue.getUpdateBarriers().empty()) {
-                log.trace("Add finishing barrier for {0}", lastOpInQueue->getLoc());
-                lastOpInQueue.getUpdateBarriersMutable().assign(finalBarrier);
+            if (auto skipOp = mlir::dyn_cast<VPUIP::SkipDMAOp>(lastOpInQueue.getInnerTaskOp())) {
+                builder.setInsertionPointAfter(lastOpInQueue);
+
+                auto syncDMA = VPUIP::createSyncDMA(builder, skipOp.getInput(), skipOp.getOutputBuff(), 0, {}, {});
+                syncDMA.getUpdateBarriersMutable().assign(finalBarrier);
+            } else {
+                if (lastOpInQueue.getUpdateBarriers().empty()) {
+                    log.trace("Add finishing barrier for {0}", lastOpInQueue->getLoc());
+                    lastOpInQueue.getUpdateBarriersMutable().assign(finalBarrier);
+                }
             }
         }
     } else {
@@ -436,15 +445,13 @@ bool VPURT::addFinalBarrierIfNotExists(mlir::func::FuncOp funcOp, Logger log) {
 }
 
 bool VPURT::isShareWaitAndUpdateBarriersNeeded(std::optional<WorkloadManagementMode> workloadManagementMode) {
-    // Disable share wait and update barriers for PWLM_V2_PAGE and FWLM_V1_PAGES mode only for now
-    // For PWLM_V0_LCA mode enable shared barriers in order to avoid performance regressions
-    // For PWLM_V0_LCA/PWLM_V1_BARRIER_FIFO mode use shareWaitAndUpdateBarriers to avoid issues in enqueue
+    // Disable sharing wait and update barriers for PWLM_V0_1_PAGES and FWLM_V1_PAGES modes.
     if (workloadManagementMode.has_value() &&
-        (workloadManagementMode.value() >= WorkloadManagementMode::PWLM_V2_PAGES ||
+        (workloadManagementMode.value() == WorkloadManagementMode::FWLM_V1_PAGES ||
          workloadManagementMode.value() == WorkloadManagementMode::PWLM_V0_1_PAGES)) {
         return false;
     }
-    // enable shared wait and update barriers
+    // enable sharing wait and update barriers by default
     return true;
 }
 

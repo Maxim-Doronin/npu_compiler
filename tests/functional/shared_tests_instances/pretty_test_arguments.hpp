@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2023-2025 Intel Corporation
+// Copyright (C) 2023-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -15,6 +15,7 @@
 #include <openvino/core/shape.hpp>
 #include <vpux/utils/core/checked_cast.hpp>
 
+#include <functional>
 #include <type_traits>
 #include <vector>
 
@@ -89,6 +90,54 @@ struct BoundedDim {
         VPUX_THROW_UNLESS(dim == -1, "Dynamic dimension must have value -1, got: {0}", dim);
         VPUX_THROW_UNLESS(bound > 0, "Upper bound must have positive value, got: {0}", bound);
     }
+
+    bool isDynamic() const {
+        return dim == -1;
+    }
+
+    // BoundedDim op int
+    friend BoundedDim operator+(const BoundedDim& lhs, int rhs) {
+        return lhs.isDynamic() ? BoundedDim{-1, lhs.bound + rhs} : BoundedDim(lhs.bound + rhs);
+    }
+    friend BoundedDim operator-(const BoundedDim& lhs, int rhs) {
+        return lhs.isDynamic() ? BoundedDim{-1, lhs.bound - rhs} : BoundedDim(lhs.bound - rhs);
+    }
+    friend BoundedDim operator*(const BoundedDim& lhs, int rhs) {
+        return lhs.isDynamic() ? BoundedDim{-1, lhs.bound * rhs} : BoundedDim(lhs.bound * rhs);
+    }
+    friend BoundedDim operator/(const BoundedDim& lhs, int rhs) {
+        VPUX_THROW_UNLESS(rhs != 0, "Division by zero in BoundedDim");
+        return lhs.isDynamic() ? BoundedDim{-1, lhs.bound / rhs} : BoundedDim(lhs.bound / rhs);
+    }
+
+    // int op BoundedDim
+    friend BoundedDim operator+(int lhs, const BoundedDim& rhs) {
+        return rhs + lhs;
+    }
+    friend BoundedDim operator-(int lhs, const BoundedDim& rhs) {
+        return rhs.isDynamic() ? BoundedDim{-1, lhs - rhs.bound} : BoundedDim(lhs - rhs.bound);
+    }
+    friend BoundedDim operator*(int lhs, const BoundedDim& rhs) {
+        return rhs * lhs;
+    }
+
+    // BoundedDim op BoundedDim
+    friend BoundedDim operator+(const BoundedDim& lhs, const BoundedDim& rhs) {
+        bool dyn = lhs.isDynamic() || rhs.isDynamic();
+        return dyn ? BoundedDim{-1, lhs.bound + rhs.bound} : BoundedDim(lhs.bound + rhs.bound);
+    }
+    friend BoundedDim operator-(const BoundedDim& lhs, const BoundedDim& rhs) {
+        bool dyn = lhs.isDynamic() || rhs.isDynamic();
+        return dyn ? BoundedDim{-1, lhs.bound - rhs.bound} : BoundedDim(lhs.bound - rhs.bound);
+    }
+    friend BoundedDim operator*(const BoundedDim& lhs, const BoundedDim& rhs) {
+        bool dyn = lhs.isDynamic() || rhs.isDynamic();
+        return dyn ? BoundedDim{-1, lhs.bound * rhs.bound} : BoundedDim(lhs.bound * rhs.bound);
+    }
+    friend BoundedDim operator/(const BoundedDim& lhs, const BoundedDim& rhs) {
+        bool dyn = lhs.isDynamic() || rhs.isDynamic();
+        return dyn ? BoundedDim{-1, lhs.bound / rhs.bound} : BoundedDim(lhs.bound / rhs.bound);
+    }
 };
 
 inline BoundedDim operator""_Dyn(unsigned long long value) {
@@ -119,6 +168,20 @@ ov::Shape makeShape(Dims... dims) {
 // Each BoundedDim multiplies the number of total RuntimeShapes by 3.
 ov::test::InputShape generateTestShape(const std::vector<BoundedDim>& dims);
 
+using DynamicShapeGenerationCallback = std::function<std::vector<int>(const BoundedDim&)>;
+
+// Callback for HostCompile tests that limits dynamic runtime dimensions to the upper half range.
+// HostCompile does not support shapes whose dynamic dimension is smaller than the tiling step
+// used for that dimension. This callback avoids values below that practical range.
+// Track: E#170856
+// For bound N it generates: {((N + 1) / 2 + N) / 2, N}.
+std::vector<int> hostCompileSmallShapesLimitationCallback(const BoundedDim& boundedDim);
+
+// Creates test::InputShape(PartialShape, RuntimeShapes) with custom runtime shape generation for dynamic dimensions.
+// Callback receives each dynamic BoundedDim and returns concrete runtime values for this dimension.
+ov::test::InputShape generateTestShape(const std::vector<BoundedDim>& dims,
+                                       const DynamicShapeGenerationCallback& runtimeShapeCallback);
+
 // Generate simple static input shape
 ov::test::InputShape generateTestShape(const ov::Shape& shape);
 
@@ -126,8 +189,13 @@ ov::test::InputShape generateTestShape(const ov::Shape& shape);
 // generateTestShape(5, 20)     -> ov::test::InputShape(PartialShape{5, 20}, std::vector<ov::Shape>{{5, 20}})
 // generateTestShape(5, 20_Dyn) -> ov::test::InputShape(PartialShape{5, 1..20},
 //                                                      std::vector<ov::Shape>{{5, 1}, {5, 10}, {5, 20}})
+
+// auto cb = [](const BoundedDim&) { return std::vector<int>{15, 20}; };
+// generateTestShape(std::vector<BoundedDim>{5, 20_Dyn}, cb) ->
+//     ov::test::InputShape(PartialShape{5, 1..20}, std::vector<ov::Shape>{{5, 15}, {5, 20}})
 template <typename... Dims>
-ov::test::InputShape generateTestShape(Dims... dims) {
+std::enable_if_t<(std::is_constructible_v<BoundedDim, Dims> && ...), ov::test::InputShape> generateTestShape(
+        Dims... dims) {
     auto boundedDims = std::vector<BoundedDim>{BoundedDim(dims)...};
     return generateTestShape(boundedDims);
 }

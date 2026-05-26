@@ -6,17 +6,21 @@
 #include "vpux/compiler/init/hw_strategy_registry.hpp"
 
 #include "vpux/compiler/dialect/IE/IR/dialect.hpp"
+#include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 #include "vpux/compiler/dialect/VPUIP/IR/dialect.hpp"
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/dialect/config/IR/dialect.hpp"
 
 #include "vpux/compiler/NPU37XX/dialect/IE/strategies_initializer.hpp"
+#include "vpux/compiler/NPU37XX/dialect/VPU/strategies_initializer.hpp"
 #include "vpux/compiler/NPU37XX/dialect/VPUIP/strategies_initializer.hpp"
 #include "vpux/compiler/NPU37XX/dialect/config/constraints_initializer.hpp"
 #include "vpux/compiler/NPU40XX/dialect/IE/strategies_initializer.hpp"
+#include "vpux/compiler/NPU40XX/dialect/VPU/strategies_initializer.hpp"
 #include "vpux/compiler/NPU40XX/dialect/VPUIP/strategies_initializer.hpp"
 #include "vpux/compiler/NPU40XX/dialect/config/constraints_initializer.hpp"
 #include "vpux/compiler/NPU50XX/dialect/IE/strategies_initializer.hpp"
+#include "vpux/compiler/NPU50XX/dialect/VPU/strategies_initializer.hpp"
 #include "vpux/compiler/NPU50XX/dialect/VPUIP/strategies_initializer.hpp"
 #include "vpux/compiler/NPU50XX/dialect/config/constraints_initializer.hpp"
 #include "vpux/utils/core/error.hpp"
@@ -106,6 +110,42 @@ void registerStrategies(mlir::DialectRegistry& registry, config::ArchKind arch) 
 }
 
 }  // namespace IE
+
+namespace VPU {
+
+std::unique_ptr<IStrategiesInitializer> createStrategiesInitializer(config::ArchKind arch) {
+    switch (arch) {
+    case config::ArchKind::NPU37XX:
+        return std::make_unique<VPU::StrategiesInitializer37XX>();
+    case config::ArchKind::NPU40XX:
+        return std::make_unique<VPU::StrategiesInitializer40XX>();
+    case config::ArchKind::NPU50XX:
+        return std::make_unique<VPU::StrategiesInitializer50XX>();
+    default:
+        VPUX_THROW("Unsupported arch kind: {0}", arch);
+    }
+}
+
+class StrategiesExtension : public mlir::DialectExtension<StrategiesExtension, VPUDialect> {
+public:
+    explicit StrategiesExtension(config::ArchKind arch): _arch(arch) {
+    }
+
+    void apply(mlir::MLIRContext* context, VPUDialect*) const override {
+        auto strategiesInitializer = VPU::createStrategiesInitializer(_arch);
+        strategiesInitializer->initialize(context);
+    }
+
+private:
+    config::ArchKind _arch;
+};
+
+void registerStrategies(mlir::DialectRegistry& registry, config::ArchKind arch) {
+    registry.addExtension(mlir::TypeID::get<VPU::StrategiesExtension>(),
+                          std::make_unique<VPU::StrategiesExtension>(arch));
+}
+
+}  // namespace VPU
 
 namespace VPUIP {
 

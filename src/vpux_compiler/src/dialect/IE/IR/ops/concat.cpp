@@ -11,7 +11,6 @@
 #include "vpux/compiler/dialect/IE/utils/slice_utils.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
-#include "vpux/compiler/dialect/const/utils/utils.hpp"
 #include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 #include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
@@ -20,7 +19,6 @@
 #include "vpux/compiler/utils/quantization.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/checked_cast.hpp"
-#include "vpux/utils/core/error.hpp"
 
 #include <mlir/Dialect/Arith/Utils/Utils.h>
 #include <mlir/Dialect/Tensor/IR/Tensor.h>
@@ -480,10 +478,23 @@ mlir::LogicalResult FuseConstConcat::matchAndRewrite(IE::ConcatOp origOp, mlir::
     const auto axisValue = *axis.begin();
 
     auto outNdInterface = mlir::dyn_cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
-    auto output = Const::Content::allocTempBuffer(outNdInterface, outNdInterface.getElementType(), false);
-    auto outBuf = output.getRawTempBuf();
+    const auto contentElemType = outNdInterface.getElementType();
 
-    const auto elemSize = vpux::getElemTypeSize(outNdInterface.getElementType()).to<Byte>().count();
+    auto contentElemQType = mlir::dyn_cast<mlir::quant::QuantizedType>(contentElemType);
+
+    auto contentStorageType =
+            (contentElemQType != nullptr) ? normalizeQuantStorageType(contentElemQType) : contentElemType;
+
+    // We need byteAligned element type since concat and similar const dialect attributes
+    // do not support sub-byte element type, and we will do sub-byte unpacking in the content transformation
+    auto byteAlignedElemType = isSubByteType(contentStorageType)
+                                       ? (contentStorageType.isSignedInteger() ? getSInt8Type(origOp.getContext())
+                                                                               : getUInt8Type(origOp.getContext()))
+                                       : contentStorageType;
+
+    auto output = Const::Content::allocTempBuffer(outNdInterface, byteAlignedElemType, false);
+    auto outBuf = output.getRawTempBuf();
+    const auto elemSize = vpux::getElemTypeSize(byteAlignedElemType).to<Byte>().count();
 
     auto outPhyShape = outNdInterface.getMemShape().raw();
     auto memDimIndex = outNdInterface.getDimsOrder().dimPos(axisValue);
@@ -495,7 +506,8 @@ mlir::LogicalResult FuseConstConcat::matchAndRewrite(IE::ConcatOp origOp, mlir::
 
     loop_1d(LoopExecPolicy::Parallel, getContext(), constInputs.size(), [&](int64_t inIndex) {
         auto cst = constInputs[inIndex].getDefiningOp<Const::DeclareOp>();
-        auto content = cst.getContent();
+        auto contentAttr = cst.getContentAttr().transform().castElemType(byteAlignedElemType).get();
+        auto content = contentAttr.fold();
         auto cstShape = content.getType().getShape();
         auto singleCopyElements = afterDims * cstShape[axisValue];
         auto singleCopyBytes = singleCopyElements * elemSize;
@@ -509,14 +521,17 @@ mlir::LogicalResult FuseConstConcat::matchAndRewrite(IE::ConcatOp origOp, mlir::
         });
     });
 
-    const auto contentElemType = outNdInterface.getElementType();
     auto rankedTensorType = mlir::cast<mlir::RankedTensorType>(outNdInterface);
     auto [denseAttr, contentAttrSetup] = [&]() -> std::pair<mlir::DenseElementsAttr, Const::ContentSetup> {
         if (auto qtype = mlir::dyn_cast<mlir::quant::QuantizedType>(contentElemType)) {
-            rankedTensorType =
-                    mlir::cast<mlir::RankedTensorType>(outNdInterface.changeElemType(normalizeQuantStorageType(qtype)));
+            rankedTensorType = mlir::cast<mlir::RankedTensorType>(outNdInterface.changeElemType(
+                    isSubByteType(contentElemType) ? byteAlignedElemType : normalizeQuantStorageType(qtype)));
             return {Const::createConstContent(rankedTensorType, output.getRawStorageBuf()),
                     Const::ContentSetup(rankedTensorType).castElemType(qtype)};
+        } else if (isSubByteType(contentElemType)) {
+            rankedTensorType = mlir::cast<mlir::RankedTensorType>(outNdInterface.changeElemType(byteAlignedElemType));
+            return {Const::createConstContent(rankedTensorType, output.getRawStorageBuf()),
+                    Const::ContentSetup(rankedTensorType).castElemType(contentElemType)};
         } else {
             return {Const::createConstContent(rankedTensorType, output.getRawStorageBuf()),
                     Const::ContentSetup(rankedTensorType)};

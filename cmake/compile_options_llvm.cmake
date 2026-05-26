@@ -20,7 +20,17 @@ macro(set_llvm_flags)
     endif()
     set(LLVM_INCLUDE_TESTS OFF CACHE BOOL "" FORCE)
     set(LLVM_INCLUDE_BENCHMARKS OFF CACHE BOOL "" FORCE)
-    set(LLVM_TARGETS_TO_BUILD "host" CACHE STRING "" FORCE)
+    
+    # Note: When building with UB sanitizer, certain ARM-specific symbols
+    # are not found by the linker, so we need to also build ARM libraries.
+    # It is not clear whether it's a bug in UBSan + LLVM, or something else,
+    # but doing it this way allows us to build with UB sanitizer.
+    if(ENABLE_UB_SANITIZER)
+        set(LLVM_TARGETS_TO_BUILD "host;ARM" CACHE STRING "" FORCE)
+    else()
+        set(LLVM_TARGETS_TO_BUILD "host" CACHE STRING "" FORCE)
+    endif()
+    
     set(CROSS_TOOLCHAIN_FLAGS_ "" CACHE STRING "" FORCE)
     set(CROSS_TOOLCHAIN_FLAGS_NATIVE "" CACHE STRING "" FORCE)
     set(LLVM_ENABLE_TERMINFO OFF CACHE BOOL "" FORCE)

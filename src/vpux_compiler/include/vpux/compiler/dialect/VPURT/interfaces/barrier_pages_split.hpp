@@ -197,6 +197,8 @@ private:
     std::optional<size_t> getNextTaskOnSameQueueIfQueueOrderSupported(size_t taskInd) const;
     // Return the closest previous task on the same queue that has a wait barrier
     std::optional<size_t> getPrevTaskOnSameQueueWithWaitBarIfQueueOrderSupported(size_t taskInd) const;
+    // Return the closest next task on the same queue that has an update barrier
+    std::optional<size_t> getNextTaskOnSameQueueWithUpdateBarIfQueueOrderSupported(size_t taskInd) const;
 
     void getPageStartTasksAndBars(size_t pageInd, BarrierInfo::TaskSet& pageStartTasks,
                                   BarrierInfo::TaskSet& pageStartBars);

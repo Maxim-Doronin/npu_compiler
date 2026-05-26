@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -30,7 +30,7 @@ public:
 
         std::map<std::string, std::string> rawConfig{
                 {{ov::intel_npu::batch_compiler_mode_settings.name(), compileParams}}};
-        configurationPtr->update(rawConfig, intel_npu::OptionMode::Both);
+        configurationPtr->update(rawConfig);
         explicitCfgBatchMethodOptionExpected = isOptionMustBeFound;
     }
 

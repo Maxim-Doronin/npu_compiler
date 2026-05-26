@@ -1,5 +1,12 @@
 Change Log:
 -----------
+VPUXCompilerL0 7.7.0:
+  - Add support for vclAllocatedExecutableCreate3
+
+VPUXCompilerL0 7.6.1:
+  - Split a compiler library into a loader library "openvino_intel_npu_compiler_loader" and a core compiler library "openvino_intel_npu_compiler".
+  - Move BlobAllocator, BlobView, NetworkDescriptionView, and CiD/WS-specific virtual methods into ICompiler interface.
+
 VPUXCompilerL0 7.6.0:
   - Add new weightless compilation API:
       vclAllocatedExecutableCreateWSOneShot

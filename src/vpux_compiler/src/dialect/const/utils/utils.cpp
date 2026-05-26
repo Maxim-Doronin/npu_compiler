@@ -4,6 +4,7 @@
 //
 
 #include "vpux/compiler/dialect/const/utils/utils.hpp"
+#include "vpux/compiler/core/types/quantile_float/types.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
 #include "vpux/compiler/dialect/const/ops.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
@@ -145,6 +146,11 @@ mlir::Value buildWeightsConst(mlir::OpBuilder& builder, mlir::Location loc, mlir
     if (const auto qInputElemType = mlir::dyn_cast<mlir::quant::QuantizedType>(origElemType)) {
         const auto scale = 1.0f;
         const auto zeroPoint = 0;
+        auto storageType = qInputElemType.getStorageType();
+        if (const auto quantileStorageType =
+                    mlir::dyn_cast<vpux::type::QuantileType>(qInputElemType.getStorageType())) {
+            storageType = quantileStorageType.getStorageType();
+        }
 
         if (vpux::isLowFpTypeQuantized(qInputElemType)) {
             filterElemType = mlir::quant::UniformQuantizedType::get(
@@ -152,7 +158,7 @@ mlir::Value buildWeightsConst(mlir::OpBuilder& builder, mlir::Location loc, mlir
                     /*expressedType=*/mlir::Float16Type::get(ctx),
                     /*scale=*/scale, /*zeroPoint=*/zeroPoint, /*storageTypeMin=*/qInputElemType.getStorageTypeMin(),
                     /*storageTypeMax=*/qInputElemType.getStorageTypeMax());
-        } else if (qInputElemType.getStorageType().isInteger(8) || qInputElemType.getStorageType().isInteger(16)) {
+        } else if (storageType.isInteger(8) || storageType.isInteger(16)) {
             if (qInputElemType.isSigned()) {
                 filterElemType = mlir::quant::UniformQuantizedType::get(
                         mlir::quant::QuantizationFlags::Signed, getSInt8Type(ctx), mlir::Float16Type::get(ctx), scale,

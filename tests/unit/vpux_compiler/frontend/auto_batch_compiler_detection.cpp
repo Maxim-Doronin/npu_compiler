@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2025 Intel Corporation
+// Copyright (C) 2025-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -84,7 +84,7 @@ struct AutoBatchCompilerDetectionTestsBase :
         optionDescPtr->add<intel_npu::BATCH_MODE>();
         optionDescPtr->add<intel_npu::LOG_LEVEL>();
         configurationPtr.reset(new intel_npu::Config(optionDescPtr));
-        configurationPtr->update(configuration, intel_npu::OptionMode::Both);
+        configurationPtr->update(configuration);
     }
 
     static constexpr size_t getBasicParamSize() {
@@ -137,7 +137,7 @@ public:
     }
     void SetUp() override {
         Base::SetUp();
-        batchDetectionExpected = std::get<getFirstParamTupleIndex()>(this->GetParam());
+        result = std::get<getFirstParamTupleIndex()>(this->GetParam());
     }
 
     static std::string getTestCaseName(const testing::TestParamInfo<AutoBatchCompilerDetectionTestParams>& obj) {
@@ -148,17 +148,63 @@ public:
     }
 
 protected:
-    bool batchDetectionExpected;
+    bool result;
 };
+
+class AutoBatchCompilerForbiddenByLayoutTests : public AutoBatchCompilerDetectionTests {};
+
+TEST_P(AutoBatchCompilerForbiddenByLayoutTests, doNotMakeBatchDetection) {
+    const auto batchForbidden = isBatchForbiddenExplicitly(ov_stub_model, logger);
+    EXPECT_EQ(batchForbidden, result);
+}
+
+CfgMap configs;
+INSTANTIATE_TEST_SUITE_P(
+        smoke_BehaviorTest, AutoBatchCompilerForbiddenByLayoutTests,
+        testing::Values(AutoBatchCompilerDetectionTestParams(
+                                IODescriptions({IODescription(ov::PartialShape({2, 3, 100, 200}), {}),
+                                                IODescription(ov::PartialShape({100, 200}), {}),
+                                                IODescription(ov::PartialShape({300, 400}), {})}),
+                                configs, false),
+                        AutoBatchCompilerDetectionTestParams(
+                                IODescriptions({IODescription(ov::PartialShape({2, 3, 100, 200}), ov::Layout{}),
+                                                IODescription(ov::PartialShape({100, 200}), ov::Layout{}),
+                                                IODescription(ov::PartialShape({300, 400}), ov::Layout{})}),
+                                configs, false),
+                        AutoBatchCompilerDetectionTestParams(
+                                IODescriptions({IODescription(ov::PartialShape({2, 3, 100, 200}), ov::Layout{"DCHW"}),
+                                                IODescription(ov::PartialShape({100, 200}), ov::Layout{"..."}),
+                                                IODescription(ov::PartialShape({300, 400}), ov::Layout{})}),
+                                configs, false),
+                        AutoBatchCompilerDetectionTestParams(
+                                IODescriptions({IODescription(ov::PartialShape({2, 3, 100, 200}), ov::Layout{"NCHW"}),
+                                                IODescription(ov::PartialShape({100, 200}), ov::Layout{"HW"}),
+                                                IODescription(ov::PartialShape({300, 400}), ov::Layout{"HW"})}),
+                                configs, false),
+                        AutoBatchCompilerDetectionTestParams(
+                                IODescriptions({IODescription(ov::PartialShape({2, 3, 100, 200}), ov::Layout{"NCHW"}),
+                                                IODescription(ov::PartialShape({100, 200}), ov::Layout{"..."}),
+                                                IODescription(ov::PartialShape({300, 400}), ov::Layout{"NC"})}),
+                                configs, false),
+                        AutoBatchCompilerDetectionTestParams(
+                                IODescriptions({IODescription(ov::PartialShape({2, 3, 100, 200}), ov::Layout{"NCHW"}),
+                                                IODescription(ov::PartialShape({100, 200}), ov::Layout{"HW"}),
+                                                IODescription(ov::PartialShape({300, 400}), ov::Layout{"NH"})}),
+                                configs, false),
+                        AutoBatchCompilerDetectionTestParams(
+                                IODescriptions({IODescription(ov::PartialShape({1, 3, 100, 200}), ov::Layout{"DCHW"}),
+                                                IODescription(ov::PartialShape({100, 200}), ov::Layout{"HW"}),
+                                                IODescription(ov::PartialShape({300, 400}), ov::Layout{"WH"})}),
+                                configs, true)),
+        AutoBatchCompilerForbiddenByLayoutTests::getTestCaseName);
 
 class AutoBatchCompilerDetectionBasedOnLayoutTests : public AutoBatchCompilerDetectionTests {};
 
 TEST_P(AutoBatchCompilerDetectionBasedOnLayoutTests, makeBatchDetection) {
     const auto& [batchDetected, strInfo] = isBatchDetectedByUserLayouts(ov_stub_model, logger);
-    EXPECT_EQ(batchDetected, batchDetectionExpected);
+    EXPECT_EQ(batchDetected, result);
 }
 
-CfgMap configs;
 INSTANTIATE_TEST_SUITE_P(
         smoke_BehaviorTest, AutoBatchCompilerDetectionBasedOnLayoutTests,
         testing::Values(AutoBatchCompilerDetectionTestParams(
@@ -206,7 +252,7 @@ INSTANTIATE_TEST_SUITE_P(
 class AutoBatchCompilerDetectionBasedOnOVTests : public AutoBatchCompilerDetectionTests {};
 TEST_P(AutoBatchCompilerDetectionBasedOnOVTests, makeBatchDetection) {
     const auto& [batchDetected, strInfo] = isBatchDetectedByOVHeuristic(ov_stub_model, logger);
-    EXPECT_EQ(batchDetected, batchDetectionExpected);
+    EXPECT_EQ(batchDetected, result);
 }
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTest, AutoBatchCompilerDetectionBasedOnOVTests,
@@ -235,7 +281,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTest, AutoBatchCompilerDetectionBasedOnOV
 class AutoBatchCompilerDetectionModelSuitableForDebatchTests : public AutoBatchCompilerDetectionTests {};
 TEST_P(AutoBatchCompilerDetectionModelSuitableForDebatchTests, testModel) {
     bool isSuitable = isModelSuitableForDebatching(ov_stub_model, *configurationPtr, logger);
-    EXPECT_EQ(isSuitable, batchDetectionExpected);
+    EXPECT_EQ(isSuitable, result);
 }
 
 CfgMap modelDebatchSuitableDefaultConfig;
@@ -400,7 +446,12 @@ INSTANTIATE_TEST_SUITE_P(
                         IODescriptions({IODescription(ov::PartialShape({2, 3, 100, 200}), {}),
                                         IODescription(ov::PartialShape({100, 200}), {}),
                                         IODescription(ov::PartialShape({300, 400}), {})}),
-                        coeffDeterminingConfigBatchInCompilerWithOverridedCoefficients, predefinedDebatchCoefficients)),
+                        coeffDeterminingConfigBatchInCompilerWithOverridedCoefficients, predefinedDebatchCoefficients),
+                AutoBatchCompilerDebatchCoefficientsDeterminingTestsParams(
+                        IODescriptions({IODescription(ov::PartialShape({2, 3, 100, 200}), ov::Layout{"DCHW"}),
+                                        IODescription(ov::PartialShape({100, 200}), ov::Layout{"HW"}),
+                                        IODescription(ov::PartialShape({300, 400}), ov::Layout{"HW"})}),
+                        coeffDeterminingConfigBatchInCompiler, turnOffDebatchDisableConditions)),
         AutoBatchCompilerDebatchCoefficientsDeterminingTests::getTestCaseName);
 
 using AutoBatchCompilerDetectionCompatTestsParams =

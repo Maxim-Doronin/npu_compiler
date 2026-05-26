@@ -1,12 +1,12 @@
 //
-// Copyright (C) 2024-2025 Intel Corporation.
+// Copyright (C) 2024-2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #loc = loc(unknown)
 #loc1 = loc("profiling_result")
-module @dumpsubgraph attributes {config.arch = #config.arch_kind<NPU37XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+module @dumpsubgraph attributes {config.compilationMode = #config.compilation_mode<DefaultHW>} {
   VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 4096, 4096, 4096] loc(#loc)
   module @VPU.SW {
     func.func private @cache_flush_invalidate() attributes {VPU.task_type = @CACHE_FLUSH_INVALIDATE} loc(#loc)

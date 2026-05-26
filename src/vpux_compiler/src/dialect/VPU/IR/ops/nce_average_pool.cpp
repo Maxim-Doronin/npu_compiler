@@ -9,6 +9,7 @@
 #include "vpux/compiler/dialect/IE/utils/type_padding.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/dpu.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
+#include "vpux/compiler/dialect/VPU/utils/clustered_op_interface_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
@@ -41,7 +42,14 @@ bool vpux::VPU::NCEAveragePoolOp::fitIntoCMX(vpux::NDTypeInterface input, vpux::
     auto ppeAttr = getPpe();
     addSprLutBufferIfPresent(ppeAttr, buffers);
 
-    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(config::getArch(getOperation()), buffers).count() +
+    const auto OC = output.getShape()[Dims4D::Act::C];
+
+    const auto op = getOperation();
+    if (mlir::failed(NCEInvariant::getWeightTableBuffers(op, buffers, OC))) {
+        VPUX_THROW("getWeightTableBuffers function failed");
+    }
+
+    return vpux::VPU::calculateAlignedBuffersMemoryRequirement(config::getArch(op), buffers).count() +
                    reservedMem.count() <=
            totalAvailableCMXSize;
 }
@@ -264,36 +272,8 @@ vpux::VPU::DistributionInfo vpux::VPU::NCEAveragePoolOp::getExplicitDistribution
 // specified for compilation.
 // For example for 4 cluster compilation the output height must be a minimum of 4.
 bool VPU::NCEAveragePoolOp::isOperationSplitOverHeightCompatible(const vpux::TileInfo& oriOutputTile) {
-    auto outputShape = ShapeRef(oriOutputTile.shape);
-    auto offset = ShapeRef(oriOutputTile.offsets);
-    auto axis = ShapeRef(oriOutputTile.axis);
-    if (outputShape == ShapeRef()) {
-        outputShape = getBoundedShape(getOutput());
-    }
-    vpux::TileInfo outputTile{outputShape, offset, axis, oriOutputTile.isCompletedTile};
-    if (!VPU::isOperationSplitOverHeightCompatible(getOperation(), outputTile)) {
-        return false;
-    }
-
-    auto nceOp = mlir::cast<NCEAveragePoolOp>(getOperation());
-    Shape inputShape = getBoundedShape(nceOp.getInput()).toValues();
-    auto inputType = mlir::cast<vpux::NDTypeInterface>(nceOp.getInput().getType());
-    // If has custom output shape, infer the input shape
-    if (outputShape != getBoundedShape(nceOp->getResult(0))) {
-        VPUX_THROW_UNLESS(offset != ShapeRef() && axis != ShapeRef(),
-                          "Offsets and axis must have value when create TileInfo. Loc: {0}", nceOp->getLoc());
-        outputTile.isCompletedTile = true;
-        auto computerShape = nceOp.backInferTileInfo(outputTile, Logger::global());
-        inputShape = computerShape.tiles.front().shape;
-        auto inputOffset = computerShape.tiles.front().offsets;
-        inputType = inputType.extractDenseTile(inputOffset, inputShape);
-    }
-
-    auto moduleOp = nceOp->getParentOfType<mlir::ModuleOp>();
-    auto tileOp = config::getTileExecutor(moduleOp);
-    const auto numTiles = tileOp.getCount();
-
-    return isSOHSupportedByDPU(inputType, inputShape, numTiles, true, config::getArch(nceOp.getOperation()));
+    return VPU::isNCEOpSplitOverHeightCompatible(getOperation(), getInput(), getBoundedShape(getOutput()),
+                                                 oriOutputTile, true);
 }
 
 bool VPU::NCEAveragePoolOp::isOperationSplitOverWidthCompatible(ShapeRef outputShape, ShapeRef offset, ShapeRef axis) {
@@ -321,25 +301,11 @@ bool VPU::NCEAveragePoolOp::doesLayerChangeOutputAlignmentFitIntoCMX(
 vpux::NDTypeInterface vpux::VPU::NCEAveragePoolOp::getDistributedTypeForOpOperand(
         mlir::OpOperand& operand, bool hasExplicitDistributedAttr, SiblingOpsAnalysis& siblingsAnalysis) {
     auto clusteredOp = mlir::cast<VPU::ClusteredOpInterface>(getOperation());
-    auto origOp = mlir::cast<NCEAveragePoolOp>(getOperation());
     const auto strategy = clusteredOp.getMultiClusterStrategy().value();
-    auto outputTensorType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
-    auto numClusters = VPU::getOptimalNumClusters(clusteredOp, outputTensorType.getShape(), strategy);
-    auto* ctx = clusteredOp->getContext();
-    mlir::ArrayAttr activationAlignmentAttr = nullptr;
 
-    const auto activationTensorDistributionMode = getActivationTensorDistributionMode(clusteredOp, strategy);
-    const auto activationTensorNumTiles =
-            getIntArrayAttr(ctx, getActivationTensorNumTiles(clusteredOp, numClusters, strategy));
-
-    const auto activationAlignment = getActivationTensorAlignment(clusteredOp, numClusters, strategy);
-    if (activationAlignment.has_value()) {
-        activationAlignmentAttr = getIntArrayAttr(ctx, activationAlignment.value());
-    }
-    if (operand.get() == origOp.getInput()) {
-        return getDistributedTypeFromInput(clusteredOp, origOp.getInput(), activationTensorDistributionMode,
-                                           activationTensorNumTiles, activationAlignmentAttr, strategy,
-                                           hasExplicitDistributedAttr, siblingsAnalysis);
+    if (operand.get() == getInput()) {
+        return VPU::getDistributedActivationTypeForOpOperand(clusteredOp, getInput(), strategy,
+                                                             hasExplicitDistributedAttr, siblingsAnalysis);
     }
     VPUX_THROW("Failed to compute distributed type for op {0}", clusteredOp);
     return nullptr;

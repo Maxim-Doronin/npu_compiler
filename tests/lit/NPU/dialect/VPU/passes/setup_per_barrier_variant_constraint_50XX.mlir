@@ -4,10 +4,10 @@
 //
 
 
-// RUN: vpux-opt --vpu-arch=%arch% --setup-npu-constraint="workload-management-status=ENABLED enable-sw-kernel-fifo-per-shave-engine=true" %s | FileCheck %s
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt --platform=%platform% --setup-npu-constraint="workload-management-status=ENABLED enable-sw-kernel-fifo-per-shave-engine=true" %s | FileCheck %s
+// REQUIRES: platform-NPU5010
 
-module @mainModule attributes { config.arch = #config.arch_kind<NPU50XX> } {
+module @mainModule attributes { config.platform = #config.platform<NPU5010> } {
   config.Resources 2 of @NCE at 1.700000e+03 MHz {
     config.ExecutorResource 2 of @SHAVE_ACT
     config.ExecutorResource 1 of @DPU

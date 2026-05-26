@@ -68,7 +68,7 @@ def VPUMI40XX_ConfigureBarrierOp :
 
     let arguments = (ins
         Variadic<VPURegMapped_IndexType>:$dependencies,
-        UI8Attr:$id,
+        IntAttr:$id,
         SI64Attr:$next_same_id,
         Optional<VPURegMapped_IndexType>:$previousSameId,
         OptionalAttr<UI8Attr>:$producer_count,
@@ -262,7 +262,8 @@ def VPUMI40XX_NNDMAOp :
         OptionalAttr<VPUIP_PhysicalBarrierRangeAttr>:$physical_barrier_range,
         OptionalAttr<VPUIP_EnqueueDMAAttr>:$enqueue_dma_attr,
         OptionalAttr<VPUIP_FetchDMAAttr>:$fetch_dma,
-        OptionalAttr<VPUIP_GatherAddressingMode>:$addressingMode
+        OptionalAttr<VPUIP_GatherAddressingMode>:$addressingMode,
+        OptionalAttr<VPUIP_SkipDMAAttr>:$skip_dma
     );
 
     let results = (outs
@@ -375,17 +376,17 @@ def VPUMI40XX_ActShaveRtOp :
 }
 
 //
-// ShaveStackFrameOp
+// ShaveStackFrameBuffOp
 //
 
-def VPUMI40XX_ShaveStackFrameOp :
+def VPUMI40XX_ShaveStackFrameBuffOp :
         VPUMI40XX_Op<"ActShaveRtStack",
             [
                 VPUMI40XX_SingleOutputAsIndexOp,
                 DeclarationOp
             ]
         > {
-    let summary = "Declaration of Act Shave stack frames buffers";
+    let summary = "Declaration of Act Shave stack frames buffers allocated in DDR";
 
     let arguments = (ins
         UI64Attr:$stackSize
@@ -527,7 +528,8 @@ def VPUMI40XX_KernelParamsOp :
         StrAttr:$kernel_type,
         ArrayAttr:$kernel_params,
         UnitProp:$is_output_broadcasted,
-        UnitProp:$isJitCompiled
+        UnitProp:$isJitCompiled,
+        OptionalAttr<ArrayAttr>:$skipDescIds
     );
 
     let results = (outs
@@ -797,7 +799,7 @@ def VPUMI40XX_DPUInvariantOp :
         OptionalAttr<VPUIP_SparsityConfigAttr>:$sparsity_config,
         OptionalAttr<VPUIP_DynamicScaleConfigAttr>:$dynamic_scale_config,
         OptionalAttr<VPUIP_LocalRegionAttr>:$local_region,
-        OptionalAttr<VPUIP_S2DConfigAttr>:$s2d_config
+        OptionalAttr<VPU_S2DD2SConfigAttr>:$s2dd2s_config
     );
 
     let results = (outs

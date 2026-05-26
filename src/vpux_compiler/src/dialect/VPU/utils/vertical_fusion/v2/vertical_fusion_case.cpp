@@ -269,7 +269,8 @@ void VFCase::addCMXWriteSpills(const std::unique_ptr<VPU::LayerVPUNNCost>& costF
                 if (eltwiseLike) {
                     auto operandType = mlir::cast<vpux::NDTypeInterface>(previousOp->getResult(0).getType());
                     auto operandSize = operandType.getTotalAllocSize();
-                    if (auto distributedOutType = VPU::getDistributedOutputType(previousOp)) {
+                    if (auto distributedOutType = mlir::dyn_cast_if_present<VPU::DistributedTensorType>(
+                                VPU::getDistributedOutputType(previousOp))) {
                         operandSize = distributedOutType.getTotalAllocSize();
                     }
                     isChecked = !_vfScheduling->validate(_config, _vfTilingStorage, operandSize);

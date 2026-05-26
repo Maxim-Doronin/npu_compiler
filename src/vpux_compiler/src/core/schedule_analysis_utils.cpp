@@ -12,9 +12,13 @@
 #include "vpux/compiler/utils/dma.hpp"
 #include "vpux/compiler/utils/strings.hpp"
 #include "vpux/utils/profiling/reports/ted.hpp"
+#if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
+#include "vpux/utils/core/developer_build_utils.hpp"
+#include "vpux/utils/core/developer_path_utils.hpp"
+#endif
 
+#include <llvm/Support/FileSystem.h>
 #include <llvm/Support/JSON.h>
-#include "llvm/Support/FileSystem.h"
 
 #include <cstddef>
 #include <fstream>
@@ -319,7 +323,7 @@ inline uint32_t arrayAttrToMask32(mlir::ArrayAttr arr) {
 
 void vpux::createTracingJSON(mlir::func::FuncOp& netFunc, MemLiveRangeInfo& liveRangeInfo,
                              LinearScan<mlir::Value, LinearScanHandler>& scan, vpux::AddressType totalMemory,
-                             StringRef fileName) {
+                             const mlir::Location funcLoc, StringRef fileNameTemplate) {
     llvm::json::Array jBuffers;
     llvm::json::Array jOps;
 
@@ -383,9 +387,24 @@ void vpux::createTracingJSON(mlir::func::FuncOp& netFunc, MemLiveRangeInfo& live
                                 {"buffers", std::move(jBuffers)},
                                 {"operations", std::move(jOps)}};
 
+    std::string finalPath = vpux::formatv(fileNameTemplate.str().c_str(), vpux::stringifyPrimaryLocation(funcLoc));
+
+    // replace '/' with '_' in the file name
+    size_t pos = 0;
+    while ((pos = finalPath.find("/", pos)) != std::string::npos) {
+        finalPath.replace(pos, 1, "_");
+        pos += 1;  // move past the replacement
+    }
+
+#if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
+    if (isPerfDebugMode()) {
+        finalPath = getPerfDebugFilePath(finalPath);
+    }
+#endif
+
     std::error_code EC;
-    llvm::raw_fd_ostream OS(fileName.str(), EC, llvm::sys::fs::OF_Text);
-    VPUX_THROW_UNLESS(!EC, "cannot open '{}' ({})", fileName.str(), EC.message());
+    llvm::raw_fd_ostream OS(finalPath, EC, llvm::sys::fs::OF_Text);
+    VPUX_THROW_UNLESS(!EC, "cannot open '{}' ({})", finalPath, EC.message());
 
     // pretty-print
     OS << llvm::formatv("{0:2}", llvm::json::Value(std::move(schedule)));

@@ -18,6 +18,7 @@ struct SparsityMap {
 vpux::VPURT::BufferSection getBufferLocation(mlir::Operation* symTableOp, mlir::SymbolRefAttr symRef);
 vpux::VPURT::BufferSection getBufferLocation(ELF::SymbolReferenceMap& symRefMap, mlir::SymbolRefAttr symRef);
 vpux::VPUASM::BufferType getBufferType(ELF::SymbolReferenceMap& symRefMap, mlir::SymbolRefAttr symRef);
+mlir::MemRefType getMinMaxDataType(VPUASM::DPUInvariantOp invOp, ELF::SymbolReferenceMap& symRefMap);
 bool isWorkLoadManagementDMA(mlir::Operation* op);
 uint32_t getTileSelectMaskForBuffer(VPUASM::DeclareBufferOp buffer);
 uint32_t getTileSelectMaskForBuffer(VPUASM::DeclareTaskBufferOp taskBuffer);

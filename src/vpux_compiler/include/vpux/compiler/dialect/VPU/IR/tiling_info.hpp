@@ -22,7 +22,7 @@ OutputTiling lstmSequenceOutputTiling(const vpux::TileInfo& firstOutputTile);
 OutputTiling lstmDpuOutputTiling(const vpux::TileInfo& firstOutputTile);
 OutputTiling DynamicQuantizeOutputTiling(const vpux::TileInfo& firstOutputTile);
 
-OutputTiling FlashSDPAOpOutputTiling(const vpux::TileInfo& firstOutputTile, int64_t qkEmbedding);
+OutputTiling FlashSDPAOpOutputTiling(const vpux::TileInfo& firstOutputTile);
 InputTiling FlashSDPAOpInputTiling(const vpux::TileInfo& firstOutputTile, ShapeRef keyShape,
                                    std::optional<ShapeRef> attentionMaskShape, ShapeRef auxBufferShape,
                                    ShapeRef dpuDescriptorBufferShape, ShapeRef weightsTable0Shape,

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW allow-custom-values=true" --dpu-profiling %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW allow-custom-values=true" --dpu-profiling %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -28,7 +28,7 @@ module @DpuProfiling  {
   func.func @main(%arg0: !Input_CMX, %arg1: !Weights_CMX, %arg3: !Output_DDR) -> !Output_DDR {
 
     %0 = memref.alloc() : !Output_CMX
-    %1 = VPUIP.NCEClusterTask <{
+    %1 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
             kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
             kernel_size = [3, 3],
             kernel_strides = [1, 1],
@@ -110,7 +110,7 @@ module @DpuProfilingWithMulticlustering  {
   func.func @main(%arg0: !Input_CMX, %arg1: !Weights_CMX, %arg3: !Output_DDR) -> !Output_DDR {
 
     %0 = VPURT.AllocDistributed -> !OutputDistributed
-    %1 = VPUIP.NCEClusterTask <{
+    %1 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
           kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
           kernel_size = [3, 3],
           kernel_strides = [1, 1],
@@ -212,7 +212,7 @@ module @DpuProfilingMultipleOps  {
     %0 = memref.alloc() : !Input0_CMX
     %1 = memref.alloc() : !Output0_CMX
     %2 = memref.alloc() : !Weights0_CMX
-    %4 = VPUIP.NCEClusterTask <{
+    %4 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
           kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
           kernel_size = [3, 3],
           kernel_strides = [1, 1],
@@ -242,7 +242,7 @@ module @DpuProfilingMultipleOps  {
     //CHECK-SAME:   profiling_data([[PROF_VIEW_OP_0]] : memref<[[VIEW_SIZE_0:.+]]x[[PROFDATA_INFO_TENSOR_TYPE]], [@CMX_NN, 0]>)
 
     %5 = memref.alloc() : !Output0_CMX
-    %6 = VPUIP.NCEClusterTask <{
+    %6 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
           task_type = #VPUIP.nce_task_type<ELTWISE>
           }> input(%4 : !Output0_CMX)
             weights(%4 : !Output0_CMX)
@@ -269,7 +269,7 @@ module @DpuProfilingMultipleOps  {
 
     %7 = memref.alloc() : !Weights1_CMX
     %9 = memref.alloc() : !Output1_CMX
-    %10 = VPUIP.NCEClusterTask <{
+    %10 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
         kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
         kernel_size = [3, 3],
         kernel_strides = [4, 4],
@@ -298,7 +298,7 @@ module @DpuProfilingMultipleOps  {
 
     %11 = memref.alloc() : !Output1_CMX
 
-    %12 = VPUIP.NCEClusterTask <{
+    %12 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
         task_type = #VPUIP.nce_task_type<ELTWISE>
         }>
         input(%10 : !Output1_CMX)
@@ -317,7 +317,7 @@ module @DpuProfilingMultipleOps  {
     }
 
     %13 = VPURT.AllocDistributed -> !OutputDistributed
-    %14 =  VPUIP.NCEClusterTask <{
+    %14 =  VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
         task_type = #VPUIP.nce_task_type<ELTWISE>
         }>
         input(%12 : !Output1_CMX)
@@ -342,7 +342,7 @@ module @DpuProfilingMultipleOps  {
     //CHECK-SAME:     profiling_data([[PROF_VIEW_OP_4]] : !VPUIP.DistributedBuffer<[[PROF_VIEW_OP_4_SIZE]]x[[PROFDATA_INFO_TENSOR_TYPE]], #C, @CMX_NN
 
     %15 = VPURT.AllocDistributed -> !OutputDistributed
-    %16 = VPUIP.NCEClusterTask <{
+    %16 = VPUIP.NCEClusterTask {resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>} <{
         task_type = #VPUIP.nce_task_type<ELTWISE>
         }>
         input(%14 : !OutputDistributed)

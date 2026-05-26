@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --patch-populate-weight-table-with-shave --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --patch-populate-weight-table-with-shave --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 !qElemType = !quant.uniform<i4:f16, 0.0057189941406250002>
 
@@ -106,10 +106,10 @@ func.func @PatchSWKernelModeSegmented(%arg0: memref<1x1x4096xf32, @DDR>, %scale:
         (!async.value<!PopulateWeightTableDistributed>, !async.value<!PopulateWeightTableDistributed>)
         attributes {VPUIP.executor = @SHAVE_ACT, "async-deps-index" = 0 : i64, cycleBegin = 0 : i64, cycleCost = 1 : i64, cycleEnd = 1 : i64} {
 
-      %sub_view0 = VPUIP.SubView %3 [0, 0, 0, 0] [512, 1, 1, 4] {explicit_output_shapes = [[128, 1, 1, 4], [128, 1, 1, 4], [128, 1, 1, 4], [128, 1, 1, 4]]} :
+      %sub_view0 = VPUIP.SubView %3 [0, 0, 0, 0] [512, 1, 1, 4] {explicit_output_offsets = [[0, 0, 0, 0], [128, 0, 0, 0], [256, 0, 0, 0], [384, 0, 0, 0]], explicit_output_shapes = [[128, 1, 1, 4], [128, 1, 1, 4], [128, 1, 1, 4], [128, 1, 1, 4]]} :
             !WTDistributed to !PopulateWeightTableDistributed
 
-      %sub_view1 = VPUIP.SubView %3 [512, 0, 0, 0] [512, 1, 1, 4] {explicit_output_shapes = [[128, 1, 1, 4], [128, 1, 1, 4], [128, 1, 1, 4], [128, 1, 1, 4]]} :
+      %sub_view1 = VPUIP.SubView %3 [512, 0, 0, 0] [512, 1, 1, 4] {explicit_output_offsets = [[0, 0, 0, 0], [128, 0, 0, 0], [256, 0, 0, 0], [384, 0, 0, 0]], explicit_output_shapes = [[128, 1, 1, 4], [128, 1, 1, 4], [128, 1, 1, 4], [128, 1, 1, 4]]} :
             !WTDistributed to !PopulateWeightTableDistributed
 
       %results:2 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 2, 0, 0>, weightsPtrsPerClusterAttr = [0, 0, 0, 0]}
@@ -166,7 +166,8 @@ func.func @PatchSWKernelModeSegmented(%arg0: memref<1x1x4096xf32, @DDR>, %scale:
           -> !ConvInputDistributed
       %21 = VPUIP.ConcatView inputs(%arg4, %arg5 : !PopulateWeightTableDistributed, !PopulateWeightTableDistributed)
         outputs(%3 : !WTDistributed) -> !WTDistributed
-      %22 = VPUIP.NCEClusterTask {populateWeightTable = true, minimumHardwareExecutionCost = 4294967295 : i64} <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1],
+      %22 = VPUIP.NCEClusterTask {populateWeightTable = true, minimumHardwareExecutionCost = 4294967295 : i64, resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>}
+             <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1],
                 kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
         input(%20 : !ConvInputDistributed)
         weights(%arg3 : !WeightsDistributed)
@@ -374,10 +375,10 @@ func.func @PatchSWKernelClusteredWithDMASpill(%arg0: memref<1x1x4096xf32, @DDR>,
         (!async.value<!PopulateWeightTableDistributed>, !async.value<!PopulateWeightTableDistributed>)
         attributes {VPUIP.executor = @SHAVE_ACT, "async-deps-index" = 0 : i64, cycleBegin = 0 : i64, cycleCost = 1 : i64, cycleEnd = 1 : i64} {
 
-      %sub_view0 = VPUIP.SubView %3 [0, 0, 0, 0] [512, 1, 1, 4] {explicit_output_shapes = [[128, 1, 1, 4], [128, 1, 1, 4], [128, 1, 1, 4], [128, 1, 1, 4]]} :
+      %sub_view0 = VPUIP.SubView %3 [0, 0, 0, 0] [512, 1, 1, 4] {explicit_output_offsets = [[0, 0, 0, 0], [128, 0, 0, 0], [256, 0, 0, 0], [384, 0, 0, 0]], explicit_output_shapes = [[128, 1, 1, 4], [128, 1, 1, 4], [128, 1, 1, 4], [128, 1, 1, 4]]} :
             !WTDistributed to !PopulateWeightTableDistributed
 
-      %sub_view1 = VPUIP.SubView %3 [512, 0, 0, 0] [512, 1, 1, 4] {explicit_output_shapes = [[128, 1, 1, 4], [128, 1, 1, 4], [128, 1, 1, 4], [128, 1, 1, 4]]} :
+      %sub_view1 = VPUIP.SubView %3 [512, 0, 0, 0] [512, 1, 1, 4] {explicit_output_offsets = [[0, 0, 0, 0], [128, 0, 0, 0], [256, 0, 0, 0], [384, 0, 0, 0]], explicit_output_shapes = [[128, 1, 1, 4], [128, 1, 1, 4], [128, 1, 1, 4], [128, 1, 1, 4]]} :
             !WTDistributed to !PopulateWeightTableDistributed
 
       %results:2 = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 2, 0, 0>, weightsPtrsPerClusterAttr = [0, 0, 0, 0]}
@@ -459,7 +460,8 @@ func.func @PatchSWKernelClusteredWithDMASpill(%arg0: memref<1x1x4096xf32, @DDR>,
           -> !ConvInputDistributed
       %21 = VPUIP.ConcatView inputs(%arg4, %arg5 : !PopulateWeightTableDistributed, !PopulateWeightTableDistributed)
         outputs(%3 : !WTDistributed) -> !WTDistributed
-      %22 = VPUIP.NCEClusterTask {populateWeightTable = true, minimumHardwareExecutionCost = 4294967295 : i64} <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1],
+      %22 = VPUIP.NCEClusterTask {populateWeightTable = true, minimumHardwareExecutionCost = 4294967295 : i64, resultSegmentSizes = array<i32: 1, 0, 0, 0, 0, 0>}
+             <{kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [1, 1],
                 kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}>
         input(%20 : !ConvInputDistributed)
         weights(%arg3 : !WeightsDistributed)

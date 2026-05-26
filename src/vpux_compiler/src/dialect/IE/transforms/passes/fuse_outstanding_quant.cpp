@@ -46,7 +46,7 @@ void FuseOutstandingQuantPass::safeRunOnFunc() {
     mlir::RewritePatternSet patterns(&ctx);
 
     // register platform specific rewriters using the platform specific strategy
-    auto& strategyFactory = IE::getIEStrategyFactory(&ctx);
+    const auto& strategyFactory = IE::getIEStrategyFactory(&ctx);
     auto strategy = strategyFactory->getFuseOutstandingQuantStrategy();
     strategy->addPatterns(patterns, _log);
 

@@ -153,7 +153,7 @@ class Mvn6LayerTestCommon : public Mvn6LayerTest, virtual public VpuOv2LayerTest
 
 class Mvn6LayerTestCommonFP32 : public Mvn6LayerTestCommon {
     void configure_model() override {
-        configuration[ov::intel_npu::compilation_mode_params.name()] = "convert-precision-to-fp16=false";
+        configuration[ov::intel_npu::compilation_mode_params.name()] = "disabled-passes=convert-precision-to-fp16";
     }
 };
 
@@ -243,7 +243,7 @@ const std::vector<std::vector<ov::Shape>> inputShapesForOrder = {{{1, 4, 2, 1024
 
 const std::vector<std::vector<ov::Shape>> inputShapes4D = {{{1, 4, 512, 1}}, {{1, 999, 2, 3}}, {{1, 16, 5, 8}},
                                                            {{2, 19, 5, 10}}, {{7, 32, 2, 8}},  {{5, 8, 3, 5}},
-                                                           {{4, 41, 6, 9}}
+                                                           {{4, 41, 6, 9}},  {{1, 32, 4, 1}}
 #if 0  // extra shapes
         {{5, 2, 7, 3}},   {{1, 3, 17, 21}}, {{2, 5, 13, 27}}, {{1, 7, 55, 33}}, {{4, 9, 7, 2}},  {{3, 13, 9, 9}}, {{1, 16, 12,
         11}}, {{1, 512, 3, 2}},

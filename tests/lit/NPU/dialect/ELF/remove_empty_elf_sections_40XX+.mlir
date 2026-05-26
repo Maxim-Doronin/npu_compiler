@@ -3,11 +3,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --remove-empty-ELF-sections %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --remove-empty-ELF-sections %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 func.func @oneDma() {
-  ELF.Main @ELFMain {
+  ELF.Main {
     ELF.CreateLogicalSection @buffer.CMX_NN aligned(64) secType(SHT_PROGBITS) secFlags("SHF_NONE") secLocation(<DDR>) {
       VPUASM.DeclareBuffer @DeclareBuffer !VPUASM.Buffer< "CMX_NN"[0] <0> : memref<1x10x2x3xf16, affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>, [@CMX_NN, 0]> :  swizzling(0)>
     }

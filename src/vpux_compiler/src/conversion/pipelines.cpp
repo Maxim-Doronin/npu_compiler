@@ -13,6 +13,7 @@
 #include <mlir/Conversion/Passes.h>
 #include <mlir/Dialect/Linalg/Passes.h>
 #include <mlir/Dialect/MemRef/Transforms/Passes.h>
+#include <mlir/Dialect/Quant/Transforms/Passes.h>
 #include <mlir/Pass/PassManager.h>
 #include <mlir/Transforms/Passes.h>
 
@@ -44,6 +45,7 @@ void vpux::buildLowerVPU2VPUIPPipeline(mlir::OpPassManager& pm, bool enableInPla
     }
     pm.addPass(createOneShotBufferizeVPU2VPUIPPass());
     pm.addPass(VPUIP::createUngroupBoundedBuffersAsFuncArgsPass(log));
+    pm.addPass(VPUIP::createUngroupHostBuffersAsFuncArgsPass(log));
     pm.addPass(createAddBuffersForNetResults(useMemrefForHostFunctionBufferization, log));
     pm.addPass(mlir::createCanonicalizerPass(grc));
 }
@@ -73,6 +75,7 @@ void vpux::ShaveCodeGen::buildShaveCodeGenPipelineIE(mlir::OpPassManager& pm, Lo
     pm.addPass(ShaveCodeGen::createFoldUnitDimReshapesPass(log));
 
     pm.addPass(ShaveCodeGen::createOutlineCodeGenCapsulesPass());
+    pm.addPass(ShaveCodeGen::createStripFuncQuantTypesCodeGenPass());
 }
 
 void vpux::ShaveCodeGen::buildShaveCodeGenPipelineVPU(mlir::OpPassManager& pm, Logger) {

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --split-fake-quant --verify-diagnostics %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --split-fake-quant --verify-diagnostics %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL: @BroadcastDiffDims
 func.func @BroadcastDiffDims(%arg0: tensor<1x3x30x30xf32>) -> tensor<1x3x30x30xf32> {

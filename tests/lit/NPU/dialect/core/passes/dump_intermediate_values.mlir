@@ -2,9 +2,9 @@
 // Copyright (C) 2026 Intel Corporation.
 // SPDX-License-Identifier: Apache-2.0
 //
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --dump-intermediate-values="op-filters=\"[{name: IE.Convolution, locations: []}, {name: IE.*Pool, locations: [\"pool1\"]}]\"" %s | FileCheck --check-prefix="CHECK-IE" %s
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --dump-intermediate-values="op-filters=\"[{name: VPU.NCE.Convolution, locations: []}]\"" %s | FileCheck --check-prefix="CHECK-VPU" %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --dump-intermediate-values="op-filters=\"[{name: IE.Convolution, locations: []}, {name: IE.*Pool, locations: [\"pool1\"]}]\"" %s | FileCheck --check-prefix="CHECK-IE" %s
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --dump-intermediate-values="op-filters=\"[{name: VPU.NCE.Convolution, locations: []}]\"" %s | FileCheck --check-prefix="CHECK-VPU" %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK-IE-LABEL: @OneOp
 module @OneOp {

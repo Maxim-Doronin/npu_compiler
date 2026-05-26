@@ -31,9 +31,9 @@ The following commands were tested on *Ubuntu*. Please, don't hesitate to update
 4. We can now apply pipeline from earlier to our modified IR to generate an ELF file:
 
 ```
-vpux-opt --vpu-arch=<YOUR device> -pass-pipeline="`cat going_after.passes`" -o applied_pipeline.mlir output_my_pass_full.mlir
-vpux-opt --vpu-arch=<YOUR device> --lower-VPUIP-to-ELF -o elf.mlir applied_pipeline.mlir
-vpux-translate --vpu-arch=<YOUR device> --export-ELF -o model.blob elf.mlir
+vpux-opt --platform=<YOUR device> -pass-pipeline="`cat going_after.passes`" -o applied_pipeline.mlir output_my_pass_full.mlir
+vpux-opt --platform=<YOUR device> --lower-VPUIP-to-ELF -o elf.mlir applied_pipeline.mlir
+vpux-translate --platform=<YOUR device> --export-ELF -o model.blob elf.mlir
 ```
 
 5. Ultimately, the output file `model.blob` is ready to be used in on device inference

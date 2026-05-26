@@ -11,12 +11,15 @@
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
+#include "vpux/compiler/utils/func_dialect.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
+#include <llvm/ADT/STLExtras.h>
 #include <mlir/Dialect/MemRef/IR/MemRef.h>
 #include <mlir/IR/Operation.h>
 #include <mlir/Interfaces/CallInterfaces.h>
 #include <functional>
+#include <type_traits>
 
 using namespace vpux;
 
@@ -142,6 +145,18 @@ void updateCallOp(const mlir::DenseSet<mlir::CallOpInterface>& callOps, vpux::Lo
 
         auto newOperands = to_vector(callOp->getOperands());
         newOperands.append(outParams.begin(), outParams.end());
+
+        auto funcOp = getCalledFunction(callOp);
+        for (auto& arg : funcOp.getArguments()) {
+            auto argType = arg.getType();
+            auto argIndex = arg.getArgNumber();
+
+            if (argType != newOperands[argIndex].getType()) {
+                auto castBufferOp =
+                        builder.create<mlir::memref::CastOp>(callOp.getLoc(), argType, newOperands[argIndex]);
+                newOperands[argIndex] = castBufferOp.getResult();
+            }
+        }
 
         auto newCallOp = callOp->clone();
         newCallOp->setOperands(newOperands);

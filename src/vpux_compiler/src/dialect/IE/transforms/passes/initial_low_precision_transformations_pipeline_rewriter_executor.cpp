@@ -67,7 +67,7 @@ void InitialLowPrecisionTransformationsPipelineRewriterExecutorPass::safeRunOnFu
     auto func = getOperation();
     auto& ctx = getContext();
 
-    auto& strategyFactory = IE::getIEStrategyFactory(&ctx);
+    const auto& strategyFactory = IE::getIEStrategyFactory(&ctx);
     auto strategy = strategyFactory->getInitialLowPrecisionTransformationsPipelineStrategy(
             func, _enableDynamicQuantizationForStaticCase);
     auto customRegistry = vpux::RegistryManager::createCustomRegistry();

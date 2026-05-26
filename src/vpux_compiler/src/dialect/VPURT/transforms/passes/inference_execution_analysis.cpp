@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <mlir/Support/LLVM.h>
 #include "vpux/compiler/core/cycle_cost_info.hpp"
 #include "vpux/compiler/core/profiling_metadata.hpp"
 #include "vpux/compiler/core/profiling_utils.hpp"
@@ -17,6 +16,12 @@
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/utils/strings.hpp"
 #include "vpux/utils/profiling/reports/api.hpp"
+#if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
+#include "vpux/utils/core/developer_build_utils.hpp"
+#include "vpux/utils/core/developer_path_utils.hpp"
+#endif
+
+#include <mlir/Support/LLVM.h>
 
 #include <fstream>
 #include <string>
@@ -210,6 +215,14 @@ public:
     explicit InferenceExecutionAnalysisPass(const std::string& compileSchedTraceFileName, bool dumpToJson, Logger log)
             : _compileSchedTraceFileName(compileSchedTraceFileName), _dumpToJson(dumpToJson) {
         Base::initLogger(log, Base::getArgumentName());
+
+#if defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
+        if (isPerfDebugMode()) {
+            _dumpToJson = true;
+            // Use the default file name for perf debug mode
+            _compileSchedTraceFileName = getPerfDebugFilePath("compileTimeScheduleTrace.json");
+        }
+#endif  // defined(VPUX_DEVELOPER_BUILD) || !defined(NDEBUG)
     }
 
 private:
@@ -296,7 +309,7 @@ void InferenceExecutionAnalysisPass::safeRunOnFunc() {
 // createInferenceExecutionAnalysisPass
 //
 
-std::unique_ptr<mlir::Pass> vpux::VPURT::createInferenceExecutionAnalysisPass(std::string compileSchedTraceFileName,
-                                                                              bool dumpToJson, Logger log) {
+std::unique_ptr<mlir::Pass> vpux::VPURT::createInferenceExecutionAnalysisPass(
+        const std::string& compileSchedTraceFileName, bool dumpToJson, Logger log) {
     return std::make_unique<InferenceExecutionAnalysisPass>(compileSchedTraceFileName, dumpToJson, log);
 }

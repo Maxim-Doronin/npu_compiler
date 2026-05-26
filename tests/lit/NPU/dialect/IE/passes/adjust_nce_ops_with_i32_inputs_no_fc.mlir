@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --adjust-nce-ops-with-i32-inputs="convert-fc-to-conv=false" --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --adjust-nce-ops-with-i32-inputs="convert-fc-to-conv=false" --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL: @FC_NoConvert
 // CHECK-SAME:      [[INPUT0:%.+]]: tensor<2x3xsi32>, [[INPUT1:%.+]]: tensor<2x3xsi32>

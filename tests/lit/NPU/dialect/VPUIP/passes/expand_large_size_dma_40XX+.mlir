@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --unroll-expand-dma %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --unroll-expand-dma %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 #NWCH = affine_map<(d0, d1, d2, d3) -> (d0, d3, d1, d2)>
 !qElemType = !quant.uniform<u8:f16, 0.0040670955882352944:128>

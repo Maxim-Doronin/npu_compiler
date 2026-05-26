@@ -65,7 +65,7 @@ public:
         auto baseContentElemType = contentAttr.getBaseContent().getElementType();
         auto content = contentAttr.fold();
         auto quantiles = to_small_vector(content.getValues<double>());
-        auto nf4Type = vpux::type::QuantileFloatType::getNF4(ctx, getUInt4Type(ctx), baseContentElemType, quantiles);
+        auto nf4Type = vpux::type::NF4Type::get(ctx, getUInt4Type(ctx), baseContentElemType, quantiles);
 
         auto quantCastOp = rewriter.create<IE::QuantizeCastOp>(gatherOp.getLoc(), patternOps->nf4Weights, nf4Type);
         if (!patternOps->postConvertOp.has_value()) {

@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --introduce-init-function="ws-extraction-mode=gen-init" %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --construct-ws-analysis --introduce-init-function="ws-extraction-mode=gen-init" %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 {-#
     dialect_resources: {
@@ -1149,4 +1149,33 @@ module @DequantizePerAxis5D {
     // CHECK:       [[DEQUANT:%.+]] = IE.Dequantize([[CAST]])
     // CHECK:       [[CONVERT:%.+]] = IE.Convert([[DEQUANT]])
     // CHECK:       return [[CONVERT]]
+}
+
+// -----
+
+{-#
+    dialect_resources: {
+        builtin: {
+            vpux_ow_1: "0x000000040011223300aabbcc00aabbcc00aabbcc"
+        }
+    }
+#-}
+
+// CHECK: module @GatherElements
+module @GatherElements {
+    net.NetworkInfo entryPoint : @main inputsInfo : {
+    } outputsInfo : {
+        DataInfo "output" : tensor<2x2xf32>
+    }
+
+    func.func @main() -> tensor<2x2xf32> {
+        %cst = const.Declare tensor<2x2xf32> = dense_resource<vpux_ow_1> : tensor<2x2xf32>,
+            [#const.GatherElements<1 : i64, dense<[[1, 0], [0, 1]]> : tensor<2x2xsi64>>]
+        return %cst : tensor<2x2xf32>
+    }
+
+    // CHECK:   func.func @init([[NGRAPH_CST:%.+]]: tensor<2x2xf32>) -> tensor<2x2xf32>
+    // CHECK:       [[INDICES:%.+]] = const.Declare tensor<2x2xsi64> = dense<{{\[\[}}1, 0], [0, 1]]> : tensor<2x2xsi64>
+    // CHECK:       [[GATHER_ELEMENTS:%.+]] = IE.GatherElements([[NGRAPH_CST]], [[INDICES]]) {axis = 1 : i64}
+    // CHECK:       return [[GATHER_ELEMENTS]]
 }

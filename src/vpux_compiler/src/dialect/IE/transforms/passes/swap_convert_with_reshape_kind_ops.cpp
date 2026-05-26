@@ -235,10 +235,13 @@ void SwapConvertWithReshapeKindOps::PropagateConvertToFuseConverter::propagateCo
     auto lastConvertOutputType = mlir::cast<vpux::NDTypeInterface>(lastConvert.getOutput().getType());
     auto targetElementType = lastConvertOutputType.getElementType();
 
-    // Create new Convert after first Convert
+    // Create new Convert using firstConvert's input, skipping firstConvert entirely
     rewriter.setInsertionPointAfter(firstConvert);
-    auto newConvertOp =
-            rewriter.create<IE::ConvertOp>(lastConvert.getLoc(), firstConvert.getOutput(), targetElementType);
+    auto newConvertOp = rewriter.create<IE::ConvertOp>(appendLoc(firstConvert.getLoc(), "forward"),
+                                                       firstConvert.getInput(), targetElementType);
+
+    // Replace firstConvert with the new convert op's output
+    rewriter.replaceOp(firstConvert, newConvertOp.getOutput());
 
     // Update all intermediate operations
     mlir::Value currentValue = newConvertOp.getOutput();
@@ -283,8 +286,8 @@ void SwapConvertWithReshapeKindOps::PropagateConvertToFuseConverter::propagateCo
     // Create new Convert before the last Convert
     auto lastOp = propagationChain.back();
     rewriter.setInsertionPointAfter(lastOp);
-    auto newConvertOp =
-            rewriter.create<IE::ConvertOp>(firstConvert.getLoc(), lastOp->getResult(0), firstConvert.getDstElemType());
+    auto newConvertOp = rewriter.create<IE::ConvertOp>(appendLoc(firstConvert.getLoc(), "backward"),
+                                                       lastOp->getResult(0), firstConvert.getDstElemType());
 
     rewriter.replaceOp(firstConvert, firstConvert.getInput());
 

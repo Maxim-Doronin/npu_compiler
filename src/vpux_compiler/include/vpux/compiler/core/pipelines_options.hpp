@@ -5,15 +5,15 @@
 
 #pragma once
 
-#include "vpux/compiler/core/developer_build_utils.hpp"
-#include "vpux/compiler/core/public_options.hpp"
-#include "vpux/compiler/utils/options.hpp"
-#include "vpux/compiler/utils/passes.hpp"
-#include "vpux/utils/logger/logger.hpp"
-
 #include <mlir/Pass/PassManager.h>
 #include <mlir/Pass/PassOptions.h>
 #include <mlir/Transforms/Passes.h>
+#include "vpux/compiler/core/public_options.hpp"
+#include "vpux/compiler/dialect/HostExec/params.hpp"
+#include "vpux/compiler/utils/options.hpp"
+#include "vpux/compiler/utils/passes.hpp"
+#include "vpux/utils/core/developer_build_utils.hpp"
+#include "vpux/utils/logger/logger.hpp"
 
 #include <memory>
 #include <string>
@@ -64,10 +64,6 @@ public:
     BatchCompileOptionsAdapter& getBatchCompileAdapter() {
         return _batchCompileAdapter;
     }
-
-    BoolOption enableDPUF16ToF32Convert{*this, "enable-dpu-f16-to-f32-convert",
-                                        llvm::cl::desc("Enable running F16 -> F32 converts on DPU."),
-                                        llvm::cl::init(true)};
 
     BoolOption enableVerifiers{*this, "enable-verifiers", llvm::cl::desc("Enable verifiers execution after each pass"),
                                llvm::cl::init(isDeveloperBuild())};
@@ -185,6 +181,10 @@ public:
     BoolOption enableSCFTiling{*this, "scf-tiling", llvm::cl::desc("Enable tiling using SCF dialect"),
                                llvm::cl::init(false)};
 
+    BoolOption enableYuvToRgbShaveScale{*this, "yuv-to-rgb-shave-scale",
+                                        llvm::cl::desc("Enable YUV to RGB SHAVE scale conversion"),
+                                        llvm::cl::init(false)};
+
     BoolOption enableBoundedTensorsToDynamicDimsMask{*this, "bounded-tensors-to-dynamic-dims-mask",
                                                      llvm::cl::desc("Enable BoundedTensorsToDynamicDimsMask pass"),
                                                      llvm::cl::init(true)};
@@ -211,9 +211,6 @@ public:
                                  ::llvm::cl::desc("[Optional] Allows keep predefined values in IR")};
 
     // VPURT
-    BoolOption enableControlGraphSplit{*this, "enable-control-graph-split",
-                                       llvm::cl::desc("Enable split of control graph to simplify barrier scheduling"),
-                                       llvm::cl::init(true)};
     IntOption controlGraphSplitBlockSize{
             *this, "control-graph-split-block-size",
             llvm::cl::desc("Maximal number of tasks in each block that control graph will be split into. Used to "
@@ -244,8 +241,6 @@ public:
             llvm::cl::desc("Selects location verification mode. Possible options are off/fast/full/thorough"),
             llvm::cl::init(vpux::isDeveloperBuild() ? "fast" : "off")};
 
-    BoolOption enableDmaOutOfOrder{*this, "dma-ooo", llvm::cl::desc("Enable out-of-order DMA"), llvm::cl::init(true)};
-
     BoolOption enablePopulateWeightTableWithShave{*this, "enable-populate-weight-table-with-shave",
                                                   llvm::cl::desc("Enable populating weights table with Shave"),
                                                   llvm::cl::init(false)};
@@ -270,16 +265,9 @@ public:
             *this, "use-memref-for-host-function-bufferization",
             llvm::cl::desc("Enable memref bufferization for host function ops"), llvm::cl::init(false)};
 
-    BoolOption enableMergeFakeQuant{*this, "merge-fake-quant", llvm::cl::desc("Enable merge-fake-quant pass"),
-                                    llvm::cl::init(true)};
-
     BoolOption enableCompressActivationSpill{*this, "compress-activation-spill",
                                              ::llvm::cl::desc("Enable compress-activation-spill feature"),
                                              ::llvm::cl::init(false)};
-
-    BoolOption enableSWKernelInstructionPrefetch{*this, "enable-sw-kernels-instruction-prefetch",
-                                                 llvm::cl::desc("Enable SW kernels instruction prefetch"),
-                                                 llvm::cl::init(true)};
 
     // TODO: Ideally, some of the passes in the HostCompile pipeline should not operate on the main function.
     // The following option will skip processing of the main function in these passes. This will be refactored in the
@@ -315,9 +303,31 @@ public:
             llvm::cl::desc("Enable cascaded unrolling with decreasing factors (e.g., 10 -> 5 -> 2)"),
             llvm::cl::init(true)};
 
+    BoolOption enableAutoUnrolling{*this, "enable-auto-unrolling",
+                                   llvm::cl::desc("Enable automatic unrolling factor computation"),
+                                   llvm::cl::init(false)};
+
     BoolOption enableDynamicQuantizationForStaticCase{*this, "enable-dynamic-quantization-for-static-case",
                                                       llvm::cl::desc("Enable dynamic quantization for static case"),
                                                       llvm::cl::init(false)};
+
+    StrOption disabledPasses{*this, "disabled-passes",
+                             llvm::cl::desc("Regex for disabling specific passes in the compiler pipeline"),
+                             llvm::cl::init("")};
+
+    BoolOption enablePipelinedCmdListRecording{
+            *this, "enable-pipelined-cmd-list-recording",
+            llvm::cl::desc("Enable pipelined command list recording and inference execution"),
+            llvm::cl::init(vpux::HostExec::defaultEnablePipelinedCmdListRecording)};
+
+    mlir::detail::PassOptions::Option<AllocateDDRStackFrames> allocateDDRStackFrames{
+            *this, "allocate-ddr-stack-frames",
+            ::llvm::cl::desc("Enable the computation and allocation of a new section which "
+                             "will be used as stack frames for shaves."),
+            ::llvm::cl::init(AllocateDDRStackFrames::DISABLED),
+            ::llvm::cl::values(clEnumValN(AllocateDDRStackFrames::ENABLED, "ENABLED",
+                                          "Allocate DDR buffer to be used as shave stack frames."),
+                               clEnumValN(AllocateDDRStackFrames::DISABLED, "DISABLED", "Shave stack frames in CMX."))};
 };
 
 //
@@ -422,15 +432,13 @@ struct MCAndTilingOptionsBase : mlir::PassPipelineOptions<MCAndTilingOptionsBase
             ::llvm::cl::desc("Option for enabling WLM enqueue barriers search algorithm at VPURT. To be used only for "
                              "experiments."),
             ::llvm::cl::init(WorkloadManagementMode::PWLM_V0_1_PAGES),
-            ::llvm::cl::values(clEnumValN(WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES",
-                                          "WLM with split into subgraphs (pages)"),
-                               clEnumValN(WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO",
-                                          "WLM enqueue barriers search algorithm at VPURT ENABLED"),
-                               clEnumValN(WorkloadManagementMode::PWLM_V0_1_PAGES, "PWLM_V0_1_PAGES",
-                                          "PWLM with split into subgraphs (pages)"),
-                               clEnumValN(WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA",
-                                          "WLM enqueue barriers search algorithm at VPURT DISABLED. Use LCA based "
-                                          "enqueue algorithm at VPUMI"))};
+            ::llvm::cl::values(
+                    clEnumValN(WorkloadManagementMode::PWLM_V0_1_PAGES, "PWLM_V0_1_PAGES",
+                               "PWLM with split into subgraphs (pages)"),
+                    clEnumValN(WorkloadManagementMode::PWLM_V0_1_PAGES, "PWLM_V0_LCA",
+                               "This is a deprecated WLM mode which is no longer supported. The option is kept for "
+                               "backwards compatibility only and the mode redirects to PWLM_V0_1_PAGES mode, which has "
+                               "the same vpu-fw compatibility but offers numerous stability improvements."))};
 
     StrOption loopUnrollFactor{*this, "loop-unroll-factor",
                                llvm::cl::desc("List of unroll factors for SCF loops to unroll by."),
@@ -440,6 +448,10 @@ struct MCAndTilingOptionsBase : mlir::PassPipelineOptions<MCAndTilingOptionsBase
             *this, "enable-cascaded-unrolling",
             llvm::cl::desc("Enable cascaded unrolling with decreasing factors (e.g., 10 -> 5 -> 2)"),
             llvm::cl::init(true)};
+
+    BoolOption enableAutoUnrolling{*this, "enable-auto-unrolling",
+                                   llvm::cl::desc("Enable automatic unrolling factor computation"),
+                                   llvm::cl::init(false)};
 
     BoolOption enableRunMVNNormalizeOnDPU{*this, "enable-run-mvn-normalize-on-dpu",
                                           llvm::cl::desc("Enable RunMVNNormalizeOnDPU pass on DPU"),
@@ -475,15 +487,12 @@ struct BackendCompilationOptionsBase : mlir::PassPipelineOptions<T> {
             ::llvm::cl::values(
                     clEnumValN(WorkloadManagementMode::FWLM_V1_PAGES, "FWLM_V1_PAGES",
                                "Full WLM with split into pages"),
-                    clEnumValN(WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES",
-                               "Partial WLM with split into pages"),
-                    clEnumValN(WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO",
-                               "Partial WLM, enqueue barriers search algorithm at VPURT ENABLED"),
                     clEnumValN(WorkloadManagementMode::PWLM_V0_1_PAGES, "PWLM_V0_1_PAGES",
                                "PWLM with split into subgraphs (pages)"),
-                    clEnumValN(WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA",
-                               "Partial WLM, enqueue barriers search algorithm at VPURT DISABLED. Use LCA based "
-                               "enqueue algorithm at VPUMI"))};
+                    clEnumValN(WorkloadManagementMode::PWLM_V0_1_PAGES, "PWLM_V0_LCA",
+                               "This is a deprecated WLM mode which is no longer supported. The option is kept for "
+                               "backwards compatibility only and the mode redirects to PWLM_V0_1_PAGES mode, which has "
+                               "the same vpu-fw compatibility but offers numerous stability improvements."))};
 
     mlir::detail::PassOptions::Option<DMAFifoType> workloadManagementDmaFifoType{
             *this, "workload-management-dma-fifo-type",
@@ -499,15 +508,14 @@ struct BackendCompilationOptionsBase : mlir::PassPipelineOptions<T> {
     BoolOption enableDumpStatisticsOfWlmOps{*this, "enable-dump-wlm-ops-stats",
                                             llvm::cl::desc("Enable dump of WLM ops statistics"), llvm::cl::init(false)};
 
-    mlir::detail::PassOptions::Option<AllocateShaveStackFrames> allocateShaveStackFrames{
-            *this, "allocate-shave-stack-frames",
+    mlir::detail::PassOptions::Option<AllocateDDRStackFrames> allocateDDRStackFrames{
+            *this, "allocate-ddr-stack-frames",
             ::llvm::cl::desc("Enable the computation and allocation of a new section which "
-                             "will be used as stack frame form shaves."),
-            ::llvm::cl::init(AllocateShaveStackFrames::DISABLED),
-            ::llvm::cl::values(
-                    clEnumValN(AllocateShaveStackFrames::ENABLED, "ENABLED",
-                               "Allocate DDR buffer to be used as shave stack frames."),
-                    clEnumValN(AllocateShaveStackFrames::DISABLED, "DISABLED", "Stack frames allocated by FW."))};
+                             "will be used as stack frames for shaves."),
+            ::llvm::cl::init(AllocateDDRStackFrames::DISABLED),
+            ::llvm::cl::values(clEnumValN(AllocateDDRStackFrames::ENABLED, "ENABLED",
+                                          "Allocate DDR buffer to be used as shave stack frames."),
+                               clEnumValN(AllocateDDRStackFrames::DISABLED, "DISABLED", "Shave stack frames in CMX."))};
 
     mlir::detail::PassOptions::Option<WorkloadManagementBarrierProgrammingMode>
             workloadManagementBarrierProgrammingMode{
@@ -517,11 +525,6 @@ struct BackendCompilationOptionsBase : mlir::PassPipelineOptions<T> {
                             "experiments."),
                     ::llvm::cl::values(
                             clEnumValN(WorkloadManagementBarrierProgrammingMode::LEGACY, "LEGACY", "Legacy Mode"),
-                            clEnumValN(WorkloadManagementBarrierProgrammingMode::NO_BARRIER_DMAS_SCHEDULED,
-                                       "NO_BARRIER_DMAS_SCHEDULED", "RT handles barrier programming"),
-                            clEnumValN(WorkloadManagementBarrierProgrammingMode::INITIAL_BARRIER_DMAS_SCHEDULED,
-                                       "INITIAL_BARRIER_DMAS_SCHEDULED",
-                                       "Compiler generates DMA to program initial barriers"),
                             clEnumValN(WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED,
                                        "ALL_BARRIER_DMAS_SCHEDULED", "Compiler generates DMAs to program all barriers"),
                             clEnumValN(WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED_4K,

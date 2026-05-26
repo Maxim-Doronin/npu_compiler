@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --vertical-fusion-tiling %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW" --vertical-fusion-tiling %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
@@ -146,30 +146,22 @@ func.func @VfTilingBetweenEltwise(%input: tensor<1x64x256x256xf16, {order = #NHW
     // CHECK: [[VF1_CONCAT:%.+]] = VPU.Concat
 
     // CHECK: [[VF2_CONV_SLICE:%.+]] = VPU.Slice [[VF1_CONCAT]] [0, 0, 0, 0] [1, 256, 9, 256]
-    // CHECK: [[VF2_ELT_SLICE_0:%.+]] = VPU.Slice [[VF1_CONCAT]] [0, 0, 0, 0] [1, 256, 9, 256]
-    // CHECK: [[VF2_ELT_SLICE_1:%.+]] = VPU.Slice [[VF2_ELT_SLICE_0]] [0, 0, 0, 0] [1, 256, 8, 256] :
-    // CHECK:                    tensor<1x256x9x256xf16, {order = #NHWC}> to tensor<1x256x8x256xf16, {order = #NHWC}>
+    // CHECK: [[VF2_ELT_SLICE:%.+]] = VPU.Slice [[VF1_CONCAT]] [0, 0, 0, 0] [1, 256, 8, 256]
     // CHECK: [[VF2_ELT:%.+]] = VPU.NCE.Eltwise
     // CHECK:                    -> tensor<1x256x8x256xf16>
 
     // CHECK: [[VF2_CONV_SLICE:%.+]] = VPU.Slice [[VF1_CONCAT]] [0, 0, 7, 0] [1, 256, 10, 256]
-    // CHECK: [[VF2_ELT_SLICE_0:%.+]] = VPU.Slice [[VF1_CONCAT]] [0, 0, 7, 0] [1, 256, 10, 256]
-    // CHECK: [[VF2_ELT_SLICE_1:%.+]] = VPU.Slice [[VF2_ELT_SLICE_0]] [0, 0, 1, 0] [1, 256, 8, 256] :
-    // CHECK:                     tensor<1x256x10x256xf16, {order = #NHWC}> to tensor<1x256x8x256xf16, {order = #NHWC}>
+    // CHECK: [[VF2_ELT_SLICE:%.+]] = VPU.Slice [[VF1_CONCAT]] [0, 0, 8, 0] [1, 256, 8, 256]
     // CHECK: [[VF2_ELT:%.+]] = VPU.NCE.Eltwise
     // CHECK:                     -> tensor<1x256x8x256xf16>
     // ...
     // CHECK: [[VF2_CONV_SLICE:%.+]] = VPU.Slice [[VF1_CONCAT]] [0, 0, 239, 0] [1, 256, 10, 256]
-    // CHECK: [[VF2_ELT_SLICE_0:%.+]] = VPU.Slice [[VF1_CONCAT]] [0, 0, 239, 0] [1, 256, 10, 256]
-    // CHECK: [[VF2_ELT_SLICE_1:%.+]] = VPU.Slice [[VF2_ELT_SLICE_0]] [0, 0, 1, 0] [1, 256, 8, 256] :
-    // CHECK:                    tensor<1x256x10x256xf16, {order = #NHWC}> to tensor<1x256x8x256xf16, {order = #NHWC}>
+    // CHECK: [[VF2_ELT_SLICE:%.+]] = VPU.Slice [[VF1_CONCAT]] [0, 0, 240, 0] [1, 256, 8, 256]
     // CHECK: [[VF2_ELT:%.+]] = VPU.NCE.Eltwise
     // CHECK:                    -> tensor<1x256x8x256xf16>
 
     // CHECK: [[VF2_CONV_SLICE:%.+]] = VPU.Slice [[VF1_CONCAT]] [0, 0, 247, 0] [1, 256, 9, 256]
-    // CHECK: [[VF2_ELT_SLICE_0:%.+]] = VPU.Slice [[VF1_CONCAT]] [0, 0, 247, 0] [1, 256, 9, 256]
-    // CHECK: [[VF2_ELT_SLICE_1:%.+]] = VPU.Slice [[VF2_ELT_SLICE_0]] [0, 0, 1, 0] [1, 256, 8, 256] :
-    // CHECK:                     tensor<1x256x9x256xf16, {order = #NHWC}> to tensor<1x256x8x256xf16, {order = #NHWC}>
+    // CHECK: [[VF2_ELT_SLICE:%.+]] = VPU.Slice [[VF1_CONCAT]] [0, 0, 248, 0] [1, 256, 8, 256]
     // CHECK: [[VF2_ELT:%.+]] = VPU.NCE.Eltwise
     // CHECK:                     -> tensor<1x256x8x256xf16>
 

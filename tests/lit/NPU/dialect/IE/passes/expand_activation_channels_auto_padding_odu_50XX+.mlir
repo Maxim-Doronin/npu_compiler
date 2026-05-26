@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% num-of-dpu-groups=1 enable-auto-padding-odu" --expand-activation-channels --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% num-of-dpu-groups=1 enable-auto-padding-odu" --expand-activation-channels --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU5010
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 
@@ -173,7 +173,7 @@ func.func @ExpandMaxPool(%arg0: tensor<1x3x1x4xf16, {order = #NHWC}>) -> tensor<
             pads_end = [0, 0],
             strides = [1, 1],
             rounding_type = #IE.rounding_type<FLOOR>,
-            post_op = #IE.Clamp<min = 0.000000e+00 : f64, max = 6.000000e+00 : f64>
+            clamp = {min = 0.000000e+00 : f64, max = 6.000000e+00 : f64}
         } : tensor<1x3x1x4xf16, {order = #NHWC}> -> tensor<1x3x1x4xf16, {order = #NHWC}>
 
     return %0 : tensor<1x3x1x4xf16, {order = #NHWC}>

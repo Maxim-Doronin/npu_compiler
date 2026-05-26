@@ -23,7 +23,7 @@ namespace {
 
 class UpdateELFSectionFlagsPass final : public ELF::impl::UpdateELFSectionFlagsBase<UpdateELFSectionFlagsPass> {
 public:
-    explicit UpdateELFSectionFlagsPass(Logger log, std::string isShaveDDRAccessEnabled) {
+    explicit UpdateELFSectionFlagsPass(Logger log, const std::string& isShaveDDRAccessEnabled) {
         Base::initLogger(log, Base::getArgumentName());
         _isShaveDDRAccessEnabled = isShaveDDRAccessEnabled == "true";
         _sufficientAccessFlags = _isShaveDDRAccessEnabled ? ELF::SectionFlagsAttr::VPU_SHF_PROC_SHAVE |
@@ -101,6 +101,6 @@ private:
 }  // namespace
 
 std::unique_ptr<mlir::Pass> vpux::ELF::createUpdateELFSectionFlagsPass(Logger log,
-                                                                       std::string isShaveDDRAccessEnabled) {
+                                                                       const std::string& isShaveDDRAccessEnabled) {
     return std::make_unique<UpdateELFSectionFlagsPass>(log, isShaveDDRAccessEnabled);
 }

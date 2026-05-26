@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-translate --vpu-arch=%arch% --import-IE %S/IR/scalar_conversion_test.xml -o %t
+// RUN: vpux-translate --platform=%platform% --import-IE %S/IR/scalar_conversion_test.xml -o %t
 // RUN: FileCheck %s --input-file %t
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // This test validates that the updateModuleInfo function correctly handles scalar shape conversions
 // When nGraph scalars (shape=[]) are converted to MLIR scalars (shape=[1]) during import,
@@ -22,5 +22,5 @@
 
 // Verify that internal MLIR operations use the converted [1] shape
 // CHECK: func.func @main([[ARG_0:%.+]]: tensor<1xf32>) -> tensor<1xf32>
-// CHECK: const.Declare tensor<f32> = dense<2.500000e+00> : tensor<f32>
-// CHECK: IE.Add([[ARG_0]], %cst) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1xf32>, tensor<f32> -> tensor<1xf32>
+// CHECK: [[CST:%.+]] = const.Declare tensor<f32> = dense<2.500000e+00> : tensor<f32>
+// CHECK: IE.Add([[ARG_0]], [[CST]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} : tensor<1xf32>, tensor<f32> -> tensor<1xf32>

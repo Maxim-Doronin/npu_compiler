@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN:  vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --expand-layers %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN:  vpux-opt --split-input-file --init-compiler="platform=%platform%" --expand-layers %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 // IE.Sin
 
@@ -57,15 +57,15 @@ module @SingleSinF16Layer {
 // CHECK-NEXT:          [[M1:%.+]] = arith.mulf [[EX1]], [[CST12]] : f32
 // CHECK-NEXT:          [[F1:%.+]] = math.floor [[M1]] : f32
 // CHECK-NEXT:          [[M2:%.+]] = arith.mulf [[F1]], [[CST11]] : f32
-// CHECK-NEXT:          [[S1:%.+]] = arith.subf [[EX1]], [[M2]] : f32
+// CHECK-NEXT:          [[SUBF1:%.+]] = arith.subf [[EX1]], [[M2]] : f32
 // CHECK-NEXT:          [[FPT1:%.+]] = arith.fptosi [[F1]] : f32 to i32
 // CHECK-NEXT:          [[AND1:%.+]] = arith.andi [[FPT1]], [[C3]] : i32
 // CHECK-NEXT:          [[CMP1:%.+]] = arith.cmpi eq, [[AND1]], [[C1]] : i32
 // CHECK-NEXT:          [[CMP2:%.+]] = arith.cmpi eq, [[AND1]], [[C3]] : i32
 // CHECK-NEXT:          [[O1:%.+]] = arith.ori [[CMP1]], [[CMP2]] : i1
 // CHECK-NEXT:          [[CMP3:%.+]] = arith.cmpi sgt, [[AND1]], [[C1]] : i32
-// CHECK-NEXT:          [[M3:%.+]] = arith.mulf [[S1]], [[S1]] : f32
-// CHECK-NEXT:          [[S1:%.+]] = arith.select [[O1]], [[CST10]], %5 : f32
+// CHECK-NEXT:          [[M3:%.+]] = arith.mulf [[SUBF1]], [[SUBF1]] : f32
+// CHECK-NEXT:          [[S1:%.+]] = arith.select [[O1]], [[CST10]], [[SUBF1]] : f32
 // CHECK-NEXT:          [[S2:%.+]] = arith.select [[O1]], [[CST3]], [[CST8]] : f32
 // CHECK-NEXT:          [[S3:%.+]] = arith.select [[O1]], [[CST2]], [[CST7]] : f32
 // CHECK-NEXT:          [[S4:%.+]] = arith.select [[O1]], [[CST1]], [[CST6]] : f32
@@ -238,7 +238,7 @@ module @SingleCosF16Layer {
 // CHECK-NEXT:          [[M1:%.+]] = arith.mulf [[EX1]], [[CST12]] : f32
 // CHECK-NEXT:          [[F1:%.+]] = math.floor [[M1]] : f32
 // CHECK-NEXT:          [[M2:%.+]] = arith.mulf [[F1]], [[CST11]] : f32
-// CHECK-NEXT:          [[S1:%.+]] = arith.subf [[EX1]], [[M2]] : f32
+// CHECK-NEXT:          [[SUBF1:%.+]] = arith.subf [[EX1]], [[M2]] : f32
 // CHECK-NEXT:          [[FPT1:%.+]] = arith.fptosi [[F1]] : f32 to i32
 // CHECK-NEXT:          [[AND1:%.+]] = arith.andi [[FPT1]], [[C3]] : i32
 // CHECK-NEXT:          [[CMP1:%.+]] = arith.cmpi eq, [[AND1]], [[C0]] : i32
@@ -246,8 +246,8 @@ module @SingleCosF16Layer {
 // CHECK-NEXT:          [[CMP3:%.+]] = arith.cmpi eq, [[AND1]], [[C2]] : i32
 // CHECK-NEXT:          [[O1:%.+]] = arith.ori [[CMP1]], [[CMP3]] : i1
 // CHECK-NEXT:          [[O2:%.+]] = arith.ori [[CMP2]], [[CMP3]] : i1
-// CHECK-NEXT:          [[M3:%.+]] = arith.mulf [[S1]], [[S1]] : f32
-// CHECK-NEXT:          [[S1:%.+]] = arith.select [[O1]], [[CST10]], %5 : f32
+// CHECK-NEXT:          [[M3:%.+]] = arith.mulf [[SUBF1]], [[SUBF1]] : f32
+// CHECK-NEXT:          [[S1:%.+]] = arith.select [[O1]], [[CST10]], [[SUBF1]] : f32
 // CHECK-NEXT:          [[S2:%.+]] = arith.select [[O1]], [[CST3]], [[CST8]] : f32
 // CHECK-NEXT:          [[S3:%.+]] = arith.select [[O1]], [[CST2]], [[CST7]] : f32
 // CHECK-NEXT:          [[S4:%.+]] = arith.select [[O1]], [[CST1]], [[CST6]] : f32

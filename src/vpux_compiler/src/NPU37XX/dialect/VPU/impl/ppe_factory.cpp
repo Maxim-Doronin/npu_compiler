@@ -215,28 +215,6 @@ PpeFactory::AttrBuilder PpeFactory::callback<IE::ReluAttr>(vpux::IE::LayerWithPo
 }
 
 template <>
-PpeFactory::AttrBuilder PpeFactory::callback<IE::ClampAttr>(vpux::IE::LayerWithPostOpInterface operation,
-                                                            IE::ClampAttr clamp) const {
-    PpeFactory::AttrBuilder builder(operation.getContext());
-
-    const auto defaultLow = builder.clampLow;
-    const auto defaultHigh = builder.clampHigh;
-    const auto clampMin = clamp.getMin().getValueAsDouble();
-    const auto clampMax = clamp.getMax().getValueAsDouble();
-    const auto outputElemType = mlir::cast<vpux::NDTypeInterface>(operation->getResult(0).getType()).getElementType();
-
-    const auto intersection = calcClampIntersection(defaultLow, defaultHigh, clampMin, clampMax, outputElemType);
-
-    builder.clampLow = intersection.low;
-    builder.clampHigh = intersection.high;
-    builder.mode = intersection.mode;
-
-    configureAttrForAvgPool(operation, builder);
-    calculateFpPReluAlpha(operation, builder);
-    return builder;
-}
-
-template <>
 PpeFactory::AttrBuilder PpeFactory::callback<IE::LeakyReluAttr>(vpux::IE::LayerWithPostOpInterface operation,
                                                                 IE::LeakyReluAttr leakyRelu) const {
     PpeFactory::AttrBuilder builder(operation.getContext());
@@ -282,7 +260,7 @@ PpeFactory::AttrBuilder PpeFactory::retrieveNonEltwisePPEAttribute(mlir::Operati
         calculateFpPReluAlpha(operation, builder);
     } else {
         llvm::TypeSwitch<IE::PostOpAttr, void>(layerWithPostOpIfc.getPostOp())
-                .Case<IE::ReluAttr, IE::ClampAttr, IE::LeakyReluAttr>([&](const auto postOp) {
+                .Case<IE::ReluAttr, IE::LeakyReluAttr>([&](const auto postOp) {
                     builder = this->callback(layerWithPostOpIfc, postOp);
                 })
                 .Default([](const auto postOp) {

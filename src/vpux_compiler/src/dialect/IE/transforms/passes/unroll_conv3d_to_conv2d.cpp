@@ -18,7 +18,9 @@
 #include "vpux/compiler/utils/rewriter.hpp"
 
 #include <mlir/IR/IRMapping.h>
-#include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Transforms/WalkPatternRewriteDriver.h>
+
+#include <type_traits>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_UNROLLCONV3DTOCONV2D
@@ -29,6 +31,17 @@ namespace vpux::IE {
 using namespace vpux;
 
 namespace {
+
+bool isOptimizedNceOp(mlir::Operation* op) {
+    const auto inputShape = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType()).getShape();
+    return inputShape.size() != 5;
+}
+
+bool isOptimizedGroupConvOp(IE::GroupConvolutionOp groupConv) {
+    const auto inputShape = mlir::cast<vpux::NDTypeInterface>(groupConv.getFilter().getType()).getShape();
+    const auto hasGroups = groupConv.getGroups().has_value() ? 1 : 0;
+    return (inputShape.size() + hasGroups) != 6;
+}
 
 auto createFQ(mlir::PatternRewriter& rewriter, mlir::Value input, IE::FakeQuantizeOp fq, int64_t index,
               StringRef composedIndex) {
@@ -151,7 +164,8 @@ SmallVector<mlir::Value> getSlicedFilters(mlir::PatternRewriter& rewriter, mlir:
 template <class ConcreteOp>
 class ConvGeneralAggregation final : public mlir::OpRewritePattern<ConcreteOp> {
 public:
-    ConvGeneralAggregation(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<ConcreteOp>(ctx), _log(log) {
+    ConvGeneralAggregation(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpRewritePattern<ConcreteOp>(ctx, vpux::benefitHigh), _log(log) {
     }
 
     mlir::LogicalResult matchAndRewrite(ConcreteOp origOp, mlir::PatternRewriter& rewriter) const final;
@@ -163,6 +177,17 @@ private:
 template <class ConcreteOp>
 mlir::LogicalResult ConvGeneralAggregation<ConcreteOp>::matchAndRewrite(ConcreteOp origOp,
                                                                         mlir::PatternRewriter& rewriter) const {
+    const bool shouldConvert = [&]() {
+        if constexpr (std::is_same_v<ConcreteOp, IE::GroupConvolutionOp>) {
+            return !isOptimizedGroupConvOp(origOp);
+        } else {
+            return !isOptimizedNceOp(origOp.getOperation());
+        }
+    }();
+    if (!shouldConvert) {
+        return mlir::failure();
+    }
+
     _log.trace("Convert NCE to 4D for '{0}' layer at '{1}'", origOp->getName(), origOp->getLoc());
     auto* ctx = origOp->getContext();
 
@@ -265,7 +290,8 @@ mlir::LogicalResult ConvGeneralAggregation<ConcreteOp>::matchAndRewrite(Concrete
 template <class ConcreteOp>
 class ConvGeneralRewriter final : public mlir::OpRewritePattern<ConcreteOp> {
 public:
-    ConvGeneralRewriter(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<ConcreteOp>(ctx), _log(log) {
+    ConvGeneralRewriter(mlir::MLIRContext* ctx, Logger log)
+            : mlir::OpRewritePattern<ConcreteOp>(ctx, vpux::benefitLow), _log(log) {
     }
 
 public:
@@ -278,6 +304,17 @@ private:
 template <class ConcreteOp>
 mlir::LogicalResult ConvGeneralRewriter<ConcreteOp>::matchAndRewrite(ConcreteOp origOp,
                                                                      mlir::PatternRewriter& rewriter) const {
+    const bool shouldConvert = [&]() {
+        if constexpr (std::is_same_v<ConcreteOp, IE::GroupConvolutionOp>) {
+            return !isOptimizedGroupConvOp(origOp);
+        } else {
+            return !isOptimizedNceOp(origOp.getOperation());
+        }
+    }();
+    if (!shouldConvert) {
+        return mlir::failure();
+    }
+
     if (!mlir::isa_and_nonnull<IE::ConvolutionOp, IE::GroupConvolutionOp>(origOp.getOperation())) {
         return matchFailed(rewriter, origOp, "Unroll 3D supports only Convolution and GroupConvolution");
     }
@@ -431,6 +468,10 @@ private:
 
 mlir::LogicalResult TransposedConvGeneralRewriter::matchAndRewrite(IE::TransposedConvolutionOp origOp,
                                                                    mlir::PatternRewriter& rewriter) const {
+    if (isOptimizedNceOp(origOp.getOperation())) {
+        return mlir::failure();
+    }
+
     _log.trace("Got layer '{0}' at '{1}'", origOp->getName(), origOp->getLoc());
     const auto dilations = Shape(parseIntArrayAttr<int64_t>(origOp.getDilations()));
     const auto outputPadding = Shape(parseIntArrayAttr<int64_t>(origOp.getSpatialOutputPaddingAttr()));
@@ -577,32 +618,6 @@ private:
 void UnrollConv3dToConv2dPass::safeRunOnFunc() {
     auto& ctx = getContext();
 
-    const auto isLegalNceOp = [&](mlir::Operation* op) {
-        const auto inputShape = mlir::cast<vpux::NDTypeInterface>(op->getOperand(0).getType()).getShape();
-        return inputShape.size() != 5;
-    };
-
-    const auto isLegalGroupConvOp = [&](IE::GroupConvolutionOp groupConv) {
-        const auto inputShape = mlir::cast<vpux::NDTypeInterface>(groupConv.getFilter().getType()).getShape();
-        const auto hasGroups = groupConv.getGroups().has_value() ? 1 : 0;
-        return (inputShape.size() + hasGroups) != 6;
-    };
-
-    mlir::ConversionTarget target(ctx);
-    target.addDynamicallyLegalOp<IE::ConvolutionOp>(isLegalNceOp);
-    target.addDynamicallyLegalOp<IE::TransposedConvolutionOp>(isLegalNceOp);
-    target.addDynamicallyLegalOp<IE::GroupConvolutionOp>(isLegalGroupConvOp);
-
-    target.addLegalOp<IE::FakeQuantizeOp>();
-    target.addLegalOp<IE::DequantizeOp>();
-    target.addLegalOp<IE::ExpandDilatedOp>();
-    target.addLegalOp<IE::ExpandOp>();
-    target.addLegalOp<IE::ConcatOp>();
-    target.addLegalOp<IE::SliceOp>();
-    target.addLegalOp<IE::AddOp>();
-    target.addLegalOp<IE::ReshapeOp>();
-    target.addLegalOp<Const::DeclareOp>();
-
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<ConvGeneralRewriter<IE::ConvolutionOp>>(&ctx, _log);
     patterns.add<ConvGeneralRewriter<IE::GroupConvolutionOp>>(&ctx, _log);
@@ -610,10 +625,7 @@ void UnrollConv3dToConv2dPass::safeRunOnFunc() {
     patterns.add<ConvGeneralAggregation<IE::ConvolutionOp>>(&ctx, _log);
     patterns.add<ConvGeneralAggregation<IE::GroupConvolutionOp>>(&ctx, _log);
 
-    auto func = getOperation();
-    if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
-        signalPassFailure();
-    }
+    walkAndApplyPatterns(getOperation(), std::move(patterns));
 }
 
 }  // namespace

@@ -8,9 +8,11 @@
 #include "vpux/compiler/dialect/VPU/utils/auxiliary_buffers.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/type_infer.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/utils/attributes_utils.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
+#include "vpux/compiler/utils/infer_output_shape.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
 using namespace vpux;
@@ -69,12 +71,60 @@ mlir::LogicalResult vpux::VPU::TopKOp::inferReturnTypes(mlir::MLIRContext* ctx, 
     }
     outShape[axis] = kValue.value();
 
-    auto outputType = mlir::RankedTensorType::get(outShape, inType.getElementType(), createTensorAttrFromType(inType));
+    // Build output tensor attribute. For bounded (dynamic) types, adjust the bounds
+    // on the TopK axis dimension from the input size to k_value.
+    mlir::Attribute outTensorAttr;
+    if (auto boundedType = mlir::dyn_cast<Core::BoundedTensorType>(inType)) {
+        auto outBounds = boundedType.getBounds().toValues();
+        outBounds[Dim(axis)] = kValue.value();
+        outTensorAttr =
+                vpux::getTensorAttr(ctx, inType.getDimsOrder().toAffineMap(ctx), inType.getMemSpace(), outBounds);
+    } else {
+        outTensorAttr = createTensorAttrFromType(inType);
+    }
 
+    auto outputType = mlir::RankedTensorType::get(outShape, inType.getElementType(), outTensorAttr);
     inferredReturnTypes.push_back(outputType);
 
-    auto outType1 = mlir::RankedTensorType::get(outShape, topK.getElementType(), createTensorAttrFromType(inType));
+    auto outType1 = mlir::RankedTensorType::get(outShape, topK.getElementType(), outTensorAttr);
     inferredReturnTypes.push_back(outType1);
+
+    return mlir::success();
+}
+
+//
+// ReifyRankedShapedTypeOpInterface
+//
+
+mlir::LogicalResult vpux::VPU::TopKOp::reifyResultShapes(mlir::OpBuilder& builder,
+                                                         mlir::ReifiedRankedShapedTypeDims& reifiedReturnShapes) {
+    auto loc = getLoc();
+
+    const auto kValue = Const::getConstOrAttrValue(getK(), getKValueAttr());
+    if (mlir::failed(kValue)) {
+        return mlir::failure();
+    }
+
+    int64_t axis = getAxis();
+    const auto inType = mlir::cast<vpux::NDTypeInterface>(getInput().getType());
+    const auto rank = inType.getRank();
+    if (axis < 0) {
+        axis += rank;
+    }
+
+    SmallVector<mlir::OpFoldResult> outShape;
+    outShape.reserve(rank);
+    for (int64_t i = 0; i < rank; ++i) {
+        if (i == axis) {
+            outShape.push_back(builder.getIndexAttr(kValue.value()));
+        } else {
+            outShape.push_back(reifyDim(builder, getInput(), i, loc));
+        }
+    }
+
+    // Both output_values and target_shape have the same shape
+    reifiedReturnShapes.push_back(outShape);
+    reifiedReturnShapes.push_back(outShape);
 
     return mlir::success();
 }

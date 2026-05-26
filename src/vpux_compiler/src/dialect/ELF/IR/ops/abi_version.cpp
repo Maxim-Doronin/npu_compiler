@@ -55,7 +55,3 @@ std::optional<ELF::SectionSignature> vpux::ELF::ABIVersionOp::getSectionSignatur
 bool vpux::ELF::ABIVersionOp::hasMemoryFootprint() {
     return true;
 }
-
-void vpux::ELF::ABIVersionOp::build(mlir::OpBuilder& builder, mlir::OperationState& state) {
-    build(builder, state, "LoaderABIVersion");
-}

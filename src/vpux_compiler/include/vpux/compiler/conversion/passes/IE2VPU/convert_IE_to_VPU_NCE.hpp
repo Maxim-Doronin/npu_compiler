@@ -90,13 +90,15 @@ private:
 
 class AveragePoolToNCE final : public mlir::OpRewritePattern<IE::AvgPoolOp> {
 public:
-    AveragePoolToNCE(mlir::MLIRContext* ctx, Logger log): mlir::OpRewritePattern<IE::AvgPoolOp>(ctx), _log(log) {
+    AveragePoolToNCE(mlir::MLIRContext* ctx, config::ArchKind arch, Logger log)
+            : mlir::OpRewritePattern<IE::AvgPoolOp>(ctx), _arch(arch), _log(log) {
         setDebugName("AveragePoolToNCE");
     }
 
     mlir::LogicalResult matchAndRewrite(IE::AvgPoolOp origOp, mlir::PatternRewriter& rewriter) const override;
 
 private:
+    config::ArchKind _arch;
     Logger _log;
 };
 
@@ -142,9 +144,14 @@ mlir::LogicalResult EltwiseToNCE<ConcreteOp>::matchAndRewrite(ConcreteOp origOp,
 
     auto ppeAttr = VPU::getPpeConfig(origOp->getContext()).retrievePPEAttribute(origOp);
 
+    VPU::MPEEngineAttr mpeEngineModeAttr = nullptr;
+    if (auto mpeEngineInterface = mlir::dyn_cast<IE::MPEEngineInfoOpInterface>(origOp.getOperation())) {
+        mpeEngineModeAttr = mlir::cast<VPU::MPEEngineAttr>(mpeEngineInterface.getMPEEngineMode());
+    }
+
     auto nceOp = rewriter.create<VPU::NCEEltwiseOp>(
             origOp->getLoc(), origOp.getType(), origOp.getInput1(), origOp.getInput2(),
-            VPU::EltwiseTypeAttr::get(this->getContext(), _opType), ppeAttr,
+            VPU::EltwiseTypeAttr::get(this->getContext(), _opType), ppeAttr, mpeEngineModeAttr,
             /*multi_cluster_strategyAttr=*/nullptr,
             /*is_inplace=*/nullptr, origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
     rewriter.replaceOp(origOp, nceOp.getOutput());

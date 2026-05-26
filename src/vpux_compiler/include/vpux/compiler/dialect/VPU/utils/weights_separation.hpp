@@ -152,8 +152,7 @@ public:
     Projection take(WeightsSeparationSchedule schedule) const;
 };
 
-//! @brief A stable operator<(). Stability is achieved by relying on a
-//! combination of constant's name and stable transformation hashes.
+//! @brief A very simple operator<() that compares two splits by the weight ids.
 bool operator<(const TransformationsSplit& x, const TransformationsSplit& y);
 
 namespace detail {
@@ -164,18 +163,22 @@ vpux::Byte getResultBufferSizeForInit(const TransformationsSplit& x);
 //! @brief Specifies whether a given constant is "trivial" within the scope of
 //! weights separation (e.g. has only view-like transformations).
 //!
-//! @note Used by isSuitableForWeightsSeparation().
-bool isTrivialForWeightsSeparation(Const::DeclareOp constOp);
+//! @note Used by isSuitableForWeightlessCompilation().
+bool isTrivialForWeightsSeparation(Const::DeclareOp constOp, bool skipViewLikeOnly);
 
 //! @brief Specifies whether a given constant is "move-worthy" within the scope
-//! of weights separation.
+//! of weightless compilation.
 //!
 //! @note Used internally in collectMoveWorthyConstants().
-bool isSuitableForWeightsSeparation(Const::DeclareOp constOp);
+bool isSuitableForWeightlessCompilation(Const::DeclareOp constOp, bool skipViewLikeOnly);
+
+//! @brief A predicate thet tells whether a constant can be collected.
+using IsWorthyToCollect = std::function<bool(Const::DeclareOp)>;
 
 //! @brief Collects all constant operations that are worth moving to the Init
 //! schedule.
-std::vector<Const::DeclareOp> collectMoveWorthyConstants(const Logger& log, mlir::func::FuncOp mainFunc);
+std::vector<Const::DeclareOp> collectMoveWorthyConstants(const Logger& log, mlir::func::FuncOp mainFunc,
+                                                         const IsWorthyToCollect& pred);
 
 /** @brief Slices the collected transformations splits according to the
     threshold.
@@ -286,6 +289,20 @@ public:
 struct WeightsSeparationInfo {
     //! @brief Creates the analysis object.
     WeightsSeparationInfo(mlir::ModuleOp moduleOp);
+
+    //! @brief A collection of settings to control the analysis behavior.
+    struct Options {
+        bool weightlessSkipViewLikeOnly = true;  //!< [weightless compilation] selects the policy of dealing with
+                                                 //!< weights that have only view-like transformations
+    };
+
+    // The below three functions manage the options of the weights separation
+    // info object. Since it is an analysis object, one cannot pass these
+    // options via constructor. Instead, they are passed indirectly via the
+    // operation that the analysis works on top of.
+    static void setOptions(mlir::ModuleOp moduleOp, Options options);
+    static Options getOptions(mlir::ModuleOp moduleOp);
+    static void removeOptions(mlir::ModuleOp moduleOp);
 
     /** @brief Returns whether the analysis object must be invalidated.
 

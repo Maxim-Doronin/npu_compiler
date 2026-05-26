@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --ensure-nce-ops-size-requirements --canonicalize --mlir-elide-elementsattrs-if-larger 2048 --mlir-print-elementsattrs-with-hex-if-larger=-1 %s | FileCheck %s
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --ensure-nce-ops-size-requirements --canonicalize --mlir-elide-elementsattrs-if-larger 2048 --mlir-print-elementsattrs-with-hex-if-larger=-1 %s | FileCheck %s
+// REQUIRES: platform-NPU5010
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
@@ -910,4 +910,247 @@ func.func @SplitNCEConvOverIC2ConvsWithPerChannelOutScale(%arg0: tensor<1x9728x4
   // CHECK-SAME: } -> tensor<1x16x4x1x!qElemType2, {order = #NHWC}>
 
   // CHECK:      return [[DW_SCALE]] : tensor<1x16x4x1x!qElemType2, {order = #NHWC}>
+}
+
+// -----
+
+// Case 1: OC tiling aligned to concat-input size (1024) derived from the weights subgraph.
+// Concat axis is dim 2 (H), all first N-2 inputs have size 1024,
+// the last two (127 and 1) are allowed to differ.
+//
+//   arg0..arg15 (1x8x1024x128) ──┐
+//   arg16       (1x8x127x128)  ──┤  Concat (dim H)
+//   arg17       (1x8x1x128)    ──┘
+//       │
+//   AffineReshape -> PermuteCast
+//       │
+//   Slice x8 ──► NCEConv x8
+//
+// Expected: OC=16512 is split into 3 tiles aligned to 1024-channel boundaries
+// (6144, 6144, 4224); the first two tiles are multiples of 1024 and the last
+// is the remainder.
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @SplitNCEConvOCAlignedToConcatInputSize
+// CHECK-SAME:  [[ACT:%arg[0-9]+]]: tensor<1x128x4x1xf16, {order = #NHWC}>
+func.func @SplitNCEConvOCAlignedToConcatInputSize(
+        %arg0:  tensor<1x8x1024x128xf16>,
+        %arg1:  tensor<1x8x1024x128xf16>,
+        %arg2:  tensor<1x8x1024x128xf16>,
+        %arg3:  tensor<1x8x1024x128xf16>,
+        %arg4:  tensor<1x8x1024x128xf16>,
+        %arg5:  tensor<1x8x1024x128xf16>,
+        %arg6:  tensor<1x8x1024x128xf16>,
+        %arg7:  tensor<1x8x1024x128xf16>,
+        %arg8:  tensor<1x8x1024x128xf16>,
+        %arg9:  tensor<1x8x1024x128xf16>,
+        %arg10: tensor<1x8x1024x128xf16>,
+        %arg11: tensor<1x8x1024x128xf16>,
+        %arg12: tensor<1x8x1024x128xf16>,
+        %arg13: tensor<1x8x1024x128xf16>,
+        %arg14: tensor<1x8x1024x128xf16>,
+        %arg15: tensor<1x8x1024x128xf16>,
+        %arg16: tensor<1x8x127x128xf16>,
+        %arg17: tensor<1x8x1x128xf16>,
+        %act:   tensor<1x128x4x1xf16, {order = #NHWC}>) -> tensor<1x16512x4x1xf16, {order = #NHWC}> {
+  %wt = const.Declare tensor<16512x1x1x4xsi32> = dense<0> : tensor<16512x1x1x4xsi32>
+  %concat = VPU.Concat(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5, %arg6, %arg7,
+                       %arg8, %arg9, %arg10, %arg11, %arg12, %arg13, %arg14, %arg15,
+                       %arg16, %arg17) {
+    static_offsets = [[0, 0, 0, 0], [0, 0, 1024, 0], [0, 0, 2048, 0], [0, 0, 3072, 0],
+                      [0, 0, 4096, 0], [0, 0, 5120, 0], [0, 0, 6144, 0], [0, 0, 7168, 0],
+                      [0, 0, 8192, 0], [0, 0, 9216, 0], [0, 0, 10240, 0], [0, 0, 11264, 0],
+                      [0, 0, 12288, 0], [0, 0, 13312, 0], [0, 0, 14336, 0], [0, 0, 15360, 0],
+                      [0, 0, 16384, 0], [0, 0, 16511, 0]]}
+    : tensor<1x8x1024x128xf16>, tensor<1x8x1024x128xf16>, tensor<1x8x1024x128xf16>, tensor<1x8x1024x128xf16>,
+      tensor<1x8x1024x128xf16>, tensor<1x8x1024x128xf16>, tensor<1x8x1024x128xf16>, tensor<1x8x1024x128xf16>,
+      tensor<1x8x1024x128xf16>, tensor<1x8x1024x128xf16>, tensor<1x8x1024x128xf16>, tensor<1x8x1024x128xf16>,
+      tensor<1x8x1024x128xf16>, tensor<1x8x1024x128xf16>, tensor<1x8x1024x128xf16>, tensor<1x8x1024x128xf16>,
+      tensor<1x8x127x128xf16>, tensor<1x8x1x128xf16>
+      -> tensor<1x8x16512x128xf16>
+
+  %reshape = VPU.AffineReshape(%concat) {
+    dim_mapping = [[0], [0], [0], [1, 2, 3]], shape_value = [132096, 128, 1, 1]}
+    : tensor<1x8x16512x128xf16> -> tensor<132096x128x1x1xf16>
+
+  %permute = VPU.PermuteCast(%reshape) {
+    dst_order = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>,
+    mem_perm  = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>}
+    : tensor<132096x128x1x1xf16> -> tensor<132096x128x1x1xf16, {order = #NHWC}>
+
+  %w0 = VPU.Slice %permute [0, 0, 0, 0] [16512, 128, 1, 1]
+    : tensor<132096x128x1x1xf16, {order = #NHWC}> to tensor<16512x128x1x1xf16, {order = #NHWC}>
+
+  %out = VPU.NCE.Convolution(%act, %w0, %wt) {
+    mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>,
+    pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+    ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = -3.4028234663852886E+38 : f64,
+                     clamp_high = 3.4028234663852886E+38 : f64, scale = 1.000000e+00 : f64,
+                     prelu_alpha = [1.000000e+00], bias = 0.000000e+00 : f64, adder = 0.000000e+00 : f64>,
+    rawFilterShape = [16512, 128, 1, 1], strides = [1, 1]}
+    : tensor<1x128x4x1xf16, {order = #NHWC}>,
+      tensor<16512x128x1x1xf16, {order = #NHWC}>,
+      tensor<16512x1x1x4xsi32>
+    -> tensor<1x16512x4x1xf16, {order = #NHWC}>
+
+  return %out : tensor<1x16512x4x1xf16, {order = #NHWC}>
+
+  // CHECK: VPU.Slice {{%.+}} [0, 0, 0, 0] [6144, 128, 1, 1]
+  // CHECK: VPU.NCE.Convolution
+  // CHECK-SAME: rawFilterShape = [6144, 128, 1, 1]
+  // CHECK: VPU.Slice {{%.+}} [6144, 0, 0, 0] [6144, 128, 1, 1]
+  // CHECK: VPU.NCE.Convolution
+  // CHECK-SAME: rawFilterShape = [6144, 128, 1, 1]
+  // CHECK: VPU.Slice {{%.+}} [12288, 0, 0, 0] [4224, 128, 1, 1]
+  // CHECK: VPU.NCE.Convolution
+  // CHECK-SAME: rawFilterShape = [4224, 128, 1, 1]
+  // CHECK: VPU.Concat
+}
+
+// -----
+
+// Case 2: IC split aligned to concat-input size (1024) derived from the weights subgraph.
+// Concat axis is dim 3 (W), all first N-2 inputs have size 1024.
+//
+//   arg0..arg15 (1x8x128x1024) ──┐
+//   arg16       (1x8x128x127)  ──┤  Concat (dim W)
+//   arg17       (1x8x128x1)    ──┘
+//       │
+//   AffineReshape -> PermuteCast
+//       │
+//   Slice x8 ──► NCEConv x8  (IC=16512 -> split)
+//
+// Expected: IC split alignment is 1024 (per-input concat size).
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @SplitNCEConvICAlignedToConcatInputSize
+func.func @SplitNCEConvICAlignedToConcatInputSize(
+        %arg0:  tensor<1x8x128x1024xf16>,
+        %arg1:  tensor<1x8x128x1024xf16>,
+        %arg2:  tensor<1x8x128x1024xf16>,
+        %arg3:  tensor<1x8x128x1024xf16>,
+        %arg4:  tensor<1x8x128x1024xf16>,
+        %arg5:  tensor<1x8x128x1024xf16>,
+        %arg6:  tensor<1x8x128x1024xf16>,
+        %arg7:  tensor<1x8x128x1024xf16>,
+        %arg8:  tensor<1x8x128x1024xf16>,
+        %arg9:  tensor<1x8x128x1024xf16>,
+        %arg10: tensor<1x8x128x1024xf16>,
+        %arg11: tensor<1x8x128x1024xf16>,
+        %arg12: tensor<1x8x128x1024xf16>,
+        %arg13: tensor<1x8x128x1024xf16>,
+        %arg14: tensor<1x8x128x1024xf16>,
+        %arg15: tensor<1x8x128x1024xf16>,
+        %arg16: tensor<1x8x128x127xf16>,
+        %arg17: tensor<1x8x128x1xf16>,
+        %act:   tensor<1x16512x4x1xf16, {order = #NHWC}>) -> tensor<1x128x4x1xf16, {order = #NHWC}> {
+  %wt = const.Declare tensor<128x1x1x4xsi32> = dense<0> : tensor<128x1x1x4xsi32>
+  %concat = VPU.Concat(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5, %arg6, %arg7,
+                       %arg8, %arg9, %arg10, %arg11, %arg12, %arg13, %arg14, %arg15,
+                       %arg16, %arg17) {
+    static_offsets = [[0, 0, 0, 0],    [0, 0, 0, 1024], [0, 0, 0, 2048], [0, 0, 0, 3072],
+                      [0, 0, 0, 4096], [0, 0, 0, 5120], [0, 0, 0, 6144], [0, 0, 0, 7168],
+                      [0, 0, 0, 8192], [0, 0, 0, 9216], [0, 0, 0, 10240],[0, 0, 0, 11264],
+                      [0, 0, 0, 12288],[0, 0, 0, 13312],[0, 0, 0, 14336],[0, 0, 0, 15360],
+                      [0, 0, 0, 16384],[0, 0, 0, 16511]]}
+    : tensor<1x8x128x1024xf16>, tensor<1x8x128x1024xf16>, tensor<1x8x128x1024xf16>, tensor<1x8x128x1024xf16>,
+      tensor<1x8x128x1024xf16>, tensor<1x8x128x1024xf16>, tensor<1x8x128x1024xf16>, tensor<1x8x128x1024xf16>,
+      tensor<1x8x128x1024xf16>, tensor<1x8x128x1024xf16>, tensor<1x8x128x1024xf16>, tensor<1x8x128x1024xf16>,
+      tensor<1x8x128x1024xf16>, tensor<1x8x128x1024xf16>, tensor<1x8x128x1024xf16>, tensor<1x8x128x1024xf16>,
+      tensor<1x8x128x127xf16>, tensor<1x8x128x1xf16>
+      -> tensor<1x8x128x16512xf16>
+
+  %reshape = VPU.AffineReshape(%concat) {
+    dim_mapping = [[0], [0], [0], [1, 2, 3]], shape_value = [1024, 16512, 1, 1]}
+    : tensor<1x8x128x16512xf16> -> tensor<1024x16512x1x1xf16>
+
+  %permute = VPU.PermuteCast(%reshape) {
+    dst_order = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>,
+    mem_perm  = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>}
+    : tensor<1024x16512x1x1xf16> -> tensor<1024x16512x1x1xf16, {order = #NHWC}>
+
+  %w0 = VPU.Slice %permute [0, 0, 0, 0] [128, 16512, 1, 1]
+    : tensor<1024x16512x1x1xf16, {order = #NHWC}> to tensor<128x16512x1x1xf16, {order = #NHWC}>
+
+  %out = VPU.NCE.Convolution(%act, %w0, %wt) {
+    mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>,
+    pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+    ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = -3.4028234663852886E+38 : f64,
+                     clamp_high = 3.4028234663852886E+38 : f64, scale = 1.000000e+00 : f64,
+                     prelu_alpha = [1.000000e+00], bias = 0.000000e+00 : f64, adder = 0.000000e+00 : f64>,
+    rawFilterShape = [128, 16512, 1, 1], strides = [1, 1]}
+    : tensor<1x16512x4x1xf16, {order = #NHWC}>,
+      tensor<128x16512x1x1xf16, {order = #NHWC}>,
+      tensor<128x1x1x4xsi32>
+    -> tensor<1x128x4x1xf16, {order = #NHWC}>
+
+  return %out : tensor<1x128x4x1xf16, {order = #NHWC}>
+
+  // CHECK: VPU.NCE.Convolution
+  // CHECK-SAME: rawFilterShape = [128, 6144, 1, 1]
+  // CHECK: VPU.NCE.Convolution
+  // CHECK-SAME: rawFilterShape = [128, 6144, 1, 1]
+  // CHECK: VPU.NCE.Convolution
+  // CHECK-SAME: rawFilterShape = [128, 4224, 1, 1]
+  // CHECK: VPU.NCE.Eltwise
+  // CHECK: VPU.NCE.Eltwise
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+
+// CHECK-LABEL: @SplitNCEConvOCAlignedToConcatInputSizeDualInputs
+// CHECK-SAME:  [[ACT:%arg[0-9]+]]: tensor<1x128x4x1xf16, {order = #NHWC}>
+func.func @SplitNCEConvOCAlignedToConcatInputSizeDualInputs(
+        %arg0:  tensor<1x8x5120x128xf16>,
+        %arg1: tensor<1x8x4196x128xf16>,
+        %act:   tensor<1x128x4x1xf16, {order = #NHWC}>) -> tensor<1x16512x4x1xf16, {order = #NHWC}> {
+  %wt = const.Declare tensor<16512x1x1x4xsi32> = dense<0> : tensor<16512x1x1x4xsi32>
+  %concat = VPU.Concat(%arg0, %arg1) {
+    static_offsets = [[0, 0, 0, 0], [0, 0, 5120, 0]]}
+    : tensor<1x8x5120x128xf16>, tensor<1x8x4196x128xf16>
+      -> tensor<1x8x9316x128xf16>
+
+  %reshape = VPU.AffineReshape(%concat) {
+    dim_mapping = [[0], [0], [0], [1, 2, 3]], shape_value = [74528, 128, 1, 1]}
+    : tensor<1x8x9316x128xf16> -> tensor<74528x128x1x1xf16>
+
+  %permute = VPU.PermuteCast(%reshape) {
+    dst_order = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>,
+    mem_perm  = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>}
+    : tensor<74528x128x1x1xf16> -> tensor<74528x128x1x1xf16, {order = #NHWC}>
+
+  %w0 = VPU.Slice %permute [0, 0, 0, 0] [16512, 128, 1, 1]
+    : tensor<74528x128x1x1xf16, {order = #NHWC}> to tensor<16512x128x1x1xf16, {order = #NHWC}>
+
+  %out = VPU.NCE.Convolution(%act, %w0, %wt) {
+    mpe_engine = #VPU.MPEEngine37XX<mode = <SCL>>,
+    pad = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
+    ppe = #VPU.PPEFp<mode = <NOOP>, clamp_low = -3.4028234663852886E+38 : f64,
+                     clamp_high = 3.4028234663852886E+38 : f64, scale = 1.000000e+00 : f64,
+                     prelu_alpha = [1.000000e+00], bias = 0.000000e+00 : f64, adder = 0.000000e+00 : f64>,
+    rawFilterShape = [16512, 128, 1, 1], strides = [1, 1]}
+    : tensor<1x128x4x1xf16, {order = #NHWC}>,
+      tensor<16512x128x1x1xf16, {order = #NHWC}>,
+      tensor<16512x1x1x4xsi32>
+    -> tensor<1x16512x4x1xf16, {order = #NHWC}>
+
+  return %out : tensor<1x16512x4x1xf16, {order = #NHWC}>
+
+  // CHECK: VPU.Slice {{%.+}} [0, 0, 0, 0] [5120, 128, 1, 1]
+  // CHECK: VPU.NCE.Convolution
+  // CHECK-SAME: rawFilterShape = [5120, 128, 1, 1]
+  // CHECK: VPU.Slice {{%.+}} [5120, 0, 0, 0] [5120, 128, 1, 1]
+  // CHECK: VPU.NCE.Convolution
+  // CHECK-SAME: rawFilterShape = [5120, 128, 1, 1]
+  // CHECK: VPU.Slice {{%.+}} [10240, 0, 0, 0] [5120, 128, 1, 1]
+  // CHECK: VPU.NCE.Convolution
+  // CHECK-SAME: rawFilterShape = [5120, 128, 1, 1]
+  // CHECK: VPU.Slice {{%.+}} [15360, 0, 0, 0] [1152, 128, 1, 1]
+  // CHECK: VPU.NCE.Convolution
+  // CHECK-SAME: rawFilterShape = [1152, 128, 1, 1]
+  // CHECK: VPU.Concat
 }

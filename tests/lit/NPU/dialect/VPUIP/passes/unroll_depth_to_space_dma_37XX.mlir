@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --unroll-depth-to-space-dma  %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --unroll-depth-to-space-dma  %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
@@ -464,19 +464,19 @@ func.func @UnrollDepthToSpaceWithBlockFirstLargeH() -> memref<1x1x534x34xf16, #N
     //CHECK:       [[OUTPUT3:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <36352> -> memref<1x2x133x17xf16, #NHWC, [@CMX_NN, 0]>
 
     //CHECK:        VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier) {
-    //CHECK:            %11 = VPUIP.DepthToSpaceDMA <{block_size = 2 : i64, dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 133 : i64, len = 68 : i64, srcWidth = 4 : i64, srcStride = 8 : i64, srcPlaneStride = 136 : i64, dstWidth = 68 : i64, dstStride = 2 : i64, dstPlaneStride = 136 : i64>, mode = #IE.depth_to_space_mode<BLOCKS_FIRST>, port = 0 : i64}> inputs([[INPUT3]] : memref<1x2x133x17xf16, #NHWC, [@CMX_NN, 0]>) outputs([[OUTPUT3]] : memref<1x2x133x17xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x2x133x17xf16, #NHWC, [@CMX_NN, 0]>
+    //CHECK:            [[DTS_DMA:%.+]] = VPUIP.DepthToSpaceDMA <{block_size = 2 : i64, dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 133 : i64, len = 68 : i64, srcWidth = 4 : i64, srcStride = 8 : i64, srcPlaneStride = 136 : i64, dstWidth = 68 : i64, dstStride = 2 : i64, dstPlaneStride = 136 : i64>, mode = #IE.depth_to_space_mode<BLOCKS_FIRST>, port = 0 : i64}> inputs([[INPUT3]] : memref<1x2x133x17xf16, #NHWC, [@CMX_NN, 0]>) outputs([[OUTPUT3]] : memref<1x2x133x17xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x2x133x17xf16, #NHWC, [@CMX_NN, 0]>
     //CHECK:         }
 
     //CHECK:        VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier) {
-    //CHECK:        %11 = VPUIP.DepthToSpaceDMA <{block_size = 2 : i64, dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 133 : i64, len = 68 : i64, srcWidth = 4 : i64, srcStride = 8 : i64, srcPlaneStride = 136 : i64, dstWidth = 68 : i64, dstStride = 2 : i64, dstPlaneStride = 136 : i64>, mode = #IE.depth_to_space_mode<BLOCKS_FIRST>, port = 1 : i64}> inputs([[INPUT2]] : memref<1x2x133x17xf16, #NHWC, [@CMX_NN, 0]>) outputs([[OUTPUT2]] : memref<1x2x133x17xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x2x133x17xf16, #NHWC, [@CMX_NN, 0]>
+    //CHECK:        [[DTS_DMA:%.+]] = VPUIP.DepthToSpaceDMA <{block_size = 2 : i64, dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 133 : i64, len = 68 : i64, srcWidth = 4 : i64, srcStride = 8 : i64, srcPlaneStride = 136 : i64, dstWidth = 68 : i64, dstStride = 2 : i64, dstPlaneStride = 136 : i64>, mode = #IE.depth_to_space_mode<BLOCKS_FIRST>, port = 1 : i64}> inputs([[INPUT2]] : memref<1x2x133x17xf16, #NHWC, [@CMX_NN, 0]>) outputs([[OUTPUT2]] : memref<1x2x133x17xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x2x133x17xf16, #NHWC, [@CMX_NN, 0]>
     //CHECK:        }
 
     //CHECK:        VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier) {
-    //CHECK:        %11 = VPUIP.DepthToSpaceDMA <{block_size = 2 : i64, dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 134 : i64, len = 68 : i64, srcWidth = 4 : i64, srcStride = 8 : i64, srcPlaneStride = 136 : i64, dstWidth = 68 : i64, dstStride = 2 : i64, dstPlaneStride = 136 : i64>, mode = #IE.depth_to_space_mode<BLOCKS_FIRST>, port = 0 : i64}> inputs([[INPUT1]] : memref<1x2x134x17xf16, #NHWC, [@CMX_NN, 0]>) outputs([[OUTPUT1]] : memref<1x2x134x17xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x2x134x17xf16, #NHWC, [@CMX_NN, 0]>
+    //CHECK:        [[DTS_DMA:%.+]] = VPUIP.DepthToSpaceDMA <{block_size = 2 : i64, dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 134 : i64, len = 68 : i64, srcWidth = 4 : i64, srcStride = 8 : i64, srcPlaneStride = 136 : i64, dstWidth = 68 : i64, dstStride = 2 : i64, dstPlaneStride = 136 : i64>, mode = #IE.depth_to_space_mode<BLOCKS_FIRST>, port = 0 : i64}> inputs([[INPUT1]] : memref<1x2x134x17xf16, #NHWC, [@CMX_NN, 0]>) outputs([[OUTPUT1]] : memref<1x2x134x17xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x2x134x17xf16, #NHWC, [@CMX_NN, 0]>
     //CHECK:        }
 
     //CHECK:        VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier) {
-    //CHECK:        %11 = VPUIP.DepthToSpaceDMA <{block_size = 2 : i64, dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 134 : i64, len = 68 : i64, srcWidth = 4 : i64, srcStride = 8 : i64, srcPlaneStride = 136 : i64, dstWidth = 68 : i64, dstStride = 2 : i64, dstPlaneStride = 136 : i64>, mode = #IE.depth_to_space_mode<BLOCKS_FIRST>, port = 1 : i64}> inputs([[INPUT0]] : memref<1x2x134x17xf16, #NHWC, [@CMX_NN, 0]>) outputs([[OUTPUT0]] : memref<1x2x134x17xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x2x134x17xf16, #NHWC, [@CMX_NN, 0]>
+    //CHECK:        [[DTS_DMA:%.+]] = VPUIP.DepthToSpaceDMA <{block_size = 2 : i64, dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 134 : i64, len = 68 : i64, srcWidth = 4 : i64, srcStride = 8 : i64, srcPlaneStride = 136 : i64, dstWidth = 68 : i64, dstStride = 2 : i64, dstPlaneStride = 136 : i64>, mode = #IE.depth_to_space_mode<BLOCKS_FIRST>, port = 1 : i64}> inputs([[INPUT0]] : memref<1x2x134x17xf16, #NHWC, [@CMX_NN, 0]>) outputs([[OUTPUT0]] : memref<1x2x134x17xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x2x134x17xf16, #NHWC, [@CMX_NN, 0]>
     //CHECK:        }
 
     //CHECK:        return [[OUTPUT]] : memref<1x1x534x34xf16, #NHWC, [@CMX_NN, 0]>
@@ -515,18 +515,18 @@ func.func @UnrollDepthToSpaceWithDepthFirstLargeH() -> memref<1x1x534x34xf16, #N
     //CHECK:       [[OUTPUT3:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <36352> -> memref<1x2x133x17xf16, #NHWC, [@CMX_NN, 0]>
 
     //CHECK:        VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier) {
-    //CHECK:        %11 = VPUIP.DepthToSpaceDMA <{block_size = 2 : i64, dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 133 : i64, len = 68 : i64, srcWidth = 4 : i64, srcStride = 8 : i64, srcPlaneStride = 136 : i64, dstWidth = 2 : i64, dstStride = 2 : i64, dstPlaneStride = 136 : i64>, mode = #IE.depth_to_space_mode<DEPTH_FIRST>, port = 0 : i64}> inputs([[INPUT3]] : memref<1x2x133x17xf16, #NHWC, [@CMX_NN, 0]>) outputs([[OUTPUT3]] : memref<1x2x133x17xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x2x133x17xf16, #NHWC, [@CMX_NN, 0]>
+    //CHECK:        [[DTS_DMA:%.+]] = VPUIP.DepthToSpaceDMA <{block_size = 2 : i64, dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 133 : i64, len = 68 : i64, srcWidth = 4 : i64, srcStride = 8 : i64, srcPlaneStride = 136 : i64, dstWidth = 2 : i64, dstStride = 2 : i64, dstPlaneStride = 136 : i64>, mode = #IE.depth_to_space_mode<DEPTH_FIRST>, port = 0 : i64}> inputs([[INPUT3]] : memref<1x2x133x17xf16, #NHWC, [@CMX_NN, 0]>) outputs([[OUTPUT3]] : memref<1x2x133x17xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x2x133x17xf16, #NHWC, [@CMX_NN, 0]>
     //CHECK:        }
 
     //CHECK:        VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier) {
-    //CHECK:        %11 = VPUIP.DepthToSpaceDMA <{block_size = 2 : i64, dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 133 : i64, len = 68 : i64, srcWidth = 4 : i64, srcStride = 8 : i64, srcPlaneStride = 136 : i64, dstWidth = 2 : i64, dstStride = 2 : i64, dstPlaneStride = 136 : i64>, mode = #IE.depth_to_space_mode<DEPTH_FIRST>, port = 1 : i64}> inputs([[INPUT2]] : memref<1x2x133x17xf16, #NHWC, [@CMX_NN, 0]>) outputs([[OUTPUT2]] : memref<1x2x133x17xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x2x133x17xf16, #NHWC, [@CMX_NN, 0]>
+    //CHECK:        [[DTS_DMA:%.+]] = VPUIP.DepthToSpaceDMA <{block_size = 2 : i64, dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 133 : i64, len = 68 : i64, srcWidth = 4 : i64, srcStride = 8 : i64, srcPlaneStride = 136 : i64, dstWidth = 2 : i64, dstStride = 2 : i64, dstPlaneStride = 136 : i64>, mode = #IE.depth_to_space_mode<DEPTH_FIRST>, port = 1 : i64}> inputs([[INPUT2]] : memref<1x2x133x17xf16, #NHWC, [@CMX_NN, 0]>) outputs([[OUTPUT2]] : memref<1x2x133x17xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x2x133x17xf16, #NHWC, [@CMX_NN, 0]>
     //CHECK:        }
     //CHECK:        VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier) {
-    //CHECK:        %11 = VPUIP.DepthToSpaceDMA <{block_size = 2 : i64, dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 134 : i64, len = 68 : i64, srcWidth = 4 : i64, srcStride = 8 : i64, srcPlaneStride = 136 : i64, dstWidth = 2 : i64, dstStride = 2 : i64, dstPlaneStride = 136 : i64>, mode = #IE.depth_to_space_mode<DEPTH_FIRST>, port = 0 : i64}> inputs([[INPUT1]] : memref<1x2x134x17xf16, #NHWC, [@CMX_NN, 0]>) outputs([[OUTPUT1]] : memref<1x2x134x17xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x2x134x17xf16, #NHWC, [@CMX_NN, 0]>
+    //CHECK:        [[DTS_DMA:%.+]] = VPUIP.DepthToSpaceDMA <{block_size = 2 : i64, dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 134 : i64, len = 68 : i64, srcWidth = 4 : i64, srcStride = 8 : i64, srcPlaneStride = 136 : i64, dstWidth = 2 : i64, dstStride = 2 : i64, dstPlaneStride = 136 : i64>, mode = #IE.depth_to_space_mode<DEPTH_FIRST>, port = 0 : i64}> inputs([[INPUT1]] : memref<1x2x134x17xf16, #NHWC, [@CMX_NN, 0]>) outputs([[OUTPUT1]] : memref<1x2x134x17xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x2x134x17xf16, #NHWC, [@CMX_NN, 0]>
     //CHECK:        }
 
     //CHECK:        VPURT.Task waits([[BAR0]] : !VPURT.Barrier) updates([[BAR1]] : !VPURT.Barrier) {
-    //CHECK:        %11 = VPUIP.DepthToSpaceDMA <{block_size = 2 : i64, dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 134 : i64, len = 68 : i64, srcWidth = 4 : i64, srcStride = 8 : i64, srcPlaneStride = 136 : i64, dstWidth = 2 : i64, dstStride = 2 : i64, dstPlaneStride = 136 : i64>, mode = #IE.depth_to_space_mode<DEPTH_FIRST>, port = 1 : i64}> inputs([[INPUT0]] : memref<1x2x134x17xf16, #NHWC, [@CMX_NN, 0]>) outputs([[OUTPUT0]] : memref<1x2x134x17xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x2x134x17xf16, #NHWC, [@CMX_NN, 0]>
+    //CHECK:        [[DTS_DMA:%.+]] = VPUIP.DepthToSpaceDMA <{block_size = 2 : i64, dma_descriptor = #VPUIP.DMADescriptorAttr<numPlanes = 134 : i64, len = 68 : i64, srcWidth = 4 : i64, srcStride = 8 : i64, srcPlaneStride = 136 : i64, dstWidth = 2 : i64, dstStride = 2 : i64, dstPlaneStride = 136 : i64>, mode = #IE.depth_to_space_mode<DEPTH_FIRST>, port = 1 : i64}> inputs([[INPUT0]] : memref<1x2x134x17xf16, #NHWC, [@CMX_NN, 0]>) outputs([[OUTPUT0]] : memref<1x2x134x17xf16, #NHWC, [@CMX_NN, 0]>) -> memref<1x2x134x17xf16, #NHWC, [@CMX_NN, 0]>
     //CHECK:        }
 
     //CHECK:        return [[OUTPUT]] : memref<1x1x534x34xf16, #NHWC, [@CMX_NN, 0]>

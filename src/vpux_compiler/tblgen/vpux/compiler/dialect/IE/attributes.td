@@ -546,16 +546,6 @@ def IE_ReluAttr : IE_Attr<"Relu", [
     ] > {
 }
 
-def IE_ClampAttr : IE_Attr<"Clamp", [
-        DeclareAttrInterfaceMethods<IE_PostOpAttrInterface>,
-        IE_ChannelAgnosticAttr
-    ] > {
-    let parameters = (ins
-        "mlir::FloatAttr":$min,
-        "mlir::FloatAttr":$max
-    );
-}
-
 def IE_LeakyReluAttr : IE_Attr<"LeakyRelu", [
         DeclareAttrInterfaceMethods<IE_PostOpAttrInterface>,
         IE_ChannelAgnosticAttr
@@ -739,6 +729,24 @@ def IE_PadType :
 }
 
 def IE_PadTypeAttr : IE_EnumAttr<IE_PadType, "pad_type">;
+
+//
+// RoPE
+//
+
+def IE_RoPEMode :
+        IE_I64EnumAttr<
+            "RoPEMode",
+            "RoPEMode that the InferenceEngine supports",
+            [
+                I64EnumAttrCase<"SPLIT_HALF", 0>,
+                I64EnumAttrCase<"INTERLEAVED", 1>,
+                I64EnumAttrCase<"PAIRWISE", 2>,
+            ]
+        > {
+}
+
+def IE_RoPEModeAttr : IE_EnumAttr<IE_RoPEMode, "rope_mode">;
 
 //
 // DeformablePSROIPoolingMode

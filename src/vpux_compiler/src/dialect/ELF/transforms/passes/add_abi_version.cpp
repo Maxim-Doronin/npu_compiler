@@ -6,6 +6,7 @@
 #include "vpux/compiler/dialect/ELF/IR/dialect.hpp"
 #include "vpux/compiler/dialect/ELF/IR/ops.hpp"
 #include "vpux/compiler/dialect/ELF/transforms/passes.hpp"
+#include "vpux/compiler/dialect/ELF/utils/utils.hpp"
 
 #include <cstdint>
 
@@ -18,9 +19,6 @@ namespace vpux::ELF {
 using namespace vpux;
 
 namespace {
-//
-// AddABIVersionPass
-//
 
 class AddABIVersionPass : public ELF::impl::AddABIVersionBase<AddABIVersionPass> {
 public:
@@ -29,20 +27,20 @@ public:
     }
 
 private:
-    void safeRunOnFunc() final;
+    void safeRunOnFunc() final {
+        auto netFunc = getOperation();
+
+        auto mainOps = to_small_vector(netFunc.getOps<ELF::MainOp>());
+        VPUX_THROW_UNLESS(mainOps.size() == 1, "Expected exactly one ELF mainOp. Got {0}", mainOps.size());
+        auto elfMain = mainOps[0];
+
+        auto builder = mlir::OpBuilder::atBlockEnd(elfMain.getBody());
+        auto elfVersion = builder.create<ELF::ABIVersionOp>(builder.getUnknownLoc());
+        ELF::moveOpToSection(elfVersion, builder);
+    }
 };
 
-void AddABIVersionPass::safeRunOnFunc() {
-    auto funcOp = getOperation();
-    mlir::OpBuilder builder(&(funcOp.getBody().front().back()));
-    builder.create<ELF::ABIVersionOp>(builder.getUnknownLoc());
-}
-
 }  // namespace
-
-//
-// createAddABIVersionPass
-//
 
 std::unique_ptr<mlir::Pass> vpux::ELF::createAddABIVersionPass(Logger log) {
     return std::make_unique<AddABIVersionPass>(log);

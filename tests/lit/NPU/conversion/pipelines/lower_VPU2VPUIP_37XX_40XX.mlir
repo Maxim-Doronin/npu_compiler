@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --lower-VPU-to-VPUIP %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --lower-VPU-to-VPUIP %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000
 
 //
 // The 'lower-VPU-to-VPUIP' pipeline:
@@ -146,7 +146,8 @@ func.func @NCEConv(%arg0 : tensor<1x32x16x16xf16, {mem_space = @CMX_NN, order = 
 
     // CHECK:       [[OUT_BUF:%.+]] = memref.alloc() : memref<1x64x14x14xf16, #NHWC, @CMX_NN>
     // CHECK:       [[OUT:%.+]] = VPUIP.NCEClusterTask
-    // CHECK-SAME:          {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [3, 3], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}
+    // CHECK-SAME:          {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [3, 3], kernel_strides = [1, 1],
+    // CHECK-SAME:          task_type = #VPUIP.nce_task_type<CONV>}
     // CHECK-SAME:          input([[ARG0]]
     // CHECK-SAME:          weights([[WEIGHTS]]
     // CHECK-SAME:          weight_table([[WEIGHTS_TABLE]]
@@ -264,7 +265,8 @@ func.func @SparseNCEConv(%arg0 : tensor<1x32x16x16xf16, {order = #NHWC}>, %arg1 
     // CHECK-SAME:      -> memref<64x32x3x3xf16, #NHWC, @CMX_NN>, memref<64x1x1x384xi1, @CMX_NN>
 
     // CHECK:       [[OUT:%.+]]:2 = VPUIP.NCEClusterTask
-    // CHECK-SAME:          {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [3, 3], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}
+    // CHECK-SAME:          {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [3, 3], kernel_strides = [1, 1],
+    // CHECK-SAME:          task_type = #VPUIP.nce_task_type<CONV>}
     // CHECK-SAME:          input([[INPUT]]
     // CHECK-SAME:          input_sparsity_map([[INPUT_SM]]
     // CHECK-SAME:          weights([[WEIGHTS]]
@@ -462,7 +464,8 @@ func.func @SparseNCEConvSOH(%arg0 : !Input_DDR, %arg1 : !InputSM_DDR) -> !VPU.Sp
     // CHECK-SAME:         !VPUIP.DistributedBuffer<64x1x1x384xi1, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>
 
     // CHECK:       [[CONV_OUTPUT:%.+]]:2 = VPUIP.NCEClusterTask
-    // CHECK-SAME:              {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [3, 3], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}
+    // CHECK-SAME:              {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>, kernel_size = [3, 3], kernel_strides = [1, 1],
+    // CHECK-SAME:              task_type = #VPUIP.nce_task_type<CONV>}
     // CHECK-SAME:              input([[INPUT_DATA]]
     // CHECK-SAME:              input_sparsity_map([[INPUT_SM]]
     // CHECK-SAME:              weights([[WEIGHTS_DATA]]
@@ -592,7 +595,8 @@ func.func @SparseNCEConvSETable(%arg0 : tensor<1x32x16x16xf16, {order = #NHWC}>,
     // CHECK-SAME:      -> memref<1x32x16x16xf16, #NHWC, @CMX_NN>, memref<1x32x16x16xi1, #NHWC, @CMX_NN>, memref<1x1x16x16xi32, #NHWC, @CMX_NN>
     // CHECK:       [[RESULT_CMX:%.+]] = VPUIP.NCEClusterTask
     // CHECK-SAME:      {kernel_padding = #VPU.Padding<left = 0 : i64, right = 0 : i64, top = 0 : i64, bottom = 0 : i64>,
-    // CHECK-SAME:      kernel_size = [3, 3], kernel_strides = [1, 1], task_type = #VPUIP.nce_task_type<CONV>}
+    // CHECK-SAME:      kernel_size = [3, 3], kernel_strides = [1, 1],
+    // CHECK-SAME:      task_type = #VPUIP.nce_task_type<CONV>}
     // CHECK-SAME:      input([[INPUT]] : memref<1x32x16x16xf16, #NHWC, @CMX_NN>)
     // CHECK-SAME:      input_sparsity_map([[INPUT_SM]] : memref<1x32x16x16xi1, #NHWC, @CMX_NN>)
     // CHECK-SAME:      input_storage_element_table([[INPUT_SE]] : memref<1x1x16x16xi32, #NHWC, @CMX_NN>)

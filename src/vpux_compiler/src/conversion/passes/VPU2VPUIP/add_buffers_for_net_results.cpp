@@ -69,10 +69,12 @@ void AddBuffersForNetResults::safeRunOnModule() {
         callOps.insert(callOp);
     });
     mlir::DenseSet<mlir::func::FuncOp> funcOps;
+    mlir::DenseSet<mlir::func::FuncOp> hostFuncOps;
     module.walk([&](mlir::func::FuncOp funcOp) {
         auto closestModuleParentOp = funcOp->getParentOfType<mlir::ModuleOp>();
         if (_useMemrefForHostFunctionBufferization &&
             (funcOp == entryPointFuncOp || config::isPureHostCompileFunc(funcOp))) {
+            hostFuncOps.insert(funcOp);
             return mlir::WalkResult::skip();
         }
 
@@ -94,12 +96,9 @@ void AddBuffersForNetResults::safeRunOnModule() {
     });
 
     VPUIP::allocateBuffersForNetResults(callOps, funcOps, _log);
-
-    module.walk([&](mlir::func::FuncOp funcOp) {
-        if (!funcOps.contains(funcOp)) {
-            VPUIP::allocateBuffersForNetResults<mlir::memref::CopyOp>({}, {funcOp}, _log);
-        }
-    });
+    if (_useMemrefForHostFunctionBufferization) {
+        VPUIP::allocateBuffersForNetResults<mlir::memref::CopyOp>({}, hostFuncOps, _log);
+    }
 }
 
 }  // namespace

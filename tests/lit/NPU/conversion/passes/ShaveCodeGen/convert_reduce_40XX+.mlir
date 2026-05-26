@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-eltwise-layers-to-math %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --convert-eltwise-layers-to-math %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 // IE.ReduceMax
 
@@ -26,8 +26,8 @@ module @ReduceMaxI32 {
     return %0 : tensor<2x3x5xsi32>
 
 // CHECK:    IE.CodeGenCapsule inputs({{.+}} as [[ARG:%.+]]: tensor<2x3x4x5xi32>) {
-// CHECK-NEXT:      [[EMPTY:%.+]] = tensor.empty() : tensor<2x3x5xi32>
 // CHECK-NEXT:      [[CST:%.+]] = arith.constant -2147483648 : i32
+// CHECK-NEXT:      [[EMPTY:%.+]] = tensor.empty() : tensor<2x3x5xi32>
 // CHECK-NEXT:      [[FILL:%.+]] = linalg.fill ins([[CST]] : i32) outs([[EMPTY]] : tensor<2x3x5xi32>) -> tensor<2x3x5xi32>
 // CHECK-NEXT:      [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[map]]], iterator_types = ["parallel", "parallel", "reduction", "parallel"]} ins([[ARG]] : tensor<2x3x4x5xi32>) outs([[FILL]] : tensor<2x3x5xi32>) {
 // CHECK-NEXT:      ^bb0([[IN:%.+]]: i32, [[OUT:%.+]]: i32):
@@ -59,8 +59,8 @@ module @ReduceMaxUI32 {
     return %0 : tensor<2x3x5xui32>
 
 // CHECK:    IE.CodeGenCapsule inputs({{.+}} as [[ARG:%.+]]: tensor<2x3x4x5xi32>) {
+// CHECK-NEXT:      [[CST:%.+]] = arith.constant 0 : i32  
 // CHECK-NEXT:      [[EMPTY:%.+]] = tensor.empty() : tensor<2x3x5xi32>
-// CHECK-NEXT:      [[CST:%.+]] = arith.constant 0 : i32
 // CHECK-NEXT:      [[FILL:%.+]] = linalg.fill ins([[CST]] : i32) outs([[EMPTY]] : tensor<2x3x5xi32>) -> tensor<2x3x5xi32>
 // CHECK-NEXT:      [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[map]]], iterator_types = ["parallel", "parallel", "reduction", "parallel"]} ins([[ARG]] : tensor<2x3x4x5xi32>) outs([[FILL]] : tensor<2x3x5xi32>) {
 // CHECK-NEXT:      ^bb0([[IN:%.+]]: i32, [[OUT:%.+]]: i32):
@@ -93,8 +93,8 @@ module @ReduceMaxF16 {
     return %0 : tensor<2x3x5xf16>
 
 // CHECK:    IE.CodeGenCapsule inputs({{.+}} as [[ARG:%.+]]: tensor<2x3x4x5xf16>) {
-// CHECK-NEXT:      [[EMPTY:%.+]] = tensor.empty() : tensor<2x3x5xf16>
 // CHECK-NEXT:      [[CST:%.+]] = arith.constant 0xFC00 : f16
+// CHECK-NEXT:      [[EMPTY:%.+]] = tensor.empty() : tensor<2x3x5xf16>
 // CHECK-NEXT:      [[FILL:%.+]] = linalg.fill ins([[CST]] : f16) outs([[EMPTY]] : tensor<2x3x5xf16>) -> tensor<2x3x5xf16>
 // CHECK-NEXT:      [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[map]]], iterator_types = ["parallel", "parallel", "reduction", "parallel"]} ins([[ARG]] : tensor<2x3x4x5xf16>) outs([[FILL]] : tensor<2x3x5xf16>) {
 // CHECK-NEXT:      ^bb0([[IN:%.+]]: f16, [[OUT:%.+]]: f16):
@@ -126,8 +126,8 @@ module @KeepDimsReduceMaxF16 {
     return %0 : tensor<2x1x1x5xf16>
 
 // CHECK:    IE.CodeGenCapsule inputs({{.+}} as [[ARG:%.+]]: tensor<2x3x4x5xf16>) {
-// CHECK-NEXT:      [[EMPTY:%.+]] = tensor.empty() : tensor<2x5xf16>
 // CHECK-NEXT:      [[CST:%.+]] = arith.constant 0xFC00 : f16
+// CHECK-NEXT:      [[EMPTY:%.+]] = tensor.empty() : tensor<2x5xf16>
 // CHECK-NEXT:      [[FILL:%.+]] = linalg.fill ins([[CST]] : f16) outs([[EMPTY]] : tensor<2x5xf16>) -> tensor<2x5xf16>
 // CHECK-NEXT:      [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[map]]], iterator_types = ["parallel", "reduction", "reduction", "parallel"]} ins([[ARG]] : tensor<2x3x4x5xf16>) outs([[FILL]] : tensor<2x5xf16>) {
 // CHECK-NEXT:      ^bb0([[IN:%.+]]: f16, [[OUT:%.+]]: f16):
@@ -167,8 +167,8 @@ module @ReduceMinI32 {
     return %0 : tensor<2x3x5xsi32>
 
 // CHECK:    IE.CodeGenCapsule inputs({{.+}} as [[ARG:%.+]]: tensor<2x3x4x5xi32>) {
-// CHECK-NEXT:      [[EMPTY:%.+]] = tensor.empty() : tensor<2x3x5xi32>
 // CHECK-NEXT:      [[CST:%.+]] = arith.constant 2147483647 : i32
+// CHECK-NEXT:      [[EMPTY:%.+]] = tensor.empty() : tensor<2x3x5xi32>
 // CHECK-NEXT:      [[FILL:%.+]] = linalg.fill ins([[CST]] : i32) outs([[EMPTY]] : tensor<2x3x5xi32>) -> tensor<2x3x5xi32>
 // CHECK-NEXT:      [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[map]]], iterator_types = ["parallel", "parallel", "reduction", "parallel"]} ins([[ARG]] : tensor<2x3x4x5xi32>) outs([[FILL]] : tensor<2x3x5xi32>) {
 // CHECK-NEXT:      ^bb0([[IN:%.+]]: i32, [[OUT:%.+]]: i32):
@@ -200,8 +200,8 @@ module @ReduceMinUI32 {
     return %0 : tensor<2x3x5xui32>
 
 // CHECK:    IE.CodeGenCapsule inputs({{.+}} as [[ARG:%.+]]: tensor<2x3x4x5xi32>) {
-// CHECK-NEXT:      [[EMPTY:%.+]] = tensor.empty() : tensor<2x3x5xi32>
 // CHECK-NEXT:      [[CST:%.+]] = arith.constant -1 : i32
+// CHECK-NEXT:      [[EMPTY:%.+]] = tensor.empty() : tensor<2x3x5xi32>
 // CHECK-NEXT:      [[FILL:%.+]] = linalg.fill ins([[CST]] : i32) outs([[EMPTY]] : tensor<2x3x5xi32>) -> tensor<2x3x5xi32>
 // CHECK-NEXT:      [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[map]]], iterator_types = ["parallel", "parallel", "reduction", "parallel"]} ins([[ARG]] : tensor<2x3x4x5xi32>) outs([[FILL]] : tensor<2x3x5xi32>) {
 // CHECK-NEXT:      ^bb0([[IN:%.+]]: i32, [[OUT:%.+]]: i32):
@@ -234,8 +234,8 @@ module @ReduceMinF16 {
     return %0 : tensor<2x3x5xf16>
 
 // CHECK:    IE.CodeGenCapsule inputs({{.+}} as [[ARG:%.+]]: tensor<2x3x4x5xf16>) {
-// CHECK-NEXT:      [[EMPTY:%.+]] = tensor.empty() : tensor<2x3x5xf16>
 // CHECK-NEXT:      [[CST:%.+]] = arith.constant 0x7C00 : f16
+// CHECK-NEXT:      [[EMPTY:%.+]] = tensor.empty() : tensor<2x3x5xf16>
 // CHECK-NEXT:      [[FILL:%.+]] = linalg.fill ins([[CST]] : f16) outs([[EMPTY]] : tensor<2x3x5xf16>) -> tensor<2x3x5xf16>
 // CHECK-NEXT:      [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[map]]], iterator_types = ["parallel", "parallel", "reduction", "parallel"]} ins([[ARG]] : tensor<2x3x4x5xf16>) outs([[FILL]] : tensor<2x3x5xf16>) {
 // CHECK-NEXT:      ^bb0([[IN:%.+]]: f16, [[OUT:%.+]]: f16):
@@ -267,8 +267,8 @@ module @KeepDimsReduceMinF16 {
     return %0 : tensor<2x1x1x5xf16>
 
 // CHECK:    IE.CodeGenCapsule inputs({{.+}} as [[ARG:%.+]]: tensor<2x3x4x5xf16>) {
-// CHECK-NEXT:      [[EMPTY:%.+]] = tensor.empty() : tensor<2x5xf16>
 // CHECK-NEXT:      [[CST:%.+]] = arith.constant 0x7C00 : f16
+// CHECK-NEXT:      [[EMPTY:%.+]] = tensor.empty() : tensor<2x5xf16>
 // CHECK-NEXT:      [[FILL:%.+]] = linalg.fill ins([[CST]] : f16) outs([[EMPTY]] : tensor<2x5xf16>) -> tensor<2x5xf16>
 // CHECK-NEXT:      [[LINALG_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[map]]], iterator_types = ["parallel", "reduction", "reduction", "parallel"]} ins([[ARG]] : tensor<2x3x4x5xf16>) outs([[FILL]] : tensor<2x5xf16>) {
 // CHECK-NEXT:      ^bb0([[IN:%.+]]: f16, [[OUT:%.+]]: f16):
@@ -308,8 +308,8 @@ module @ReduceL2I32 {
     return %0 : tensor<2x3x5xsi32>
 
 // CHECK:    IE.CodeGenCapsule inputs({{.+}} as [[ARG:%.+]]: tensor<2x3x4x5xi32>) {
-// CHECK-NEXT:      [[EMPTY:%.+]] = tensor.empty() : tensor<2x3x5xi32>
 // CHECK-NEXT:      [[CST:%.+]] = arith.constant 0 : i32
+// CHECK-NEXT:      [[EMPTY:%.+]] = tensor.empty() : tensor<2x3x5xi32>
 // CHECK-NEXT:      [[SPLAT:%.+]] = linalg.fill ins([[CST]] : i32) outs([[EMPTY]] : tensor<2x3x5xi32>) -> tensor<2x3x5xi32>
 // CHECK-NEXT:      [[REDUCE_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[map]]], iterator_types = ["parallel", "parallel", "reduction", "parallel"]} ins([[ARG]] : tensor<2x3x4x5xi32>) outs([[SPLAT]] : tensor<2x3x5xi32>) {
 // CHECK-NEXT:      ^bb0([[IN:%.+]]: i32, [[OUT:%.+]]: i32):
@@ -350,8 +350,8 @@ module @ReduceL2UI32 {
     return %0 : tensor<2x3x5xui32>
 
 // CHECK:    IE.CodeGenCapsule inputs({{.+}} as [[ARG:%.+]]: tensor<2x3x4x5xi32>) {
-// CHECK-NEXT:      [[EMPTY:%.+]] = tensor.empty() : tensor<2x3x5xi32>
 // CHECK-NEXT:      [[CST:%.+]] = arith.constant 0 : i32
+// CHECK-NEXT:      [[EMPTY:%.+]] = tensor.empty() : tensor<2x3x5xi32>
 // CHECK-NEXT:      [[SPLAT:%.+]] = linalg.fill ins([[CST]] : i32) outs([[EMPTY]] : tensor<2x3x5xi32>) -> tensor<2x3x5xi32>
 // CHECK-NEXT:      [[REDUCE_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[map]]], iterator_types = ["parallel", "parallel", "reduction", "parallel"]} ins([[ARG]] : tensor<2x3x4x5xi32>) outs([[SPLAT]] : tensor<2x3x5xi32>) {
 // CHECK-NEXT:      ^bb0([[IN:%.+]]: i32, [[OUT:%.+]]: i32):
@@ -393,8 +393,8 @@ module @ReduceL2F16 {
     return %0 : tensor<2x3x5xf16>
 
 // CHECK:    IE.CodeGenCapsule inputs({{.+}} as [[ARG:%.+]]: tensor<2x3x4x5xf16>) {
-// CHECK-NEXT:      [[EMPTY:%.+]] = tensor.empty() : tensor<2x3x5xf32>
 // CHECK-NEXT:      [[CST:%.+]] = arith.constant 0.000000e+00 : f32
+// CHECK-NEXT:      [[EMPTY:%.+]] = tensor.empty() : tensor<2x3x5xf32>
 // CHECK-NEXT:      [[SPLAT:%.+]] = linalg.fill ins([[CST]] : f32) outs([[EMPTY]] : tensor<2x3x5xf32>) -> tensor<2x3x5xf32>
 // CHECK-NEXT:      [[REDUCE_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[map]]], iterator_types = ["parallel", "parallel", "reduction", "parallel"]} ins([[ARG]] : tensor<2x3x4x5xf16>) outs([[SPLAT]] : tensor<2x3x5xf32>) {
 // CHECK-NEXT:      ^bb0([[IN:%.+]]: f16, [[OUT:%.+]]: f32):
@@ -435,8 +435,8 @@ module @KeepDimsReduceL2F16 {
     return %0 : tensor<2x1x1x5xf16>
 
 // CHECK:    IE.CodeGenCapsule inputs({{.+}} as [[ARG:%.+]]: tensor<2x3x4x5xf16>) {
-// CHECK-NEXT:      [[EMPTY:%.+]] = tensor.empty() : tensor<2x5xf32>
 // CHECK-NEXT:      [[CST:%.+]] = arith.constant 0.000000e+00 : f32
+// CHECK-NEXT:      [[EMPTY:%.+]] = tensor.empty() : tensor<2x5xf32>
 // CHECK-NEXT:      [[SPLAT:%.+]] = linalg.fill ins([[CST]] : f32) outs([[EMPTY]] : tensor<2x5xf32>) -> tensor<2x5xf32>
 // CHECK-NEXT:      [[REDUCE_OP:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[map]]], iterator_types = ["parallel", "reduction", "reduction", "parallel"]} ins([[ARG]] : tensor<2x3x4x5xf16>) outs([[SPLAT]] : tensor<2x5xf32>) {
 // CHECK-NEXT:      ^bb0([[IN:%.+]]: f16, [[OUT:%.+]]: f32):
@@ -478,8 +478,8 @@ module @KeepDimsReduceL1F16 {
     return %0 : tensor<2x1x1x5xf16>
 
 // CHECK:    IE.CodeGenCapsule inputs({{.+}} as [[ARG1:%.+]]: tensor<2x3x4x5xf16>) {
-// CHECK-NEXT:     [[EMPT:%.+]] = tensor.empty() : tensor<2x5xf32>
 // CHECK-NEXT:     [[ZERO:%.+]] = arith.constant 0.000000e+00 : f32
+// CHECK-NEXT:     [[EMPT:%.+]] = tensor.empty() : tensor<2x5xf32>
 // CHECK-NEXT:     [[REDUCE_OUT_INIT:%.+]] = linalg.fill ins([[ZERO]] : f32) outs([[EMPT]] : tensor<2x5xf32>) -> tensor<2x5xf32>
 // CHECK-NEXT:     [[REDUCE:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[map]]], iterator_types = ["parallel", "reduction", "reduction", "parallel"]} ins([[ARG1]] : tensor<2x3x4x5xf16>) outs([[REDUCE_OUT_INIT]] : tensor<2x5xf32>) {
 // CHECK-NEXT:     ^bb0([[IN:%.+]]: f16, [[OUT:%.+]]: f32):
@@ -519,8 +519,8 @@ module @KeepDimsReduceSumF16 {
     return %0 : tensor<2x1x1x5xf16>
 
 // CHECK:    IE.CodeGenCapsule inputs({{.+}} as [[ARG1:%.+]]: tensor<2x3x4x5xf16>) {
-// CHECK-NEXT:     [[EMPT:%.+]] = tensor.empty() : tensor<2x5xf32>
 // CHECK-NEXT:     [[ZERO:%.+]] = arith.constant 0.000000e+00 : f32
+// CHECK-NEXT:     [[EMPT:%.+]] = tensor.empty() : tensor<2x5xf32>
 // CHECK-NEXT:     [[REDUCE_OUT_INIT:%.+]] = linalg.fill ins([[ZERO]] : f32) outs([[EMPT]] : tensor<2x5xf32>) -> tensor<2x5xf32>
 // CHECK-NEXT:     [[REDUCE]] = linalg.generic {indexing_maps = [[[NCHW]], [[map]]], iterator_types = ["parallel", "reduction", "reduction", "parallel"]} ins([[ARG1]] : tensor<2x3x4x5xf16>) outs([[REDUCE_OUT_INIT]] : tensor<2x5xf32>) {
 // CHECK-NEXT:     ^bb0([[IN:%.+]]: f16, [[OUT:%.+]]: f32):
@@ -559,8 +559,8 @@ module @KeepDimsReduceL1F32 {
     return %0 : tensor<2x1x1x5xf32>
 
 // CHECK:    IE.CodeGenCapsule inputs({{.+}} as [[ARG1:%.+]]: tensor<2x3x4x5xf32>) {
-// CHECK-NEXT:     [[EMPT:%.+]] = tensor.empty() : tensor<2x5xf32>
 // CHECK-NEXT:     [[ZERO:%.+]] = arith.constant 0.000000e+00 : f32
+// CHECK-NEXT:     [[EMPT:%.+]] = tensor.empty() : tensor<2x5xf32>
 // CHECK-NEXT:     [[REDUCE_OUT_INIT:%.+]] = linalg.fill ins([[ZERO]] : f32) outs([[EMPT]] : tensor<2x5xf32>) -> tensor<2x5xf32>
 // CHECK-NEXT:     [[REDUCE:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[map]]], iterator_types = ["parallel", "reduction", "reduction", "parallel"]} ins([[ARG1]] : tensor<2x3x4x5xf32>) outs([[REDUCE_OUT_INIT]] : tensor<2x5xf32>) {
 // CHECK-NEXT:     ^bb0([[IN:%.+]]: f32, [[OUT:%.+]]: f32):
@@ -598,8 +598,8 @@ module @KeepDimsReduceSumF32 {
     return %0 : tensor<2x1x1x5xf32>
 
 // CHECK: IE.CodeGenCapsule inputs({{.+}} as [[ARG1:%.+]]: tensor<2x3x4x5xf32>) {
-// CHECK-NEXT:     [[EMPT:%.+]] = tensor.empty() : tensor<2x5xf32>
 // CHECK-NEXT:     [[ZERO:%.+]] = arith.constant 0.000000e+00 : f32
+// CHECK-NEXT:     [[EMPT:%.+]] = tensor.empty() : tensor<2x5xf32>
 // CHECK-NEXT:     [[REDUCE_OUT_INIT:%.+]] = linalg.fill ins([[ZERO]] : f32) outs([[EMPT]] : tensor<2x5xf32>) -> tensor<2x5xf32>
 // CHECK-NEXT:     [[REDUCE:%.+]] = linalg.generic {indexing_maps = [[[NCHW]], [[map]]], iterator_types = ["parallel", "reduction", "reduction", "parallel"]} ins([[ARG1]] : tensor<2x3x4x5xf32>) outs([[REDUCE_OUT_INIT]] : tensor<2x5xf32>) {
 // CHECK-NEXT:     ^bb0([[IN:%.+]]: f32, [[OUT:%.+]]: f32):

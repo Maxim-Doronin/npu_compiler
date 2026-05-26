@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=ReferenceSW allow-custom-values=true" --mlir-elide-elementsattrs-if-larger 8 --reference-sw-mode-vpu %s | FileCheck %s --strict-whitespace
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=ReferenceSW allow-custom-values=true" --mlir-elide-elementsattrs-if-larger 8 --reference-sw-mode-vpu %s | FileCheck %s --strict-whitespace
+// REQUIRES: platform-NPU3720
 
 // CHECK-LABEL: @SoftMax
 module @SoftMax {

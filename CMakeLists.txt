@@ -49,14 +49,11 @@ if (ENABLE_NPU_MONO)
     set (NPU_MONO_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/..)
 endif()
 
-find_package(OpenVINODeveloperPackage REQUIRED)
+find_package(OpenVINODeveloperPackage REQUIRED COMPONENTS Runtime Threading)
 
 # Ensure output directory is available
 if(NOT CMAKE_LIBRARY_OUTPUT_DIRECTORY AND OV_LIBRARY_OUTPUT_DIRECTORY)
     set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${OV_LIBRARY_OUTPUT_DIRECTORY})
-endif()
-if(NOT CMAKE_ARCHIVE_OUTPUT_DIRECTORY AND OV_ARCHIVE_OUTPUT_DIRECTORY)
-    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${OV_ARCHIVE_OUTPUT_DIRECTORY})
 endif()
 if(NOT CMAKE_PDB_OUTPUT_DIRECTORY AND OV_PDB_OUTPUT_DIRECTORY)
     set(CMAKE_PDB_OUTPUT_DIRECTORY ${OV_PDB_OUTPUT_DIRECTORY})
@@ -64,6 +61,9 @@ endif()
 if(NOT CMAKE_RUNTIME_OUTPUT_DIRECTORY AND OV_RUNTIME_OUTPUT_DIRECTORY)
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${OV_RUNTIME_OUTPUT_DIRECTORY})
 endif()
+# Keep archives in build folder regardless of settings.
+# That is required for thin libraries as they contain relative object paths.
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/lib)
 
 get_directory_property(defs DIRECTORY ${CMAKE_SOURCE_DIR} COMPILE_DEFINITIONS)
 set(OV_BUILD_POSTFIX_VAR)
@@ -82,7 +82,6 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/dependencies.cmake")
 endif()
 
 include(cmake/flatbuffers.cmake)
-include(cmake/bundle_static_library.cmake)
 include(cmake/embed_bin_file.cmake)
 include(cmake/add_native_exec_target.cmake)
 include(cmake/add_tool_target.cmake)
@@ -106,6 +105,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if(UNIX)
     ov_add_compiler_flags(-Wno-undef)
+endif()
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    add_compile_options(-Xclang -fno-pch-timestamp)
 endif()
 
 if(ENABLE_EXPORT_SYMBOLS)

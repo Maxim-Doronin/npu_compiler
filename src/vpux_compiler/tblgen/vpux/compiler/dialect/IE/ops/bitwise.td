@@ -102,4 +102,46 @@ def IE_BitwiseXorOp :
     );
 }
 
+def IE_BitwiseRightShiftOp :
+        IE_LayerOp<
+            "BitwiseRightShift",
+            [
+                IE_EltwiseOp
+            ]
+        > {
+    let summary = "InferenceEngine BitwiseRightShiftOp layer";
+
+    let arguments = (ins
+        RankedTensorOf<[AnyInteger]>:$input1,
+        RankedTensorOf<[AnyInteger]>:$input2,
+
+        IE_AutoBroadcastTypeAttr:$auto_broadcast
+    );
+
+    let results = (outs
+        RankedTensorOf<[AnyInteger]>:$output
+    );
+}
+
+def IE_BitwiseLeftShiftOp :
+        IE_LayerOp<
+            "BitwiseLeftShift",
+            [
+                IE_EltwiseOp
+            ]
+        > {
+    let summary = "InferenceEngine BitwiseLeftShiftOp layer";
+
+    let arguments = (ins
+        RankedTensorOf<[AnyInteger]>:$input1,
+        RankedTensorOf<[AnyInteger]>:$input2,
+
+        IE_AutoBroadcastTypeAttr:$auto_broadcast
+    );
+
+    let results = (outs
+        RankedTensorOf<[AnyInteger]>:$output
+    );
+}
+
 #endif

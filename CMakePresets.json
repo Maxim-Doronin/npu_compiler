@@ -2,29 +2,56 @@
     "version": 2,
     "configurePresets": [
         {
-            "name": "build-optimization",
+            "name": "_release",
             "hidden": true,
-            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build-x86_64/Release",
             "cacheVariables": {
-                "ENABLE_FASTER_BUILD": true
-            }
-        },
-        {
-            "name": "ccache",
-            "hidden": true,
-            "cacheVariables": {
-                "CMAKE_C_COMPILER_LAUNCHER": {
-                    "type": "STRING",
-                    "value": "ccache"
-                },
-                "CMAKE_CXX_COMPILER_LAUNCHER": {
-                    "type": "STRING",
-                    "value": "ccache"
+                "CMAKE_BUILD_TYPE": "Release",
+                "OpenVINODeveloperPackage_DIR": {
+                    "type": "FILEPATH",
+                    "value": "$env{OPENVINO_HOME}/build-x86_64/Release"
                 }
             }
         },
         {
-            "name": "clang",
+            "name": "_relwithdebinfo",
+            "hidden": true,
+            "binaryDir": "${sourceDir}/build-x86_64/RelWithDebInfo",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+                "OpenVINODeveloperPackage_DIR": {
+                    "type": "FILEPATH",
+                    "value": "$env{OPENVINO_HOME}/build-x86_64/RelWithDebInfo"
+                }
+            }
+        },
+        {
+            "name": "_debug",
+            "hidden": true,
+            "binaryDir": "${sourceDir}/build-x86_64/Debug",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "OpenVINODeveloperPackage_DIR": {
+                    "type": "FILEPATH",
+                    "value": "$env{OPENVINO_HOME}/build-x86_64/Debug"
+                }
+            }
+        },
+        {
+            "name": "_ninja",
+            "hidden": true,
+            "generator": "Ninja"
+        },
+        {
+            "name": "_ccache",
+            "hidden": true,
+            "cacheVariables": {
+                "CMAKE_C_COMPILER_LAUNCHER": "ccache",
+                "CMAKE_CXX_COMPILER_LAUNCHER": "ccache"
+            }
+        },
+        {
+            "name": "_clang",
             "hidden": true,
             "cacheVariables": {
                 "CMAKE_C_COMPILER": "clang",
@@ -32,64 +59,78 @@
             }
         },
         {
-            "name": "linker-mold",
+            "name": "_clang_profiling",
             "hidden": true,
             "cacheVariables": {
-                "CMAKE_EXE_LINKER_FLAGS": {
-                    "type": "STRING",
-                    "value": "-fuse-ld=mold"
-                },
-                "CMAKE_MODULE_LINKER_FLAGS": {
-                    "type": "STRING",
-                    "value": "-fuse-ld=mold"
-                },
-                "CMAKE_SHARED_LINKER_FLAGS": {
-                    "type": "STRING",
-                    "value": "-fuse-ld=mold"
-                }
+                "CMAKE_CXX_FLAGS": "-ftime-trace"
             }
         },
         {
-            "name": "linker-lld",
+            "name": "_linker-mold",
+            "hidden": true,
+            "cacheVariables": {
+                "CMAKE_EXE_LINKER_FLAGS": "-fuse-ld=mold",
+                "CMAKE_MODULE_LINKER_FLAGS": "-fuse-ld=mold",
+                "CMAKE_SHARED_LINKER_FLAGS": "-fuse-ld=mold"
+            }
+        },
+        {
+            "name": "_linker-lld",
             "description": "Changes linker to LLD",
             "hidden": true,
             "cacheVariables": {
-                "CMAKE_EXE_LINKER_FLAGS": {
-                    "type": "STRING",
-                    "value": "-fuse-ld=lld"
-                },
-                "CMAKE_MODULE_LINKER_FLAGS": {
-                    "type": "STRING",
-                    "value": "-fuse-ld=lld"
-                },
-                "CMAKE_SHARED_LINKER_FLAGS": {
-                    "type": "STRING",
-                    "value": "-fuse-ld=lld"
-                }
+                "CMAKE_EXE_LINKER_FLAGS": "-fuse-ld=lld",
+                "CMAKE_MODULE_LINKER_FLAGS": "-fuse-ld=lld",
+                "CMAKE_SHARED_LINKER_FLAGS": "-fuse-ld=lld"
             }
         },
         {
-            "name": "disabler",
+            "name": "_npu-default_variables",
             "hidden": true,
-            "description": "Disables options that are not used by default presets",
             "cacheVariables": {
+                "ENABLE_FASTER_BUILD": true,
                 "ENABLE_CPPLINT": false,
-                "ENABLE_LTO": false
-            }
-        },
-        {
-            "name": "build-base",
-            "hidden": true,
-            "inherits": ["build-optimization", "disabler"],
-            "cacheVariables": {
+                "ENABLE_LTO": false,
                 "ENABLE_DEVELOPER_BUILD": false
             }
         },
         {
-            "name": "developer-build-base",
+            "name": "build-release",
+            "description": "Default NPU Compiler Release build. Requires Ninja",
+            "displayName": "Default NPU Compiler Release build",
+            "inherits": [
+                "_ninja",
+                "_npu-default_variables",
+                "_release"
+            ]
+        },
+        {
+            "name": "build-relwithdebinfo",
+            "description": "Default NPU Compiler RelWithDebInfo build. Requires Ninja",
+            "displayName": "Default NPU Compiler RelWithDebInfo build",
+            "inherits": [
+                "_ninja",
+                "_npu-default_variables",
+                "_relwithdebinfo"
+            ]
+        },
+        {
+            "name": "build-debug",
+            "description": "Default NPU Compiler Debug build. Requires Ninja",
+            "displayName": "Default NPU Compiler Debug build",
+            "inherits": [
+                "_ninja",
+                "_npu-default_variables",
+                "_debug"
+            ]
+        },
+        {
+            "name": "_npu-developer_variables",
             "hidden": true,
-            "inherits": ["build-optimization", "disabler", "ccache"],
             "cacheVariables": {
+                "ENABLE_FASTER_BUILD": true,
+                "ENABLE_CPPLINT": false,
+                "ENABLE_LTO": false,
                 "ENABLE_DEVELOPER_BUILD": true,
                 "ENABLE_TESTS": true,
                 "ENABLE_PRIVATE_TESTS": true,
@@ -97,357 +138,264 @@
                 "ENABLE_NPU_MICRO_BENCHMARKS": true,
                 "ENABLE_SPLIT_DWARF": true,
                 "LIT_TESTS_USE_LINKS": true,
-                "CMAKE_EXPORT_COMPILE_COMMANDS" : true
-            }
-        },
-        {
-            "name": "build-release",
-            "description": "Release build for NPU Compiler. Requires Ninja",
-            "displayName": "Default Release build",
-            "inherits": ["build-base"],
-            "binaryDir": "${sourceDir}/build-x86_64/Release",
-            "cacheVariables": {
-                "OpenVINODeveloperPackage_DIR": {
-                    "type": "FILEPATH",
-                    "value": "$env{OPENVINO_HOME}/build-x86_64/Release"
-                },
-                "CMAKE_BUILD_TYPE": {
-                    "type": "STRING",
-                    "value": "Release"
-                }
-            }
-        },
-        {
-            "name": "build-debug",
-            "description": "Debug build for NPU Compiler. Requires Ninja",
-            "displayName": "Default Debug build",
-            "inherits": ["build-base"],
-            "binaryDir": "${sourceDir}/build-x86_64/Debug",
-            "cacheVariables": {
-                "OpenVINODeveloperPackage_DIR": {
-                    "type": "FILEPATH",
-                    "value": "$env{OPENVINO_HOME}/build-x86_64/Debug"
-                },
-                "CMAKE_BUILD_TYPE": {
-                    "type": "STRING",
-                    "value": "Debug"
-                }
-            }
-        },
-        {
-            "name": "build-relwithdebinfo",
-            "description": "RelWithDebInfo build for NPU Compiler. Requires Ninja",
-            "displayName": "Default RelWithDebInfo build",
-            "inherits": ["build-base"],
-            "binaryDir": "${sourceDir}/build-x86_64/RelWithDebInfo",
-            "cacheVariables": {
-                "OpenVINODeveloperPackage_DIR": {
-                    "type": "FILEPATH",
-                    "value": "$env{OPENVINO_HOME}/build-x86_64/RelWithDebInfo"
-                },
-                "CMAKE_BUILD_TYPE": {
-                    "type": "STRING",
-                    "value": "RelWithDebInfo"
-                }
+                "CMAKE_EXPORT_COMPILE_COMMANDS": true
             }
         },
         {
             "name": "developer-build-release",
             "description": "Release build for NPU Compiler development. Enables developer build, tests. Requires Ninja and ccache",
-            "displayName": "Developer Release build",
-            "inherits": ["developer-build-base"],
-            "binaryDir": "${sourceDir}/build-x86_64/Release",
-            "cacheVariables": {
-                "OpenVINODeveloperPackage_DIR": {
-                    "type": "FILEPATH",
-                    "value": "$env{OPENVINO_HOME}/build-x86_64/Release"
-                },
-                "CMAKE_BUILD_TYPE": {
-                    "type": "STRING",
-                    "value": "Release"
-                }
-            }
-        },
-        {
-            "name": "developer-build-debug",
-            "description": "Debug build for NPU Compiler development. Enables developer build, tests. Requires Ninja and ccache",
-            "displayName": "Developer Debug build",
-            "inherits": ["developer-build-base"],
-            "binaryDir": "${sourceDir}/build-x86_64/Debug",
-            "cacheVariables": {
-                "OpenVINODeveloperPackage_DIR": {
-                    "type": "FILEPATH",
-                    "value": "$env{OPENVINO_HOME}/build-x86_64/Debug"
-                },
-                "CMAKE_BUILD_TYPE": {
-                    "type": "STRING",
-                    "value": "Debug"
-                }
-            }
-        },
-        {
-            "name": "developer-build-relwithdebinfo",
-            "description": "RelWithDebInfo build for NPU Compiler development. Enables developer build, tests. Requires Ninja and ccache",
-            "displayName": "Developer RelWithDebInfo build",
-            "inherits": ["developer-build-base"],
-            "binaryDir": "${sourceDir}/build-x86_64/RelWithDebInfo",
-            "cacheVariables": {
-                "OpenVINODeveloperPackage_DIR": {
-                    "type": "FILEPATH",
-                    "value": "$env{OPENVINO_HOME}/build-x86_64/RelWithDebInfo"
-                },
-                "CMAKE_BUILD_TYPE": {
-                    "type": "STRING",
-                    "value": "RelWithDebInfo"
-                }
-            }
+            "displayName": "Developer NPU Compiler Release build",
+            "inherits": [
+                "_ninja",
+                "_ccache",
+                "_npu-developer_variables",
+                "_release"
+            ]
         },
         {
             "name": "developer-build-fast-release",
             "description": "Release build for NPU Compiler development. Enables developer build, tests. Requires Ninja, ccache, Clang and mold",
-            "displayName": "Developer Release build using Clang and mold",
-            "inherits": ["developer-build-base", "clang", "linker-mold"],
-            "binaryDir": "${sourceDir}/build-x86_64/Release",
-            "cacheVariables": {
-                "OpenVINODeveloperPackage_DIR": {
-                    "type": "FILEPATH",
-                    "value": "$env{OPENVINO_HOME}/build-x86_64/Release"
-                },
-                "CMAKE_BUILD_TYPE": {
-                    "type": "STRING",
-                    "value": "Release"
-                }
-            }
+            "displayName": "Developer NPU Compiler Release build using Clang and mold",
+            "inherits": [
+                "developer-build-release",
+                "_clang",
+                "_linker-mold"
+            ]
         },
         {
-            "name": "developer-build-fast-debug",
-            "description": "Debug build for NPU Compiler development. Enables developer build, tests. Requires Ninja, ccache, Clang and mold",
-            "displayName": "Developer Debug build using Clang and mold",
-            "inherits": ["developer-build-base", "clang", "linker-mold"],
-            "binaryDir": "${sourceDir}/build-x86_64/Debug",
+            "name": "developer-build-time-metric",
+            "description": "Special configuration for developer build to collect build time metrics for further analysis. Requires Ninja, ccache, Clang and mold",
+            "displayName": "Developer NPU Compiler Time Metric build",
             "cacheVariables": {
-                "OpenVINODeveloperPackage_DIR": {
-                    "type": "FILEPATH",
-                    "value": "$env{OPENVINO_HOME}/build-x86_64/Debug"
-                },
-                "CMAKE_BUILD_TYPE": {
-                    "type": "STRING",
-                    "value": "Debug"
-                }
-            }
+                "FORCE_CCACHE_FOR_NPU_THIRDPARTY": true
+            },
+            "inherits": [
+                "_ninja",
+                "_npu-developer_variables",
+                "_release",
+                "_clang",
+                "_linker-mold"
+            ]
+        },
+        {
+            "name": "developer-build-time-metric-clang-profiling",
+            "displayName": "Developer NPU Compiler Time Metric build with Clang Profiling enabled",
+            "inherits": [
+                "developer-build-time-metric",
+                "_clang_profiling"
+            ]
+        },
+        {
+            "name": "developer-build-relwithdebinfo",
+            "description": "RelWithDebInfo build for NPU Compiler development. Enables developer build, tests. Requires Ninja and ccache",
+            "displayName": "Developer NPU Compiler RelWithDebInfo build",
+            "inherits": [
+                "_ninja",
+                "_ccache",
+                "_npu-developer_variables",
+                "_relwithdebinfo"
+            ]
         },
         {
             "name": "developer-build-fast-relwithdebinfo",
             "description": "RelWithDebInfo build for NPU Compiler development. Enables developer build, tests. Requires Ninja, ccache, Clang and mold",
-            "displayName": "Developer RelWithDebInfo build using Clang and mold",
-            "inherits": ["developer-build-base", "clang", "linker-mold"],
-            "binaryDir": "${sourceDir}/build-x86_64/RelWithDebInfo",
+            "displayName": "Developer NPU Compiler RelWithDebInfo build using Clang and mold",
+            "inherits": [
+                "developer-build-relwithdebinfo",
+                "_clang",
+                "_linker-mold"
+            ]
+        },
+        {
+            "name": "developer-build-debug",
+            "description": "Debug build for NPU Compiler development. Enables developer build, tests. Requires Ninja and ccache",
+            "displayName": "Developer NPU Compiler Debug build",
+            "inherits": [
+                "_ninja",
+                "_ccache",
+                "_npu-developer_variables",
+                "_debug"
+            ]
+        },
+        {
+            "name": "developer-build-fast-debug",
+            "description": "Debug build for NPU Compiler development. Enables developer build, tests. Requires Ninja, Clang and mold",
+            "displayName": "Developer NPU Compiler Debug build using Clang and mold",
+            "inherits": [
+                "developer-build-debug",
+                "_clang",
+                "_linker-mold"
+            ]
+        },
+        {
+            "name": "fuzzing-build",
+            "description": "Build for executing fuzz tests with sanitizers enabled",
+            "displayName": "Fuzz testing build",
+            "inherits": [
+                "developer-build-debug",
+                "_clang",
+                "_linker-lld"
+            ],
             "cacheVariables": {
-                "OpenVINODeveloperPackage_DIR": {
-                    "type": "FILEPATH",
-                    "value": "$env{OPENVINO_HOME}/build-x86_64/RelWithDebInfo"
-                },
-                "CMAKE_BUILD_TYPE": {
-                    "type": "STRING",
-                    "value": "RelWithDebInfo"
-                }
+                "ENABLE_SANITIZER": true,
+                "ENABLE_FUZZING": true,
+                "ENABLE_NPU_FUZZ_TESTS": true
             }
         },
-
         {
-            "name": "ov-npu-developer-base",
+            "name": "_ov-npu-developer-variables",
             "hidden": true,
             "cacheVariables": {
-                "CMAKE_EXPORT_COMPILE_COMMANDS" : true,
-
+                "CMAKE_EXPORT_COMPILE_COMMANDS": true,
                 "ENABLE_HETERO": true,
                 "ENABLE_INTEL_CPU": true,
                 "ENABLE_INTEL_GPU": false,
                 "ENABLE_TEMPLATE": true,
-
                 "ENABLE_INTEL_NPU_COMPILER": false,
-
                 "ENABLE_OV_ONNX_FRONTEND": false,
                 "ENABLE_OV_PADDLE_FRONTEND": false,
                 "ENABLE_OV_PYTORCH_FRONTEND": false,
                 "ENABLE_OV_TF_FRONTEND": false,
                 "ENABLE_OV_TF_LITE_FRONTEND": false,
-
-                "THREADING": {
-                    "type": "STRING",
-                    "value": "TBB"
-                },
+                "THREADING": "TBB",
                 "ENABLE_LTO": false,
                 "ENABLE_OPENCV": true,
-
                 "ENABLE_TESTS": true,
                 "ENABLE_PRIVATE_TESTS": true,
                 "ENABLE_FUNCTIONAL_TESTS": true,
-
                 "OPENVINO_EXTRA_MODULES": {
                     "type": "FILEPATH",
                     "value": "./modules/vpux"
                 }
             }
         },
-
         {
             "name": "ov-npu-developer-debug",
-            "description": "Same as developer-build-debug, but it builds VPUX plugin in OpenVINO project tree. Please make sure that VPUX plugin is located inside OpenVINO repo in modules/vpux folder.",
-            "binaryDir": "${sourceDir}/build-x86_64/Debug",
+            "description": "Debug Builds VPUX plugin in OpenVINO project tree. Please make sure that VPUX plugin is located inside OpenVINO repo in modules/vpux folder.",
             "displayName": "OpenVINO + NPU Debug build",
-            "inherits": ["ov-npu-developer-base", "developer-build-debug"]
+            "inherits": [
+                "_ov-npu-developer-variables",
+                "_ninja",
+                "_ccache",
+                "_debug"
+            ]
         },
         {
             "name": "ov-npu-developer-release",
-            "description": "Same as developer-build-release, but it builds VPUX plugin in OpenVINO project tree. Please make sure that VPUX plugin is located inside OpenVINO repo in modules/vpux folder.",
-            "binaryDir": "${sourceDir}/build-x86_64/Release",
+            "description": "Release Builds VPUX plugin in OpenVINO project tree. Please make sure that VPUX plugin is located inside OpenVINO repo in modules/vpux folder.",
             "displayName": "OpenVINO + NPU Release build",
-            "inherits": ["ov-npu-developer-base", "build-release"]
+            "inherits": [
+                "_ov-npu-developer-variables",
+                "_ninja",
+                "_ccache",
+                "_release"
+            ]
         },
-
         {
-            "name": "cid-base",
+            "name": "_cid-base",
             "hidden": true,
-            "description": "Default configuration for NPU driver compiler. Make sure NPU_PLUGIN_HOME environment variable is set to the VPUX plugin root directory.",
+            "description": "Default CMake configuration to build NPU 'Compiler in Driver'. Note: (1) Make sure NPU_PLUGIN_HOME and CONFIG environment variables are set. (2) CiD is a static build that includes only the necessary targets. Irrelevant targets/components are excluded to minimize the size of the build output.",
+            "binaryDir": "${sourceDir}/build_$env{CONFIG}",
+            "inherits": [
+                "_ninja",
+                "_ccache"
+            ],
             "cacheVariables": {
                 "BUILD_SHARED_LIBS": false,
                 "ENABLE_OV_IR_FRONTEND": true,
-                "THREADING": {
-                    "type": "STRING",
-                    "value": "TBB"
-                },
+                "THREADING": "TBB",
                 "ENABLE_TBBBIND_2_5": false,
                 "BUILD_COMPILER_FOR_DRIVER": true,
-
                 "OPENVINO_EXTRA_MODULES": {
                     "type": "FILEPATH",
                     "value": "$env{NPU_PLUGIN_HOME}"
-                }
-           }
+                },
+                "CMAKE_BUILD_TYPE": "$env{CONFIG}",
+                "ENABLE_LTO": false,
+                "ENABLE_FASTER_BUILD": false,
+                "ENABLE_CPPLINT": false,
+                "ENABLE_TESTS": false,
+                "ENABLE_FUNCTIONAL_TESTS": false,
+                "ENABLE_SAMPLES": false,
+                "ENABLE_JS": false,
+                "ENABLE_PYTHON": false,
+                "ENABLE_PYTHON_PACKAGING": false,
+                "ENABLE_WHEEL": false,
+                "ENABLE_OV_ONNX_FRONTEND": false,
+                "ENABLE_OV_PADDLE_FRONTEND": false,
+                "ENABLE_OV_PYTORCH_FRONTEND": false,
+                "ENABLE_OV_TF_FRONTEND": false,
+                "ENABLE_OV_TF_LITE_FRONTEND": false,
+                "ENABLE_OV_JAX_FRONTEND": false,
+                "ENABLE_SYSTEM_TBB": false,
+                "ENABLE_TBB_RELEASE_ONLY": false,
+                "ENABLE_OPENCV": false,
+                "ENABLE_MULTI": false,
+                "ENABLE_HETERO": false,
+                "ENABLE_AUTO": false,
+                "ENABLE_AUTO_BATCH": false,
+                "ENABLE_TEMPLATE": false,
+                "ENABLE_PROXY": false,
+                "ENABLE_INTEL_CPU": false,
+                "ENABLE_INTEL_GPU": false,
+                "ENABLE_NPU_PLUGIN_ENGINE": false,
+                "ENABLE_ZEROAPI_BACKEND": false,
+                "ENABLE_DRIVER_COMPILER_ADAPTER": false,
+                "ENABLE_INTEL_NPU_INTERNAL": false,
+                "ENABLE_INTEL_NPU_PROTOPIPE": false,
+                "ENABLE_PRIVATE_TESTS": false,
+                "ENABLE_NPU_LSP_SERVER": false
+            }
         },
         {
             "name": "cid-linux",
             "description": "Default CMake configuration to build NPU-CiD targets on Linux. Note: (1) Make sure NPU_PLUGIN_HOME and CONFIG environment variables are set. (2) CiD is a static build that includes only the necessary targets. Irrelevant targets/components are excluded to minimize the size of the build output.",
-            "binaryDir": "${sourceDir}/build_$env{CONFIG}",
             "displayName": "CID build for Linux",
-            "inherits": ["cid-base", "build-optimization", "disabler", "ccache"],
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": {
-                    "type": "STRING",
-                    "value": "$env{CONFIG}"
-                },
-
-                "ENABLE_LTO": false,
-                "ENABLE_FASTER_BUILD": false,
-                "ENABLE_CPPLINT": false,
-
-                "ENABLE_TESTS": false,
-                "ENABLE_FUNCTIONAL_TESTS": false,
-                "ENABLE_SAMPLES": false,
-
-                "ENABLE_JS": false,
-
-                "ENABLE_PYTHON": false,
-                "ENABLE_PYTHON_PACKAGING": false,
-                "ENABLE_WHEEL": false,
-
-                "ENABLE_OV_ONNX_FRONTEND": false,
-                "ENABLE_OV_PADDLE_FRONTEND": false,
-                "ENABLE_OV_PYTORCH_FRONTEND": false,
-                "ENABLE_OV_TF_FRONTEND": false,
-                "ENABLE_OV_TF_LITE_FRONTEND": false,
-                "ENABLE_OV_JAX_FRONTEND": false,
-
-                "ENABLE_SYSTEM_TBB": false,
-                "ENABLE_TBB_RELEASE_ONLY": false,
-                "ENABLE_OPENCV": false,
-
-                "ENABLE_MULTI": false,
-                "ENABLE_HETERO": false,
-                "ENABLE_AUTO": false,
-                "ENABLE_AUTO_BATCH": false,
-                "ENABLE_TEMPLATE": false,
-                "ENABLE_PROXY": false,
-                "ENABLE_INTEL_CPU": false,
-                "ENABLE_INTEL_GPU": false,
-
-                "ENABLE_NPU_PLUGIN_ENGINE": false,
-                "ENABLE_ZEROAPI_BACKEND": false,
-                "ENABLE_DRIVER_COMPILER_ADAPTER": false,
-                "ENABLE_INTEL_NPU_INTERNAL": false,
-                "ENABLE_INTEL_NPU_PROTOPIPE": false,
-
-                "ENABLE_PRIVATE_TESTS": false,
-                "ENABLE_NPU_LSP_SERVER": false
-            }
+            "inherits": [
+                "_cid-base"
+            ]
         },
         {
             "name": "cid-windows",
             "description": "Default CMake configuration to build NPU-CiD targets on Windows. Note: (1) Make sure NPU_PLUGIN_HOME and CONFIG environment variables are set. (2) CiD is a static build that includes only the necessary targets. Irrelevant targets/components are excluded to minimize the size of the build output.",
-            "binaryDir": "${sourceDir}/build_$env{CONFIG}",
             "displayName": "CID build for Windows",
-            "inherits": ["cid-base", "build-optimization", "disabler", "ccache"],
+            "inherits": [
+                "_cid-base"
+            ],
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": {
-                    "type": "STRING",
-                    "value": "$env{CONFIG}"
-                },
-                "CMAKE_TOOLCHAIN_FILE":"${sourceDir}\\cmake\\toolchains\\onecoreuap.toolchain.cmake",
-                "ENABLE_LTO": false,
-                "ENABLE_FASTER_BUILD": false,
-                "ENABLE_CPPLINT": false,
-
-                "ENABLE_TESTS": false,
-                "ENABLE_FUNCTIONAL_TESTS": false,
-                "ENABLE_SAMPLES": false,
-
-                "ENABLE_JS": false,
-
-                "ENABLE_PYTHON": false,
-                "ENABLE_PYTHON_PACKAGING": false,
-                "ENABLE_WHEEL": false,
-
-                "ENABLE_OV_ONNX_FRONTEND": false,
-                "ENABLE_OV_PADDLE_FRONTEND": false,
-                "ENABLE_OV_PYTORCH_FRONTEND": false,
-                "ENABLE_OV_TF_FRONTEND": false,
-                "ENABLE_OV_TF_LITE_FRONTEND": false,
-                "ENABLE_OV_JAX_FRONTEND": false,
-
-                "ENABLE_SYSTEM_TBB": false,
-                "ENABLE_TBB_RELEASE_ONLY": false,
-                "ENABLE_OPENCV": false,
-
-                "ENABLE_MULTI": false,
-                "ENABLE_HETERO": false,
-                "ENABLE_AUTO": false,
-                "ENABLE_AUTO_BATCH": false,
-                "ENABLE_TEMPLATE": false,
-                "ENABLE_PROXY": false,
-                "ENABLE_INTEL_CPU": false,
-                "ENABLE_INTEL_GPU": false,
-
-                "ENABLE_NPU_PLUGIN_ENGINE": false,
-                "ENABLE_ZEROAPI_BACKEND": false,
-                "ENABLE_DRIVER_COMPILER_ADAPTER": false,
-                "ENABLE_INTEL_NPU_INTERNAL": false,
-                "ENABLE_INTEL_NPU_PROTOPIPE": false,
-
-                "ENABLE_PRIVATE_TESTS": false,
-                "ENABLE_NPU_LSP_SERVER": false
+                "CMAKE_TOOLCHAIN_FILE": "${sourceDir}\\cmake\\toolchains\\onecoreuap.toolchain.cmake"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "_ccache-build",
+            "hidden": true,
+            "description": "ccache max size is 5GB by default, recommended to set to 20GB for local development (use CCACHE_MAXSIZE environment variable or ccache.conf file to set it)",
+            "environment": {
+                "CCACHE_SLOPPINESS": "pch_defines,time_macros"
             }
         },
         {
-            "name": "fuzzing-build",
-            "description": "Build for executing fuzz tests. Enables sanitizers. Requires Ninja, clang, lld and ccache",
-            "displayName": "Fuzz testing build",
-            "inherits": ["developer-build-debug", "clang", "linker-lld"],
-            "cacheVariables": {
-                "ENABLE_SANITIZER": true,
-                "ENABLE_FUZZING": true,
-                "ENABLE_NPU_FUZZ_TESTS": true
-            }
+            "name": "developer-build-fast-release",
+            "inherits": [
+                "_ccache-build"
+            ],
+            "configurePreset": "developer-build-fast-release"
+        },
+        {
+            "name": "developer-build-time-metric",
+            "inherits": [
+                "_ccache-build"
+            ],
+            "configurePreset": "developer-build-time-metric"
+        },
+        {
+            "name": "developer-build-time-metric-clang-profiling",
+            "inherits": [
+                "_ccache-build"
+            ],
+            "configurePreset": "developer-build-time-metric-clang-profiling"
         }
     ],
     "testPresets": [

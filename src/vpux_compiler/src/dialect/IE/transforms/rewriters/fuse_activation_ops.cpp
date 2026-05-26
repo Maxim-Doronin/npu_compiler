@@ -136,7 +136,7 @@ mlir::LogicalResult FuseClampRewriter::matchAndRewrite(IE::ClampOp clampOp, mlir
 
 class FuseActivationOpsPass final : public IE::impl::FuseActivationOpsBase<FuseActivationOpsPass> {
 public:
-    explicit FuseActivationOpsPass(const bool enableFuseClamp, Logger log): _enableFuseClamp(enableFuseClamp) {
+    explicit FuseActivationOpsPass(Logger log) {
         Base::initLogger(log, Base::getArgumentName());
     }
 
@@ -144,21 +144,10 @@ public:
 
 private:
     void safeRunOnFunc() final;
-
-private:
-    bool _enableFuseClamp;
 };
 
 mlir::LogicalResult FuseActivationOpsPass::initialize(mlir::MLIRContext* ctx) {
-    if (mlir::failed(Base::initialize(ctx))) {
-        return mlir::failure();
-    }
-    if (!enableFuseClamp.hasValue()) {
-        return mlir::success();
-    }
-
-    _enableFuseClamp = enableFuseClamp;
-    return mlir::success();
+    return Base::initialize(ctx);
 }
 
 void FuseActivationOpsPass::safeRunOnFunc() {
@@ -167,11 +156,7 @@ void FuseActivationOpsPass::safeRunOnFunc() {
     // Note the below patterns exec order is defined by "benefitLevels" at the head
     mlir::RewritePatternSet patterns(&ctx);
     patterns.insert<FusePostOpsRewriter>(&ctx, vpux::benefitLow, _log);
-
-    // TODO: #83187 remove option
-    if (_enableFuseClamp) {
-        patterns.insert<FuseClampRewriter>(&ctx, vpux::benefitMid, _log);
-    }
+    patterns.insert<FuseClampRewriter>(&ctx, vpux::benefitMid, _log);
 
     auto func = getOperation();
     if (mlir::failed(applyPatternsGreedily(func, std::move(patterns), getDefaultGreedyRewriteConfig()))) {
@@ -181,16 +166,14 @@ void FuseActivationOpsPass::safeRunOnFunc() {
 
 }  // namespace
 
-void vpux::IE::registerFuseActivationOpsRewriters(RewriterRegistry& registry, bool enableFuseClamp, Logger log) {
-    registry.registerRewriterSet("fuse-activation-ops-set", [&registry, enableFuseClamp, log]() {
+void vpux::IE::registerFuseActivationOpsRewriters(RewriterRegistry& registry, Logger log) {
+    registry.registerRewriterSet("fuse-activation-ops-set", [&registry, log]() {
         registry.registerRewriter<FusePostOpsRewriter>("fuse-post-ops", vpux::benefitLow, log);
-        if (enableFuseClamp) {
-            registry.registerRewriter<FuseClampRewriter>("fuse-clamp", vpux::benefitMid, log);
-        }
+        registry.registerRewriter<FuseClampRewriter>("fuse-clamp", vpux::benefitMid, log);
     });
 }
 
 // E-187110: Remove unnecessary pass declaration and definition
-std::unique_ptr<mlir::Pass> vpux::IE::createFuseActivationOpsPass(const bool enableFuseClamp, Logger log) {
-    return std::make_unique<FuseActivationOpsPass>(enableFuseClamp, log);
+std::unique_ptr<mlir::Pass> vpux::IE::createFuseActivationOpsPass(Logger log) {
+    return std::make_unique<FuseActivationOpsPass>(log);
 }

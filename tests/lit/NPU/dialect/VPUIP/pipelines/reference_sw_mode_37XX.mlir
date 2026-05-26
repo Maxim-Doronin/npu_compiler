@@ -3,13 +3,13 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=ReferenceSW allow-custom-values=true" --mlir-elide-elementsattrs-if-larger 8 --reference-sw-mode-vpuip %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=ReferenceSW allow-custom-values=true" --mlir-elide-elementsattrs-if-larger 8 --reference-sw-mode-vpuip %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
 // CHECK-LABEL: @SoftMax
-module @SoftMax attributes {config.arch = #config.arch_kind<NPU37XX>, config.compilationMode = #config.compilation_mode<DefaultHW>} {
+module @SoftMax attributes {config.compilationMode = #config.compilation_mode<DefaultHW>} {
 
     VPURT.SW.Runtime entryPoint : @VPU.SW::@runtime stack_configuration : [4096, 4096, 4096, 4096]
     module @VPU.SW {
@@ -60,15 +60,15 @@ module @SoftMax attributes {config.arch = #config.arch_kind<NPU37XX>, config.com
         // CHECK-NEXT:  }
 
         // CHECK:   VPURT.Task waits([[BAR0]]  : !VPURT.Barrier) updates([[BAR1]]  : !VPURT.Barrier) {
-        // CHECK:        %results = VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_SoftMax inputs([[DISTR_BUFF0]] as {{[^:]+}}: !VPUIP.DistributedBuffer<1x1x1x1000xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
+        // CHECK:        VPUIP.SW.Kernel {resultSegmentSizes = array<i32: 1, 0, 0>} @VPU.SW::@builtin_SoftMax inputs([[DISTR_BUFF0]] as {{[^:]+}}: !VPUIP.DistributedBuffer<1x1x1x1000xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>)
         // CHECK-SAME:                    outputs([[DISTR_BUFF1]] as {{[^:]+}}: !VPUIP.DistributedBuffer<1x1x1x1000xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>) on tile 0 -> !VPUIP.DistributedBuffer<1x1x1x1000xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>{
 
         // CHECK:   VPURT.Task waits([[BAR1]] : !VPURT.Barrier) updates([[BAR2]] : !VPURT.Barrier) {
-        // CHECK:       %10 = VPUIP.NNDMA <{port = 0 : i64}> inputs([[DISTR_BUFF1]] : !VPUIP.DistributedBuffer<1x1x1x1000xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>) outputs([[BUFF1]] : memref<1x1x1x1000xf16, @DDR>) -> memref<1x1x1x1000xf16, @DDR>
+        // CHECK:       [[DMA1:%.+]] = VPUIP.NNDMA <{port = 0 : i64}> inputs([[DISTR_BUFF1]] : !VPUIP.DistributedBuffer<1x1x1x1000xf16, #NCHW, @CMX_NN, {mode = "DUPLICATED", num_clusters = 2 : i64}>) outputs([[BUFF1]] : memref<1x1x1x1000xf16, @DDR>) -> memref<1x1x1x1000xf16, @DDR>
         // CHECK:   }
 
         // CHECK:    VPURT.Task waits([[BAR2]] : !VPURT.Barrier) updates([[BAR3]] : !VPURT.Barrier) {
-        // CHECK:        %10 = VPUIP.NNDMA <{port = 0 : i64}> inputs([[BUFF3]] : memref<1x1000xf16, @DDR>) outputs([[BUFF0]] : memref<1x1000xf16, @DDR>) -> memref<1x1000xf16, @DDR>
+        // CHECK:        [[DMA2:%.+]] = VPUIP.NNDMA <{port = 0 : i64}> inputs([[BUFF3]] : memref<1x1000xf16, @DDR>) outputs([[BUFF0]] : memref<1x1000xf16, @DDR>) -> memref<1x1000xf16, @DDR>
         // CHECK:    }
     }
 }

@@ -55,6 +55,9 @@ public:
     // function returns information gathered together for all tiles
     const VFTileContainer& gatherValue(VFKey key);
 
+    // find the first tile with same VFValue,
+    std::optional<size_t> findFirstTile(VFKey key, const VFValue& value);
+
     // get whole inner container
     const std::unordered_map<VFKey, VFTileContainer>& getAll() const {
         return vfContainer;
@@ -107,6 +110,25 @@ std::optional<VFValue> vpux::VPU::VFContainer<VFKey, VFValue, Compare>::get(VFKe
     }
 
     return foundTile->second;
+}
+
+template <class VFKey, class VFValue, class Compare>
+std::optional<size_t> vpux::VPU::VFContainer<VFKey, VFValue, Compare>::findFirstTile(VFKey key, const VFValue& value) {
+    auto foundItem = vfContainer.find(key);
+
+    if (foundItem == vfContainer.end()) {
+        return std::nullopt;
+    }
+
+    std::optional<size_t> minTile = std::nullopt;
+    for (const auto& tileItem : foundItem->second) {
+        if (tileItem.second == value) {
+            if (!minTile.has_value() || tileItem.first < minTile.value()) {
+                minTile = tileItem.first;
+            }
+        }
+    }
+    return minTile;
 }
 
 template <class VFKey, class VFValue, class Compare>

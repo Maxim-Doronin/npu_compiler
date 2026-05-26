@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --fuse-sparsity-ops="fuse-sparsify=false" %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --fuse-sparsity-ops="fuse-sparsify=false" %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 !qElemType = !quant.uniform<u8:f16, 0.034255280214197492:128>
 

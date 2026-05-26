@@ -1,12 +1,12 @@
 //
-// Copyright (C) 2022-2025 Intel Corporation
+// Copyright (C) 2022-2026 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "vpux/compiler/dialect/VPU/IR/dialect.hpp"
 
 #include "vpux/compiler/dialect/VPU/IR/types.hpp"
-#include "vpux/compiler/init.hpp"
+#include "vpux/compiler/init/dialects_registry.hpp"
 
 #include "vpux/utils/core/mem_size.hpp"
 #include "vpux/utils/core/small_vector.hpp"

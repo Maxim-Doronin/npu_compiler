@@ -16,10 +16,12 @@ public:
     using Base::Base;
 
     MappedInferenceRewriter(mlir::func::FuncOp netFunc, SymbolizationTypeConverter& typeConverter, SymbolMapper& mapper,
-                            SectionMapper& sectionMap, mlir::MLIRContext* ctx, const Logger& log, bool disableDmaSwFifo)
+                            SectionMapper& sectionMap, mlir::MLIRContext* ctx, const Logger& log, bool disableDmaSwFifo,
+                            bool skipBarrierLowering)
             : VPUASMSymbolizationPattern<VPUMI40XX::MappedInferenceOp>(netFunc, typeConverter, mapper, sectionMap, ctx,
                                                                        log),
-              _disableDmaSwFifo(disableDmaSwFifo) {
+              _disableDmaSwFifo(disableDmaSwFifo),
+              _skipBarrierLowering(skipBarrierLowering) {
     }
     mlir::FailureOr<SymbolizationResult> symbolize(VPUMI40XX::MappedInferenceOp op, SymbolMapper& mapper,
                                                    mlir::ConversionPatternRewriter& rewriter) const override;
@@ -33,6 +35,7 @@ private:
                                          mlir::ConversionPatternRewriter& rewriter) const;
 
     bool _disableDmaSwFifo;
+    bool _skipBarrierLowering;
 };
 
 }  // namespace vpumi40xx2vpuasm

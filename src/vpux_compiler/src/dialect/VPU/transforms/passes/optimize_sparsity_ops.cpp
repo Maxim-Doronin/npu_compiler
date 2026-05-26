@@ -15,7 +15,7 @@
 
 #include <mlir/Dialect/Linalg/IR/Linalg.h>
 #include <mlir/Dialect/Math/IR/Math.h>
-#include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Transforms/WalkPatternRewriteDriver.h>
 
 namespace vpux::VPU {
 #define GEN_PASS_DECL_OPTIMIZESPARSITYOPS
@@ -189,15 +189,9 @@ void OptimizeSparsityOpsPass::safeRunOnFunc() {
     auto& ctx = getContext();
 
     if (_sparsityProfile != ActivationSparsityProfile::S1) {
-        mlir::ConversionTarget target(ctx);
-        target.addIllegalOp<VPU::SparsifyOp>();
-
-        mlir::RewritePatternSet legalPatterns(&ctx);
-        legalPatterns.add<RemoveExtraSparsifyOp>(&ctx, _log);
-
-        if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(legalPatterns)))) {
-            signalPassFailure();
-        }
+        mlir::RewritePatternSet patterns(&ctx);
+        patterns.add<RemoveExtraSparsifyOp>(&ctx, _log);
+        walkAndApplyPatterns(func, std::move(patterns));
     }
 
     {

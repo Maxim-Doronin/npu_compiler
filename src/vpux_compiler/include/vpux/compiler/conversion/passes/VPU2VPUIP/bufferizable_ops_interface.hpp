@@ -116,6 +116,8 @@ mlir::LogicalResult bufferizeOp(mlir::MLIRContext* ctx, VPU::StorageElementTable
                                 VPU::StorageElementTableOp::Adaptor& newArgs, mlir::RewriterBase& rewriter);
 mlir::LogicalResult bufferizeOp(mlir::MLIRContext*, VPU::ZeroPointTableOp origOp,
                                 VPU::ZeroPointTableOp::Adaptor& newArgs, mlir::RewriterBase& rewriter);
+mlir::LogicalResult bufferizeOp(mlir::MLIRContext* ctx, VPU::DataPointerTableOp origOp,
+                                VPU::DataPointerTableOp::Adaptor& newArgs, mlir::RewriterBase& rewriter);
 mlir::LogicalResult bufferizeOp(mlir::MLIRContext* ctx, VPU::ShapeCastOp origOp, VPU::ShapeCastOp::Adaptor& newArgs,
                                 mlir::RewriterBase& rewriter);
 mlir::LogicalResult bufferizeOp(mlir::MLIRContext* ctx, VPU::LayoutCastOp origOp, VPU::LayoutCastOp::Adaptor& newArgs,

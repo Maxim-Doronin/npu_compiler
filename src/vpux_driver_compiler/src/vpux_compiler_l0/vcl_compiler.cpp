@@ -8,14 +8,17 @@
 #include "vcl_query_network.hpp"
 
 #include <openvino/openvino.hpp>
+#include <openvino/runtime/iplugin.hpp>
 #include <openvino/util/file_util.hpp>
-#include <transformations/utils/utils.hpp>
 
 #include "intel_npu/config/options.hpp"
-#include "intel_npu/npu_private_properties.hpp"
-#include "vpux/compiler/compiler.hpp"
+#include "vpux/compiler/icompiler.hpp"
+#include "vpux/compiler/version.hpp"
+#include "vpux/utils/ov/compat_string_check.hpp"
+#include "vpux/utils/ov/private_properties.hpp"
 
 #include <future>
+#include <map>
 #include <thread>
 #include <type_traits>
 #include <unordered_set>
@@ -28,6 +31,65 @@ using namespace vpux;
 namespace {
 
 constexpr int64_t OLDEST_IR_VERSION_SUPPORTED = 10;
+
+enum class Platform : uint64_t {
+    NPU3720 = 3720,
+    NPU4000 = 4000,
+    NPU5000 = 5000,
+    NPU5010 = 5010,
+    NPU5020 = 5020,
+};
+
+Platform getPlatform(const intel_npu::Config& config) {
+    const std::string platform = ov::intel_npu::Platform::standardize(config.get<intel_npu::PLATFORM>());
+    if (platform == ov::intel_npu::Platform::NPU3720) {
+        return Platform::NPU3720;
+    } else if (platform == ov::intel_npu::Platform::NPU4000) {
+        return Platform::NPU4000;
+    } else if (platform == ov::intel_npu::Platform::NPU5000) {
+        return Platform::NPU5000;
+    } else if (platform == ov::intel_npu::Platform::NPU5010) {
+        return Platform::NPU5010;
+    } else if (platform == ov::intel_npu::Platform::NPU5020) {
+        return Platform::NPU5020;
+    } else {
+        VPUX_THROW("Unsupported NPU platform");
+    }
+}
+
+/**
+ * @brief Checks if a compiled model's runtime requirements are compatible with the current environment
+ *        represented by a serialized string
+ * @param compatibilityString the string capturing the runtime requirements
+ * @param config a reference to NPUConfig containing plugin config options
+ *        including config options related to compilation
+ * @return bool representing compatibility status: true if compatibility check passed and false if not
+ */
+bool check_runtime_requirements(std::string_view compatibilityString, const intel_npu::Config& config) {
+    Logger log("vpux-compiler", getLogLevel(config));
+
+    if (compatibilityString.empty()) {
+        log.warning("Empty compatibility string provided for runtime requirements check");
+        return false;
+    }
+
+    log.info("Checking runtime requirements for string: '{0}'", compatibilityString);
+
+    const auto platformID = static_cast<uint64_t>(getPlatform(config));
+    const auto numOfTiles = [&] {
+        VPUX_THROW_WHEN(!config.has<intel_npu::MAX_TILES>(),
+                        "MAX_TILES config is required for compatibility string validation");
+        return config.get<intel_npu::MAX_TILES>();
+    }();
+
+    auto reqs = compat::parseCompatibilityString(compatibilityString);
+
+    if (reqs.platformId == platformID && reqs.numTiles <= numOfTiles) {
+        return true;
+    }
+
+    return false;
+}
 
 std::string rankToLegacyLayoutString(const size_t rank) {
     switch (rank) {
@@ -88,12 +150,14 @@ std::shared_ptr<ov::Model> preprocessModel(const std::shared_ptr<ov::Model>& mod
     auto& runtimeInfoMap = model->get_rt_info();
 
     int64_t irVersion = OLDEST_IR_VERSION_SUPPORTED;
-    if (const auto irVersionMatch = runtimeInfoMap.find("version"); irVersionMatch != runtimeInfoMap.end()) {
+    static const std::string KEY_IR_VERSION = "version";
+    if (const auto irVersionMatch = runtimeInfoMap.find(KEY_IR_VERSION); irVersionMatch != runtimeInfoMap.end()) {
         irVersion = irVersionMatch->second.as<int64_t>();
     }
 
     bool useIndices = false;
-    if (const auto useIndicesMatch = runtimeInfoMap.find("use_indices_for_io_metadata");
+    static const std::string KEY_USE_INDICES_FOR_IO_METADATA = "use_indices_for_io_metadata";
+    if (const auto useIndicesMatch = runtimeInfoMap.find(KEY_USE_INDICES_FOR_IO_METADATA);
         useIndicesMatch != runtimeInfoMap.end()) {
         useIndices = useIndicesMatch->second.as<bool>();
     }
@@ -198,19 +262,39 @@ std::shared_ptr<ov::Model> preprocessModel(const std::shared_ptr<ov::Model>& mod
     return preprocessor.build();
 }
 
-/// Compiler create for vcl
-std::unique_ptr<CompilerImpl> createNPUCompiler() {
-    return std::make_unique<CompilerImpl>();
-}
+// This option is already defined in newer openvino version
+// Defining it here to avoid an openvino update in compiler
+struct RUNTIME_REQUIREMENTS final : intel_npu::OptionBase<RUNTIME_REQUIREMENTS, std::string> {
+    static std::string_view key() {
+        return "RUNTIME_REQUIREMENTS";
+    }
+
+    static std::string defaultValue() {
+        return std::string{};
+    }
+
+    static intel_npu::OptionMode mode() {
+        return intel_npu::OptionMode::CompileTime;
+    }
+};
+
+// This option is already defined in newer openvino version
+// Defining it here to avoid an openvino update in compiler
+struct COMPATIBILITY_CHECK final : intel_npu::OptionBase<COMPATIBILITY_CHECK, bool> {
+    static std::string_view key() {
+        return "COMPATIBILITY_CHECK";
+    }
+
+    static bool defaultValue() {
+        return false;
+    }
+
+    static intel_npu::OptionMode mode() {
+        return intel_npu::OptionMode::CompileTime;
+    }
+};
 
 }  // namespace
-
-/// Export compiler symbol
-#ifdef VPUX_DEVELOPER_BUILD
-OPENVINO_EXTERN_C OPENVINO_CORE_EXPORTS void CreateNPUCompiler(std::shared_ptr<vpux::ICompiler>& obj) {
-    obj = std::make_shared<CompilerImpl>();
-}
-#endif
 
 /// Compiler version contains the info of code commit, compiler API version
 static const char* COMPILER_VERSION =
@@ -219,7 +303,10 @@ static const char* COMPILER_VERSION =
 namespace VPUXDriverCompiler {
 
 VPUXCompilerL0::VPUXCompilerL0(vcl_compiler_desc_t* compilerDesc, vcl_device_desc_t* deviceDesc, VCLLogger* vclLogger)
-        : _options(std::make_shared<intel_npu::OptionsDesc>()), _compilerDesc(*compilerDesc), _logger(vclLogger) {
+        : _options(std::make_shared<intel_npu::OptionsDesc>()),
+          _compilerLoader(std::make_unique<CompilerLoader>()),
+          _compilerDesc(*compilerDesc),
+          _logger(vclLogger) {
     // Initialize compiler description if it is not empty
     if (deviceDesc) {
         _deviceDesc = *deviceDesc;
@@ -261,25 +348,23 @@ VPUXCompilerL0::VPUXCompilerL0(vcl_compiler_desc_t* compilerDesc, vcl_device_des
         _options->add<intel_npu::ENABLE_STRIDES_FOR>();
     }
 
+    _options->add<intel_npu::ENABLE_WEIGHTLESS>();
 #ifdef VPUX_DEVELOPER_BUILD
-    // E#103359: WS is only available in developer builds
+    // WEIGHTLESS_BLOB is equivalent with ENABLE_WEIGHTLESS
+    // Accepting both to facilitate the transition to ENABLE_WEIGHTLESS
     _options->add<intel_npu::WEIGHTLESS_BLOB>();
+#endif
     _options->add<intel_npu::SEPARATE_WEIGHTS_VERSION>();
     _options->add<intel_npu::WS_COMPILE_CALL_NUMBER>();
     _options->add<intel_npu::CACHE_MODE>();
-#endif  // VPUX_DEVELOPER_BUILD
-
-    // Create compiler instance with the default config
-    // COMPILER_TYPE DRIVER is assumed
-    _compiler = createNPUCompiler();
+    _options->add<RUNTIME_REQUIREMENTS>();
+    _options->add<COMPATIBILITY_CHECK>();
 
     // Update the compiler properties
-    uint32_t compiler_version = _compiler->get_version();
     _compilerProp.id = COMPILER_VERSION;
-    _compilerProp.version.major = compiler_version >> 16;     /// 16Bit msb = major version
-    _compilerProp.version.minor = compiler_version & 0xFFFF;  /// 16Bit lsb = minor version
-
-    _compilerProp.supportedOpsets = _compiler->getSupportedOpsetVersion();
+    _compilerProp.version.major = NPU_COMPILER_VERSION_MAJOR;
+    _compilerProp.version.minor = NPU_COMPILER_VERSION_MINOR;
+    _compilerProp.supportedOpsets = SUPPORTED_OPSET;
 }
 
 std::pair<VPUXExecutableL0*, vcl_result_t> VPUXCompilerL0::importNetwork(BuildInfo& buildInfo) {
@@ -318,12 +403,16 @@ std::pair<VPUXExecutableL0*, vcl_result_t> VPUXCompilerL0::importNetwork(BuildIn
 
         // Isolate the MLIR thread to safely destroy MLIR thread_local objects before CiD unload
         auto network = std::make_shared<const NetworkDescription>(run_in_worker_thread_sync([&] {
-            if (buildInfo.parsedConfig.get<intel_npu::WEIGHTLESS_BLOB>()) {
-                return _compiler->compileWsIterative(model, buildInfo.parsedConfig,
-                                                     buildInfo.parsedConfig.get<intel_npu::WS_COMPILE_CALL_NUMBER>());
+            // WEIGHTLESS_BLOB is equivalent with ENABLE_WEIGHTLESS
+            // Accepting both to facilitate the transition to ENABLE_WEIGHTLESS
+            const auto compiler = _compilerLoader->getCompiler();
+            if (buildInfo.parsedConfig.get<intel_npu::ENABLE_WEIGHTLESS>() ||
+                buildInfo.parsedConfig.get<intel_npu::WEIGHTLESS_BLOB>()) {
+                return compiler->compileWsIterative(model, buildInfo.parsedConfig,
+                                                    buildInfo.parsedConfig.get<intel_npu::WS_COMPILE_CALL_NUMBER>());
             }
 
-            return _compiler->compile(model, buildInfo.parsedConfig);
+            return compiler->compile(model, buildInfo.parsedConfig);
         }));
 
         exe = new VPUXExecutableL0(network, buildInfo.enableProfiling, _logger);
@@ -338,7 +427,8 @@ std::pair<VPUXExecutableL0*, vcl_result_t> VPUXCompilerL0::importNetwork(BuildIn
     return std::pair<VPUXExecutableL0*, vcl_result_t>(exe, VCL_RESULT_SUCCESS);
 }  // namespace VPUXDriverCompiler
 
-NetworkDescriptionView VPUXCompilerL0::importNetwork(BuildInfo& buildInfo, BlobAllocator& allocator) {
+NetworkDescriptionView VPUXCompilerL0::importNetwork(BuildInfo& buildInfo, BlobAllocator& allocator,
+                                                     bool generateCompatibilityString) {
     StopWatch stopWatch;
     if (buildInfo.enableProfiling) {
         // Output time cost on vcl level
@@ -359,13 +449,17 @@ NetworkDescriptionView VPUXCompilerL0::importNetwork(BuildInfo& buildInfo, BlobA
 
     // Isolate the MLIR thread to safely destroy MLIR thread_local objects before CiD unload
     return run_in_worker_thread_sync([&] {
-        if (buildInfo.parsedConfig.get<intel_npu::WEIGHTLESS_BLOB>()) {
-            return _compiler->compileWsIterative(model, buildInfo.parsedConfig,
-                                                 buildInfo.parsedConfig.get<intel_npu::WS_COMPILE_CALL_NUMBER>(),
-                                                 allocator);
+        // WEIGHTLESS_BLOB is equivalent with ENABLE_WEIGHTLESS
+        // Accepting both to facilitate the transition to ENABLE_WEIGHTLESS
+        const auto compiler = _compilerLoader->getCompiler();
+        if (buildInfo.parsedConfig.get<intel_npu::ENABLE_WEIGHTLESS>() ||
+            buildInfo.parsedConfig.get<intel_npu::WEIGHTLESS_BLOB>()) {
+            return compiler->compileWsIterative(model, buildInfo.parsedConfig,
+                                                buildInfo.parsedConfig.get<intel_npu::WS_COMPILE_CALL_NUMBER>(),
+                                                allocator);
         }
 
-        return _compiler->compile(model, buildInfo.parsedConfig, allocator);
+        return compiler->compile(model, buildInfo.parsedConfig, allocator, generateCompatibilityString);
     });
 }
 
@@ -391,7 +485,7 @@ std::vector<std::shared_ptr<NetworkDescriptionView>> VPUXCompilerL0::importNetwo
 
     // Isolate the MLIR thread to safely destroy MLIR thread_local objects before CiD unload
     return run_in_worker_thread_sync([&] {
-        return _compiler->compileWsOneShot(model, buildInfo.parsedConfig, allocator);
+        return _compilerLoader->getCompiler()->compileWsOneShot(model, buildInfo.parsedConfig, allocator);
     });
 }
 
@@ -399,7 +493,7 @@ vcl_result_t VPUXCompilerL0::queryNetwork(const BuildInfo& buildInfo, VPUXQueryN
     _logger->info("Start to call query function from compiler to get supported layers!");
     ov::SupportedOpsMap queryNetworkResult;
     try {
-        queryNetworkResult = _compiler->query(buildInfo.model, buildInfo.parsedConfig);
+        queryNetworkResult = _compilerLoader->getCompiler()->query(buildInfo.model, buildInfo.parsedConfig);
     } catch (const std::exception& error) {
         _logger->outputError(formatv("Compiler returned msg:\n{0}", error.what()));
         return VCL_RESULT_ERROR_UNKNOWN;
@@ -415,7 +509,6 @@ vcl_result_t VPUXCompilerL0::queryNetwork(const BuildInfo& buildInfo, VPUXQueryN
 }
 
 vcl_result_t VPUXCompilerL0::getSupportedOptions(char* buffer, uint64_t size) {
-    vcl_result_t ret = VCL_RESULT_SUCCESS;
     // get the registered options list, excluding private options (false param)
     std::string optListStr = _options->getSupportedAsString(false);
     // check if it fits
@@ -427,16 +520,15 @@ vcl_result_t VPUXCompilerL0::getSupportedOptions(char* buffer, uint64_t size) {
     // serialize
     std::memcpy(buffer, optListStr.c_str(), stringsize);
 
-    return ret;
+    return VCL_RESULT_SUCCESS;
 }
 
 vcl_result_t VPUXCompilerL0::getSupportedOptionsSize(uint64_t* stringSize) {
-    vcl_result_t ret = VCL_RESULT_SUCCESS;
     // get the registered options list, excluding private options (false param)
     std::string optionsList = _options->getSupportedAsString(false);
     // get string size +1 for null-termination
     *stringSize = optionsList.size() + 1;
-    return ret;
+    return VCL_RESULT_SUCCESS;
 }
 
 bool VPUXCompilerL0::isOptionValueSupported(const char* option, const char* value) {
@@ -447,6 +539,32 @@ bool VPUXCompilerL0::isOptionValueSupported(const char* option, const char* valu
     std::string optName(option);
     if (compatibilityConfig.count(optName) > 0) {
         _logger->debug("Option {0} is a compatibility option, returning true", optName);
+        return true;
+    }
+
+    if (optName == COMPATIBILITY_CHECK::key()) {
+        if (value != nullptr) {
+            auto tempConfig = intel_npu::Config(_options);
+
+            if (!isDeviceDescEmpty() && _deviceDesc.tileCount != static_cast<uint32_t>(-1)) {
+                std::map<std::string, std::string> config;
+                if (setPlatformAndDeviceIdByDeviceId(_deviceDesc.deviceID, config, _logger) != VCL_RESULT_SUCCESS) {
+                    // Update the device config failed, return false for safety.
+                    _logger->outputError(
+                            formatv("Failed to set platform and device ID by {0} for checking compatibility!",
+                                    _deviceDesc.deviceID));
+                    return false;
+                }
+                tempConfig.update(config);
+                tempConfig.update({{ov::intel_npu::max_tiles.name(), std::to_string(_deviceDesc.tileCount)}});
+            } else {
+                _logger->outputError("Cannot validate the compatibility string: device descriptor is missing or "
+                                     "MAX_TILES is invalid.");
+                throw std::runtime_error("Cannot validate the compatibility string: device descriptor is missing or "
+                                         "MAX_TILES is invalid.");
+            }
+            return check_runtime_requirements(std::string_view{value}, tempConfig);
+        }
         return true;
     }
 

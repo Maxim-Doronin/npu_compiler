@@ -7,10 +7,12 @@
 #include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/core/layers.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/image.hpp"
+#include "vpux/compiler/dialect/IE/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/dpu.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/image.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops_interfaces.hpp"
 #include "vpux/compiler/dialect/VPU/utils/auto_padding_utils.hpp"
+#include "vpux/compiler/dialect/VPU/utils/clustered_op_interface_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/distributed_tensor_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
@@ -96,171 +98,18 @@ mlir::LogicalResult vpux::VPU::NCEInterpolateOp::verify() {
     return mlir::success();
 }
 
-bool isNCEInterpolateSupported(vpux::NDTypeInterface inputType, vpux::NDTypeInterface outputType,
-                               IE::InterpolateAttr attr, config::ArchKind arch, bool checkLayout,
-                               bool checkChannelAlignment, bool checkBatch, mlir::Operation* op, vpux::LogCb logCb) {
-    // TODO E#71403: remove dimension check
-    auto dimOver8K = [](ShapeRef shape) {
-        for (auto dim : shape) {
-            if (dim > VPU::NCEInvariant::VPU_DIMENSION_LIMIT) {
-                return true;
-            }
-        }
-        return false;
-    };
-    auto inputShape = inputType.getShape();
-    auto outputShape = outputType.getShape();
-
-    if (checkBatch && inputShape[Dims4D::Act::N] != 1) {
-        return false;
-    }
-
-    if (dimOver8K(inputShape) || dimOver8K(outputShape)) {
-        logCb(formatv("Dimension sizes over 8192 are not supported. Input shape {0}, output shape {1}", inputShape,
-                      outputShape));
-        return false;
-    }
-
-    if (attr == nullptr) {
-        logCb(formatv("Missing Interpolate configuration information"));
-        return false;
-    }
-
-    // Antialias is not supported
-    if (attr.getAntialias() != nullptr && attr.getAntialias().getValue() == true) {
-        logCb(formatv("Antialias is not supported"));
-        return false;
-    }
-
-    // Only 4D interpolates are supported and the interpolation axes must be H and/or W
-    auto potentialScales = VPU::getNCEInterpolateScales(inputType, outputType, attr.getCoordMode());
-    if (!potentialScales.has_value()) {
-        return false;
-    }
-    const auto scales = potentialScales.value();
-
-    if (inputShape[Dims4D::Act::C] < 8) {
-        // Interpolate layers with fewer than 8 channels may perform better on SHAVE than on DPU #E100988.
-        // More experiments in #E156089 validated that:
-        // 1) for nearest mode with total spatial size >= 1320720 (e.g. 512x512, scale=2)
-        // DPU solution always has better performance even when channels < 8;
-        // 2) for other modes, spatial size hasn't show signficant impact.
-        // A better cost model can be introduced in the future to clearly identify which scenarios
-        // receive a hit in performance when executed on DPU
-        logCb(formatv("Interpolate has less than than 8 channels: {0}", inputShape[Dims4D::Act::C]));
-        if (attr.getMode().getValue() == IE::InterpolateMode::NEAREST) {
-            // For Nearest mode, check the total spatial size to decide if it is supported
-            const auto totalSpatialSize = inputShape[Dims4D::Act::H] * inputShape[Dims4D::Act::W] +
-                                          outputShape[Dims4D::Act::H] * outputShape[Dims4D::Act::W];
-            if (totalSpatialSize < 1320720) {
-                return false;
-            }
-        } else {
-            // For other modes, directly return false
-            return false;
-        }
-    }
-
-    // Check for the supported modes
-    SmallVector<IE::InterpolateMode> supportedModes = {IE::InterpolateMode::NEAREST, IE::InterpolateMode::LINEAR,
-                                                       IE::InterpolateMode::LINEAR_ONNX};
-    if (llvm::find(supportedModes, attr.getMode().getValue()) == supportedModes.end()) {
-        logCb(formatv("Mode {0} is not supported", attr.getMode().getValue()));
-        return false;
-    }
-
-    // TODO E#107568: Add support for LINEAR TF_HALF_PIXEL_FOR_NN mode
-    if (attr.getMode().getValue() == IE::InterpolateMode::LINEAR ||
-        attr.getMode().getValue() == IE::InterpolateMode::LINEAR_ONNX) {
-        if (attr.getCoordMode().getValue() == IE::InterpolateCoordMode::TF_HALF_PIXEL_FOR_NN) {
-            logCb(formatv("Bilinear InterpolateOp with coordinate transformation mode {0} is not yet supported",
-                          attr.getCoordMode().getValue()));
-            return false;
-        }
-    }
-
-    // TODO E#83681: Add support for NEAREST ALIGN_CORNERS mode
-    if (attr.getMode().getValue() == IE::InterpolateMode::NEAREST) {
-        if (attr.getCoordMode().getValue() == IE::InterpolateCoordMode::ALIGN_CORNERS) {
-            logCb(formatv("Coordinate transformation mode {0} is not yet supported", attr.getCoordMode().getValue()));
-            return false;
-        }
-    }
-
-    // Only interpolate ops without padding are supported
-    auto hasNonZeroPads = [&](mlir::ArrayAttr padsAttr) -> bool {
-        if (padsAttr == nullptr) {
-            return false;
-        }
-        auto pads = parseIntArrayAttr<int64_t>(padsAttr);
-        return llvm::any_of(pads, [](int64_t pad) {
-            return pad != 0;
-        });
-    };
-    if (hasNonZeroPads(attr.getPadsBegin()) || hasNonZeroPads(attr.getPadsEnd())) {
-        logCb(formatv("Padding is not supported"));
-        return false;
-    }
-
-    if (config::hasMaxKernelSize(op)) {
-        // kernelSize must be in range [1:MAX_KERNEL_SIZE]
-        const auto kernelSize = VPU::getNCEInterpolateKernelSize(scales, VPU::getNCEInterpolateModeAttr(attr.getMode()),
-                                                                 attr.getCoordMode());
-        auto maxKernelSize = config::getMaxKernelSize(op);
-        for (auto kernel : kernelSize) {
-            if (kernel > maxKernelSize || kernel <= 0) {
-                logCb(formatv("Only kernel size less than {0} are supported for nce interpolate. Got kernel Size {1}",
-                              maxKernelSize, kernel));
-                return false;
-            }
-        }
-    }
-
-    if (checkChannelAlignment) {
-        if (!VPU::NCEInvariant::isInputActTypeSupported(
-                    inputType, vpux::VPU::NCEInvariant::getAlignment(inputType.getElementType()),
-                    /*supportsInputActCompression=*/false) ||
-            !VPU::NCEInvariant::isOutputActTypeSupported(
-                    outputType, vpux::VPU::NCEInvariant::getAlignment(outputType.getElementType()))) {
-            logCb(formatv("Misaligned tensor shape"));
-            return false;
-        }
-    }
-
-    if (checkLayout) {
-        if (!VPU::NCEInvariant::checkLayouts({inputType}, {outputType}, arch, 1, logCb)) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-bool VPU::NCEInterpolateOp::isSupported(IE::InterpolateOp op, vpux::LogCb logCb, bool checkLayout,
-                                        bool checkChannelAlignment, bool checkBatch) {
-    auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
-    auto outputType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
-
-    return isNCEInterpolateSupported(inputType, outputType, op.getAttr(), config::getArch(op), checkChannelAlignment,
-                                     checkLayout, checkBatch, op, logCb);
-}
-
-bool VPU::NCEInterpolateOp::isSupported(VPU::InterpolateOp op, vpux::LogCb logCb, bool checkLayout,
-                                        bool checkChannelAlignment, bool checkBatch) {
-    auto inputType = mlir::cast<vpux::NDTypeInterface>(op.getInput().getType());
-    auto outputType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
-
-    return isNCEInterpolateSupported(inputType, outputType, op.getAttr(), config::getArch(op), checkChannelAlignment,
-                                     checkLayout, checkBatch, op, logCb);
-}
-
 mlir::LogicalResult vpux::VPU::NCEInterpolateOp::verifyKernel(IE::InterpolateOp origOp, Logger log) {
     log.setName("NCEInvariant");
     const auto logCb = [&](const formatv_object_base& msg) {
         log.trace("{0}", msg.str());
     };
 
-    return mlir::success(isSupported(origOp, logCb, true, true, true));
+    auto seOp = mlir::dyn_cast<IE::SEOpInterface>(origOp.getOperation());
+    if (!seOp || !seOp.isSupported(logCb, /*checkLayout=*/true, /*checkChannelAlignment=*/true, /*checkBatch=*/true)) {
+        return mlir::failure();
+    }
+
+    return mlir::success();
 }
 
 //
@@ -335,36 +184,8 @@ vpux::VPU::DistributionInfo vpux::VPU::NCEInterpolateOp::getExplicitDistribution
 // specified for compilation.
 // For example for 4 cluster compilation the output height must be a minimum of 4.
 bool VPU::NCEInterpolateOp::isOperationSplitOverHeightCompatible(const vpux::TileInfo& oriOutputTile) {
-    auto outputShape = ShapeRef(oriOutputTile.shape);
-    auto offset = ShapeRef(oriOutputTile.offsets);
-    auto axis = ShapeRef(oriOutputTile.axis);
-    if (outputShape == ShapeRef()) {
-        outputShape = getShape(getOutput());
-    }
-    vpux::TileInfo outputTile{outputShape, offset, axis, oriOutputTile.isCompletedTile};
-    if (!VPU::isOperationSplitOverHeightCompatible(getOperation(), outputTile)) {
-        return false;
-    }
-
-    auto nceOp = mlir::cast<VPU::NCEInterpolateOp>(getOperation());
-    Shape inputShape = getShape(nceOp.getInput()).toValues();
-    auto inputType = mlir::cast<vpux::NDTypeInterface>(nceOp.getInput().getType());
-    // If has custom output shape, infer the input shape
-    if (outputShape != getShape(nceOp->getResult(0))) {
-        VPUX_THROW_UNLESS(offset != ShapeRef() && axis != ShapeRef(),
-                          "Offsets and axis must have value when create TileInfo. Loc: {0}", nceOp->getLoc());
-        outputTile.isCompletedTile = true;
-        auto computerShape = nceOp.backInferTileInfo(outputTile, Logger::global());
-        inputShape = computerShape.tiles.front().shape;
-        auto inputOffset = computerShape.tiles.front().offsets;
-        inputType = inputType.extractDenseTile(inputOffset, inputShape);
-    }
-
-    auto moduleOp = nceOp->getParentOfType<mlir::ModuleOp>();
-    auto tileOp = config::getTileExecutor(moduleOp);
-    const auto numTiles = tileOp.getCount();
-
-    return isSOHSupportedByDPU(inputType, inputShape, numTiles, false, config::getArch(nceOp.getOperation()));
+    return VPU::isNCEOpSplitOverHeightCompatible(getOperation(), getInput(), getShape(getOutput()), oriOutputTile,
+                                                 false);
 }
 
 bool VPU::NCEInterpolateOp::isOperationSplitOverWidthCompatible(ShapeRef outputShape, ShapeRef offset, ShapeRef axis) {
@@ -434,50 +255,17 @@ vpux::NDTypeInterface vpux::VPU::NCEInterpolateOp::getDistributedTypeForOpOperan
     auto clusteredOp = mlir::cast<VPU::ClusteredOpInterface>(getOperation());
     auto origOp = mlir::cast<VPU::NCEInterpolateOp>(getOperation());
     const auto strategy = clusteredOp.getMultiClusterStrategy().value();
-    auto outputTensorType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
-    auto numClusters = VPU::getOptimalNumClusters(clusteredOp, outputTensorType.getShape(), strategy);
-    auto* ctx = clusteredOp->getContext();
 
     if (operand.get() == origOp.getInput()) {
-        const auto activationTensorDistributionMode = getActivationTensorDistributionMode(clusteredOp, strategy);
-        const auto activationTensorNumTiles =
-                getIntArrayAttr(ctx, getActivationTensorNumTiles(clusteredOp, numClusters, strategy));
-        mlir::ArrayAttr activationAlignmentAttr = nullptr;
-        const auto activationAlignment = getActivationTensorAlignment(clusteredOp, numClusters, strategy);
-        if (activationAlignment.has_value()) {
-            activationAlignmentAttr = getIntArrayAttr(ctx, activationAlignment.value());
-        }
-        return getDistributedTypeFromInput(clusteredOp, origOp.getInput(), activationTensorDistributionMode,
-                                           activationTensorNumTiles, activationAlignmentAttr, strategy,
-                                           hasExplicitDistributedAttr, siblingsAnalysis);
+        return VPU::getDistributedActivationTypeForOpOperand(clusteredOp, origOp.getInput(), strategy,
+                                                             hasExplicitDistributedAttr, siblingsAnalysis);
     } else if (operand.get() == origOp.getWeights()) {
-        auto weightsType = mlir::cast<vpux::NDTypeInterface>(origOp.getWeights().getType());
-        const auto weightsTensorDistributionMode = getWeightsTensorDistributionMode(strategy);
-        const auto weightsTensorNumTiles =
-                getIntArrayAttr(ctx, getWeightsTensorNumTiles(clusteredOp, weightsType, numClusters, strategy));
-        mlir::ArrayAttr weightAlignmentAttr = nullptr;
-        const auto weightAlignment = getWeightsTensorAlignment(strategy);
-        if (weightAlignment.has_value()) {
-            weightAlignmentAttr = getIntArrayAttr(ctx, weightAlignment.value());
-        }
-        return getDistributedTypeFromInput(clusteredOp, origOp.getWeights(), weightsTensorDistributionMode,
-                                           weightsTensorNumTiles, weightAlignmentAttr, strategy,
-                                           hasExplicitDistributedAttr, siblingsAnalysis);
+        return VPU::getDistributedWeightsTypeForOpOperand(clusteredOp, origOp.getWeights(), strategy,
+                                                          hasExplicitDistributedAttr, siblingsAnalysis);
     } else if (operand.get() == origOp.getWeightsTable() || operand.get() == origOp.getWeightTableScale() ||
                operand.get() == origOp.getWeightTableBias()) {
-        auto outputType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
-
-        const auto weightsTableTensorDistributionMode = getWeightsTensorDistributionMode(strategy);
-        const auto weightsTableTensorNumTiles =
-                getIntArrayAttr(ctx, getWeightsTableTensorNumTiles(clusteredOp, outputType, numClusters, strategy));
-        mlir::ArrayAttr weightAlignmentAttr = nullptr;
-        const auto weightAlignment = getWeightsTensorAlignment(strategy);
-        if (weightAlignment.has_value()) {
-            weightAlignmentAttr = getIntArrayAttr(ctx, weightAlignment.value());
-        }
-        return getDistributedTypeFromInput(clusteredOp, operand.get(), weightsTableTensorDistributionMode,
-                                           weightsTableTensorNumTiles, weightAlignmentAttr, strategy,
-                                           hasExplicitDistributedAttr, siblingsAnalysis);
+        return VPU::getDistributedWeightsTypeForOpOperand(clusteredOp, operand.get(), strategy,
+                                                          hasExplicitDistributedAttr, siblingsAnalysis);
     }
     VPUX_THROW("Failed to compute distributed type for op {0}", clusteredOp);
     return nullptr;

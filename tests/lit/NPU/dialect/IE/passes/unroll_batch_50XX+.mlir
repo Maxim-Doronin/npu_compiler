@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --unroll-batch %s | FileCheck %s
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --unroll-batch %s | FileCheck %s
+// REQUIRES: platform-NPU5010
 
 // CHECK-LABEL:  @UnrollSubtract
 // CHECK-SAME:   [[IN1:%.+]]: tensor<2x3x576x576xf16>

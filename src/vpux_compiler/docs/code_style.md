@@ -366,7 +366,47 @@ Example:
 #include <mlir/IR/Dialect.h>
 #include <llvm/Support/TargetSelect.h>
 
-#include "vpux/compiler/init.hpp"
+#include "vpux/compiler/init/dialects_registry.hpp"
+```
+
+Do not write `using namespace` in a header file at global or namespace scope.
+Both forms pollute name lookup in translation units that include the header, including later re-openings of that namespace.
+See [SF.7](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#sf7-dont-write-using-namespace-at-global-scope-in-a-header-file) for more motivation and details.
+
+```cpp
+// pollution.hpp file
+
+// BAD: pollutes global namespace in including translation unit
+using namespace baz;
+
+namespace foo {
+
+// BAD: pollutes namespace `foo` in including translation unit
+using namespace bar;
+
+}  // namespace foo
+```
+
+```cpp
+// source.cpp
+#include "pollution.hpp"
+
+// global scope is polluted by namespace `baz`
+
+namespace foo {
+// reopened namespace `foo` is polluted directly by namespace `bar`
+// names from namespace `baz` are reachable via enclosing global scope
+}
+```
+
+Note: `using namespace` is acceptable inside a _function body_ (free functions, member functions, lambda body and nested block), since its effect is limited by the enclosing scope:
+
+```cpp
+// header file
+inline void foo() {
+    // OK: limited by the scope of `foo`
+    using namespace std::string_literals;
+}
 ```
 
 ### Forward declarations
@@ -864,7 +904,7 @@ When patterns require heavy type conversion & require type converter and type pr
 
         pm.addPass(IE::createSwapOperationsPass(isOptionEnabled(options.enableSEPtrsOperations), log));
         pm.addPass(IE::createInsertIdentityPoolBeforeActivationPass(log));
-        pm.addPass(IE::createFuseActivationOpsPass(options.enableFuseClampOperations, log));
+        pm.addPass(IE::createFuseActivationOpsPass(log));
         pm.addPass(mlir::createCanonicalizerPass(grc));
     }
 
@@ -880,7 +920,7 @@ When patterns require heavy type conversion & require type converter and type pr
         // ...
         pm.addPass(IE::createSwapOperationsPass(isOptionEnabled(options.enableSEPtrsOperations), log));
         pm.addPass(IE::createInsertIdentityPoolBeforeActivationPass(log));
-        pm.addPass(IE::createFuseActivationOpsPass(options.enableFuseClampOperations, log));
+        pm.addPass(IE::createFuseActivationOpsPass(log));
         pm.addPass(mlir::createCanonicalizerPass(grc));
         // ...
     }
@@ -888,10 +928,10 @@ When patterns require heavy type conversion & require type converter and type pr
 - Passes with strict dependencies must be tested together usign LIT for pipelines
 ```cpp
 // OK: Pass interactions are fixed. If the pipeline is changed, the test may show an error
-// RUN: vpux-opt --init-compiler="vpu-arch=%arch%" --optimize-activations %s | FileCheck %s
+// RUN: vpux-opt --init-compiler="platform=%platform%" --optimize-activations %s | FileCheck %s
 
 // BAD: Pass interactions are fixed, but the potential error will not be shown when changing the real pipeline(some passes could be added between SwapOperations and FusePostOps)
-// RUN: vpux-opt --init-compiler="vpu-arch=%arch%" --swap-operations --fuse-post-ops %s | FileCheck %s
+// RUN: vpux-opt --init-compiler="platform=%platform%" --swap-operations --fuse-post-ops %s | FileCheck %s
 ```
 - We allow calling pipelines multiples times to express dependencies in code
 

@@ -87,7 +87,7 @@ class ReduceLayerTest_SW_FP16 : public ReduceLayerTestCommon {};
 class ReduceLayerTest_FP32 : public ReduceLayerTestCommon {
     void configure_model() override {
         VpuOv2LayerTest::configuration[ov::intel_npu::compilation_mode_params.name()] =
-                "convert-precision-to-fp16=false";
+                "disabled-passes=convert-precision-to-fp16";
     }
 };
 class ReduceLayerTest_SCFTiling_HW_Reduce_FP16 : public ReduceLayerTestCommon {
@@ -114,7 +114,7 @@ class ShaveCodeGenReduceLayerTest_FP16 : public ReduceLayerTestCommon {
 class ShaveCodeGenReduceLayerTest_FP32 : public ReduceLayerTestCommon {
     void configure_model() override {
         VpuOv2LayerTest::configuration[ov::intel_npu::compilation_mode_params.name()] =
-                "enable-shave-code-gen=true convert-precision-to-fp16=false";
+                "enable-shave-code-gen=true disabled-passes=convert-precision-to-fp16";
     }
 };
 
@@ -155,6 +155,11 @@ TEST_P(ReduceLayerTest_SW_FP16, NPU4000) {
 TEST_P(ShaveCodeGenReduceLayerTest_FP16, NPU4000) {
     VpuOv2LayerTest::setPluginCompilerType();
     VpuOv2LayerTest::setReferenceSoftwareMode();
+    VpuOv2LayerTest::run(Platform::NPU4000);
+}
+
+TEST_P(ReduceLayerTest_SCFTiling_HW_FP16, NPU4000) {
+    VpuOv2LayerTest::setDefaultHardwareMode();
     VpuOv2LayerTest::run(Platform::NPU4000);
 }
 
@@ -387,6 +392,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_Reduce_Resnet, ReduceLayerTest_SW_FP16, paramsRes
 
 INSTANTIATE_TEST_SUITE_P(smoke_Reduce_tiling, ReduceLayerTest_SCFTiling_HW_Reduce_FP16, paramsTilingReduceNCE,
                          ReduceLayerTest_SCFTiling_HW_Reduce_FP16::getTestCaseName);
+
 // All axes reduced tests
 INSTANTIATE_TEST_SUITE_P(smoke_ReduceAllAxis, ReduceLayerTest_SW_FP16, paramsReduceAllAxis,
                          ReduceLayerTest_SW_FP16::getTestCaseName);

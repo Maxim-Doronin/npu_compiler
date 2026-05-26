@@ -106,8 +106,12 @@ mlir::Value createIntermediateSumsBuffer(mlir::OpBuilder& rewriter, int64_t hidd
     auto phaseSizeWithPadding = hiddenSize;
     const auto lstmIntermediateMultiplicationBuffersize =
             phaseSizeWithPadding * lstmNumberOfGates * sizeof(uint16_t);  // intermediate buffer size
-    const auto dpuWeightTableSize = vpux::VPU::NCEInvariant::getWeightsTableSize(hiddenSize) * lstmNumberOfGates;
+    auto needWeightTable = VPU::getShaveDpuNeedWeightTable(config::getArch(module));
 
+    Byte dpuWeightTableSize = 0_Byte;
+    if (needWeightTable) {
+        dpuWeightTableSize = vpux::VPU::NCEInvariant::getWeightsTableSize(hiddenSize) * lstmNumberOfGates;
+    }
     int64_t size = dpuWeightTableSize.count() + lstmIntermediateMultiplicationBuffersize +
                    VPU::getDpuDebugDataSize(config::getArch(module)) +
                    VPU::getDPUVariantDataSize(config::getArch(module)) +

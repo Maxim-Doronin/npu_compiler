@@ -6,18 +6,24 @@
 #include "vpux/compiler/core/attributes/shape.hpp"
 #include "vpux/compiler/core/tiling.hpp"
 #include "vpux/compiler/dialect/IE/IR/attributes.hpp"
+#include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/interpolate_utils.hpp"
 #include "vpux/compiler/dialect/VPU/IR/attributes.hpp"
+#include "vpux/compiler/dialect/VPU/IR/dynamic_shape_propagation.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/image.hpp"
 #include "vpux/compiler/dialect/VPU/utils/const_utils.hpp"
 #include "vpux/compiler/dialect/VPU/utils/explicit_distribution_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
+#include "vpux/compiler/dialect/core/types.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
+#include "vpux/compiler/utils/infer_output_shape.hpp"
 #include "vpux/compiler/utils/quantization.hpp"
+#include "vpux/compiler/utils/rewriter.hpp"
 #include "vpux/utils/core/error.hpp"
 #include "vpux/utils/core/range.hpp"
 #include "vpux/utils/logger/logger.hpp"
 
+#include <mlir/Dialect/Arith/Utils/Utils.h>
 #include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/Location.h>
 #include <optional>
@@ -32,18 +38,43 @@ mlir::LogicalResult vpux::VPU::InterpolateOp::inferReturnTypes(mlir::MLIRContext
                                                                mlir::RegionRange /*regions*/,
                                                                mlir::SmallVectorImpl<mlir::Type>& inferredReturnTypes) {
     const auto loc = optLoc.value_or(mlir::UnknownLoc::get(ctx));
-
     VPU::InterpolateOpAdaptor interpolate(operands, attrs, prop);
     if (mlir::failed(interpolate.verify(loc))) {
         return mlir::failure();
     }
 
-    auto outShape = IE::calcOutputShapes(interpolate, loc, Logger::global(), ctx);
     const auto inputType = mlir::cast<vpux::NDTypeInterface>(interpolate.getInput().getType());
 
-    auto outputType =
-            mlir::RankedTensorType::get(outShape, inputType.getElementType(), createTensorAttrFromType(inputType));
+    // calcOutputShapes uses getBoundedShape internally for proper output shape computation
+    auto outShapeVec = IE::calcOutputShapes(interpolate, loc, Logger::global(), ctx);
 
+    auto [outDesc, outShape] = callOnShapeOf(inputType, [&](const auto& shape) {
+        if constexpr (std::is_same_v<std::decay_t<decltype(shape)>, BoundedShape>) {
+            // For bounded tensors, the output bounds are the computed output shape
+            auto desc =
+                    vpux::getTensorAttr(ctx, inputType.getDimsOrder(), inputType.getMemSpace(), BoundsRef(outShapeVec));
+            const auto axesVal = IE::getInterpAxesVal(loc, interpolate.getAxes(), interpolate.getAxesAttr(), inputType);
+            auto staticShape = outShapeVec;
+            for (const auto& axis : axesVal) {
+                if (inputType.getShape()[Dim(axis)] == mlir::ShapedType::kDynamic) {
+                    staticShape[axis] = mlir::ShapedType::kDynamic;
+                }
+                // If input dim is static, keep the computed output dim (already in outShapeVec)
+            }
+            return std::make_pair(desc, staticShape);
+        } else if constexpr (std::is_same_v<std::decay_t<decltype(shape)>, DimsMaskedShape>) {
+            auto inDynamicDimsMaskType = mlir::cast<Core::DynamicDimsMaskTensorType>(inputType);
+            auto desc = vpux::getTensorAttr(ctx, inputType.getDimsOrder(), inputType.getMemSpace(), {},
+                                            inDynamicDimsMaskType.getDynamicDimsMask());
+            return std::make_pair(desc, outShapeVec);
+        } else {
+            // Static shape case
+            auto desc = vpux::getTensorAttr(ctx, inputType.getDimsOrder(), inputType.getMemSpace());
+            return std::make_pair(desc, outShapeVec);
+        }
+    });
+
+    auto outputType = mlir::RankedTensorType::get(outShape, inputType.getElementType(), outDesc);
     inferredReturnTypes.push_back(outputType);
 
     return mlir::success();
@@ -112,8 +143,8 @@ bool vpux::VPU::InterpolateOp::fitIntoCMX(llvm::ArrayRef<vpux::NDTypeInterface> 
     const auto coordinates = getCoordinates();
     const auto lambdas = getLambdas();
 
-    // Computing coordinates at compile time is a feature supported only for linear interpolate modes. The ticket for
-    // adding support for all interpolate modes is E#132985.
+    // Computing coordinates at compile time is a feature supported only for linear interpolate modes. The ticket
+    // for adding support for all interpolate modes is E#132985.
     const auto isLinearInterpolateMode =
             interpolateMode == IE::InterpolateMode::LINEAR || interpolateMode == IE::InterpolateMode::LINEAR_ONNX;
 
@@ -298,4 +329,24 @@ void vpux::VPU::InterpolateOp::adjustAttrs(const TilingInfo& inputTiling, const 
 
 mlir::FailureOr<OutputTiling> vpux::VPU::InterpolateOp::getTilingStrategy(TilingMode tilingMode, Logger log) {
     return vpux::getSWLayerTilingStrategy(getOperation(), tilingMode, std::move(log));
+}
+
+//
+// ReifyRankedShapedTypeOpInterface
+//
+
+mlir::LogicalResult vpux::VPU::InterpolateOp::reifyResultShapes(
+        mlir::OpBuilder& builder, mlir::ReifiedRankedShapedTypeDims& reifiedReturnShapes) {
+    auto loc = getLoc();
+
+    const auto outputShapedType = mlir::cast<mlir::ShapedType>(getOutput().getType());
+
+    // Get the axes that are being interpolated
+    const auto axesResult = IE::extractIntVector(getLoc(), getAxes(), getAxesAttrAttr());
+    if (mlir::failed(axesResult)) {
+        return axesResult;
+    }
+
+    return reifyInterpolateResultShape(builder, loc, getInput(), getScales(), getScalesAttr(), axesResult.value(),
+                                       outputShapedType, reifiedReturnShapes);
 }

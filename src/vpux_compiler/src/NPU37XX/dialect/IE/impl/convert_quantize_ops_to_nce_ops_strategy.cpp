@@ -16,18 +16,8 @@ using namespace vpux;
 
 namespace vpux::IE::arch37xx {
 
-void ConvertQuantizeOpsToNceOpsStrategy::prepareAvgPool(mlir::ConversionTarget& toAvgPoolTarget,
-                                                        mlir::RewritePatternSet& toAvgPoolPatterns,
-                                                        mlir::MLIRContext& ctx, Logger& log) const {
-    // HW Eltwise and AvgPool supports only per-tensor bias/scale parameters
-    // perTensor quantize/dequantize convert to avgpool
-    // E#98802 avgpool is faster than add for big input size.
-    // avgpool support rank >= 3, and currently convert shape to 4D does not support avgpool, so here limit to rank = 4
-
-    // Dummy AvgPool's numerical stability is preferred for low-precision floating-point quantization (FP8),
-    // eltwise Add with self could shift values further away from 0.0 causing precision loss.
-
-    toAvgPoolTarget.addDynamicallyLegalOp<IE::QuantizeOp>([&](IE::QuantizeOp quantizeOp) {
+ConvertQuantizeOpsToNceOpsStrategy::ConvertQuantizeOpsToNceOpsStrategy() {
+    _canSkipQuantizeAvgPoolConversion = [canUseCMajor = _canUseCMajor](IE::QuantizeOp quantizeOp) {
         auto inType = mlir::cast<vpux::NDTypeInterface>(quantizeOp.getInput().getType());
         auto outType = mlir::cast<vpux::NDTypeInterface>(quantizeOp.getOutput().getType());
         auto rank = outType.getRank();
@@ -35,12 +25,13 @@ void ConvertQuantizeOpsToNceOpsStrategy::prepareAvgPool(mlir::ConversionTarget& 
             return true;
         }
 
-        return isQuantizedPerAxis(quantizeOp.getOutput()) || isLegalQuantizeOp(quantizeOp, _canUseCMajor) ||
+        return isQuantizedPerAxis(quantizeOp.getOutput()) || shouldConvertQuantizeOp(quantizeOp, canUseCMajor) ||
                rank != 4 ||
                (inType.getTotalAllocSize() <= vpux::VPU::getTotalCMXSize(quantizeOp) &&
                 !vpux::isFloat8Quantized(quantizeOp.getDstElemType()));
-    });
-    toAvgPoolTarget.addDynamicallyLegalOp<IE::DequantizeOp>([&](IE::DequantizeOp dequantizeOp) {
+    };
+
+    _canSkipDequantizeAvgPoolConversion = [](IE::DequantizeOp dequantizeOp) {
         auto inType = mlir::cast<vpux::NDTypeInterface>(dequantizeOp.getInput().getType());
         auto rank = inType.getRank();
         if (!is8BitStorageType(inType)) {
@@ -51,42 +42,26 @@ void ConvertQuantizeOpsToNceOpsStrategy::prepareAvgPool(mlir::ConversionTarget& 
                (inType.getTotalAllocSize() <= vpux::VPU::getTotalCMXSize(dequantizeOp) &&
                 !vpux::isFloat8Quantized(inType.getElementType())) ||
                hasConstProducer(dequantizeOp);
-    });
-    toAvgPoolTarget.addLegalOp<IE::AvgPoolOp>();
+    };
 
-    toAvgPoolPatterns.add<IE::QuantizeDequantizeToAvgPool<IE::QuantizeOp>>(&ctx, log);
-    toAvgPoolPatterns.add<IE::QuantizeDequantizeToAvgPool<IE::DequantizeOp>>(&ctx, log);
-}
-
-void ConvertQuantizeOpsToNceOpsStrategy::prepareEltwise(mlir::ConversionTarget& toEltwiseTarget,
-                                                        mlir::RewritePatternSet& toEltwisePatterns,
-                                                        mlir::MLIRContext& ctx, Logger& log) const {
-    toEltwiseTarget.addDynamicallyLegalOp<IE::QuantizeOp>([&](IE::QuantizeOp quantizeOp) {
+    _canSkipQuantizeEltwiseConversion = [canUseCMajor = _canUseCMajor](IE::QuantizeOp quantizeOp) {
         auto outType = mlir::cast<vpux::NDTypeInterface>(quantizeOp.getOutput().getType());
         if (!is8BitStorageType(outType)) {
             return true;
         }
-        return isQuantizedPerAxis(quantizeOp.getOutput()) || IE::isLegalQuantizeOp(quantizeOp, _canUseCMajor);
-    });
-    toEltwiseTarget.addDynamicallyLegalOp<IE::DequantizeOp>([&](IE::DequantizeOp dequantizeOp) {
+        return isQuantizedPerAxis(quantizeOp.getOutput()) || IE::shouldConvertQuantizeOp(quantizeOp, canUseCMajor);
+    };
+
+    _canSkipDequantizeEltwiseConversion = [](IE::DequantizeOp dequantizeOp) {
         auto inType = mlir::cast<vpux::NDTypeInterface>(dequantizeOp.getInput().getType());
         if (!is8BitStorageType(inType)) {
             return true;
         }
         // Don't support per axis quant of any kind
         return isQuantizedPerAxis(dequantizeOp.getInput()) || hasConstProducer(dequantizeOp);
-    });
-    toEltwiseTarget.addLegalOp<IE::AddOp>();
-    toEltwiseTarget.addLegalOp<IE::QuantizeCastOp>();
+    };
 
-    toEltwisePatterns.add<IE::DequantizeToAddRewriter>(&ctx, log);
-    toEltwisePatterns.add<IE::QuantizeToAddRewriter>(&ctx, log);
-}
-
-void ConvertQuantizeOpsToNceOpsStrategy::prepareQuantToConv(mlir::ConversionTarget& quantToConvTarget,
-                                                            mlir::RewritePatternSet& quantToConvPatterns,
-                                                            mlir::MLIRContext& ctx, Logger& log) const {
-    quantToConvTarget.addDynamicallyLegalOp<IE::QuantizeOp>([&](IE::QuantizeOp quantizeOp) {
+    _canSkipQuantizeToConvConversion = [canUseCMajor = _canUseCMajor](IE::QuantizeOp quantizeOp) {
         auto outType = mlir::cast<vpux::NDTypeInterface>(quantizeOp.getOutput().getType());
         if (!is8BitStorageType(outType)) {
             return true;
@@ -98,10 +73,10 @@ void ConvertQuantizeOpsToNceOpsStrategy::prepareQuantToConv(mlir::ConversionTarg
             return true;
         }
         auto rank = outType.getRank();
-        return IE::isLegalQuantizeOp(quantizeOp, _canUseCMajor) || rank != 4;
-    });
+        return IE::shouldConvertQuantizeOp(quantizeOp, canUseCMajor) || rank != 4;
+    };
 
-    quantToConvTarget.addDynamicallyLegalOp<IE::DequantizeOp>([&](IE::DequantizeOp dequantizeOp) {
+    _canSkipDequantizeToConvConversion = [](IE::DequantizeOp dequantizeOp) {
         auto inType = mlir::cast<vpux::NDTypeInterface>(dequantizeOp.getInput().getType());
         if (!is8BitStorageType(inType)) {
             return true;
@@ -114,17 +89,36 @@ void ConvertQuantizeOpsToNceOpsStrategy::prepareQuantToConv(mlir::ConversionTarg
             return true;
         }
         auto rank = inType.getRank();
-        if (hasConstProducer(dequantizeOp) || rank != 4) {
-            return true;
-        }
-        return false;
-    });
+        return hasConstProducer(dequantizeOp) || rank != 4;
+    };
+}
 
-    quantToConvTarget.addLegalOp<Const::DeclareOp>();
-    quantToConvTarget.addLegalOp<IE::GroupConvolutionOp>();
+void ConvertQuantizeOpsToNceOpsStrategy::prepareAvgPool(mlir::RewritePatternSet& toAvgPoolPatterns,
+                                                        mlir::MLIRContext& ctx, Logger& log) const {
+    // HW Eltwise and AvgPool supports only per-tensor bias/scale parameters
+    // perTensor quantize/dequantize convert to avgpool
+    // E#98802 avgpool is faster than add for big input size.
+    // avgpool support rank >= 3, and currently convert shape to 4D does not support avgpool, so here limit to rank = 4
 
-    quantToConvPatterns.add<IE::QuantizeToDwRewriter>(&ctx, log);
-    quantToConvPatterns.add<IE::DequantizeToDwRewriter>(&ctx, log);
+    // Dummy AvgPool's numerical stability is preferred for low-precision floating-point quantization (FP8),
+    // eltwise Add with self could shift values further away from 0.0 causing precision loss.
+
+    toAvgPoolPatterns.add<IE::QuantizeDequantizeToAvgPool<IE::QuantizeOp>>(&ctx, _canSkipQuantizeAvgPoolConversion,
+                                                                           log);
+    toAvgPoolPatterns.add<IE::QuantizeDequantizeToAvgPool<IE::DequantizeOp>>(&ctx, _canSkipDequantizeAvgPoolConversion,
+                                                                             log);
+}
+
+void ConvertQuantizeOpsToNceOpsStrategy::prepareEltwise(mlir::RewritePatternSet& toEltwisePatterns,
+                                                        mlir::MLIRContext& ctx, Logger& log) const {
+    toEltwisePatterns.add<IE::DequantizeToAddRewriter>(&ctx, _canSkipDequantizeEltwiseConversion, log);
+    toEltwisePatterns.add<IE::QuantizeToAddRewriter>(&ctx, _canSkipQuantizeEltwiseConversion, log);
+}
+
+void ConvertQuantizeOpsToNceOpsStrategy::prepareQuantToConv(mlir::RewritePatternSet& quantToConvPatterns,
+                                                            mlir::MLIRContext& ctx, Logger& log) const {
+    quantToConvPatterns.add<IE::QuantizeToDwRewriter>(&ctx, _canSkipQuantizeToConvConversion, log);
+    quantToConvPatterns.add<IE::DequantizeToDwRewriter>(&ctx, _canSkipDequantizeToConvConversion, log);
 }
 
 }  // namespace vpux::IE::arch37xx

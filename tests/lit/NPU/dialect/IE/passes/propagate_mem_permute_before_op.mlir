@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --propagate-mem-permute-before-op %s | FileCheck %s
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --run-mem-permute-processing-rewriters="rewriter=propagate-mem-permute-before-op-set" %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --propagate-mem-permute-before-op %s | FileCheck %s
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --run-mem-permute-processing-rewriters="rewriter=propagate-mem-permute-before-op-set" %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
@@ -1448,4 +1448,62 @@ func.func @PropagateMemPermuteThroughConcatWithQuantizeCast(%arg0: tensor<1x256x
   // CHECK-SAME:        : tensor<1x2x256x4096xsi8> -> tensor<1x2x256x4096x!qElemType>
 
   // CHECK:       return [[QUANTIZE_CAST]] : tensor<1x2x256x4096x!qElemType>
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#WHNC = affine_map<(d0, d1, d2, d3) -> (d3, d2, d0, d1)>
+
+// CHECK-LABEL: @NotPropagateMemPermuteSliceSizeBiggerButOnlyOneSliceHasMemPermute
+// CHECK-SAME:    [[INPUT:%.+]]: tensor<1x32x48x32xf16>
+func.func @NotPropagateMemPermuteSliceSizeBiggerButOnlyOneSliceHasMemPermute(%arg0: tensor<1x32x48x32xf16>) -> (tensor<32x64x32x1xf16, {order = #NHWC}>, tensor<1x64x32x32xf16>, tensor<1x64x24x32xf16>) {
+    %0 = IE.Concat(%arg0, %arg0) {static_offsets = [[0, 0, 0, 0], [0, 32, 0, 0]]} : tensor<1x32x48x32xf16>, tensor<1x32x48x32xf16> -> tensor<1x64x48x32xf16>
+    %1 = IE.Slice %0 [0, 0, 0, 0] [1, 64, 32, 32] : tensor<1x64x48x32xf16> to tensor<1x64x32x32xf16>
+    %2 = IE.Slice %0 [0, 0, 12, 0] [1, 64, 32, 32] : tensor<1x64x48x32xf16> to tensor<1x64x32x32xf16>
+    %3 = IE.Slice %0 [0, 0, 24, 0] [1, 64, 24, 32] : tensor<1x64x48x32xf16> to tensor<1x64x24x32xf16>
+    %4 = IE.MemPermute(%1) {dst_order = #NHWC, mem_perm = #WHNC} : tensor<1x64x32x32xf16> -> tensor<32x64x32x1xf16, {order = #NHWC}>
+
+    return %4, %2, %3 : tensor<32x64x32x1xf16, {order = #NHWC}>, tensor<1x64x32x32xf16>, tensor<1x64x24x32xf16>
+
+    // CHECK:    [[CONCAT:%.+]] = IE.Concat([[INPUT]], [[INPUT]])
+    // CHECK-SAME{LITERAL}:    {static_offsets = [[0, 0, 0, 0], [0, 32, 0, 0]]} : tensor<1x32x48x32xf16>, tensor<1x32x48x32xf16> -> tensor<1x64x48x32xf16>
+    // CHECK:    [[SLICE1:%.+]] = IE.Slice [[CONCAT]] [0, 0, 0, 0] [1, 64, 32, 32] : tensor<1x64x48x32xf16> to tensor<1x64x32x32xf16>
+    // CHECK:    [[SLICE2:%.+]] = IE.Slice [[CONCAT]] [0, 0, 12, 0] [1, 64, 32, 32] : tensor<1x64x48x32xf16> to tensor<1x64x32x32xf16>
+    // CHECK:    [[SLICE3:%.+]] = IE.Slice [[CONCAT]] [0, 0, 24, 0] [1, 64, 24, 32] : tensor<1x64x48x32xf16> to tensor<1x64x24x32xf16>
+    // CHECK:    [[MEMPERMUTE:%.+]] = IE.MemPermute([[SLICE1]]) {dst_order = #NHWC, mem_perm = #map} : tensor<1x64x32x32xf16> -> tensor<32x64x32x1xf16, {order = #NHWC}>
+
+    // CHECK:    return [[MEMPERMUTE]], [[SLICE2]], [[SLICE3]] : tensor<32x64x32x1xf16, {order = #NHWC}>, tensor<1x64x32x32xf16>, tensor<1x64x24x32xf16>
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#WHNC = affine_map<(d0, d1, d2, d3) -> (d3, d2, d0, d1)>
+
+// CHECK-LABEL: @PropagateMemPermuteSliceSizeBiggerTwoSlicesHaveMemPermute
+// CHECK-SAME:    [[INPUT:%.+]]: tensor<1x32x48x32xf16>
+func.func @PropagateMemPermuteSliceSizeBiggerTwoSlicesHaveMemPermute(%arg0: tensor<1x32x48x32xf16>) -> (tensor<32x64x32x1xf16, {order = #NHWC}>, tensor<32x64x32x1xf16, {order = #NHWC}>, tensor<1x64x24x32xf16>) {
+    %0 = IE.Concat(%arg0, %arg0) {static_offsets = [[0, 0, 0, 0], [0, 32, 0, 0]]} : tensor<1x32x48x32xf16>, tensor<1x32x48x32xf16> -> tensor<1x64x48x32xf16>
+    %1 = IE.Slice %0 [0, 0, 0, 0] [1, 64, 32, 32] : tensor<1x64x48x32xf16> to tensor<1x64x32x32xf16>
+    %2 = IE.Slice %0 [0, 0, 12, 0] [1, 64, 32, 32] : tensor<1x64x48x32xf16> to tensor<1x64x32x32xf16>
+    %3 = IE.Slice %0 [0, 0, 24, 0] [1, 64, 24, 32] : tensor<1x64x48x32xf16> to tensor<1x64x24x32xf16>
+    %4 = IE.MemPermute(%1) {dst_order = #NHWC, mem_perm = #WHNC} : tensor<1x64x32x32xf16> -> tensor<32x64x32x1xf16, {order = #NHWC}>
+    %5 = IE.MemPermute(%2) {dst_order = #NHWC, mem_perm = #WHNC} : tensor<1x64x32x32xf16> -> tensor<32x64x32x1xf16, {order = #NHWC}>
+
+    return %4, %5, %3 : tensor<32x64x32x1xf16, {order = #NHWC}>, tensor<32x64x32x1xf16, {order = #NHWC}>, tensor<1x64x24x32xf16>
+
+    // CHECK:    [[CONCAT:%.+]] = IE.Concat([[INPUT]], [[INPUT]])
+    // CHECK-SAME{LITERAL}:    {static_offsets = [[0, 0, 0, 0], [0, 32, 0, 0]]} : tensor<1x32x48x32xf16>, tensor<1x32x48x32xf16> -> tensor<1x64x48x32xf16>
+    // CHECK:    [[MEMPERMUTE1:%.+]] = IE.MemPermute([[CONCAT]]) {dst_order = #map, mem_perm = #map} : tensor<1x64x48x32xf16> -> tensor<1x64x48x32xf16, {order = #map}>
+    // CHECK:    [[SLICE1:%.+]] = IE.Slice [[MEMPERMUTE1]] [0, 0, 0, 0] [1, 64, 32, 32] : tensor<1x64x48x32xf16, {order = #map}> to tensor<1x64x32x32xf16, {order = #map}>
+    // CHECK:    [[PERMUTECAST1:%.+]] = IE.PermuteCast([[SLICE1]]) {dst_order = #NHWC, mem_perm = #NCHW} : tensor<1x64x32x32xf16, {order = #map}> -> tensor<32x64x32x1xf16, {order = #NHWC}>
+    // CHECK:    [[MEMPERMUTE2:%.+]] = IE.MemPermute([[CONCAT]]) {dst_order = #map, mem_perm = #map} : tensor<1x64x48x32xf16> -> tensor<1x64x48x32xf16, {order = #map}>
+    // CHECK:    [[SLICE2:%.+]] = IE.Slice [[MEMPERMUTE2]] [0, 0, 12, 0] [1, 64, 32, 32] : tensor<1x64x48x32xf16, {order = #map}> to tensor<1x64x32x32xf16, {order = #map}>
+    // CHECK:    [[PERMUTECAST2:%.+]] = IE.PermuteCast([[SLICE2]]) {dst_order = #NHWC, mem_perm = #NCHW} : tensor<1x64x32x32xf16, {order = #map}> -> tensor<32x64x32x1xf16, {order = #NHWC}>
+    // CHECK:    [[SLICE3:%.+]] = IE.Slice [[CONCAT]] [0, 0, 24, 0] [1, 64, 24, 32] : tensor<1x64x48x32xf16> to tensor<1x64x24x32xf16>
+
+    // CHECK:    return [[PERMUTECAST1]], [[PERMUTECAST2]], [[SLICE3]] : tensor<32x64x32x1xf16, {order = #NHWC}>, tensor<32x64x32x1xf16, {order = #NHWC}>, tensor<1x64x24x32xf16>
 }

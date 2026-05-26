@@ -127,6 +127,43 @@ target_include_directories(mlir-dependencies
 set(COMPILER_TARGET ${STATIC_TARGET_NAME})
 add_library(${STATIC_TARGET_NAME} STATIC ${SOURCES})
 
+#
+# Separate compiler module library
+#
+set(COMPILER_LIB openvino_intel_npu_compiler)
+add_library(${COMPILER_LIB} MODULE $<TARGET_OBJECTS:${STATIC_TARGET_NAME}>)
+target_link_libraries(${COMPILER_LIB} PRIVATE ${STATIC_TARGET_NAME})
+if(WIN32)
+    ov_add_api_validator_post_build_step(TARGET ${COMPILER_LIB})
+    if(ENABLE_PRODUCTION_BUILD)
+        add_link_options("/INTEGRITYCHECK")
+    endif()
+endif()
+
+if(UNIX)
+    target_link_options(${COMPILER_LIB} PRIVATE -Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/compiler.exports)
+endif()
+
+# Install library related files to component
+if(BUILD_COMPILER_FOR_DRIVER)
+    set(INSTALL_COMPONENT "CiD")
+    set(INSTALL_DESTINATION cid)
+else()
+    set(INSTALL_COMPONENT "CiP")
+    set(INSTALL_DESTINATION cip)
+endif()
+
+include(${PROJECT_SOURCE_DIR}/cmake/npu_compiler_version.cmake)
+npu_compiler_configure_version(${COMPILER_LIB})
+
+install_target_with_debug_files(${COMPILER_LIB} ${INSTALL_DESTINATION}/lib ${INSTALL_COMPONENT})
+
+install(TARGETS ${COMPILER_LIB}
+        ARCHIVE DESTINATION ${OV_CPACK_RUNTIMEDIR} COMPONENT ${VPUX_INTERNAL_COMPONENT}
+        RUNTIME DESTINATION ${OV_CPACK_RUNTIMEDIR} COMPONENT ${VPUX_INTERNAL_COMPONENT}
+        LIBRARY DESTINATION ${OV_CPACK_RUNTIMEDIR} COMPONENT ${VPUX_INTERNAL_COMPONENT}
+        )
+
 add_dependencies(${COMPILER_TARGET} mlir-doc)
 
 ov_build_target_faster(${COMPILER_TARGET} PCH PUBLIC "src/precomp.hpp")
@@ -185,8 +222,7 @@ if (ENABLE_DIALECT_SHARED_LIBRARIES)
     target_link_libraries(NPUReg40XX_dialect
         PUBLIC
             mlir-dependencies
-            npu_elf
-            npu_llvm_utils)
+            npu_elf)
 endif()
 
 #
@@ -195,9 +231,11 @@ endif()
 ov_add_version_defines(${VPUX_COMPILER_VERSION_FILE} ${COMPILER_TARGET})
 
 #
-# STATIC target
+# Dependency check
 #
-
-if(NOT BUILD_SHARED_LIBS)
-    bundle_static_library(${STATIC_TARGET_NAME} npu_costmodel)
+if(ENABLE_DEP_CHECK)
+    # Append compiler dependencies
+    depcheck_collect_deps(src include "vpux/compiler" ${VPU_SRC_LIBS})
+    # Add dep_check target to ALL
+    add_depcheck_target(dep_check)
 endif()

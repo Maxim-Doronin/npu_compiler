@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% compilation-mode=DefaultHW" --convert-reduce-sum-to-conv %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% compilation-mode=DefaultHW" --convert-reduce-sum-to-conv %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL: @ConvertReduceSumToConv4D
 // CHECK-SAME:      [[INPUT:%.+]]: tensor<1x4x32x31xf16>
@@ -100,4 +100,104 @@ func.func @NotConvertInnerDimReduceSumToConvIfNotBeneficial(%arg0: tensor<1x96x2
   // CHECK:     [[REDUCESUM:%.+]] = IE.ReduceSum([[INPUT]]) {axes_value = [2], keep_dims} : tensor<1x96x2xf16> -> tensor<1x96x1xf16>
 
   // CHECK:     return  [[REDUCESUM]] : tensor<1x96x1xf16>
+}
+
+// -----
+
+// OuterDimReduceSumToConvRewriter: PSO3 LayerNorm pattern — ReduceSum [150,1,768] axis=0
+// without keep_dims produces [1,768]. The rewriter reshapes to [1,150,768,1], applies
+// Conv with all-ones [1,150,1,1] filter, and reshapes the output to [1,768].
+
+// CHECK-LABEL: @ConvertOuterDimReduceSumToConv3D
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<150x1x768xf16>
+func.func @ConvertOuterDimReduceSumToConv3D(%arg0: tensor<150x1x768xf16>) -> tensor<1x768xf16> {
+  %0 = IE.ReduceSum(%arg0) {axes_value = [0]} : tensor<150x1x768xf16> -> tensor<1x768xf16>
+  return %0 : tensor<1x768xf16>
+
+  // CHECK:       [[RESHAPE_IN:%.+]] = IE.Reshape([[INPUT]]) {shape_value = [1, 150, 768, 1]} : tensor<150x1x768xf16> -> tensor<1x150x768x1xf16>
+  // CHECK:       [[CST:%.+]] = const.Declare tensor<1x150x1x1xf16> = dense<1.000000e+00> : tensor<1x150x1x1xf32>, [#const.CastElemType<f16>]
+  // CHECK:       [[CONV:%.+]] = IE.Convolution([[RESHAPE_IN]], [[CST]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x150x768x1xf16>, tensor<1x150x1x1xf16> -> tensor<1x1x768x1xf16>
+  // CHECK:       [[RESHAPE_OUT:%.+]] = IE.Reshape([[CONV]]) {shape_value = [1, 768]} : tensor<1x1x768x1xf16> -> tensor<1x768xf16>
+  // CHECK:       return [[RESHAPE_OUT]] : tensor<1x768xf16>
+}
+
+// -----
+
+// OuterDimReduceSumToConvRewriter should also handle negative axis equivalent to axis=0
+// (for rank-3, axis=-3).
+
+// CHECK-LABEL: @ConvertOuterDimReduceSumToConv3DNegativeAxis
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<150x1x768xf16>
+func.func @ConvertOuterDimReduceSumToConv3DNegativeAxis(%arg0: tensor<150x1x768xf16>) -> tensor<1x768xf16> {
+  %0 = IE.ReduceSum(%arg0) {axes_value = [-3]} : tensor<150x1x768xf16> -> tensor<1x768xf16>
+  return %0 : tensor<1x768xf16>
+
+  // CHECK:       [[RESHAPE_IN:%.+]] = IE.Reshape([[INPUT]]) {shape_value = [1, 150, 768, 1]} : tensor<150x1x768xf16> -> tensor<1x150x768x1xf16>
+  // CHECK:       [[CST:%.+]] = const.Declare tensor<1x150x1x1xf16> = dense<1.000000e+00> : tensor<1x150x1x1xf32>, [#const.CastElemType<f16>]
+  // CHECK:       [[CONV:%.+]] = IE.Convolution([[RESHAPE_IN]], [[CST]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x150x768x1xf16>, tensor<1x150x1x1xf16> -> tensor<1x1x768x1xf16>
+  // CHECK:       [[RESHAPE_OUT:%.+]] = IE.Reshape([[CONV]]) {shape_value = [1, 768]} : tensor<1x1x768x1xf16> -> tensor<1x768xf16>
+  // CHECK:       return [[RESHAPE_OUT]] : tensor<1x768xf16>
+}
+
+// -----
+
+// OuterDimReduceSumToConvRewriter: 5D tensor, axis=0, reduceSize=64 > alignment.
+
+// CHECK-LABEL: @ConvertOuterDimReduceSumToConv5D
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<64x2x4x8x16xf16>
+func.func @ConvertOuterDimReduceSumToConv5D(%arg0: tensor<64x2x4x8x16xf16>) -> tensor<1x2x4x8x16xf16> {
+  %0 = IE.ReduceSum(%arg0) {axes_value = [0], keep_dims} : tensor<64x2x4x8x16xf16> -> tensor<1x2x4x8x16xf16>
+  return %0 : tensor<1x2x4x8x16xf16>
+
+  // CHECK:       [[RESHAPE_IN:%.+]] = IE.Reshape([[INPUT]]) {shape_value = [1, 64, 1024, 1]} : tensor<64x2x4x8x16xf16> -> tensor<1x64x1024x1xf16>
+  // CHECK:       [[CST:%.+]] = const.Declare tensor<1x64x1x1xf16> = dense<1.000000e+00> : tensor<1x64x1x1xf32>, [#const.CastElemType<f16>]
+  // CHECK:       [[CONV:%.+]] = IE.Convolution([[RESHAPE_IN]], [[CST]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x64x1024x1xf16>, tensor<1x64x1x1xf16> -> tensor<1x1x1024x1xf16>
+  // CHECK:       [[RESHAPE_OUT:%.+]] = IE.Reshape([[CONV]]) {shape_value = [1, 2, 4, 8, 16]} : tensor<1x1x1024x1xf16> -> tensor<1x2x4x8x16xf16>
+  // CHECK:       return [[RESHAPE_OUT]] : tensor<1x2x4x8x16xf16>
+}
+
+// -----
+
+// OuterDimReduceSumToConvRewriter should NOT convert when axis != 0.
+
+// CHECK-LABEL: @NotConvertOuterDimReduceSumAxis2
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<2x3x150xf16>
+func.func @NotConvertOuterDimReduceSumAxis2(%arg0: tensor<2x3x150xf16>) -> tensor<2x3x1xf16> {
+  %0 = IE.ReduceSum(%arg0) {axes_value = [2], keep_dims} : tensor<2x3x150xf16> -> tensor<2x3x1xf16>
+  return %0 : tensor<2x3x1xf16>
+
+  // CHECK:       [[REDUCE:%.+]] = IE.ReduceSum([[INPUT]]) {axes_value = [2], keep_dims} : tensor<2x3x150xf16> -> tensor<2x3x1xf16>
+  // CHECK:       return [[REDUCE]] : tensor<2x3x1xf16>
+}
+
+// -----
+
+// OuterDimReduceSumToConvRewriter should NOT convert when reduceSize <= alignment
+// and there is no NCE parent/child (isBeneficialToConvert returns false).
+
+// CHECK-LABEL: @NotConvertOuterDimSmallReduceNoNCEParent
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<4x1x768xf16>
+func.func @NotConvertOuterDimSmallReduceNoNCEParent(%arg0: tensor<4x1x768xf16>) -> tensor<1x768xf16> {
+  %0 = IE.ReduceSum(%arg0) {axes_value = [0]} : tensor<4x1x768xf16> -> tensor<1x768xf16>
+  return %0 : tensor<1x768xf16>
+
+  // CHECK:       [[REDUCE:%.+]] = IE.ReduceSum([[INPUT]]) {axes_value = [0]} : tensor<4x1x768xf16> -> tensor<1x768xf16>
+  // CHECK:       return [[REDUCE]] : tensor<1x768xf16>
+}
+
+// -----
+
+// OuterDimReduceSumToConvRewriter: 2D tensor, axis=0, reduceSize=150 > alignment.
+
+// CHECK-LABEL: @ConvertOuterDimReduceSumToConv2D
+// CHECK-SAME:      [[INPUT:%.+]]: tensor<150x768xf16>
+func.func @ConvertOuterDimReduceSumToConv2D(%arg0: tensor<150x768xf16>) -> tensor<768xf16> {
+  %0 = IE.ReduceSum(%arg0) {axes_value = [0]} : tensor<150x768xf16> -> tensor<768xf16>
+  return %0 : tensor<768xf16>
+
+  // CHECK:       [[RESHAPE_IN:%.+]] = IE.Reshape([[INPUT]]) {shape_value = [1, 150, 768, 1]} : tensor<150x768xf16> -> tensor<1x150x768x1xf16>
+  // CHECK:       [[CST:%.+]] = const.Declare tensor<1x150x1x1xf16> = dense<1.000000e+00> : tensor<1x150x1x1xf32>, [#const.CastElemType<f16>]
+  // CHECK:       [[CONV:%.+]] = IE.Convolution([[RESHAPE_IN]], [[CST]]) {dilations = [1, 1], pads_begin = [0, 0], pads_end = [0, 0], strides = [1, 1]} : tensor<1x150x768x1xf16>, tensor<1x150x1x1xf16> -> tensor<1x1x768x1xf16>
+  // CHECK:       [[RESHAPE_OUT:%.+]] = IE.Reshape([[CONV]]) {shape_value = [768]} : tensor<1x1x768x1xf16> -> tensor<768xf16>
+  // CHECK:       return [[RESHAPE_OUT]] : tensor<768xf16>
 }

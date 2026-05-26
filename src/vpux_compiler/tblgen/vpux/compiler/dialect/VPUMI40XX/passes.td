@@ -15,7 +15,16 @@ include "mlir/Pass/PassBase.td"
 def SetupProfilingVPUMI40XX : PassBase<"setup-profiling-VPUMI40XX", "vpux::ModulePass"> {
     let summary = "Apply HW profiling settings in MI";
 
-    let description = "This pass configures DmaHwpBase and HwpWorkpointCfg.";
+    let description = [{
+        AI-generated summary
+
+        Configures DMA hardware profiling in the MappedInference operation. Based on the
+        DMA profiling mode (STATIC_HWP, DYNAMIC_HWP, or SCRATCH), creates the DMA HWP
+        base buffer pointing to the appropriate memory region (profiling output section,
+        reserved DDR, or CMX scratch). Also creates a workpoint capture buffer from the
+        profiling workpoint section for performance counter snapshots. Both buffers are
+        attached to MappedInferenceOp for use by the runtime.
+    }];
 
     let constructor = "vpux::VPUMI40XX::createSetupProfilingVPUMI40XXPass()";
 
@@ -51,72 +60,54 @@ def BarrierComputation : PassBase<"barrier-computation-VPUMI40XX", "vpux::Functi
 
 
 def ReorderMPIOps : PassBase<"reorder-mapped-inference-ops", "vpux::FunctionPass"> {
-    let summary = [{Reorder Mapped Inference dialect ops ot a *canonical* order.}];
+    let summary = [{Reorder Mapped Inference dialect ops to a *canonical* order.}];
     let description = [{
+        AI-generated summary
+
         The mapped inference representation does not follow the *classical* rules of operation order inside the IR.
         In higher level dialects, OP order in the IR mostly followed the topological order of the execution, with
         Async ops and VPURT.TaskOps generally decorating extra information on the parallelism.
 
         In MappedInference representation execution flow is expressed differently, as it explicitly defines the list
-        semantics of how the operations follow each other in execution flow, while parralelism is expressed at "list level".
+        semantics of how the operations follow each other in execution flow, while parallelism is expressed at "list level".
 
-        This pass will just re-order the OPS inside the IR to folow this semantics. This reorder serves EXCLUSIVELY
-        for HUMAN READABILITY of the IR but serves NO FUNCTIONAL purpose, and does not introduce positional semantics to the dialect.
+        This pass re-orders the OPS inside the IR to follow these semantics. For DeclareTaskBuffer operations,
+        the order must be aligned with firmware expectations. For other operations, the reorder primarily
+        improves human readability of the IR without introducing positional semantics to the dialect.
     }];
 
     let constructor = "vpux::VPUMI40XX::reorderMappedInferenceOpsPass()";
 }
 
-def ResolveTaskLocation : PassBase<"resolve-task-location", "vpux::FunctionPass"> {
-    let summary = [{ 40xx-specific version of resolve task location pass }];
-
-    let constructor = "vpux::VPUMI40XX::createResolveTaskLocationPass()";
-}
-
-def BarrierTopologicalMapping : PassBase<"barrier-topological-mapping", "vpux::FunctionPass"> {
-    let summary = [{Construct barrier topological dependencies}];
+def GroupExecutionOps : PassBase<"group-execution-ops", "vpux::FunctionPass"> {
+    let summary = "Group DPU/ActKernel execution ops into ExecutionGroup containers";
 
     let description = [{
-        Created bar-to-bar dependencies represent a barrier only graph generated
-        from original schedule with task nodes removed.
-        Example schedule:
-            BAR0 -> OP0 -> BAR1 -> OP1 -> BAR2
-              \------------OP2---------->/
-        Barrier dependencies:
-            BAR0 --------> BAR1 --------> BAR2
-              \------------------------->/
+        AI-generated summary
 
-        Definition:
-        BARx depends on BARy if BARx can get updated (BARx pcount decremented) when BARy was produced
-
-        Those dependencies are to be used by add-enqueue-ops pass.
+        Groups execution tasks into ExecutionGroup operations for WLM scheduling.
+        Pairs primary task types (DPU Invariant, ActKernel Range) with secondary types
+        (Variant, Invocation). Respects metadata size constraints and barrier scheduling
+        requirements so that WLM can schedule and enqueue primary+secondary task pairs
+        atomically.
     }];
-
-    let constructor = "vpux::VPUMI40XX::createBarrierTopologicalMappingPass()";
-}
-
-def GroupExecutionOps : PassBase<"group-execution-ops", "vpux::FunctionPass"> {
-    let summary = [{Group execution ops into one view}];
 
     let constructor = "vpux::VPUMI40XX::createGroupExecutionOpsPass()";
 }
 
 def UnGroupExecutionOps : PassBase<"ungroup-execution-ops", "vpux::FunctionPass">  {
-    let summary = [{UnGroup execution ops from one view}];
-
-    let constructor = "vpux::VPUMI40XX::createUnGroupExecutionOpsPass()";
-}
-
-def AddFetchOps : PassBase<"add-fetch-ops", "vpux::FunctionPass"> {
-    let summary = [{ Insert Fetch operations }];
+    let summary = "Extract execution ops from ExecutionGroup containers";
 
     let description = [{
-        Insert FetchOps for DPU & Shv tasks
-        These tasks are responsible to copy descriptors for Variant,Invariant,ShaveInvocation and ShaveRange
-        to CMX Metadata space. Lower in the pipeline these tasks are lowered to NNDMAs
+        AI-generated summary
+
+        Reverses GroupExecutionOps transformation by extracting individual operations from
+        ExecutionGroup blocks. Replaces block arguments with actual previous task values,
+        replaces start/end indices with list heads/tails, and moves operations back to
+        the parent function scope.
     }];
 
-    let constructor = "vpux::VPUMI40XX::createAddFetchOpsPass()";
+    let constructor = "vpux::VPUMI40XX::createUnGroupExecutionOpsPass()";
 }
 
 def ResolveWLMTaskLocation : PassBase<"resolve-wlm-task-location", "vpux::FunctionPass"> {
@@ -132,7 +123,15 @@ def ResolveWLMTaskLocation : PassBase<"resolve-wlm-task-location", "vpux::Functi
 }
 
 def PropagateFinalBarrier : PassBase<"propagate-final-barrier", "vpux::FunctionPass"> {
-    let summary = [{ Propagate info about final barrier to mapped inference}];
+    let summary = "Propagate final barrier ID to MappedInferenceOp";
+
+    let description = [{
+        AI-generated summary
+
+        Identifies the final barrier operation in the compiled network and stores its
+        index in MappedInferenceOp. The runtime reads this index from MappedInferenceOp
+        to determine when all tasks have completed.
+    }];
 
     let constructor = "vpux::VPUMI40XX::createPropagateFinalBarrierPass()";
 }
@@ -148,19 +147,6 @@ def AddEnqueueOps : PassBase<"add-enqueue-ops", "vpux::FunctionPass"> {
         enqueue can cover secondaries from different primaries -> enqueue can cover secondaries across
         Fetch task boundary.
     }];
-
-    let options = [
-        Option<
-            "enablePredefinedEnqueueOpt", "enable-predefined-enqueue",
-            "bool", "false",
-            "Enable usage of predefined enqueue targets from VPURT"
-        >,
-        Option<
-            "enableWorkItemLinksOpt", "enable-work-item-links",
-            "bool", "false",
-            "Enable usage of WorkItem task links"
-        >
-    ];
 
     let constructor = "vpux::VPUMI40XX::createAddEnqueueOpsPass()";
 }
@@ -183,25 +169,11 @@ def LinkEnqueueTargets : PassBase<"link-enqueue-targets", "vpux::FunctionPass"> 
             "vpux::WorkloadManagementMode", "",
             "Setting which controls mode of WLM",
             [{::llvm::cl::values(
-                clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA", "WLM enqueue barriers search algorithm at VPURT ENABLED"),
                 clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_1_PAGES, "PWLM_V0_1_PAGES", "PWLM with split into subgraphs (pages)"),
-                clEnumValN(vpux::WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO", "WLM enqueue barriers search algorithm at VPURT DISABLED"),
-                clEnumValN(vpux::WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES", "WLM with split into subgraphs(pages)"),
                 clEnumValN(vpux::WorkloadManagementMode::FWLM_V1_PAGES, "FWLM_V1_PAGES", "Full WLM with split into pages")
             )}]
         >
     ];
-}
-
-def LinkAllOps : PassBase<"link-all-ops", "vpux::FunctionPass"> {
-    let summary = [{ Hard-Link all ops that support HardLink}];
-
-    let description = [{
-        For non-managed inferences, runtime will support and expect all tasks within a list to be HW link listed (hard-linked).
-        This pass will hardLink all tasks that have support for it, with the exception of the first task.
-    }];
-
-    let constructor = "vpux::VPUMI40XX::createLinkAllOpsPass()";
 }
 
 def UnrollFetchTaskOps : PassBase<"unroll-fetch-ops", "vpux::FunctionPass"> {
@@ -235,21 +207,44 @@ def SplitEnqueueOps : PassBase<"split-enqueue-ops", "vpux::FunctionPass"> {
 }
 
 def UnrollEnqueueOps : PassBase<"unroll-enqueue-ops", "vpux::FunctionPass"> {
-    let summary = [{ Unroll enqueue Ops so that each targets only one task}];
+    let summary = "Expand range-based EnqueueOps into single-task EnqueueOps";
+
+    let description = [{
+        AI-generated summary
+
+        Unrolls EnqueueOp operations that specify a range of tasks (start to end inclusive)
+        into individual EnqueueOp operations targeting single tasks. Chains expanded
+        operations together through result replacement: the first expanded op is used by
+        MappedInferenceOp, the last is used by other consumers.
+    }];
 
     let constructor = "vpux::VPUMI40XX::createUnrollEnqueueOpsPass()";
 }
 
 def LinkEnqueueOpsForSameBarrier : PassBase<"link-enqueue-ops-for-same-barrier", "vpux::FunctionPass"> {
-    let summary = [{ Create a link to previous enqueue happening on same barrier}];
+    let summary = "Link consecutive EnqueueOps operating on the same barrier";
+
+    let description = [{
+        AI-generated summary
+
+        Links EnqueueOps that share the same barrier index by chaining each to its
+        predecessor. Without this chaining, multiple enqueues on the same barrier could
+        race and produce undefined scheduling behavior in the firmware.
+    }];
 
     let constructor = "vpux::VPUMI40XX::createLinkEnqueueOpsForSameBarrierPass()";
 }
 
 def AddBootstrapBarriers : PassBase<"add-bootstrap-barriers", "vpux::FunctionPass"> {
     let summary = [{ Add Bootstrap Barriers}];
-    let description = [{Set the initial barriers to be used during inference, we set the first BootstrapOp and a count
-                        of how bootstrap barriers. Bootstrap operation allow us start barriers in any order}];
+    let description = [{
+        AI-generated summary
+
+        Creates BootstrapOp operations for each unique physical barrier ID encountered
+        in ConfigureBarrier operations. Links the first BootstrapOp and the total count
+        to MappedInferenceOp so the firmware can initialize barriers at inference start.
+        Stops after processing up to the number of available physical barriers.
+    }];
 
     let constructor = "vpux::VPUMI40XX::createAddBootstrapBarriersPass()";
 }
@@ -270,10 +265,7 @@ def AddBootstrapWorkItems : PassBase<"add-bootstrap-work-items", "vpux::Function
             "vpux::WorkloadManagementMode", "",
             "Setting which controls mode of WLM",
             [{::llvm::cl::values(
-                clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_LCA, "PWLM_V0_LCA", "WLM enqueue barriers search algorithm at VPURT ENABLED"),
                 clEnumValN(vpux::WorkloadManagementMode::PWLM_V0_1_PAGES, "PWLM_V0_1_PAGES", "PWLM with split into subgraphs (pages)"),
-                clEnumValN(vpux::WorkloadManagementMode::PWLM_V1_BARRIER_FIFO, "PWLM_V1_BARRIER_FIFO", "WLM enqueue barriers search algorithm at VPURT DISABLED"),
-                clEnumValN(vpux::WorkloadManagementMode::PWLM_V2_PAGES, "PWLM_V2_PAGES", "WLM with split into subgraphs(pages)"),
                 clEnumValN(vpux::WorkloadManagementMode::FWLM_V1_PAGES, "FWLM_V1_PAGES", "Full WLM with split into pages")
             )}]
         >
@@ -284,7 +276,12 @@ def NextSameIdAssignment : PassBase<"next-same-id-assignment", "vpux::FunctionPa
     let summary = "Compute and setup scheduling related fields";
 
     let description = [{
-        This pass computes and sets up the (barrier) scheduling related fields - next_same_id, previousSameId
+        AI-generated summary
+
+        Assigns the nextSameId field for VPUMI40XX execution descriptor operations by linking
+        operations that share the same task list ID. Builds linked lists of descriptors within
+        each task queue so the firmware can traverse all descriptors belonging to the same
+        logical task sequence.
     }];
 
     let constructor = "vpux::VPUMI40XX::createNextSameIdAssignmentPass()";
@@ -292,7 +289,14 @@ def NextSameIdAssignment : PassBase<"next-same-id-assignment", "vpux::FunctionPa
 }
 
 def AddPlatformInfo : PassBase<"add-platform-info", "vpux::FunctionPass"> {
-    let summary = "Adds platform info operation which provides info such as arch kind";
+    let summary = "Insert PlatformInfoOp with architecture and platform metadata";
+
+    let description = [{
+        AI-generated summary
+
+        Creates a PlatformInfoOp with a trivial index to hold platform-level metadata
+        for the compiled network.
+    }];
 
     let constructor = "vpux::VPUMI40XX::createAddPlatformInfoPass()";
 
@@ -302,7 +306,11 @@ def DumpStatisticsOfWlmOps : PassBase<"dump-statistics-of-wlm-ops", "vpux::Funct
     let summary = "Print stats on WLM related ops";
 
     let description = [{
-        This pass dumps count of enqueue and fetch DMA ops inserted as part of WLM
+        AI-generated summary
+
+        Dumps WLM operation counts to the debug log: fetch ops, barrier programming DMAs,
+        enqueue ops per task type (DMA, DPU, SHAVE), and descriptor group statistics.
+        Purely diagnostic — no IR modifications.
     }];
 
     let constructor = "vpux::VPUMI40XX::createDumpStatisticsOfWlmOpsPass()";
@@ -315,10 +323,12 @@ def AddBarrierConfigurationOps : PassBase<"add-barrier-configuration-ops", "vpux
     let constructor = "vpux::VPUMI40XX::createAddBarrierConfigurationOps()";
 
     let description = [{
+        AI-generated summary
+
         This pass creates the barrier configuration constants and DMAs to help RT program the barriers during inference
         WorkloadManagementBarrierProgrammingMode::LEGACY
-            This pass returns early without modifying the IR
-        WorkloadManagementBarrierProgrammingMode::NO_BARRIER_DMAS_SCHEDULED
+            Not implemented. The pass throws an error for this mode
+        WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED
             Pass creates stride constant and raw barrier configurations to help runtime program the barriers.
             Stride constant is a 1D constant/array of size nPhysBarr. Index of the array are considered to be pid and values at index represent usage of the pid
             e.g. [1,2,4,2,5] pid 0 is used once, pid 1 is used 2 times, pid 3 is used 4 times and so on
@@ -333,9 +343,8 @@ def AddBarrierConfigurationOps : PassBase<"add-barrier-configuration-ops", "vpux
             e.g.
             [Pid0_Usage0, 0, 0, 0, 0 ,0 , 0, 0, Pid1_Usage0, 0, 0, 0, 0, 0, 0 ......]
 
-        WorkloadManagementBarrierProgrammingMode::INITIAL_BARRIER_DMAS_SCHEDULED
-            This mode does everything done at WorkloadManagementBarrierProgrammingMode::NO_BARRIER_DMAS_SCHEDULED plus creates a DMA at bootstrap
-            which will push barrier configurations to FIFO_BARRIERS_NCE_FILL_BARRIER_FIFO_ADR register. In this case runtime doesn't need to program initial barriers
+            Additionally, in this mode the compiler creates a DMA at bootstrap which will push barrier configurations
+            to FIFO_BARRIERS_NCE_FILL_BARRIER_FIFO_ADR register. In this case runtime doesn't need to program initial barriers
             "Initial barriers reprogramming" refer to programming BARRIER_FIFO_DEPTH usages of each physical barriers
 
             Take following barriers used in network as example compiling on single cluster(nPhysBarr = 16)
@@ -382,8 +391,7 @@ def AddBarrierConfigurationOps : PassBase<"add-barrier-configuration-ops", "vpux
             Producer Count: 1, Producer Interrupt: 0, Consumer Count: 1, Consumer Interrupt: 1
             Producer Count: 1, Producer Interrupt: 1, Consumer Count: 1, Consumer Interrupt: 0
 
-        WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED
-            This mode does everything done at WorkloadManagementBarrierProgrammingMode::INITIAL_BARRIER_DMAS_SCHEDULED plus creates DMAs in the schedule at right place
+            Furthermore, the pass creates DMAs in the schedule at right place
             which will push barrier configurations to FIFO_BARRIERS_NCE_FILL_BARRIER_FIFO_ADR register. In this case runtime doesn't need to program any barriers
 
             In full Workload Management mode, it is recommended to enable the consumer interrupt on at least one barrier per page to maintain inference activity.
@@ -403,10 +411,6 @@ def AddBarrierConfigurationOps : PassBase<"add-barrier-configuration-ops", "vpux
             [{::llvm::cl::values(
             clEnumValN(vpux::WorkloadManagementBarrierProgrammingMode::LEGACY, "LEGACY",
                 "Runtime handles barrier programming independently"),
-            clEnumValN(vpux::WorkloadManagementBarrierProgrammingMode::NO_BARRIER_DMAS_SCHEDULED, "NO_BARRIER_DMAS_SCHEDULED",
-                "Compiler only creates constants to aid runtime in barrier programming"),
-            clEnumValN(vpux::WorkloadManagementBarrierProgrammingMode::INITIAL_BARRIER_DMAS_SCHEDULED, "INITIAL_BARRIER_DMAS_SCHEDULED",
-                "Compiler creates DMA to program initial barrier and constant to aid runtime in barrier programming"),
             clEnumValN(vpux::WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED, "ALL_BARRIER_DMAS_SCHEDULED",
                 "Compiler creates DMAs to program all barriers"),
             clEnumValN(vpux::WorkloadManagementBarrierProgrammingMode::ALL_BARRIER_DMAS_SCHEDULED_4K, "ALL_BARRIER_DMAS_SCHEDULED_4K",
@@ -417,7 +421,15 @@ def AddBarrierConfigurationOps : PassBase<"add-barrier-configuration-ops", "vpux
 }
 
 def AddMappedInferenceVersionOp : PassBase<"add-mapped-inference-version-op", "vpux::FunctionPass"> {
-    let summary = "Add explicit operation for Mapped Inference and Managed Mapped inference version representation";
+    let summary = "Add API version metadata to MappedInferenceOp";
+
+    let description = [{
+        AI-generated summary
+
+        Creates MappedInferenceVersionOp with major, minor, and patch version numbers.
+        The driver checks these version numbers at load time to reject blobs
+        compiled with an incompatible API version.
+    }];
 
     let constructor = "vpux::VPUMI40XX::createAddMappedInferenceVersionOpPass()";
 }
@@ -445,4 +457,23 @@ def ConvertFetchDmasToFetchTaskOps : PassBase<"convert-fetch-dmas-to-fetch-task-
     let constructor = "vpux::VPUMI40XX::createConvertFetchDmasToFetchTaskOpsPass()";
 }
 
+def UpdateFetchDMAForSkipDMAs : PassBase<"update-fetch-dmas-for-skip-dmas", "vpux::FunctionPass"> {
+    let summary = [{ Updates placeholder fetch operations }];
+    let description = [{
+        Updates placeholder NNDMA Fetch DMAs corresponding to Skip DMAs and rewires them to
+        fetch DMA task descriptors via task ranges.
+
+        The pass:
+        - Matches Fetch and Skip DMAs using a common descriptor id
+        - Allocates DMA task descriptors in CMX from a fixed metadata base offset
+        - Enforces deterministic phase-based ordering (DDR -> CMX) per
+          (tile, list, logicalTask)
+        - Creates task buffers and uses ViewTaskRange to pass descriptor ranges
+          as inputs to Fetch DMAs
+        - Replaces placeholder Fetch DMAs with new ones consuming these task ranges
+        - Updates task locations to enable correct linking and execution
+    }];
+
+    let constructor = "vpux::VPUMI40XX::createUpdateFetchDMAForSkipDMAsPass()";
+}
 #endif

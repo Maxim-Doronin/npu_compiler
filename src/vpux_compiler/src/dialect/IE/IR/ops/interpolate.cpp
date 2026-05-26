@@ -5,11 +5,18 @@
 
 #include "vpux/compiler/dialect/IE/IR/ops/data_type.hpp"
 #include "vpux/compiler/dialect/IE/IR/ops/image.hpp"
+#include "vpux/compiler/dialect/IE/utils/dynamic_shape_utils.hpp"
 #include "vpux/compiler/dialect/IE/utils/interpolate_utils.hpp"
+#include "vpux/compiler/dialect/IE/utils/shape_infer.hpp"
 #include "vpux/compiler/dialect/config/IR/attributes.hpp"
 #include "vpux/compiler/dialect/config/IR/utils.hpp"
 #include "vpux/compiler/dialect/const/attributes/content.hpp"
+#include "vpux/compiler/dialect/const/ops.hpp"
+#include "vpux/compiler/dialect/core/IR/tensor_attr.hpp"
 #include "vpux/compiler/utils/attributes.hpp"
+#include "vpux/compiler/utils/error.hpp"
+#include "vpux/compiler/utils/infer_output_shape.hpp"
+#include "vpux/compiler/utils/rewriter.hpp"
 
 #include <mlir/IR/PatternMatch.h>
 
@@ -19,6 +26,7 @@ mlir::LogicalResult vpux::IE::InterpolateOp::inferReturnTypeComponents(
         mlir::MLIRContext* ctx, std::optional<mlir::Location> optLoc, mlir::ValueShapeRange operands,
         mlir::DictionaryAttr attrs, mlir::OpaqueProperties prop, mlir::RegionRange,
         SmallVectorImpl<mlir::ShapedTypeComponents>& inferredReturnShapes) {
+    auto logger = Logger::global().nest("ie-interpolate-dynamism", 0);
     const auto loc = optLoc.value_or(mlir::UnknownLoc::get(ctx));
 
     IE::InterpolateOpAdaptor interpolate(operands, attrs, prop);
@@ -26,10 +34,113 @@ mlir::LogicalResult vpux::IE::InterpolateOp::inferReturnTypeComponents(
         return mlir::failure();
     }
 
-    auto outShape = IE::calcOutputShapes(interpolate, loc, Logger::global(), ctx);
+    if (IE::isSizesAsParameter(interpolate.getSizes(), interpolate.getSizesAttr())) {
+        logger.trace("Shape with parameter sizes is unsupported now.");
+        return mlir::failure();
+    }
 
-    const auto inType = mlir::cast<mlir::ShapedType>(interpolate.getInput().getType());
-    inferredReturnShapes.emplace_back(outShape, inType.getElementType());
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(interpolate.getInput().getType());
+
+    // Scale-as-parameter path: output shape is inferred from bounded scales independently.
+    if (IE::isScalesAsParameter(interpolate.getScales(), interpolate.getScalesAttr())) {
+        const auto inShape = getBoundedShape(interpolate.getInput());
+        const auto axesVal = IE::getInterpAxesVal(loc, interpolate.getAxes(), interpolate.getAxesAttr(), inputType);
+        const auto beginPads = IE::extractIntVector(loc, nullptr, interpolate.getAttr().getPadsBegin());
+        const auto endPads = IE::extractIntVector(loc, nullptr, interpolate.getAttr().getPadsEnd());
+
+        // Scales are runtime — use bounded scales for compile-time shape inference
+        const auto scaleType = mlir::cast<vpux::NDTypeInterface>(interpolate.getScales().getType());
+        VPUX_THROW_WHEN(scaleType.getNumElements() != int64_t(axesVal.size()),
+                        "Scales input number of elements must match the number of interpolated axes, got {0} and {1}",
+                        scaleType.getNumElements(), axesVal.size());
+        auto scalesBound = SmallVector<double>(axesVal.size(), 1.0);
+        scalesBound[scalesBound.size() - 1] = INTERPOLATE_SCALES_BOUND;
+        scalesBound[scalesBound.size() - 2] = INTERPOLATE_SCALES_BOUND;
+
+        const auto scalesElemType =
+                mlir::cast<vpux::NDTypeInterface>(interpolate.getScales().getType()).getElementType();
+
+        const auto outShapeVec =
+                IE::inferInterpOutShape(loc, axesVal, inShape, beginPads, endPads, IE::InterpolateCalcMode::SCALES,
+                                        mlir::FailureOr<ArrayRef<int64_t>>(mlir::failure()),
+                                        ArrayRef<double>(scalesBound), scalesElemType, Logger::global());
+
+        // Interpolated axes are always dynamic (scales are runtime parameters).
+        // Non-interpolated axes preserve the input dynamism characteristics.
+        auto [outStaticShape, outBounds, outDimMask] = callOnShapeOf(inputType, [&](const auto& inShapeRepr) {
+            using ShapeT = std::decay_t<decltype(inShapeRepr)>;
+            if constexpr (std::is_same_v<ShapeT, BoundedShape>) {
+                BoundedShape bounded;
+                bounded.reserve(outShapeVec.size());
+                for (size_t i = 0; i < outShapeVec.size(); ++i) {
+                    const bool isInterpolated = llvm::find(axesVal, static_cast<int64_t>(i)) != axesVal.end();
+                    if (isInterpolated || inShapeRepr[Dim(i)].isDynamic()) {
+                        bounded.push_back(BoundedDim(mlir::ShapedType::kDynamic, outShapeVec[i]));
+                    } else {
+                        bounded.push_back(BoundedDim(outShapeVec[i]));
+                    }
+                }
+                return splitShapeAndRepresentation(bounded);
+            } else if constexpr (std::is_same_v<ShapeT, DimsMaskedShape>) {
+                DimsMaskedShape masked;
+                masked.reserve(outShapeVec.size());
+                for (size_t i = 0; i < outShapeVec.size(); ++i) {
+                    const bool isInterpolated = llvm::find(axesVal, static_cast<int64_t>(i)) != axesVal.end();
+                    masked.push_back(MaskedDim(outShapeVec[i], isInterpolated || inShapeRepr[Dim(i)].isDynamic()));
+                }
+                return splitShapeAndRepresentation(masked);
+            } else {
+                // Static input — force interpolated axes to bounded dynamic
+                BoundedShape bounded;
+                bounded.reserve(outShapeVec.size());
+                for (size_t i = 0; i < outShapeVec.size(); ++i) {
+                    bounded.push_back(BoundedDim(mlir::ShapedType::kDynamic, outShapeVec[i]));
+                }
+                return splitShapeAndRepresentation(bounded);
+            }
+        });
+
+        SmallVector<int64_t> outShape(outStaticShape.begin(), outStaticShape.end());
+        const auto outDesc =
+                vpux::getTensorAttr(ctx, inputType.getDimsOrder(), inputType.getMemSpace(), outBounds, outDimMask);
+        inferredReturnShapes.emplace_back(outShape, inputType.getElementType(), outDesc);
+        return mlir::success();
+    }
+
+    // Normal path: output shape from sizes/scales attributes.
+    auto outShapeVec = IE::calcOutputShapes(interpolate, loc, Logger::global(), ctx);
+
+    auto [outStaticShape, outBounds, outDimMask] = callOnShapeOf(inputType, [&](const auto& inShape) {
+        using ShapeT = std::decay_t<decltype(inShape)>;
+        if constexpr (std::is_same_v<ShapeT, BoundedShape>) {
+            // For bounded tensors, propagate dynamic dims with computed bounds
+            BoundedShape outBounded;
+            outBounded.reserve(outShapeVec.size());
+            for (size_t i = 0; i < outShapeVec.size(); ++i) {
+                if (inShape[Dim(i)].isDynamic()) {
+                    outBounded.push_back(BoundedDim(mlir::ShapedType::kDynamic, outShapeVec[i]));
+                } else {
+                    outBounded.push_back(BoundedDim(outShapeVec[i]));
+                }
+            }
+            return splitShapeAndRepresentation(outBounded);
+        } else if constexpr (std::is_same_v<ShapeT, DimsMaskedShape>) {
+            DimsMaskedShape outMasked;
+            outMasked.reserve(outShapeVec.size());
+            for (size_t i = 0; i < outShapeVec.size(); ++i) {
+                outMasked.push_back(MaskedDim(outShapeVec[i], inShape[Dim(i)].isDynamic()));
+            }
+            return splitShapeAndRepresentation(outMasked);
+        } else {
+            Shape outShape(outShapeVec);
+            return splitShapeAndRepresentation(outShape);
+        }
+    });
+
+    SmallVector<int64_t> outShape(outStaticShape.begin(), outStaticShape.end());
+    const auto outDesc =
+            vpux::getTensorAttr(ctx, inputType.getDimsOrder(), inputType.getMemSpace(), outBounds, outDimMask);
+    inferredReturnShapes.emplace_back(outShape, inputType.getElementType(), outDesc);
 
     return mlir::success();
 }
@@ -50,15 +161,33 @@ public:
 
 mlir::LogicalResult ConvertInputsToAttr::matchAndRewrite(IE::InterpolateOp interpolateOp,
                                                          mlir::PatternRewriter& rewriter) const {
+    auto logger = Logger::global().nest("ie-interpolate-dynamism-ConvertInputsToAttr", 1);
     if (interpolateOp.getSizesAttr().has_value() || interpolateOp.getScalesAttr().has_value() ||
         interpolateOp.getAxesAttr().has_value()) {
         return mlir::failure();
     }
+
     const auto loc = interpolateOp.getLoc();
+    if (IE::isScalesAsParameter(interpolateOp.getScales(), interpolateOp.getScalesAttr())) {
+        logger.trace("Scales is parameter, skipping conversion.");
+        auto inType = mlir::cast<vpux::NDTypeInterface>(interpolateOp.getInput().getType());
+        auto axes = IE::getInterpAxesVal(loc, interpolateOp.getAxes(), interpolateOp.getAxesAttr(), inType);
+
+        logger.trace("Extracted axes: {0}", axes);
+        auto axesAttr = getIntArrayAttr(interpolateOp.getContext(), axes);
+        rewriter.replaceOpWithNewOp<IE::InterpolateOp>(
+                interpolateOp, interpolateOp.getInput(), nullptr, interpolateOp.getScales(), nullptr,
+                getIntArrayAttr(interpolateOp.getContext(), SmallVector<int64_t>()), nullptr, axesAttr,
+                interpolateOp.getTileOffsetAttrAttr(), interpolateOp.getInitialInputDimsAttrAttr(),
+                interpolateOp.getInitialOutputDimsAttrAttr(), interpolateOp.getAttr(),
+                interpolateOp.getOutputPaddingAttr(), interpolateOp.getInputPaddingAttr());
+
+        return mlir::success();
+    }
 
     // Infer sizes, scales and axes from input, output and pads.
-    const auto inShape = getShape(interpolateOp.getInput()).raw();
-    const auto outShape = getShape(interpolateOp.getOutput()).raw();
+    const auto inShape = getBoundedShape(interpolateOp.getInput()).raw();
+    const auto outShape = getBoundedShape(interpolateOp.getOutput()).raw();
 
     const auto extractPads = [&](const mlir::ArrayAttr padsAttr) {
         const auto pads = IE::extractIntVector(loc, nullptr, padsAttr);
@@ -193,6 +322,25 @@ mlir::LogicalResult ConvertToNearest::matchAndRewrite(IE::InterpolateOp op, mlir
 }  // namespace
 
 //
+// ReifyRankedShapedTypeOpInterface
+//
+
+mlir::LogicalResult vpux::IE::InterpolateOp::reifyResultShapes(mlir::OpBuilder& builder,
+                                                               mlir::ReifiedRankedShapedTypeDims& reifiedReturnShapes) {
+    auto loc = getLoc();
+
+    const auto outputShapedType = mlir::cast<mlir::ShapedType>(getOutput().getType());
+
+    const auto axesResult = IE::extractIntVector(loc, getAxes(), getAxesAttrAttr());
+    if (mlir::failed(axesResult)) {
+        return axesResult;
+    }
+
+    return reifyInterpolateResultShape(builder, loc, getInput(), getScales(), getScalesAttr(), axesResult.value(),
+                                       outputShapedType, reifiedReturnShapes);
+}
+
+//
 // fold
 //
 
@@ -256,6 +404,57 @@ mlir::OpFoldResult vpux::IE::InterpolateOp::fold(FoldAdaptor adaptor) {
     }
 
     return nullptr;
+}
+
+//
+// verify
+//
+
+mlir::LogicalResult vpux::IE::InterpolateOp::verify() {
+    if (!IE::isScalesAsParameter(getScales(), getScalesAttr())) {
+        return mlir::success();
+    }
+
+    // Scale-as-parameter path: only LINEAR and LINEAR_ONNX modes are supported.
+    const auto mode = getAttr().getMode().getValue();
+    if (mode != IE::InterpolateMode::LINEAR && mode != IE::InterpolateMode::LINEAR_ONNX) {
+        return errorAt(*this,
+                       "Interpolate with scales as parameter only supports LINEAR and LINEAR_ONNX modes, got {0}",
+                       getAttr().getMode());
+    }
+
+    // Only 4D input is supported.
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(getInput().getType());
+    if (inputType.getRank() != 4) {
+        return errorAt(*this, "Interpolate with scales as parameter only supports 4D input tensors, got rank {0}",
+                       inputType.getRank());
+    }
+
+    // Scales must be rank 1 to match the scales-as-parameter shape inference path.
+    const auto scaleType = mlir::cast<vpux::NDTypeInterface>(getScales().getType());
+    if (scaleType.getRank() != 1) {
+        return errorAt(*this, "Scales input must be rank 1, got shape {0}", scaleType.getShape());
+    }
+
+    // At least 2 interpolation axes are required.
+    if (getAxesAttr().has_value()) {
+        const auto axesSize = getAxesAttr()->size();
+        if (axesSize < 2) {
+            return errorAt(*this,
+                           "Interpolate with scales as parameter requires at least 2 interpolation axes, got {0}",
+                           axesSize);
+        }
+    }
+
+    // Only constant axes input is supported before canonicalization folds axes into axes_attr.
+    if (getAxes() != nullptr && getAxes().getDefiningOp<Const::DeclareOp>() == nullptr) {
+        auto* defOp = getAxes().getDefiningOp();
+        return errorAt(*this, "Only constant axes input is supported, got {0}",
+                       defOp ? mlir::StringAttr::get(getContext(), defOp->getName().getStringRef())
+                             : mlir::StringAttr::get(getContext(), "block argument"));
+    }
+
+    return mlir::success();
 }
 
 //

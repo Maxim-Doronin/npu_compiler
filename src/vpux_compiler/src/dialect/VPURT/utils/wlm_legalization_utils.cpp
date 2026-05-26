@@ -210,83 +210,76 @@ VPURT::TaskOp createFetchDMA(mlir::OpBuilder& builder, mlir::Value input, mlir::
     return fetchDMAOp->getParentOfType<VPURT::TaskOp>();
 }
 
-VPUIP::FetchDMAAttr getFetchDMAAttr(int64_t groupIdx, BarrierInfo& barrierInfo, size_t taskIndex) {
+VPURT::TaskOp createSkipDMA(mlir::OpBuilder& builder, mlir::Value input, mlir::Value output, int port,
+                            VPUIP::SkipDMAAttr skipDMAAttr, llvm::StringLiteral opName) {
+    auto* ctx = builder.getContext();
+    auto skipDmaLoc = mlir::NameLoc::get(mlir::StringAttr::get(ctx, opName));
+    auto portAttr = vpux::getIntAttr(ctx, port);
+
+    auto skipDMAOp = VPURT::wrapIntoTaskOp<VPUIP::SkipDMAOp>(builder, {}, {}, skipDmaLoc, input, output, portAttr,
+                                                             /*isOutOfOrder*/ false, /*isCritical*/ false,
+                                                             /*dmaHwpId*/ nullptr,
+                                                             /*dmaProfilingMetaData*/ nullptr, skipDMAAttr);
+
+    return skipDMAOp->getParentOfType<VPURT::TaskOp>();
+}
+
+VPUIP::FetchDMAAttr getFetchDMAAttr(int64_t groupIdxOrLogicalTaskIdx, BarrierInfo& barrierInfo, size_t taskIndex,
+                                    size_t tileIdx, size_t listIdx, int64_t descId, bool isLogicalTask) {
+    auto taskOp = barrierInfo.getTaskOpAtIndex(taskIndex);
+    const auto ctx = taskOp->getContext();
+
+    config::ExecutorKindAttr executorKindAttr = nullptr;
+    mlir::IntegerAttr execGroupIdxAttr = nullptr;
+    mlir::IntegerAttr logicalTaskIdxAttr = nullptr;
+    mlir::IntegerAttr descIdAttr = nullptr;
+    VPUIP::FetchTypeAttr fetchTypeAttr = nullptr;
+    auto tileIdxAttr = mlir::IntegerAttr::get(getInt64Type(ctx), 0);
+    auto listIdxAttr = mlir::IntegerAttr::get(getInt64Type(ctx), 0);
+
+    // If this is a logical task then we're fetching single DMA Descriptor
+    if (isLogicalTask) {
+        tileIdxAttr = mlir::IntegerAttr::get(getInt64Type(ctx), tileIdx);
+        listIdxAttr = mlir::IntegerAttr::get(getInt64Type(ctx), listIdx);
+        logicalTaskIdxAttr = mlir::IntegerAttr::get(getInt64Type(ctx), groupIdxOrLogicalTaskIdx);
+        descIdAttr = mlir::IntegerAttr::get(getInt64Type(ctx), descId);
+        fetchTypeAttr = VPUIP::FetchTypeAttr::get(ctx, VPUIP::FetchType::SingleDescriptor);
+        executorKindAttr = config::ExecutorKindAttr::get(ctx, config::ExecutorKind::DMA_NN);
+    } else {
+        auto taskQueueType = VPURT::getTaskQueueType(taskOp, false);
+        tileIdxAttr = mlir::IntegerAttr::get(getInt64Type(ctx), VPURT::getTileIndexForDpuOrShv(taskOp, taskQueueType));
+        listIdxAttr = mlir::IntegerAttr::get(getInt64Type(ctx), VPURT::getListIndexForDpuOrShv(taskOp));
+        execGroupIdxAttr = mlir::IntegerAttr::get(getInt64Type(ctx), groupIdxOrLogicalTaskIdx);
+        fetchTypeAttr = VPUIP::FetchTypeAttr::get(ctx, VPUIP::FetchType::DescriptorGroup);
+        executorKindAttr = config::ExecutorKindAttr::get(ctx, taskQueueType.type);
+    }
+    return VPUIP::FetchDMAAttr::get(ctx, executorKindAttr, tileIdxAttr, listIdxAttr, fetchTypeAttr, execGroupIdxAttr,
+                                    logicalTaskIdxAttr, descIdAttr);
+}
+
+VPUIP::SkipDMAAttr getSkipDMAAttr(BarrierInfo& barrierInfo, size_t taskIndex, size_t logicalTaskIdx, int64_t descId) {
     auto taskOp = barrierInfo.getTaskOpAtIndex(taskIndex);
     const auto ctx = taskOp->getContext();
     auto taskQueueType = VPURT::getTaskQueueType(taskOp, false);
-    auto executorKindAttr = config::ExecutorKindAttr::get(ctx, taskQueueType.type);
     auto tileIdxAttr = mlir::IntegerAttr::get(getInt64Type(ctx), VPURT::getTileIndexForDpuOrShv(taskOp, taskQueueType));
     auto listIdxAttr = mlir::IntegerAttr::get(getInt64Type(ctx), VPURT::getListIndexForDpuOrShv(taskOp));
-    auto groupIdxAttr = mlir::IntegerAttr::get(getInt64Type(ctx), groupIdx);
-    return VPUIP::FetchDMAAttr::get(ctx, executorKindAttr, tileIdxAttr, listIdxAttr, groupIdxAttr);
+
+    auto logicalTaskIdxAttr = mlir::IntegerAttr::get(getInt64Type(ctx), logicalTaskIdx);
+    auto descIdAttr = mlir::IntegerAttr::get(getInt64Type(ctx), descId);
+
+    return VPUIP::SkipDMAAttr::get(ctx, tileIdxAttr, listIdxAttr, logicalTaskIdxAttr, descIdAttr);
 }
 
-void legalizeScheduleForNonWlm(mlir::func::FuncOp netFunc, BarrierInfo& barrierInfo, Logger log) {
-    log.info("Legalize schedule for non-WLM");
-
-    // Build task queue type map for all queues in order to test paths between tasks on different FIFOs.
-    barrierInfo.clearTaskQueueTypeMap();
-    barrierInfo.buildTaskQueueTypeMap();
-
-    bool modifiedIR = false;
-    ExecutionGroupAnalysis execGroupAnalysis(netFunc, /* ignoreVariantLimit */ true, /* ignoreInvariantLimit */ false);
-
-    auto getExecutionGroups = [&](vpux::config::ExecutorKind executorKind) {
-        if (executorKind == config::ExecutorKind::DPU) {
-            return execGroupAnalysis.getDPUExecutionGroups();
-        } else if (executorKind == config::ExecutorKind::SHAVE_ACT) {
-            return execGroupAnalysis.getActShvExecutionGroups();
-        } else {
-            VPUX_THROW("Unsupported executor kind for non-WLM legalization '{0}'", executorKind);
-        }
-    };
-
-    std::vector<vpux::config::ExecutorKind> executors = {config::ExecutorKind::DPU, config::ExecutorKind::SHAVE_ACT};
-    for (auto executorKind : executors) {
-        bool modifiedIRForExecutor = false;
-        auto existingBarriersCount = barrierInfo.getNumOfBarrierOps();
-
-        auto execGroups = getExecutionGroups(executorKind);
-        for (size_t taskBlockIndex = 0; taskBlockIndex < barrierInfo.getControlGraphBlockCount(); ++taskBlockIndex) {
-            modifiedIRForExecutor |=
-                    barrierInfo.createBarrierDependenciesForDescriptorFetchInNonWlm(taskBlockIndex, execGroups);
-        }
-
-        if (modifiedIRForExecutor) {
-            log.info("Modified barrier dependencies for non-WLM {0} descriptor fetch. Inserted {1} new barriers.",
-                     stringifyExecutorKind(executorKind), barrierInfo.getNumOfBarrierOps() - existingBarriersCount);
-        }
-        modifiedIR |= modifiedIRForExecutor;
-    }
-
-    barrierInfo.clearTaskQueueTypeMap();
-
-    if (modifiedIR) {
-        VPURT::orderExecutionTasksAndBarriers(netFunc, barrierInfo, log);
-        VPUX_THROW_UNLESS(barrierInfo.verifyControlGraphSplit(), "Encountered split of control graph is incorrect");
-
-        execGroupAnalysis =
-                ExecutionGroupAnalysis(netFunc, /* ignoreVariantLimit */ true, /* ignoreInvariantLimit */ false);
-        VPUX_THROW_UNLESS(barrierInfo.verifyBarriersForTaskDescriptorFetch(execGroupAnalysis.getExecutionGroups(),
-                                                                           /* wlmEnabled */ false),
-                          "Encountered execution group without required barrier for task descriptor fetch.");
-    }
-}
-
-bool verifyBarriersForTaskDescriptorFetch(BarrierInfo& barrierInfo, mlir::func::FuncOp func, bool wlmFlag,
+bool verifyBarriersForTaskDescriptorFetch(BarrierInfo& barrierInfo, mlir::func::FuncOp func,
                                           std::optional<WorkloadManagementMode> wlmMode) {
-    bool ignoreVariantLimit = false;
-    if (!wlmFlag) {
-        ignoreVariantLimit = true;
-    }
-    auto execGroupAnalysis = ExecutionGroupAnalysis(func, ignoreVariantLimit, /* ignoreInvariantLimit */ false);
+    auto execGroupAnalysis = ExecutionGroupAnalysis(func);
     auto validateEachTileSeparately = true;
-    if (wlmFlag && wlmMode.has_value() && wlmMode.value() <= WorkloadManagementMode::PWLM_V0_1_PAGES) {
+    if (wlmMode.has_value() && wlmMode.value() <= WorkloadManagementMode::PWLM_V0_1_PAGES) {
         validateEachTileSeparately = false;
     }
     auto execGroups = validateEachTileSeparately ? execGroupAnalysis.getExecutionGroups()
                                                  : execGroupAnalysis.getExecutionGroupsForTile(0);
-    return barrierInfo.verifyBarriersForTaskDescriptorFetch(execGroups, wlmFlag);
+    return barrierInfo.verifyBarriersForTaskDescriptorFetch(execGroups);
 }
 
 // Verify that Fetch DMAs have correct dependencies and that FetchDMA fro GroupN

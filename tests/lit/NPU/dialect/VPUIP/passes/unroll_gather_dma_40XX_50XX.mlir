@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --unroll-gather-dma  %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --unroll-gather-dma  %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
@@ -82,7 +82,7 @@ func.func @UnrollGatherDMA() -> !OutputDistributed {
     //CHECK-SAME:   -> memref<1x1x1024x683xf16, [@CMX_NN, 1]>
     //CHECK:    }
     //CHECK:    VPURT.Task waits([[BARRIER_0]] : !VPURT.Barrier) updates([[BARRIER_1]] : !VPURT.Barrier) {
-    //CHECK:      VPUIP.GatherDMA <{elementSize = 0 : i64, padding = 0 : i64, port = 0 : i64, split_candidate}>
+    //CHECK:      VPUIP.GatherDMA <{elementSize = 0 : i64, padding = 0 : i64, port = 0 : i64, split_candidate = true}>
     //CHECK-SAME:   inputs([[INPUT_BUFF_2]] : memref<1x1x128256x682xf16, {order = #NCHW, strides = [262668288, 262668288, 2048, 1]}, @DDR>)
     //CHECK-SAME:   indices([[INDICES_BUFF_2]] : memref<1x1x1024x1xi64, [@CMX_NN, 2]>)
     //CHECK-SAME:   outputs([[OUTPUT_BUFF_2]] : memref<1x1x1024x682xf16, [@CMX_NN, 2]>)
@@ -168,7 +168,7 @@ func.func @UnrollGatherDMASegmentedIndices() -> !OutputDistributed {
     //CHECK     }
 
     //CHECK:    VPURT.Task waits([[BARRIER_0]] : !VPURT.Barrier) updates([[BARRIER_1]] : !VPURT.Barrier)  {
-    //CHECK:    VPUIP.GatherDMA <{elementSize = 0 : i64, padding = 0 : i64, port = 0 : i64, split_candidate}>
+    //CHECK:    VPUIP.GatherDMA <{elementSize = 0 : i64, padding = 0 : i64, port = 0 : i64, split_candidate = true}>
     //CHECK-SAME:    inputs([[INPUT_BUFF]] : memref<184320x4x1x1xsi4, @DDR>)
     //CHECK-SAME:    indices([[INDICES_BUFF_2]] : memref<4x1x1x1xi64, [@CMX_NN, 2]>)
     //CHECK-SAME:    outputs([[OUTPUT_BUFF_2]] : memref<4x4x1x1xsi4, [@CMX_NN, 2]>)

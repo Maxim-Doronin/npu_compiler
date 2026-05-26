@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --one-shot-bufferize-VPU-to-VPUIP %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --one-shot-bufferize-VPU-to-VPUIP %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 // CHECK-LABEL:  func.func @StridedSlice1Dim
 // CHECK-SAME:      ([[ARG:%.+]]: memref<3x40x40x15xf16>)

@@ -39,7 +39,6 @@
 #include "vpux/compiler/dialect/VPU/IR/ops/reduce.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/shape_manipulation.hpp"
 #include "vpux/compiler/dialect/VPU/IR/ops/specialized.hpp"
-#include "vpux/compiler/dialect/VPU/transforms/factories/shave_kernel_info.hpp"
 #include "vpux/compiler/dialect/VPU/utils/layout_utils.hpp"
 #include "vpux/compiler/dialect/config/IR/resources.hpp"
 #include "vpux/compiler/utils/permute_utils.hpp"
@@ -57,8 +56,7 @@ namespace {
 class ConvolutionDimsOrderOpModelForSW final :
         public IE::LayoutInfoOpInterface::FallbackModel<ConvolutionDimsOrderOpModelForSW> {
 public:
-    static void inferLayoutInfo(mlir::Operation*, IE::LayerLayoutInfo& info, const bool /*seOpsEnabled*/,
-                                const bool /*seExperimentalOpsEnabled*/) {
+    static void inferLayoutInfo(mlir::Operation*, IE::LayerLayoutInfo& info) {
         VPU::inferLayoutInfoSameInOutSpecificDimsOrder(
                 info, {DimsOrder::NCHW, DimsOrder::NHWC, DimsOrder::CHW, DimsOrder::HWC});
         info.setInput(1, DimsOrder::OIYX);
@@ -94,8 +92,7 @@ public:
 class NCEConvolutionDimsOrderOpModelForHW final :
         public IE::LayoutInfoOpInterface::FallbackModel<NCEConvolutionDimsOrderOpModelForHW> {
 public:
-    static void inferLayoutInfo(mlir::Operation*, IE::LayerLayoutInfo& info, const bool /*seOpsEnabled*/,
-                                const bool /*seExperimentalOpsEnabled*/) {
+    static void inferLayoutInfo(mlir::Operation*, IE::LayerLayoutInfo& info) {
         info.setInput(0, DimsOrder::NHWC);
         info.setInput(1, DimsOrder::OYXI);
 
@@ -147,8 +144,7 @@ public:
 
 class NCEDimsOrderOpModelForHW final : public IE::LayoutInfoOpInterface::FallbackModel<NCEDimsOrderOpModelForHW> {
 public:
-    static void inferLayoutInfo(mlir::Operation*, IE::LayerLayoutInfo& info, const bool /*seOpsEnabled*/,
-                                const bool /*seExperimentalOpsEnabled*/) {
+    static void inferLayoutInfo(mlir::Operation*, IE::LayerLayoutInfo& info) {
         info.fill(DimsOrder::NHWC);
     }
 
@@ -188,8 +184,7 @@ public:
 class NCEEltwiseDimsOrderOpModelForHW final :
         public IE::LayoutInfoOpInterface::FallbackModel<NCEEltwiseDimsOrderOpModelForHW> {
 public:
-    static void inferLayoutInfo(mlir::Operation*, IE::LayerLayoutInfo& info, const bool /*seOpsEnabled*/,
-                                const bool /*seExperimentalOpsEnabled*/) {
+    static void inferLayoutInfo(mlir::Operation*, IE::LayerLayoutInfo& info) {
         info.fill(DimsOrder::NHWC);
     }
 
@@ -291,13 +286,22 @@ private:
     }
 
 public:
-    static void inferLayoutInfo(mlir::Operation* op, IE::LayerLayoutInfo& info, const bool /*seOpsEnabled*/,
-                                const bool /*seExperimentalOpsEnabled*/) {
+    static void inferLayoutInfo(mlir::Operation* op, IE::LayerLayoutInfo& info) {
         VPU::inferLayoutInfoSameInOutSpecificDimsOrder(
                 info, {DimsOrder::NCHW, DimsOrder::NCWH, DimsOrder::NHWC, DimsOrder::NWHC});
 
-        auto shaveInfo = VPU::getShaveKernelInfo(op);
-        const auto shaveVecSize = shaveInfo->getShaveVectorSize();
+        if (!mlir::isa<IE::MVNOp, VPU::MVNOp>(op)) {
+            VPUX_THROW("Unsupported operation in MVNLayoutInfoOpModelForSW: {0}", op);
+        }
+
+        // MVN kernel on LNL currently uses 256 bit vectorization
+        // see: E#101157, E#28163
+        auto shaveVecSize = Bit(256);
+        const auto arch = config::getArch(op);
+        if (arch == config::ArchKind::NPU37XX) {
+            shaveVecSize = Bit(128);
+        }
+
         if (shaveVecSize.count() == 0) {
             return;
         }
@@ -447,6 +451,8 @@ void redirectLayoutOpInterfacesForVPU(mlir::DialectRegistry& registry) {
         VPU::BitwiseAndOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         VPU::BitwiseOrOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         VPU::BitwiseXorOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
+        VPU::BitwiseRightShiftOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
+        VPU::BitwiseLeftShiftOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         VPU::LessOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         VPU::LessEqualOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         VPU::NotEqualOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
@@ -454,6 +460,7 @@ void redirectLayoutOpInterfacesForVPU(mlir::DialectRegistry& registry) {
         VPU::GreaterEqualOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         VPU::EqualOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         VPU::IsInfOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
+        VPU::IsFiniteOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         VPU::FloorModOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
 
         VPU::StridedSliceOp::attachInterface<vpux::VPU::SameInOutAnyDimsOrderOpModelForSW>(*ctx);
@@ -587,7 +594,7 @@ void redirectLayoutOpInterfacesForVPU(mlir::DialectRegistry& registry) {
         VPU::RMSOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
         VPU::RoPEOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
         VPU::SDPAOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
-        VPU::SDPAExtendedOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
+        VPU::AttentionOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
         VPU::FlashSDPAOp::attachInterface<vpux::VPU::FlashSDPADimsOrderOpModel>(*ctx);
         VPU::ExternalKernelOp::attachInterface<vpux::VPU::SameInOutDimsOrderOpModel_NHWC>(*ctx);
         VPU::ReduceSquareOp::attachInterface<vpux::VPU::SameInOutDefaultDimsOrderOpModelForSW>(*ctx);
@@ -658,6 +665,8 @@ void redirectLayoutOpInterfacesForIE(mlir::DialectRegistry& registry) {
         IE::BitwiseAndOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         IE::BitwiseOrOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         IE::BitwiseXorOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
+        IE::BitwiseRightShiftOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
+        IE::BitwiseLeftShiftOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         IE::LessOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         IE::LessEqualOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         IE::NotEqualOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
@@ -665,6 +674,7 @@ void redirectLayoutOpInterfacesForIE(mlir::DialectRegistry& registry) {
         IE::GreaterEqualOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         IE::EqualOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         IE::IsInfOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
+        IE::IsFiniteOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         IE::DynamicDequantizeOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
         IE::DequantizeOp::attachInterface<vpux::VPU::SameAnyDimsOrderOpModelForSW>(*ctx);
 

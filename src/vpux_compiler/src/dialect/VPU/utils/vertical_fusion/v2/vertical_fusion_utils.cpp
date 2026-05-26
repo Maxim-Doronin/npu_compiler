@@ -91,12 +91,12 @@ int64_t getTilingLimit(Dim axis, VFConfig& config, bool multiDimTiling) {
         auto limit = getMaxNumTiles(curOp)[curAxis.ind()];
         if (curAxis.ind() >= Dims4D::Act::getSpatialDim(0).ind()) {
             limit = multiDimTiling ? divUp(limit, (MINIMUM_LENGTH_TILING * MINIMUM_LENGTH_TILING))
-                                   : limit / MINIMUM_LENGTH_TILING;
+                                   : std::max(limit / MINIMUM_LENGTH_TILING, int64_t(1));
         } else if (curAxis.ind() == Dims4D::Act::C.ind() && multiDimTiling) {
             limit = divUp(limit, (MINIMUM_LENGTH_TILING * MINIMUM_LENGTH_TILING));
         }
         limit = std::min(limit, VPU::NCEInvariant::VPU_DIMENSION_LIMIT / MINIMUM_LENGTH_TILING);
-        if (mlir::isa<IE::AlignedChannelsOpInterface>(curOp)) {
+        if (mlir::isa<IE::AlignedChannelsOpInterface>(curOp) && curAxis == Dims4D::Act::C) {
             axisLengthsOfChannelAlignedOps.emplace_back(limit);
         } else {
             axisLengthsOfNonChannelAlignedOps.emplace_back(limit);
@@ -149,8 +149,8 @@ mlir::FailureOr<TilingStorage> calculateTilingRegions(VFConfig& config, ArrayRef
         return llvm::is_contained(config.getOutputs(), op);
     };
 
-    const auto tiles =
-            fillDividedTiles(config.getVFOperations().getArrayRef(), strategy, outputShape, dynAlignmentFunction);
+    const auto tiles = fillDividedTiles(config.getOutputs().back(), config.getVFOperations().getArrayRef(), strategy,
+                                        outputShape, dynAlignmentFunction);
     if (mlir::failed(tiles)) {
         return mlir::failure();
     }
@@ -452,5 +452,45 @@ std::optional<Dim> getVFOptimizedDim(const VFSplit& vfSplit) {
     }
 
     return dim->first;
+}
+
+mlir::BlockArgument getVFBlockArgument(mlir::Value operand) {
+    if (operand == nullptr) {
+        return nullptr;
+    }
+    if (auto blockArg = mlir::dyn_cast<mlir::BlockArgument>(operand)) {
+        return blockArg;
+    }
+    auto definingOp = operand.getDefiningOp();
+    while (definingOp != nullptr && VPU::isPureViewOp(definingOp)) {
+        if (auto blockArg = mlir::dyn_cast<mlir::BlockArgument>(definingOp->getOperand(0))) {
+            return blockArg;
+        }
+        definingOp = definingOp->getOperand(0).getDefiningOp();
+    }
+    return nullptr;
+}
+
+bool supportMultiClusterStrategyAdjustmentInVF([[maybe_unused]] mlir::Operation* op) {
+    if (auto nceOp = mlir::dyn_cast<VPU::NCEOpInterface>(op)) {
+        // Cost model is not accurate for SEP ops, disable the adjustment for now
+        if (mlir::isa<VPU::SparseTensorType>(op->getOperand(0).getType())) {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::optional<std::pair<mlir::Operation*, int64_t>> findFirstNonViewUser(mlir::Operation* operation) {
+    while (operation != nullptr && !operation->use_empty()) {
+        const auto use = operation->use_begin();
+        auto user = use->getOwner();
+        if (mlir::isa<VPU::TilingViewLikeOpInterface>(user)) {
+            operation = user;
+        } else {
+            return std::make_pair(user, use->getOperandNumber());
+        }
+    }
+    return std::nullopt;
 }
 }  // namespace vpux::VPU::VF::v2

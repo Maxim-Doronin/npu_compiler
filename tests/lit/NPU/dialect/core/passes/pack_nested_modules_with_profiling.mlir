@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --init-compiler=vpu-arch=%arch% --split-input-file --pack-nested-modules=enable-profiling=true %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --init-compiler=platform=%platform% --split-input-file --pack-nested-modules=enable-profiling=true %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 module @AddingProfilingOutput {
   net.NetworkInfo entryPoint : @main inputsInfo : {

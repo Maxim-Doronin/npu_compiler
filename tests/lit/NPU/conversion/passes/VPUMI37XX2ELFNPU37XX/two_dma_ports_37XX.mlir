@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --convert-VPUMI37XX-to-ELF %s | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --convert-VPUMI37XX-to-ELF %s | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 #NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
 module @mainModule {
@@ -32,22 +32,32 @@ module @mainModule {
     %3 = VPUMI37XX.NNDMA <{port = 0 : i64}> inputs(%arg0 : memref<1x16x16x16xf16, #NHWC, @DDR>) outputs(%0 : memref<1x16x16x16xf16, #NHWC, [@CMX_NN, 0]>) nextDMAIdx(%6 : !VPURegMapped.Index<0:0:1>) updates(%2 : !VPURegMapped.Index<0:0:0>) start_after(0) clean_after(0) acceleration_mode(<DISABLE>) -> !VPURegMapped.Index<0:0:0>
     %10 = VPUMI37XX.MappedInference dmas(%3, %4 : !VPURegMapped.Index<0:0:0>, !VPURegMapped.Index<0:1:0>) barriers(%2 : !VPURegMapped.Index<0:0:0>) dmaCount([3, 3]) invariantCount(0) variantCount(0) actKernelRangesCount(0) actKernelInvocationsCount(0) barrierCount(2) -> !VPURegMapped.Index<0:0:0>
 
+    // CHECK: [[BAR_0:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 2 : ui8, producer_count = 2 : ui8}<0, -1> -> !VPURegMapped.Index<0:0:0>
+    // CHECK: [[BAR_1:%.+]] = VPUMI37XX.ConfigureBarrier {consumer_count = 2 : ui8, producer_count = 2 : ui8}<1, -1> -> !VPURegMapped.Index<0:0:1>
+    // CHECK: [[DMA_P1_2:%.+]] = VPUMI37XX.NNDMA {{.+}}-> !VPURegMapped.Index<0:1:2>
+    // CHECK: [[DMA_P0_2:%.+]] = VPUMI37XX.NNDMA {{.+}}-> !VPURegMapped.Index<0:0:2>
+    // CHECK: [[DMA_P1_1:%.+]] = VPUMI37XX.NNDMA {{.+}}-> !VPURegMapped.Index<0:1:1>
+    // CHECK: [[DMA_P0_1:%.+]] = VPUMI37XX.NNDMA {{.+}}-> !VPURegMapped.Index<0:0:1>
+    // CHECK: [[DMA_P1_0:%.+]] = VPUMI37XX.NNDMA {{.+}}-> !VPURegMapped.Index<0:1:0>
+    // CHECK: [[DMA_P0_0:%.+]] = VPUMI37XX.NNDMA {{.+}}-> !VPURegMapped.Index<0:0:0>
+    // CHECK: [[MI:%.+]] = VPUMI37XX.MappedInference {{.+}}-> !VPURegMapped.Index<0:0:0>
+
     // CHECK: [[dmaSec0:%.+]] = ELFNPU37XX.CreateSection secType(SHT_PROGBITS) secFlags(SHF_ALLOC) {secAddrAlign = 64 : i64, secInfo = 0 : i64, secName = ".text.dmaTasks0"} -> !ELFNPU37XX.Section {
-      // CHECK: ELFNPU37XX.PutOpInSection %9 : !VPURegMapped.Index<0:0:0>
-      // CHECK: ELFNPU37XX.PutOpInSection %7 : !VPURegMapped.Index<0:0:1>
-      // CHECK: ELFNPU37XX.PutOpInSection %5 : !VPURegMapped.Index<0:0:2>
+      // CHECK: ELFNPU37XX.PutOpInSection [[DMA_P0_0]] : !VPURegMapped.Index<0:0:0>
+      // CHECK: ELFNPU37XX.PutOpInSection [[DMA_P0_1]] : !VPURegMapped.Index<0:0:1>
+      // CHECK: ELFNPU37XX.PutOpInSection [[DMA_P0_2]] : !VPURegMapped.Index<0:0:2>
 
     // CHECK: [[dmaSec1:%.+]] = ELFNPU37XX.CreateSection secType(SHT_PROGBITS) secFlags(SHF_ALLOC) {secAddrAlign = 64 : i64, secInfo = 0 : i64, secName = ".text.dmaTasks1"} -> !ELFNPU37XX.Section {
-      // CHECK: ELFNPU37XX.PutOpInSection %8 : !VPURegMapped.Index<0:1:0>
-      // CHECK: ELFNPU37XX.PutOpInSection %6 : !VPURegMapped.Index<0:1:1>
-      // CHECK: ELFNPU37XX.PutOpInSection %4 : !VPURegMapped.Index<0:1:2>
+      // CHECK: ELFNPU37XX.PutOpInSection [[DMA_P1_0]] : !VPURegMapped.Index<0:1:0>
+      // CHECK: ELFNPU37XX.PutOpInSection [[DMA_P1_1]] : !VPURegMapped.Index<0:1:1>
+      // CHECK: ELFNPU37XX.PutOpInSection [[DMA_P1_2]] : !VPURegMapped.Index<0:1:2>
 
     // CHECK: [[barSec:%.+]] = ELFNPU37XX.CreateSection secType(SHT_PROGBITS) secFlags("SHF_NONE") {secAddrAlign = 64 : i64, secInfo = 0 : i64, secName = ".text.BarrierConfigs"} -> !ELFNPU37XX.Section {
-      // CHECK: ELFNPU37XX.PutOpInSection %2 : !VPURegMapped.Index<0:0:0>
-      // CHECK: ELFNPU37XX.PutOpInSection %3 : !VPURegMapped.Index<0:0:1>
+      // CHECK: ELFNPU37XX.PutOpInSection [[BAR_0]] : !VPURegMapped.Index<0:0:0>
+      // CHECK: ELFNPU37XX.PutOpInSection [[BAR_1]] : !VPURegMapped.Index<0:0:1>
 
     // CHECK: [[miSec:%.+]] = ELFNPU37XX.CreateSection secType(SHT_PROGBITS) secFlags("SHF_NONE") {secAddrAlign = 64 : i64, secInfo = 0 : i64, secName = ".text.MappedInference"} -> !ELFNPU37XX.Section {
-      // CHECK: ELFNPU37XX.PutOpInSection %10 : !VPURegMapped.Index<0:0:0>
+      // CHECK: ELFNPU37XX.PutOpInSection [[MI]] : !VPURegMapped.Index<0:0:0>
 
     // CHECK: [[metaSec:%.+]] = ELFNPU37XX.CreateMetadataSection secFlags("SHF_NONE") {secAddrAlign = 8 : i64, secInfo = 0 : i64, secName = ".metadata"} -> !ELFNPU37XX.Section {
       // CHECK: [[netMeta:%.+]] = VPUMI37XX.NetworkMetadata -> !VPURegMapped.Index<0:0:0>
@@ -95,40 +105,40 @@ module @mainModule {
       // CHECK: ELFNPU37XX.PutOpInSection [[symDmaSec0]] : !ELFNPU37XX.Symbol
       // CHECK: ELFNPU37XX.PutOpInSection [[symDmaSec1]] : !ELFNPU37XX.Symbol
       // CHECK: ELFNPU37XX.PutOpInSection [[symBarSec]] : !ELFNPU37XX.Symbol
-      // CHECK: [[miSym:%.+]] = ELFNPU37XX.Symbol %10 name("MappedInference_entry") type(<VPU_STT_ENTRY>) : !VPURegMapped.Index<0:0:0>
+      // CHECK: [[miSym:%.+]] = ELFNPU37XX.Symbol [[MI]] name("MappedInference_entry") type(<VPU_STT_ENTRY>) : !VPURegMapped.Index<0:0:0>
 
     // CHECK: [[rltDmaNetIn0:%.+]] = ELFNPU37XX.CreateRelocationSection secName(".rlt.DMA_NetInput0") sourceSymbolTableSection([[symTabSecIn]]) targetSection([[dmaSec0]]) secFlags("SHF_INFO_LINK|VPU_SHF_JIT|VPU_SHF_USERINPUT") -> !ELFNPU37XX.Section {
-      // CHECK: ELFNPU37XX.Reloc baseOp(%9 : !VPURegMapped.Index<0:0:0>) offset(16) <R_VPU_64> [[symIn0]] 0
-      // CHECK: ELFNPU37XX.Reloc baseOp(%7 : !VPURegMapped.Index<0:0:1>) offset(16) <R_VPU_64> [[symIn0]] 0
+      // CHECK: ELFNPU37XX.Reloc baseOp([[DMA_P0_0]] : !VPURegMapped.Index<0:0:0>) offset(16) <R_VPU_64> [[symIn0]] 0
+      // CHECK: ELFNPU37XX.Reloc baseOp([[DMA_P0_1]] : !VPURegMapped.Index<0:0:1>) offset(16) <R_VPU_64> [[symIn0]] 0
 
     // CHECK: [[rltDmaNetOut0:%.+]] = ELFNPU37XX.CreateRelocationSection secName(".rlt.DMA_NetOutput0") sourceSymbolTableSection([[symTabSecOut]]) targetSection([[dmaSec0]]) secFlags("SHF_INFO_LINK|VPU_SHF_JIT|VPU_SHF_USEROUTPUT") -> !ELFNPU37XX.Section {
-      // CHECK: ELFNPU37XX.Reloc baseOp(%5 : !VPURegMapped.Index<0:0:2>) offset(24) <R_VPU_64> [[symOut0]] 0
+      // CHECK: ELFNPU37XX.Reloc baseOp([[DMA_P0_2]] : !VPURegMapped.Index<0:0:2>) offset(24) <R_VPU_64> [[symOut0]] 0
 
     // CHECK: [[rltDmaTasks0:%.+]] = ELFNPU37XX.CreateRelocationSection secName(".rlt.text.dmaTasks0") sourceSymbolTableSection([[RT_SYMTAB]]) targetSection([[dmaSec0]]) secFlags(SHF_INFO_LINK) -> !ELFNPU37XX.Section {
-      // CHECK: ELFNPU37XX.Reloc baseOp(%9 : !VPURegMapped.Index<0:0:0>) offset(24) <R_VPU_64> [[SYM_NNCMX_SLICE_BASE]] 0
-      // CHECK: ELFNPU37XX.Reloc baseOp(%9 : !VPURegMapped.Index<0:0:0>) offset(0) <R_VPU_32_RTM> [[SYM_RTM_DMA0]] 128
-      // CHECK: ELFNPU37XX.Reloc baseOp(%7 : !VPURegMapped.Index<0:0:1>) offset(24) <R_VPU_64> [[SYM_NNCMX_SLICE_BASE]] 0
-      // CHECK: ELFNPU37XX.Reloc baseOp(%7 : !VPURegMapped.Index<0:0:1>) offset(0) <R_VPU_32_RTM> [[SYM_RTM_DMA0]] 128
-      // CHECK: ELFNPU37XX.Reloc baseOp(%5 : !VPURegMapped.Index<0:0:2>) offset(16) <R_VPU_64> [[SYM_NNCMX_SLICE_BASE]] 0
+      // CHECK: ELFNPU37XX.Reloc baseOp([[DMA_P0_0]] : !VPURegMapped.Index<0:0:0>) offset(24) <R_VPU_64> [[SYM_NNCMX_SLICE_BASE]] 0
+      // CHECK: ELFNPU37XX.Reloc baseOp([[DMA_P0_0]] : !VPURegMapped.Index<0:0:0>) offset(0) <R_VPU_32_RTM> [[SYM_RTM_DMA0]] 128
+      // CHECK: ELFNPU37XX.Reloc baseOp([[DMA_P0_1]] : !VPURegMapped.Index<0:0:1>) offset(24) <R_VPU_64> [[SYM_NNCMX_SLICE_BASE]] 0
+      // CHECK: ELFNPU37XX.Reloc baseOp([[DMA_P0_1]] : !VPURegMapped.Index<0:0:1>) offset(0) <R_VPU_32_RTM> [[SYM_RTM_DMA0]] 128
+      // CHECK: ELFNPU37XX.Reloc baseOp([[DMA_P0_2]] : !VPURegMapped.Index<0:0:2>) offset(16) <R_VPU_64> [[SYM_NNCMX_SLICE_BASE]] 0
 
     // CHECK: [[rltDmaNetIn1:%.+]] = ELFNPU37XX.CreateRelocationSection secName(".rlt.DMA_NetInput1") sourceSymbolTableSection([[symTabSecIn]]) targetSection([[dmaSec1]]) secFlags("SHF_INFO_LINK|VPU_SHF_JIT|VPU_SHF_USERINPUT") -> !ELFNPU37XX.Section {
-      // CHECK: ELFNPU37XX.Reloc baseOp(%8 : !VPURegMapped.Index<0:1:0>) offset(16) <R_VPU_64> [[symIn0]] 0
-      // CHECK: ELFNPU37XX.Reloc baseOp(%6 : !VPURegMapped.Index<0:1:1>) offset(16) <R_VPU_64> [[symIn0]] 0
+      // CHECK: ELFNPU37XX.Reloc baseOp([[DMA_P1_0]] : !VPURegMapped.Index<0:1:0>) offset(16) <R_VPU_64> [[symIn0]] 0
+      // CHECK: ELFNPU37XX.Reloc baseOp([[DMA_P1_1]] : !VPURegMapped.Index<0:1:1>) offset(16) <R_VPU_64> [[symIn0]] 0
 
     // CHECK: [[rltDmaNetOut1:%.+]] = ELFNPU37XX.CreateRelocationSection secName(".rlt.DMA_NetOutput1") sourceSymbolTableSection([[symTabSecOut]]) targetSection([[dmaSec1]]) secFlags("SHF_INFO_LINK|VPU_SHF_JIT|VPU_SHF_USEROUTPUT") -> !ELFNPU37XX.Section {
-      // CHECK: ELFNPU37XX.Reloc baseOp(%4 : !VPURegMapped.Index<0:1:2>) offset(24) <R_VPU_64> [[symOut1]] 0
+      // CHECK: ELFNPU37XX.Reloc baseOp([[DMA_P1_2]] : !VPURegMapped.Index<0:1:2>) offset(24) <R_VPU_64> [[symOut1]] 0
 
     // CHECK: [[rltDmaTasks1:%.+]] = ELFNPU37XX.CreateRelocationSection secName(".rlt.text.dmaTasks1") sourceSymbolTableSection([[RT_SYMTAB]]) targetSection([[dmaSec1]]) secFlags(SHF_INFO_LINK) -> !ELFNPU37XX.Section {
-      // CHECK: ELFNPU37XX.Reloc baseOp(%8 : !VPURegMapped.Index<0:1:0>) offset(24) <R_VPU_64> [[SYM_NNCMX_SLICE_BASE]] 2097152
-      // CHECK: ELFNPU37XX.Reloc baseOp(%8 : !VPURegMapped.Index<0:1:0>) offset(0) <R_VPU_32_RTM> [[SYM_RTM_DMA1]] 128
-      // CHECK: ELFNPU37XX.Reloc baseOp(%6 : !VPURegMapped.Index<0:1:1>) offset(24) <R_VPU_64> [[SYM_NNCMX_SLICE_BASE]] 2097152
-      // CHECK: ELFNPU37XX.Reloc baseOp(%6 : !VPURegMapped.Index<0:1:1>) offset(0) <R_VPU_32_RTM> [[SYM_RTM_DMA1]] 128
-      // CHECK: ELFNPU37XX.Reloc baseOp(%4 : !VPURegMapped.Index<0:1:2>) offset(16) <R_VPU_64> [[SYM_NNCMX_SLICE_BASE]] 2097152
+      // CHECK: ELFNPU37XX.Reloc baseOp([[DMA_P1_0]] : !VPURegMapped.Index<0:1:0>) offset(24) <R_VPU_64> [[SYM_NNCMX_SLICE_BASE]] 2097152
+      // CHECK: ELFNPU37XX.Reloc baseOp([[DMA_P1_0]] : !VPURegMapped.Index<0:1:0>) offset(0) <R_VPU_32_RTM> [[SYM_RTM_DMA1]] 128
+      // CHECK: ELFNPU37XX.Reloc baseOp([[DMA_P1_1]] : !VPURegMapped.Index<0:1:1>) offset(24) <R_VPU_64> [[SYM_NNCMX_SLICE_BASE]] 2097152
+      // CHECK: ELFNPU37XX.Reloc baseOp([[DMA_P1_1]] : !VPURegMapped.Index<0:1:1>) offset(0) <R_VPU_32_RTM> [[SYM_RTM_DMA1]] 128
+      // CHECK: ELFNPU37XX.Reloc baseOp([[DMA_P1_2]] : !VPURegMapped.Index<0:1:2>) offset(16) <R_VPU_64> [[SYM_NNCMX_SLICE_BASE]] 2097152
 
     // CHECK: [[rltMi:%.+]] = ELFNPU37XX.CreateRelocationSection secName(".rlt.text.MappedInference") sourceSymbolTableSection([[symTabTasks]]) targetSection([[miSec]]) secFlags(SHF_INFO_LINK) -> !ELFNPU37XX.Section {
-      // CHECK: ELFNPU37XX.Reloc baseOp(%10 : !VPURegMapped.Index<0:0:0>) offset(72) <R_VPU_64> [[symDmaSec0]] 0
-      // CHECK: ELFNPU37XX.Reloc baseOp(%10 : !VPURegMapped.Index<0:0:0>) offset(112) <R_VPU_64> [[symDmaSec1]] 0
-      // CHECK: ELFNPU37XX.Reloc baseOp(%10 : !VPURegMapped.Index<0:0:0>) offset(312) <R_VPU_64> [[symBarSec]] 0
+      // CHECK: ELFNPU37XX.Reloc baseOp([[MI]] : !VPURegMapped.Index<0:0:0>) offset(72) <R_VPU_64> [[symDmaSec0]] 0
+      // CHECK: ELFNPU37XX.Reloc baseOp([[MI]] : !VPURegMapped.Index<0:0:0>) offset(112) <R_VPU_64> [[symDmaSec1]] 0
+      // CHECK: ELFNPU37XX.Reloc baseOp([[MI]] : !VPURegMapped.Index<0:0:0>) offset(312) <R_VPU_64> [[symBarSec]] 0
 
     return %arg1, %arg2 : memref<1x16x16x16xf16, #NHWC, @DDR>, memref<1x16x16x16xf16, #NHWC, @DDR>
   }

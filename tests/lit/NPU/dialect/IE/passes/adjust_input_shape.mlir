@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --adjust-input-shape --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --adjust-input-shape --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 // CHECK-LABEL: @ExpandAddToShapeCastAddWithTwoExpands
 // CHECK-SAME:        [[INPUT1:%arg[0-9]]]: tensor<1x3x32x32xf16>,
@@ -1508,4 +1508,37 @@ func.func @DoNotAddShapeCastToDynamicAdd(%arg0: tensor<1x3x?x?xf16, {bounds = #c
     // CHECK:       [[ADD:%.+]] = IE.Add([[EXPAND1]], [[EXPAND2]]) {auto_broadcast = #IE.auto_broadcast_type<NONE_OR_EXPLICIT>} : tensor<1x16x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 32, 32]> : tensor<4xsi64>}>, tensor<1x16x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 32, 32]> : tensor<4xsi64>}> -> tensor<1x16x?x?xf16, {bounds = #const.OpaqueI64Elements<[1, 16, 32, 32]> : tensor<4xsi64>}>
     // CHECK-NOT:   IE.ShapeCast
     // CHECK:       return [[ADD]]
+}
+
+// -----
+
+#NHWC = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>
+// CHECK-LABEL: @NotPropagateShapeCastBeforeEltwiseWithBroadcast
+// CHECK-SAME:        [[INPUT1:%arg[0-9]]]: tensor<1x2880x256x1xf16, {order = #NHWC}>,
+// CHECK-SAME:        [[INPUT2:%arg[0-9]]]: tensor<1x2880x1x1xf16, {order = #NHWC}>
+func.func @NotPropagateShapeCastBeforeEltwiseWithBroadcast(
+        %input_0: tensor<1x2880x256x1xf16, {order = #NHWC}>,
+        %input_1: tensor<1x2880x1x1xf16, {order = #NHWC}>)
+            -> tensor<1x5760x128x1xf16, {order = #NHWC}> {
+    %weights = const.Declare tensor<5760x5760x3x3xf16, {order = #NHWC}> = dense<1.000000e+00> : tensor<5760x5760x3x3xf16>, [#const.Reorder<#NHWC>]
+    %eltwise = IE.Add(%input_0, %input_1) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>} :
+        tensor<1x2880x256x1xf16, {order = #NHWC}>,
+        tensor<1x2880x1x1xf16, {order = #NHWC}> -> tensor<1x2880x256x1xf16, {order = #NHWC}>
+    %shapecast = IE.ShapeCast {shape = [1, 5760, 128, 1]}
+        inputs(%eltwise : tensor<1x2880x256x1xf16, {order = #NHWC}>) -> tensor<1x5760x128x1xf16, {order = #NHWC}>
+    %conv = IE.Convolution(%shapecast, %weights) {
+        dilations = [1, 1], pads_begin = [1, 1], pads_end = [1, 1], strides = [1, 1]} :
+        tensor<1x5760x128x1xf16, {order = #NHWC}>, tensor<5760x5760x3x3xf16, {order = #NHWC}>
+            -> tensor<1x5760x128x1xf16, {order = #NHWC}>
+
+    return %conv : tensor<1x5760x128x1xf16, {order = #NHWC}>
+
+    // CHECK-DAG:   [[WEIGHTS:%.+]] = const.Declare tensor<5760x5760x3x3xf16, {order = #NHWC}>
+    // CHECK:       [[ADD:%.+]] = IE.Add([[INPUT1]], [[INPUT2]]) {auto_broadcast = #IE.auto_broadcast_type<NUMPY>}
+    // CHECK-SAME:      tensor<1x2880x256x1xf16, {order = #NHWC}>, tensor<1x2880x1x1xf16, {order = #NHWC}>
+    // CHECK-SAME:      -> tensor<1x2880x256x1xf16, {order = #NHWC}>
+    // CHECK:       [[SHAPE_CAST:%.+]] = IE.ShapeCast {shape = [1, 5760, 128, 1]}
+    // CHECK-SAME:      inputs([[ADD]] : tensor<1x2880x256x1xf16, {order = #NHWC}>) -> tensor<1x5760x128x1xf16, {order = #NHWC}>
+    // CHECK:       [[CONV:%.+]] = IE.Convolution([[SHAPE_CAST]], [[WEIGHTS]])
+    // CHECK:       return [[CONV]]
 }

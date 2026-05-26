@@ -5,7 +5,7 @@
 
 #include "vpux/compiler/dialect/config/utils/setup_pipeline_options_utils.hpp"
 #include "vpux/compiler/dialect/core/transforms/passes.hpp"
-#include "vpux/compiler/init.hpp"
+#include "vpux/compiler/init/dialects_registry.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/utils/core/string_ref.hpp"
 

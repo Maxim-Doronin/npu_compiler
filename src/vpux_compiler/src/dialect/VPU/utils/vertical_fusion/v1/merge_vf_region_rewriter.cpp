@@ -318,6 +318,61 @@ StrategyCost MergeVFRegionRewriter::extractVFCost(VFConfig& vfConfig) const {
     return vfCase.getCost(_vpunnCostFunction, _log);
 }
 
+bool MergeVFRegionRewriter::isMCStrategyAligned(VPU::VerticalFusionOp currentOp, VPU::VerticalFusionOp prevOp) const {
+    if (!isLegalFusion(currentOp, prevOp)) {
+        return false;
+    }
+
+    // Check if previous output op has MC strategy
+    const auto prevOutDistType =
+            mlir::dyn_cast_if_present<VPU::DistributedTensorType>(getDistributedOutputType(prevOp));
+    const auto isPrevOutOpWithMCStrategy = prevOutDistType != nullptr;
+    if (!isPrevOutOpWithMCStrategy) {
+        return true;
+    }
+
+    // Get input arg of current vf region corresponding to previous vf op
+    auto currInputArg = getLinkedArgumentBetweenVFOps(currentOp, prevOp);
+    VPUX_THROW_UNLESS(currInputArg != nullptr,
+                      "No corresponding input argument found for current VF region {0} with previous VF region {1}",
+                      currentOp, prevOp);
+
+    // Here we need to ensure all input ops have compatible mc strategy distributed tensor types with previous output op
+    for (auto currInputOp : currInputArg.getUsers()) {
+        SmallVector<mlir::Operation*> currInputViewLikeOps;
+        while (mlir::isa<VPU::TilingViewLikeOpInterface>(currInputOp) && currInputOp->hasOneUse()) {
+            currInputViewLikeOps.push_back(currInputOp);
+            currInputOp = *(currInputOp->getUsers().begin());
+        }
+        // isLegalFusion has ensured currInputOp is clustered op with MC strategy
+        auto currInputOperand = currInputViewLikeOps.empty() ? mlir::cast<mlir::Value>(currInputArg)
+                                                             : currInputViewLikeOps.back()->getResult(0);
+        auto actualCurrInDistType = getDistributedInputType(currInputOp, currInputOperand);
+        if (actualCurrInDistType == nullptr) {
+            return false;
+        }
+        auto actualCurrInDataDistType =
+                mlir::cast<VPU::DistributedTensorType>(actualCurrInDistType.getDistributedTypes().front());
+
+        auto inferredCurrInDistType = inferDistributedTypeThroughViewOps(prevOutDistType, currInputViewLikeOps);
+        if (inferredCurrInDistType == nullptr ||
+            areDistributionAttrsCompatible(inferredCurrInDistType, actualCurrInDataDistType, true).failed()) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+std::optional<VFCase> MergeVFRegionRewriter::findVFCase(VPU::VerticalFusionOp prevOp, VPU::VerticalFusionOp currentOp,
+                                                        VPU::VerticalFusionOp mergedVFOp) const {
+    if (!isMCStrategyAligned(currentOp, prevOp)) {
+        return std::nullopt;
+    }
+
+    return findVFTiling(mergedVFOp, prevOp, currentOp);
+}
+
 bool MergeVFRegionRewriter::canMergeVFOpsWithoutCostCheck(VFCase& mergedCase) const {
     auto& vfConfig = mergedCase.getConfig();
     if (mergedCase.getTilingNumber() == 1 && vfConfig.isPotentiallyPipelined()) {

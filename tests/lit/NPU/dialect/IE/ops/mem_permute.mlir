@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --canonicalize %s | FileCheck %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --canonicalize %s | FileCheck %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 #NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 
@@ -603,4 +603,119 @@ func.func @NotFuseMemPermThroughConcat(%arg0: tensor<1x256x2x256xsi8, {order = #
     // CHECK:     [[OUT:%.+]] = IE.MemPermute([[CONCAT]]) {dst_order = #NCHW, mem_perm = #NWCH} : tensor<1x2x256x4096xsi8, {order = #NHWC}> -> tensor<1x2x256x4096xsi8>
 
     // CHECK:     return [[OUT]] : tensor<1x2x256x4096xsi8>
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+// CHECK-LABEL: @EliminateMemPermuteThroughReshapeSlice
+// CHECK-SAME:    [[ARG_0:%[^:]+]]: tensor<1x151x3x768xf16>
+func.func @EliminateMemPermuteThroughReshapeSlice(%arg0: tensor<1x151x3x768xf16>)
+    -> (tensor<1x151x6x128xf16>, tensor<1x151x6x128xf16>, tensor<1x151x6x128xf16>) {
+    %0 = IE.MemPermute(%arg0) {dst_order = #NCHW, mem_perm = affine_map<(d0, d1, d2, d3) -> (d0, d2, d1, d3)>}
+        : tensor<1x151x3x768xf16> -> tensor<1x3x151x768xf16>
+    %1 = IE.AffineReshape(%0) {dim_mapping = [[0], [0], [1], [2, 3]], shape_value = [3, 151, 6, 128]}
+        : tensor<1x3x151x768xf16> -> tensor<3x151x6x128xf16>
+    %q = IE.Slice %1 [0, 0, 0, 0] [1, 151, 6, 128] : tensor<3x151x6x128xf16> to tensor<1x151x6x128xf16>
+    %k = IE.Slice %1 [1, 0, 0, 0] [1, 151, 6, 128] : tensor<3x151x6x128xf16> to tensor<1x151x6x128xf16>
+    %v = IE.Slice %1 [2, 0, 0, 0] [1, 151, 6, 128] : tensor<3x151x6x128xf16> to tensor<1x151x6x128xf16>
+
+    return %q, %k, %v : tensor<1x151x6x128xf16>, tensor<1x151x6x128xf16>, tensor<1x151x6x128xf16>
+
+    // CHECK-NOT:   IE.MemPermute
+    // CHECK:       [[Q_SLICE:%.+]] = IE.Slice [[ARG_0]] [0, 0, 0, 0] [1, 151, 1, 768]
+    // CHECK-SAME:      : tensor<1x151x3x768xf16> to tensor<1x151x1x768xf16>
+    // CHECK:       [[Q_RESHAPE:%.+]] = IE.AffineReshape([[Q_SLICE]])
+    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [1], [1], [2, 3]], shape_value = [1, 151, 6, 128]}
+    // CHECK-SAME:      : tensor<1x151x1x768xf16> -> tensor<1x151x6x128xf16>
+    // CHECK:       [[K_SLICE:%.+]] = IE.Slice [[ARG_0]] [0, 0, 1, 0] [1, 151, 1, 768]
+    // CHECK-SAME:      : tensor<1x151x3x768xf16> to tensor<1x151x1x768xf16>
+    // CHECK:       [[K_RESHAPE:%.+]] = IE.AffineReshape([[K_SLICE]])
+    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [1], [1], [2, 3]], shape_value = [1, 151, 6, 128]}
+    // CHECK-SAME:      : tensor<1x151x1x768xf16> -> tensor<1x151x6x128xf16>
+    // CHECK:       [[V_SLICE:%.+]] = IE.Slice [[ARG_0]] [0, 0, 2, 0] [1, 151, 1, 768]
+    // CHECK-SAME:      : tensor<1x151x3x768xf16> to tensor<1x151x1x768xf16>
+    // CHECK:       [[V_RESHAPE:%.+]] = IE.AffineReshape([[V_SLICE]])
+    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [1], [1], [2, 3]], shape_value = [1, 151, 6, 128]}
+    // CHECK-SAME:      : tensor<1x151x1x768xf16> -> tensor<1x151x6x128xf16>
+    // CHECK:       return [[Q_RESHAPE]], [[K_RESHAPE]], [[V_RESHAPE]]
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+// CHECK-LABEL: @NoEliminateMemPermuteInvalidDimMapping
+// CHECK-SAME:    [[ARG_0:%[^:]+]]: tensor<1x151x3x768xf16>
+func.func @NoEliminateMemPermuteInvalidDimMapping(%arg0: tensor<1x151x3x768xf16>)
+    -> (tensor<1x4x192x151xf16>, tensor<1x4x192x151xf16>, tensor<1x4x192x151xf16>) {
+    %0 = IE.MemPermute(%arg0) {dst_order = #NCHW, mem_perm = affine_map<(d0, d1, d2, d3) -> (d0, d2, d3, d1)>}
+        : tensor<1x151x3x768xf16> -> tensor<1x3x768x151xf16>
+    %1 = IE.AffineReshape(%0) {dim_mapping = [[0], [0], [1, 2], [3]], shape_value = [3, 4, 192, 151]}
+        : tensor<1x3x768x151xf16> -> tensor<3x4x192x151xf16>
+    %q = IE.Slice %1 [0, 0, 0, 0] [1, 4, 192, 151] : tensor<3x4x192x151xf16> to tensor<1x4x192x151xf16>
+    %k = IE.Slice %1 [1, 0, 0, 0] [1, 4, 192, 151] : tensor<3x4x192x151xf16> to tensor<1x4x192x151xf16>
+    %v = IE.Slice %1 [2, 0, 0, 0] [1, 4, 192, 151] : tensor<3x4x192x151xf16> to tensor<1x4x192x151xf16>
+    return %q, %k, %v : tensor<1x4x192x151xf16>, tensor<1x4x192x151xf16>, tensor<1x4x192x151xf16>
+
+    // The 3-cycle permutation (d1->d2->d3->d1) is non-involutive (not self-inverse).
+    // With the corrected Step 6 (origSliceDim = permVec[reshapeInDim] = permVec[1] = 2)
+    // and Step 7 (newDimMapping built via forwardPerm), the resulting dim_mapping
+    // [[0],[0],[1,2],[3]] is non-monotone, so mapping validation rejects it and the
+    // rewriter does not fire. This is the correct negative behaviour for 3-cycle perms:
+    // AffineReshape's monotonicity constraint means only involutive (self-inverse)
+    // permutations can produce valid newDimMappings.
+    // CHECK:       IE.MemPermute
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+// CHECK-LABEL: @NoEliminateMemPermuteNonSliceUser
+// CHECK-SAME:    [[ARG_0:%[^:]+]]: tensor<1x151x3x768xf16>
+func.func @NoEliminateMemPermuteNonSliceUser(%arg0: tensor<1x151x3x768xf16>)
+    -> (tensor<1x151x6x128xf16>, tensor<1x151x6x128xf16>, tensor<1x151x6x128xf16>, tensor<3x151x6x128xf16>) {
+    %0 = IE.MemPermute(%arg0) {dst_order = #NCHW, mem_perm = affine_map<(d0, d1, d2, d3) -> (d0, d2, d1, d3)>}
+        : tensor<1x151x3x768xf16> -> tensor<1x3x151x768xf16>
+    %1 = IE.AffineReshape(%0) {dim_mapping = [[0], [0], [1], [2, 3]], shape_value = [3, 151, 6, 128]}
+        : tensor<1x3x151x768xf16> -> tensor<3x151x6x128xf16>
+    %q = IE.Slice %1 [0, 0, 0, 0] [1, 151, 6, 128] : tensor<3x151x6x128xf16> to tensor<1x151x6x128xf16>
+    %k = IE.Slice %1 [1, 0, 0, 0] [1, 151, 6, 128] : tensor<3x151x6x128xf16> to tensor<1x151x6x128xf16>
+    %v = IE.Slice %1 [2, 0, 0, 0] [1, 151, 6, 128] : tensor<3x151x6x128xf16> to tensor<1x151x6x128xf16>
+    return %q, %k, %v, %1 : tensor<1x151x6x128xf16>, tensor<1x151x6x128xf16>, tensor<1x151x6x128xf16>, tensor<3x151x6x128xf16>
+
+    // AffineReshape has a non-Slice user (func.return), so rewriter does not fire
+    // CHECK:       IE.MemPermute
+}
+
+// -----
+
+#NCHW = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+// CHECK-LABEL: @EliminateMemPermuteTwoSlices
+// CHECK-SAME:    [[ARG_0:%[^:]+]]: tensor<1x151x2x768xf16>
+func.func @EliminateMemPermuteTwoSlices(%arg0: tensor<1x151x2x768xf16>)
+    -> (tensor<1x151x6x128xf16>, tensor<1x151x6x128xf16>) {
+    %0 = IE.MemPermute(%arg0) {dst_order = #NCHW, mem_perm = affine_map<(d0, d1, d2, d3) -> (d0, d2, d1, d3)>}
+        : tensor<1x151x2x768xf16> -> tensor<1x2x151x768xf16>
+    %1 = IE.AffineReshape(%0) {dim_mapping = [[0], [0], [1], [2, 3]], shape_value = [2, 151, 6, 128]}
+        : tensor<1x2x151x768xf16> -> tensor<2x151x6x128xf16>
+    %a = IE.Slice %1 [0, 0, 0, 0] [1, 151, 6, 128] : tensor<2x151x6x128xf16> to tensor<1x151x6x128xf16>
+    %b = IE.Slice %1 [1, 0, 0, 0] [1, 151, 6, 128] : tensor<2x151x6x128xf16> to tensor<1x151x6x128xf16>
+    return %a, %b : tensor<1x151x6x128xf16>, tensor<1x151x6x128xf16>
+
+    // CHECK-NOT:   IE.MemPermute
+    // CHECK:       [[A_SLICE:%.+]] = IE.Slice [[ARG_0]] [0, 0, 0, 0] [1, 151, 1, 768]
+    // CHECK-SAME:      : tensor<1x151x2x768xf16> to tensor<1x151x1x768xf16>
+    // CHECK:       [[A_RESHAPE:%.+]] = IE.AffineReshape([[A_SLICE]])
+    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [1], [1], [2, 3]], shape_value = [1, 151, 6, 128]}
+    // CHECK-SAME:      : tensor<1x151x1x768xf16> -> tensor<1x151x6x128xf16>
+    // CHECK:       [[B_SLICE:%.+]] = IE.Slice [[ARG_0]] [0, 0, 1, 0] [1, 151, 1, 768]
+    // CHECK-SAME:      : tensor<1x151x2x768xf16> to tensor<1x151x1x768xf16>
+    // CHECK:       [[B_RESHAPE:%.+]] = IE.AffineReshape([[B_SLICE]])
+    // CHECK-SAME{LITERAL}:     {dim_mapping = [[0], [1], [1], [2, 3]], shape_value = [1, 151, 6, 128]}
+    // CHECK-SAME:      : tensor<1x151x1x768xf16> -> tensor<1x151x6x128xf16>
+    // CHECK:       return [[A_RESHAPE]], [[B_RESHAPE]]
 }

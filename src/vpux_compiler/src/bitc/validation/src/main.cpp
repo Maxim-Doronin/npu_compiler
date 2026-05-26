@@ -24,7 +24,7 @@ bitc::ArchType string_to_arch(const std::string& arch_type) {
     } else if (arch_type == "NPU5"s) {
         return bitc::ArchType::NPU5;
     } else {
-        return;
+        return bitc::ArchType::UNKNOWN;
     }
 }
 

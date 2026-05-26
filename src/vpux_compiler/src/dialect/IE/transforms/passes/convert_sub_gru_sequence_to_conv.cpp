@@ -12,7 +12,7 @@
 #include "vpux/compiler/utils/attributes.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
 
-#include <mlir/Transforms/DialectConversion.h>
+#include <mlir/Transforms/WalkPatternRewriteDriver.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_CONVERTSUBGRUSEQUENCETOCONV
@@ -23,6 +23,25 @@ namespace vpux::IE {
 using namespace vpux;
 
 namespace {
+
+bool shouldConvertGRUSequenceOp(IE::GRUSequenceOp origOp, Logger log) {
+    const auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getInputData().getType());
+    const auto inputShape = inputType.getShape().raw();
+    auto inputSize = static_cast<float>(inputShape[2]);
+    auto batchSize = static_cast<float>(inputShape[0]);
+    auto seqLength = static_cast<float>(origOp.getSeqLength());
+    auto hiddenSize = static_cast<float>(origOp.getHiddenSize());
+    // IllegalThreshold is used to determine if convert subGRUSequence into convolution. After performance
+    // measurement, the pass can improve performance when illegalThreshold less than or equal to 0.1568. The
+    // performance improvement is about 0.0% when illegalThreshold equals 0.1568 according to test.
+    const auto illegalThreshold = 0.1568;
+    auto currentIllegalFactor = inputSize / (batchSize * seqLength * hiddenSize);
+    if (currentIllegalFactor > illegalThreshold) {
+        return false;
+    }
+    log.nest(1).trace("The pass is used to convert SubGRUSequence into convoltion for better performance.");
+    return true;
+}
 
 //
 // SubGRUSequenceToConvPass
@@ -93,6 +112,10 @@ private:
 
 mlir::LogicalResult ConvertSubGRUSequenceToConvPass::GRUSequenceOpConverter::matchAndRewrite(
         IE::GRUSequenceOp origOp, mlir::PatternRewriter& rewriter) const {
+    if (!shouldConvertGRUSequenceOp(origOp, _log)) {
+        return mlir::failure();
+    }
+
     _log.trace("Got '{0}' at '{1}'", origOp->getName(), origOp->getLoc());
 
     auto ctx = rewriter.getContext();
@@ -155,38 +178,10 @@ mlir::LogicalResult ConvertSubGRUSequenceToConvPass::GRUSequenceOpConverter::mat
 void ConvertSubGRUSequenceToConvPass::safeRunOnFunc() {
     auto& ctx = getContext();
 
-    mlir::ConversionTarget target(ctx);
-
-    target.addDynamicallyLegalOp<IE::GRUSequenceOp>([&](IE::GRUSequenceOp origOp) {
-        const auto inputType = mlir::cast<vpux::NDTypeInterface>(origOp.getInputData().getType());
-        const auto inputShape = inputType.getShape().raw();
-        auto inputSize = static_cast<float>(inputShape[2]);
-        auto batchSize = static_cast<float>(inputShape[0]);
-        auto seqLength = static_cast<float>(origOp.getSeqLength());
-        auto hiddenSize = static_cast<float>(origOp.getHiddenSize());
-        // IllegalThreshold is used to determine if convert subGRUSequence into convolution. After performance
-        // measurement, the pass can improve performance when illegalThreshold less than or equal to 0.1568. The
-        // performance improvement is about 0.0% when illegalThreshold equals 0.1568 according to test.
-        const auto illegalThreshold = 0.1568;
-        auto currentIllegalFactor = inputSize / (batchSize * seqLength * hiddenSize);
-        if (currentIllegalFactor <= illegalThreshold) {
-            _log.nest(1).trace("The pass is used to convert SubGRUSequence into convoltion for better performance.");
-            return false;
-        }
-        return true;
-    });
-    target.addLegalOp<IE::ConvolutionOp>();
-    target.addLegalOp<IE::GRUSequenceLastPartOp>();
-    target.addLegalOp<IE::ReshapeOp>();
-    target.addLegalOp<IE::PermuteCastOp>();
-
     mlir::RewritePatternSet patterns(&ctx);
     patterns.add<GRUSequenceOpConverter>(&ctx, _log);
 
-    auto func = getOperation();
-    if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
-        signalPassFailure();
-    }
+    walkAndApplyPatterns(getOperation(), std::move(patterns));
 }
 
 }  // namespace

@@ -49,6 +49,64 @@ protected:
     }
 };
 
+// This test class is created for IsNaN, IsInf and IsFinite Op, which overrides OpenVINO's default
+// generate_inputs() method. For IsFinite Op, the default generate_inputs() method and comparison::fill_tensor() method
+// mix up fp16 and fp32 data types, which leads to core dump when the IsFinite Op test is executed.
+// See
+// https://github.com/openvinotoolkit/openvino/blob/master/src/tests/functional/base_func_tests/src/base/utils/generate_inputs.cpp#L836
+class ComparisonLayerTestIsOp : public ComparisonLayerTestCommon {
+public:
+    void generate_inputs(const std::vector<ov::Shape>& targetInputStaticShapes) override {
+        inputs.clear();
+        const auto& funcInputs = function->inputs();
+
+        ov::Tensor tensor(funcInputs[0].get_element_type(), targetInputStaticShapes[0]);
+        fill_tensor(tensor);
+
+        inputs.insert({funcInputs[0].get_node_shared_ptr(), tensor});
+    }
+
+private:
+    template <typename T>
+    void fill_tensor_typed(ov::Tensor& tensor) {
+        const int range = static_cast<int>(ov::shape_size(tensor.get_shape()));
+        const float startFrom = -static_cast<float>(range) / 2.f;
+
+        auto pointer = tensor.data<T>();
+        testing::internal::Random random(1);
+        for (int i = 0; i < range; i++) {
+            if (i % 7 == 0) {
+                pointer[i] = std::numeric_limits<T>::infinity();
+            } else if (i % 7 == 1) {
+                pointer[i] = std::numeric_limits<T>::quiet_NaN();
+            } else if (i % 7 == 2) {
+                if constexpr (std::is_same_v<T, float>) {
+                    auto data_ptr_int = reinterpret_cast<int*>(tensor.data());
+                    data_ptr_int[i] = 0x7F800000 + random.Generate(range);
+                } else {
+                    pointer[i] = std::numeric_limits<T>::quiet_NaN();
+                }
+            } else if (i % 7 == 3) {
+                pointer[i] = -std::numeric_limits<T>::infinity();
+            } else if (i % 7 == 5) {
+                pointer[i] = -std::numeric_limits<T>::quiet_NaN();
+            } else {
+                pointer[i] = static_cast<T>(startFrom + random.Generate(range));
+            }
+        }
+    }
+
+    void fill_tensor(ov::Tensor& tensor) {
+        if (tensor.get_element_type() == ov::element::f16) {
+            fill_tensor_typed<ov::float16>(tensor);
+        } else if (tensor.get_element_type() == ov::element::f32) {
+            fill_tensor_typed<float>(tensor);
+        } else {
+            OPENVINO_THROW("Unsupported element type: ", tensor.get_element_type());
+        }
+    }
+};
+
 class ComparisonLayerTestDynamic : public ComparisonLayerTest, virtual public VpuOv2LayerTest {
     // A copy of ComparisonLayerTest, because compiler does not support boolean type (it is represented as u8).
     // We cannot use ComparisonLayerTestCommon since it handles inputShapes and inputDynamicShapes differently,
@@ -151,6 +209,11 @@ TEST_P(ComparisonLayerTestCommon, NPU3720_SW) {
     run(Platform::NPU3720);
 }
 
+TEST_P(ComparisonLayerTestIsOp, NPU3720_SW) {
+    setReferenceSoftwareMode();
+    run(Platform::NPU3720);
+}
+
 TEST_P(ComparisonLayerTest_Tiling, NPU3720_HW) {
     setDefaultHardwareMode();
     run(Platform::NPU3720);
@@ -167,6 +230,11 @@ TEST_P(ComparisonLayerTestDynamic, NPU3720_SW) {
 }
 
 TEST_P(ComparisonLayerTestCommon, NPU4000_SW) {
+    setReferenceSoftwareMode();
+    run(Platform::NPU4000);
+}
+
+TEST_P(ComparisonLayerTestIsOp, NPU4000_SW) {
     setReferenceSoftwareMode();
     run(Platform::NPU4000);
 }
@@ -192,6 +260,11 @@ TEST_P(ComparisonLayerTestCommon, NPU5010_SW) {
     run(Platform::NPU5010);
 }
 
+TEST_P(ComparisonLayerTestIsOp, NPU5010_SW) {
+    setReferenceSoftwareMode();
+    run(Platform::NPU5010);
+}
+
 TEST_P(ComparisonLayerTestDynamic, NPU5010_SW) {
     setReferenceSoftwareMode();
     run(Platform::NPU5010);
@@ -209,6 +282,10 @@ TEST_P(ShaveCodeGenComparisonLayerTestCommon, NPU5010) {
 }
 
 TEST_P(ComparisonLayerTestCommon, NPU5020_SW) {
+    setReferenceSoftwareMode();
+    run(Platform::NPU5020);
+}
+TEST_P(ComparisonLayerTestIsOp, NPU5020_SW) {
     setReferenceSoftwareMode();
     run(Platform::NPU5020);
 }
@@ -296,7 +373,10 @@ const auto comparison_params_dynamic = ::testing::Combine(
         ::testing::ValuesIn(secondInputTypes), ::testing::ValuesIn(precision),
         ::testing::Values(test_utils::TARGET_DEVICE), ::testing::Values(additionalConfig));
 
-std::vector<ComparisonTypes> comparisonOpTypesBOOL_MLIR = {ComparisonTypes::LESS_EQUAL};
+std::vector<ComparisonTypes> comparisonOpTypesBOOL_MLIR = {
+        ComparisonTypes::EQUAL,     ComparisonTypes::LESS,    ComparisonTypes::LESS_EQUAL,
+        ComparisonTypes::NOT_EQUAL, ComparisonTypes::GREATER,
+};
 std::vector<ov::element::Type> precision_bool = {ov::element::boolean};
 
 const auto comparison_params_bool =
@@ -355,7 +435,8 @@ std::vector<ov::element::Type> is_precision = {
 };
 
 std::vector<ov::test::utils::ComparisonTypes> comparisonOpTypesIs = {ov::test::utils::ComparisonTypes::IS_NAN,
-                                                                     ov::test::utils::ComparisonTypes::IS_INF};
+                                                                     ov::test::utils::ComparisonTypes::IS_INF,
+                                                                     ov::test::utils::ComparisonTypes::IS_FINITE};
 
 const auto ComparisonTestParamsIs = ::testing::Combine(
         ::testing::ValuesIn(ov::test::static_shapes_to_test_representation(input_shapes_is_ops_static)),
@@ -363,6 +444,6 @@ const auto ComparisonTestParamsIs = ::testing::Combine(
         ::testing::ValuesIn(is_precision), ::testing::Values(test_utils::TARGET_DEVICE),
         ::testing::Values(additionalConfig));
 
-INSTANTIATE_TEST_SUITE_P(smoke_IsOp, ComparisonLayerTestCommon, ComparisonTestParamsIs,
-                         ComparisonLayerTestCommon::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(smoke_IsOp, ComparisonLayerTestIsOp, ComparisonTestParamsIs,
+                         ComparisonLayerTestIsOp::getTestCaseName);
 }  // namespace

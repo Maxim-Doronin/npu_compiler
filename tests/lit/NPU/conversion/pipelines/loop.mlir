@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-translate --vpu-arch=%arch% --import-IE ./loop.xml | FileCheck %s
-// REQUIRES: arch-NPU37XX
+// RUN: vpux-translate --platform=%platform% --import-IE ./loop.xml | FileCheck %s
+// REQUIRES: platform-NPU3720
 
 // CHECK:       func.func @main(
 // CHECK-SAME:      [[ARG0:%arg[0-9]+]]: tensor<3x4x6x10xf32>,

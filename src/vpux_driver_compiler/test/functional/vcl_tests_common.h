@@ -87,7 +87,7 @@ public:
     /**
      * @brief Parse config file and detect test cases
      */
-    static IRInfoTestType readJson2Vec(std::string fileName);
+    static IRInfoTestType readJson2Vec(const std::string& fileName);
 
     /**
      * @brief Add platform info to model build options

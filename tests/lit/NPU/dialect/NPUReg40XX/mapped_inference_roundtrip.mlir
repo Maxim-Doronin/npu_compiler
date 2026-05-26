@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --init-compiler="vpu-arch=%arch%" %s | FileCheck %s
-// REQUIRES: dev-build && arch-NPU40XX
+// RUN: vpux-opt --init-compiler="platform=%platform%" %s | FileCheck %s
+// REQUIRES: dev-build && platform-NPU4000
 
 
 
@@ -15,7 +15,7 @@ module @miRoundtrip {
     DataInfo "output_0" : tensor<1x2x3x4xf16>
   }
   func.func @main() {
-    ELF.Main @ELFMain {
+    ELF.Main {
       ELF.CreateSection @note.MappedInferenceVersion aligned(64) secType(SHT_NOTE) secFlags("SHF_NONE") secLocation(<DDR>) {
         NPUReg40XX.MappedInferenceVersion(11 _ 4 _ 10) {sym_name = "MappedInferenceVersion_0_0"}
       }

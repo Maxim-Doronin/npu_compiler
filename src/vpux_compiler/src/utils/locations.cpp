@@ -7,16 +7,15 @@
 
 #include <mlir/IR/BuiltinAttributes.h>
 
-#include "vpux/compiler/core/developer_build_utils.hpp"
 #include "vpux/compiler/dialect/net/IR/ops.hpp"
 #include "vpux/compiler/dialect/net/utils/network_info_utils.hpp"
 #include "vpux/compiler/utils/analysis.hpp"
 #include "vpux/compiler/utils/rewriter.hpp"
+#include "vpux/utils/core/developer_build_utils.hpp"
 #include "vpux/utils/core/range.hpp"
 #include "vpux/utils/core/small_vector.hpp"
 
-mlir::Location vpux::createLayerLocation(mlir::MLIRContext* ctx, const std::string& layerName,
-                                         const std::string& layerType) {
+mlir::Location vpux::createLayerLocation(mlir::MLIRContext* ctx, llvm::StringRef layerName, llvm::StringRef layerType) {
     const auto layerNameAttr = mlir::StringAttr::get(ctx, layerName);
     const auto nameLoc = mlir::NameLoc::get(layerNameAttr);
 

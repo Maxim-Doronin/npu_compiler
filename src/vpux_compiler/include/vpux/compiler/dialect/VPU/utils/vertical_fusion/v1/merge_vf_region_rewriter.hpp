@@ -30,9 +30,13 @@ public:
     mlir::LogicalResult matchAndRewrite(VPU::VerticalFusionOp origOp, mlir::PatternRewriter& rewriter) const final;
 
 protected:
+    std::optional<VFCase> findVFCase(VPU::VerticalFusionOp prevOp, VPU::VerticalFusionOp currentOp,
+                                     VPU::VerticalFusionOp mergedOp) const override;
     bool canMergeVFOpsWithoutCostCheck(VFCase& mergedCase) const override;
     bool canSkipMergeVF(VFConfig& vfConfig, bool opsNeedTiling) const override;
     VPU::StrategyCost extractVFCost(VFConfig& vfConfig) const override;
+    bool isMCStrategyAligned(VPU::VerticalFusionOp currentOp, VPU::VerticalFusionOp prevOp) const;
+
     std::optional<int64_t> getOptimalTilingStrategy(const IVFSchedulingPtr& scheduling, const Dim dim,
                                                     const int64_t minTiles, int64_t& maxTiles,
                                                     VPU::TilingOperationStorage::UPtr& minStorage,
@@ -41,6 +45,6 @@ protected:
     std::deque<IVFSchedulingPtr> getVFSchedulingChecks(VFConfig& config) const;
     std::shared_ptr<IVFScheduling<VFConfig>> detectScenario(VFConfig& vfConfig) const override;
     std::optional<VFCase> findVFTiling(VPU::VerticalFusionOp mergedOp, VPU::VerticalFusionOp prevOp,
-                                       VPU::VerticalFusionOp currentOp) const override;
+                                       VPU::VerticalFusionOp currentOp) const;
 };
 }  // namespace vpux::VPU::VF::v1

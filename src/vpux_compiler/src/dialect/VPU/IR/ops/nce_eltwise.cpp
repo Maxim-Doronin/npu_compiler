@@ -226,25 +226,11 @@ vpux::NDTypeInterface vpux::VPU::NCEEltwiseOp::getDistributedTypeForOpOperand(ml
                                                                               bool hasExplicitDistributedAttr,
                                                                               SiblingOpsAnalysis& siblingsAnalysis) {
     auto clusteredOp = mlir::cast<VPU::ClusteredOpInterface>(getOperation());
-    auto origOp = mlir::cast<NCEEltwiseOp>(getOperation());
     const auto strategy = clusteredOp.getMultiClusterStrategy().value();
-    auto outputTensorType = mlir::cast<vpux::NDTypeInterface>(origOp.getOutput().getType());
-    auto numClusters = VPU::getOptimalNumClusters(clusteredOp, outputTensorType.getShape(), strategy);
-    auto* ctx = clusteredOp->getContext();
-    if (operand.get() == origOp.getInput1() || operand.get() == origOp.getInput2()) {
-        mlir::ArrayAttr activationAlignmentAttr = nullptr;
 
-        const auto activationTensorDistributionMode = getActivationTensorDistributionMode(clusteredOp, strategy);
-        const auto activationTensorNumTiles =
-                getIntArrayAttr(ctx, getActivationTensorNumTiles(clusteredOp, numClusters, strategy));
-
-        const auto activationAlignment = getActivationTensorAlignment(clusteredOp, numClusters, strategy);
-        if (activationAlignment.has_value()) {
-            activationAlignmentAttr = getIntArrayAttr(origOp.getContext(), activationAlignment.value());
-        }
-        return getDistributedTypeFromInput(clusteredOp, operand.get(), activationTensorDistributionMode,
-                                           activationTensorNumTiles, activationAlignmentAttr, strategy,
-                                           hasExplicitDistributedAttr, siblingsAnalysis);
+    if (operand.get() == getInput1() || operand.get() == getInput2()) {
+        return VPU::getDistributedActivationTypeForOpOperand(clusteredOp, operand.get(), strategy,
+                                                             hasExplicitDistributedAttr, siblingsAnalysis);
     }
     VPUX_THROW("Failed to compute distributed type for op {0}", clusteredOp);
     return nullptr;

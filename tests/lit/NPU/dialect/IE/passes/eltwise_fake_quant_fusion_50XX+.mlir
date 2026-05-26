@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --eltwise-fake-quantize-fusion %s | FileCheck %s
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --eltwise-fake-quantize-fusion %s | FileCheck %s
+// REQUIRES: platform-NPU5010
 
 // CHECK-LABEL: @AddFakeQuantizeFusionPerTensorFQRhs
 // CHECK-SAME:    [[INPUT:%.+]]: tensor<1x12x512x1xf32>

@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --vpu-arch=%arch% --split-input-file --set-target-independent-options="enable-sprlut" %s | FileCheck --check-prefix=CHECK-SPRLUT %s --strict-whitespace
-// RUN: vpux-opt --vpu-arch=%arch% --split-input-file --set-target-independent-options="weights-table-reuse-mode=ENABLED" %s | FileCheck --check-prefix=CHECK-WEIGHTSTABLE %s --strict-whitespace
-// REQUIRES: arch-NPU50XX
+// RUN: vpux-opt --platform=%platform% --split-input-file --set-target-independent-options="enable-sprlut" %s | FileCheck --check-prefix=CHECK-SPRLUT %s --strict-whitespace
+// RUN: vpux-opt --platform=%platform% --split-input-file --set-target-independent-options="weights-table-reuse-mode=ENABLED" %s | FileCheck --check-prefix=CHECK-WEIGHTSTABLE %s --strict-whitespace
+// REQUIRES: platform-NPU5010
 
 module @mainModule attributes {} {
 }

@@ -3,10 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch% allow-custom-values=true" --convert-VPUASM-to-NPUReg40XX %s | FileCheck %s
-// REQUIRES: dev-build && arch-NPU40XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform% allow-custom-values=true" --convert-VPUASM-to-NPUReg40XX %s | FileCheck %s
+// REQUIRES: dev-build && platform-NPU4000
 
-module @Test attributes {config.arch = #config.arch_kind<NPU40XX>} {
+module @Test {
   config.ExecutorResource 1 of @M2I
   config.ExecutorResource 1 of @DMA_NN
   config.Resources 6 of @NCE at 6.000000e+02 MHz
@@ -16,7 +16,7 @@ module @Test attributes {config.arch = #config.arch_kind<NPU40XX>} {
     DataInfo "output_0" : tensor<1x2x3x4xf16>
   }
   func.func @main() {
-    ELF.Main @ELFMain {
+    ELF.Main {
       ELF.CreateSection @shave.runtime aligned(64) secType(SHT_PROGBITS) secFlags(SHF_ALLOC) secLocation(<DDR>) {
         VPUASM.ActShaveRt @ActShaveRt kernel("nnActEntry")
       }

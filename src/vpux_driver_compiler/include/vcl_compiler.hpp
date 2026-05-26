@@ -10,10 +10,8 @@
 
 #pragma once
 
-#include <map>
-
-#include <vpux/compiler/compiler.hpp>
 #include "vcl_common.hpp"
+#include "vcl_compiler_loader.hpp"
 
 namespace VPUXDriverCompiler {
 
@@ -103,7 +101,8 @@ public:
      * @param allocator Allocator for blob storage allocation
      * @return vpux::NetworkDescriptionView Include non-owning view into blob and metadata
      */
-    vpux::NetworkDescriptionView importNetwork(BuildInfo& buildInfo, vpux::BlobAllocator& allocator);
+    vpux::NetworkDescriptionView importNetwork(BuildInfo& buildInfo, vpux::BlobAllocator& allocator,
+                                               bool generateCompatibilityString = false);
 
     /**
      * @brief Use VPUX MLIR compiler to create one shot weight-separated blob with user info
@@ -154,7 +153,7 @@ public:
 
 private:
     std::shared_ptr<intel_npu::OptionsDesc> _options;  ///< The default compilation configs
-    std::unique_ptr<vpux::CompilerImpl> _compiler;     ///< The handle of MLIR compiler
+    std::unique_ptr<CompilerLoader> _compilerLoader;   ///< The handle of MLIR compiler
     vcl_compiler_properties_t _compilerProp;           ///< The capabilities of compiler
     vcl_compiler_desc_t _compilerDesc;                 ///< The info of platform and debug level
     vcl_device_desc_t _deviceDesc;                     ///< The info of device

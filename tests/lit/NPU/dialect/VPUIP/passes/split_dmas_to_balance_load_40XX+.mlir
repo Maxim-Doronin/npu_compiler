@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt  --split-input-file --init-compiler="vpu-arch=%arch%" --split-dma-to-balance-load  %s | FileCheck %s
-// REQUIRES: arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt  --split-input-file --init-compiler="platform=%platform%" --split-dma-to-balance-load  %s | FileCheck %s
+// REQUIRES: platform-NPU4000 || platform-NPU5010
 
 !DummyT = memref<1x3x224x224xf16, @DDR>
 
@@ -15,7 +15,7 @@ func.func @SplitBuffer2BufferDma(%arg0: !DummyT) -> !DummyT {
     %2 = VPURT.DeclareBuffer <DDR> <0> -> memref<1x48x18x56xf16, @DDR>
     %3 = VPURT.DeclareBuffer <CMX_NN> [2] <100000> -> memref<1x48x18x56xf16, [@CMX_NN, 2]>
     VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier) {
-      %4 = VPUIP.NNDMA <{port = 0 : i64, split_candidate}> inputs(%2 : memref<1x48x18x56xf16, @DDR>) outputs(%3 : memref<1x48x18x56xf16, [@CMX_NN, 2]>) -> memref<1x48x18x56xf16, [@CMX_NN, 2]>
+      %4 = VPUIP.NNDMA <{port = 0 : i64, split_candidate = true}> inputs(%2 : memref<1x48x18x56xf16, @DDR>) outputs(%3 : memref<1x48x18x56xf16, [@CMX_NN, 2]>) -> memref<1x48x18x56xf16, [@CMX_NN, 2]>
     }
     // CHECK:       [[BUFFER_DDR_0:%.+]] = VPURT.DeclareBuffer <DDR> <0> -> memref<1x24x18x56xf16, {order = #NCHW, strides = [48384, 1008, 56, 1]}, @DDR>
     // CHECK:       [[BUFFER_DDR_1:%.+]] = VPURT.DeclareBuffer <DDR> <48384> -> memref<1x24x18x56xf16, {order = #NCHW, strides = [48384, 1008, 56, 1]}, @DDR>
@@ -62,7 +62,7 @@ func.func @SplitFusedSwizzledConstant(%arg0: !DummyT) -> !DummyT {
     // CHECK:       [[BUFFER_CMX_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [2] <168960> -> memref<1x1x1x84480xf16, {order = #NHWC, strides = [168960, 1, 168960, 1], swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 1024 : i64>}, [@CMX_NN, 2]>
 
     VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier) {
-      %3 = VPUIP.NNDMA <{port = 0 : i64, split_candidate}> inputs(%cst : !Weights) outputs(%2 : !WeightsCmx) -> !WeightsCmx
+      %3 = VPUIP.NNDMA <{port = 0 : i64, split_candidate = true}> inputs(%cst : !Weights) outputs(%2 : !WeightsCmx) -> !WeightsCmx
     }
     // CHECK:       [[NNDMA_0:%.+]] = VPUIP.NNDMA <{port = 0 : i64}> inputs([[CST_0]] : memref<1x1x1x84480xf16, {order = #NHWC, strides = [168960, 1, 168960, 1], swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 1024 : i64>}>)
     // CHECK-SAME:         outputs([[BUFFER_CMX_0]] : memref<1x1x1x84480xf16, {order = #NHWC, strides = [168960, 1, 168960, 1], swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 1024 : i64>}, [@CMX_NN, 2]>)
@@ -96,7 +96,7 @@ func.func @SplitStridedBuffer2BufferDma(%arg0: !DummyT) -> !DummyT {
     // CHECK:       [[BUFFER_CMX_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [2] <163840> -> memref<1x512x3x80xf16, {order = #NHWC, strides = [204800, 1, 40960, 512]}, [@CMX_NN, 2]>
 
     VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier) {
-      %4 = VPUIP.NNDMA <{port = 0 : i64, split_candidate}> inputs(%2 : memref<1x512x5x80xf16, {order = #NHWC, strides = [29491200, 1, 40960, 512]}, @DDR>) outputs(%3 : memref<1x512x5x80xf16, #NHWC, [@CMX_NN, 2]>) -> memref<1x512x5x80xf16, #NHWC, [@CMX_NN, 2]>
+      %4 = VPUIP.NNDMA <{port = 0 : i64, split_candidate = true}> inputs(%2 : memref<1x512x5x80xf16, {order = #NHWC, strides = [29491200, 1, 40960, 512]}, @DDR>) outputs(%3 : memref<1x512x5x80xf16, #NHWC, [@CMX_NN, 2]>) -> memref<1x512x5x80xf16, #NHWC, [@CMX_NN, 2]>
     }
     // CHECK:       [[NNDMA_0:%.+]] = VPUIP.NNDMA <{port = 0 : i64}> inputs([[BUFFER_DDR_0]] : memref<1x512x2x80xf16, {order = #NHWC, strides = [29491200, 1, 40960, 512]}, @DDR>)
     // CHECK-SAME:         outputs([[BUFFER_CMX_0]] : memref<1x512x2x80xf16, {order = #NHWC, strides = [204800, 1, 40960, 512]}, [@CMX_NN, 2]>)
@@ -128,7 +128,7 @@ func.func @SplitSimpleConstant(%arg0: !DummyT) -> !DummyT {
     // CHECK:       [[BUFFER_CMX_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [2] <2560> -> memref<160x1x1x4xsi32, [@CMX_NN, 2]>
 
     VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier) {
-      %3 = VPUIP.NNDMA <{port = 0 : i64, split_candidate}> inputs(%cst : memref<320x1x1x4xsi32>) outputs(%2 : memref<320x1x1x4xsi32, [@CMX_NN, 2]>) -> memref<320x1x1x4xsi32, [@CMX_NN, 2]>
+      %3 = VPUIP.NNDMA <{port = 0 : i64, split_candidate = true}> inputs(%cst : memref<320x1x1x4xsi32>) outputs(%2 : memref<320x1x1x4xsi32, [@CMX_NN, 2]>) -> memref<320x1x1x4xsi32, [@CMX_NN, 2]>
     }
     // CHECK:       [[NNDMA_0:%.+]] = VPUIP.NNDMA <{port = 0 : i64}> inputs([[CST_0]] : memref<160x1x1x4xsi32>)
     // CHECK-SAME:         outputs([[BUFFER_CMX_0]] : memref<160x1x1x4xsi32, [@CMX_NN, 2]>)
@@ -163,7 +163,7 @@ func.func @SplitFused5DWeights(%arg0: !DummyT) -> !DummyT {
     // CHECK:       [[BUFFER_CMX_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [2] <270336> -> memref<1x1x1x135168xf16, {order = #NCHW, strides = [270336, 270336, 270336, 1]}, [@CMX_NN, 2]>
 
     VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier) {
-      %3 = VPUIP.NNDMA <{port = 0 : i64, split_candidate}> inputs(%cst : memref<1x1x1x270336xf16>) outputs(%2 : memref<1x1x1x270336xf16, [@CMX_NN, 2]>) -> memref<1x1x1x270336xf16, [@CMX_NN, 2]>
+      %3 = VPUIP.NNDMA <{port = 0 : i64, split_candidate = true}> inputs(%cst : memref<1x1x1x270336xf16>) outputs(%2 : memref<1x1x1x270336xf16, [@CMX_NN, 2]>) -> memref<1x1x1x270336xf16, [@CMX_NN, 2]>
     }
     // CHECK:       [[NNDMA_0:%.+]] = VPUIP.NNDMA <{port = 0 : i64}> inputs([[CST_0]] : memref<1x1x1x135168xf16, {order = #NCHW, strides = [270336, 270336, 270336, 1]}>)
     // CHECK-SAME:         outputs([[BUFFER_CMX_0]] : memref<1x1x1x135168xf16, {order = #NCHW, strides = [270336, 270336, 270336, 1]}, [@CMX_NN, 2]>)
@@ -204,7 +204,7 @@ func.func @SplitPerAxisQuantized(%arg0: !DummyT) -> !DummyT {
     // CHECK:       [[BUFFER_CMX_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [2] <153600> -> memref<160x960x1x1x[[Q_ELEM_TYPE_1]], [@CMX_NN, 2]>
 
     VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier) {
-      %3 = VPUIP.NNDMA <{port = 0 : i64, split_candidate}> inputs(%cst : !Weights) outputs(%2 : !WeightsCmx) -> !WeightsCmx
+      %3 = VPUIP.NNDMA <{port = 0 : i64, split_candidate = true}> inputs(%cst : !Weights) outputs(%2 : !WeightsCmx) -> !WeightsCmx
     }
     // CHECK:       [[NNDMA_0:%.+]] = VPUIP.NNDMA <{port = 0 : i64}> inputs([[CST_0]] : memref<160x960x1x1x[[Q_ELEM_TYPE_0]]>)
     // CHECK-SAME:         outputs([[BUFFER_CMX_0]] : memref<160x960x1x1x[[Q_ELEM_TYPE_0]], [@CMX_NN, 2]>)
@@ -242,7 +242,7 @@ func.func @SplitSwizzledConstant(%arg0: !DummyT) -> !DummyT {
     // CHECK:       [[BUFFER_CMX_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [2] <8192> -> memref<64x64x1x1xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 1024 : i64>}, [@CMX_NN, 2]>
 
     VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier) {
-      %3 = VPUIP.NNDMA <{port = 0 : i64, split_candidate}> inputs(%cst : !Weights) outputs(%2 : !WeightsCmx) -> !WeightsCmx
+      %3 = VPUIP.NNDMA <{port = 0 : i64, split_candidate = true}> inputs(%cst : !Weights) outputs(%2 : !WeightsCmx) -> !WeightsCmx
     }
     // CHECK:       [[NNDMA_0:%.+]] = VPUIP.NNDMA <{port = 0 : i64}> inputs([[CST_0]] : memref<64x64x1x1xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 1024 : i64>}>)
     // CHECK-SAME:         outputs([[BUFFER_CMX_0]] : memref<64x64x1x1xf16, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 1024 : i64>}, [@CMX_NN, 2]>)
@@ -280,7 +280,7 @@ func.func @SplitThirdAxis(%arg0: !DummyT) -> !DummyT {
 
 
     VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier) {
-      %3 = VPUIP.NNDMA <{port = 0 : i64, split_candidate}> inputs(%cst : !Weights) outputs(%2 : !WeightsCmx) -> !WeightsCmx
+      %3 = VPUIP.NNDMA <{port = 0 : i64, split_candidate = true}> inputs(%cst : !Weights) outputs(%2 : !WeightsCmx) -> !WeightsCmx
     }
     // CHECK:       [[NNDMA_0:%.+]] = VPUIP.NNDMA <{port = 0 : i64}> inputs([[CST_0]] : memref<1x1x6x1280xi32, {order = #NHWC, strides = [15360, 1, 1280, 1]}, @DDR>)
     // CHECK-SAME:         outputs([[BUFFER_CMX_0]] : memref<1x1x6x1280xi32, {order = #NHWC, strides = [15360, 1, 1280, 1]}, [@CMX_NN, 2]>)
@@ -316,7 +316,7 @@ func.func @SplitSwizzledSubbyteConstant(%arg0: !DummyT) -> !DummyT {
     // CHECK:       [[BUFFER_CMX_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [2] <16384> -> memref<256x512x1x1xi1, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 1024 : i64>}, [@CMX_NN, 2]>
 
     VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier) {
-      %3 = VPUIP.NNDMA <{port = 0 : i64, split_candidate}> inputs(%cst : !SparsityMap) outputs(%2 : !SparsityMapCmx) -> !SparsityMapCmx
+      %3 = VPUIP.NNDMA <{port = 0 : i64, split_candidate = true}> inputs(%cst : !SparsityMap) outputs(%2 : !SparsityMapCmx) -> !SparsityMapCmx
     }
 
     // CHECK:       [[NNDMA_0:%.+]] = VPUIP.NNDMA <{port = 0 : i64}> inputs([[CST_0]] : memref<256x512x1x1xi1, {order = #NHWC, swizzlingScheme = #VPUIP.SwizzlingSchemeAttr<key = 5 : i64, sizeAlignment = 1024 : i64>}>)
@@ -356,7 +356,7 @@ func.func @SplitConstantSourceDuplicatedNNDMA(%arg0: !DummyT) -> !DummyT {
     %2 = const.Declare memref<1x1x1x368768xf16> = dense<1.0> : tensor<1x1x1x368768xf16>
     %3 = VPURT.DeclareBuffer <CMX_NN> [0, 1, 2, 3, 4, 5] <164352> -> !DistributedType
     VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier) {
-      %4 = VPUIP.NNDMA <{port = 0 : i64, split_candidate}>
+      %4 = VPUIP.NNDMA <{port = 0 : i64, split_candidate = true}>
           inputs(%2 : memref<1x1x1x368768xf16>)
           outputs(%3 : !DistributedType) -> !DistributedType
     }
@@ -438,7 +438,7 @@ func.func @SplitBufferSourceDuplicatedNNDMA(%arg0: !DummyT) -> !DummyT {
     %2 = VPURT.DeclareBuffer <DDR> <0> -> memref<1x1x1x368768xf16, @DDR>
     %3 = VPURT.DeclareBuffer <CMX_NN> [0, 1, 2, 3, 4, 5] <164352> -> !DistributedType
     VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier) {
-      %4 = VPUIP.NNDMA <{port = 0 : i64, split_candidate}>
+      %4 = VPUIP.NNDMA <{port = 0 : i64, split_candidate = true}>
           inputs(%2 : memref<1x1x1x368768xf16, @DDR>)
           outputs(%3 : !DistributedType) -> !DistributedType
     }
@@ -513,7 +513,7 @@ func.func @SplitSubByteStridedBuffer2BufferDma(%arg0: !DummyT) -> !DummyT {
     // CHECK:       [[BUFFER_CMX_1:%.+]] = VPURT.DeclareBuffer <CMX_NN> [2] <42> -> memref<1x1x86x1xui4, {order = #NCHW, strides = [170, 170, 1, 1]}, [@CMX_NN, 2]>
 
     VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier) {
-      %4 = VPUIP.NNDMA <{port = 0 : i64, split_candidate}> inputs(%2 : memref<1x1x170x1xui4, {order = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>, strides = [512, 512, 1, 1]}, @DDR>) outputs(%3 : memref<1x1x170x1xui4, [@CMX_NN, 2]>) -> memref<1x1x170x1xui4, [@CMX_NN, 2]>
+      %4 = VPUIP.NNDMA <{port = 0 : i64, split_candidate = true}> inputs(%2 : memref<1x1x170x1xui4, {order = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>, strides = [512, 512, 1, 1]}, @DDR>) outputs(%3 : memref<1x1x170x1xui4, [@CMX_NN, 2]>) -> memref<1x1x170x1xui4, [@CMX_NN, 2]>
     }
     // CHECK:       [[NNDMA_0:%.+]] = VPUIP.NNDMA <{port = 0 : i64}> inputs([[BUFFER_DDR_0]] : memref<1x1x84x1xui4, {order = #NCHW, strides = [512, 512, 1, 1]}, @DDR>)
     // CHECK-SAME:         outputs([[BUFFER_CMX_0]] : memref<1x1x84x1xui4, {order = #NCHW, strides = [170, 170, 1, 1]}, [@CMX_NN, 2]>)
@@ -543,10 +543,10 @@ func.func @DoNotSplitWhenSplitCreatesEmptyPart(%arg0: !DummyT) -> !DummyT {
     %3 = VPURT.DeclareBuffer <CMX_NN> [2] <0> -> memref<1x1x3x1xui4, [@CMX_NN, 2]>
 
     VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier) {
-      %4 = VPUIP.NNDMA <{port = 0 : i64, split_candidate}> inputs(%2 : memref<1x1x3x1xui4, @DDR>) outputs(%3 : memref<1x1x3x1xui4, [@CMX_NN, 2]>) -> memref<1x1x3x1xui4, [@CMX_NN, 2]>
+      %4 = VPUIP.NNDMA <{port = 0 : i64, split_candidate = true}> inputs(%2 : memref<1x1x3x1xui4, @DDR>) outputs(%3 : memref<1x1x3x1xui4, [@CMX_NN, 2]>) -> memref<1x1x3x1xui4, [@CMX_NN, 2]>
     }
     // Verify that the DMA is NOT split - should remain as a single NNDMA with port 0
-    // CHECK:       VPUIP.NNDMA <{port = 0 : i64, split_candidate}>
+    // CHECK:       VPUIP.NNDMA <{port = 0 : i64, split_candidate = true}>
     // CHECK-SAME:      inputs({{%.+}} : memref<1x1x3x1xui4, @DDR>)
     // CHECK-SAME:      outputs({{%.+}} : memref<1x1x3x1xui4, [@CMX_NN, 2]>)
     // CHECK-NOT:   VPUIP.NNDMA <{port = 1 : i64}>
@@ -569,13 +569,13 @@ func.func @DoNotSplitIndivisibleBuffer(%arg0: memref<1x1x1x1xf16, {order = #NHWC
     %out = VPURT.DeclareBuffer <CMX_NN> [0] <0> -> memref<1x1x1x1xf16, {order = #NHWC, strides = [1, 1, 1, 1]}, [@CMX_NN, 0]>
 
     VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier) {
-      %2 = VPUIP.NNDMA <{port = 0 : i64, split_candidate}> inputs(%in : memref<1x1x1x1xf16, {order = #NHWC, strides = [1, 1, 1, 1]}, @DDR>) outputs(%out : memref<1x1x1x1xf16, {order = #NHWC, strides = [1, 1, 1, 1]}, [@CMX_NN, 0]>) -> memref<1x1x1x1xf16, {order = #NHWC, strides = [1, 1, 1, 1]}, [@CMX_NN, 0]>
+      %2 = VPUIP.NNDMA <{port = 0 : i64, split_candidate = true}> inputs(%in : memref<1x1x1x1xf16, {order = #NHWC, strides = [1, 1, 1, 1]}, @DDR>) outputs(%out : memref<1x1x1x1xf16, {order = #NHWC, strides = [1, 1, 1, 1]}, [@CMX_NN, 0]>) -> memref<1x1x1x1xf16, {order = #NHWC, strides = [1, 1, 1, 1]}, [@CMX_NN, 0]>
     }
 
     // The buffer shape is 1x1x1x1, which cannot be divided further.
     // Verify that the DMA is NOT split.
     // CHECK:       [[IN_BUF:%.+]] = VPURT.DeclareBuffer <DDR> <0>
-    // CHECK:       VPUIP.NNDMA <{port = 0 : i64, split_candidate}> inputs([[IN_BUF]] : memref<1x1x1x1xf16, {order = #NHWC, strides = [1, 1, 1, 1]}, @DDR>)
+    // CHECK:       VPUIP.NNDMA <{port = 0 : i64, split_candidate = true}> inputs([[IN_BUF]] : memref<1x1x1x1xf16, {order = #NHWC, strides = [1, 1, 1, 1]}, @DDR>)
     // CHECK-NOT:   VPUIP.NNDMA <{port = 1 : i64}>
 
     return %in : memref<1x1x1x1xf16, {order = #NHWC, strides = [1, 1, 1, 1]}, @DDR>
@@ -585,7 +585,7 @@ func.func @DoNotSplitIndivisibleBuffer(%arg0: memref<1x1x1x1xf16, {order = #NHWC
 // -----
 
 
-!qElemType = !quant.quantile<u4:f16:f16, {0.000000e+00,1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00,5.000000e+00,6.000000e+00,7.000000e+00,-8.000000e+00,-7.000000e+00,-6.000000e+00,-5.000000e+00,-4.000000e+00,-3.000000e+00,-2.000000e+00,-1.000000e+00}:1.000000e+00>
+!qElemType = !quant.uniform<!QuantileType.quantile<ui4:f16, {0.000000e+00,1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00,5.000000e+00,6.000000e+00,7.000000e+00,-8.000000e+00,-7.000000e+00,-6.000000e+00,-5.000000e+00,-4.000000e+00,-3.000000e+00,-2.000000e+00,-1.000000e+00}>:f16, 1.000000e+00>
 !DummyT = memref<1x3x224x224xf16, @DDR>
 
 // CHECK-LABEL: @SplitGatherDMA
@@ -597,7 +597,7 @@ func.func @SplitGatherDMA(%arg0: !DummyT) -> !DummyT {
     %4 = VPURT.DeclareBuffer <CMX_NN> [0] <164032> -> memref<320x2880x1x1x!qElemType, [@CMX_NN, 0]>
 
     VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier)  {
-      VPUIP.GatherDMA <{elementSize = 0 : i64, padding = 0 : i64, port = 0 : i64, split_candidate}> inputs(%2 : memref<184320x2880x1x1x!qElemType, @DDR>) indices(%3 : memref<320x1x1x1xi64, [@CMX_NN, 0]>) outputs(%4 : memref<320x2880x1x1x!qElemType, [@CMX_NN, 0]>) -> memref<320x2880x1x1x!qElemType, [@CMX_NN, 0]>
+      VPUIP.GatherDMA <{elementSize = 0 : i64, padding = 0 : i64, port = 0 : i64, split_candidate = true}> inputs(%2 : memref<184320x2880x1x1x!qElemType, @DDR>) indices(%3 : memref<320x1x1x1xi64, [@CMX_NN, 0]>) outputs(%4 : memref<320x2880x1x1x!qElemType, [@CMX_NN, 0]>) -> memref<320x2880x1x1x!qElemType, [@CMX_NN, 0]>
     }
 
     // CHECK:       VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
@@ -625,7 +625,7 @@ func.func @SplitGatherDMA(%arg0: !DummyT) -> !DummyT {
 
 // -----
 
-!qElemType = !quant.quantile<u4:f16:f16, {0.000000e+00,1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00,5.000000e+00,6.000000e+00,7.000000e+00,-8.000000e+00,-7.000000e+00,-6.000000e+00,-5.000000e+00,-4.000000e+00,-3.000000e+00,-2.000000e+00,-1.000000e+00}:1.000000e+00>
+!qElemType = !quant.uniform<!QuantileType.quantile<ui4:f16, {0.000000e+00,1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00,5.000000e+00,6.000000e+00,7.000000e+00,-8.000000e+00,-7.000000e+00,-6.000000e+00,-5.000000e+00,-4.000000e+00,-3.000000e+00,-2.000000e+00,-1.000000e+00}>:f16, 1.000000e+00>
 !DummyT = memref<1x3x224x224xf16, @DDR>
 
 // CHECK-LABEL: @NotSplitGatherDMAForUnalignedIndices
@@ -637,7 +637,7 @@ func.func @NotSplitGatherDMAForUnalignedIndices(%arg0: !DummyT) -> !DummyT {
     %4 = VPURT.DeclareBuffer <CMX_NN> [0] <164032> -> memref<10x2880x1x1x!qElemType, [@CMX_NN, 0]>
 
     VPURT.Task waits(%0 : !VPURT.Barrier) updates(%1 : !VPURT.Barrier)  {
-      VPUIP.GatherDMA <{elementSize = 0 : i64, padding = 0 : i64, port = 0 : i64, split_candidate}> inputs(%2 : memref<184320x2880x1x1x!qElemType, @DDR>) indices(%3 : memref<10x1x1x1xi64, [@CMX_NN, 0]>) outputs(%4 : memref<10x2880x1x1x!qElemType, [@CMX_NN, 0]>) -> memref<10x2880x1x1x!qElemType, [@CMX_NN, 0]>
+      VPUIP.GatherDMA <{elementSize = 0 : i64, padding = 0 : i64, port = 0 : i64, split_candidate = true}> inputs(%2 : memref<184320x2880x1x1x!qElemType, @DDR>) indices(%3 : memref<10x1x1x1xi64, [@CMX_NN, 0]>) outputs(%4 : memref<10x2880x1x1x!qElemType, [@CMX_NN, 0]>) -> memref<10x2880x1x1x!qElemType, [@CMX_NN, 0]>
     }
 
     // CHECK:       VPURT.DeclareVirtualBarrier -> !VPURT.Barrier
@@ -645,7 +645,7 @@ func.func @NotSplitGatherDMAForUnalignedIndices(%arg0: !DummyT) -> !DummyT {
     // CHECK:       [[BUFFER_DDR:%.+]] = VPURT.DeclareBuffer <NetworkInput> [2] <0> -> memref<184320x2880x1x1x!qElemType, @DDR>
     // CHECK:       [[INDICES:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <115392> -> memref<10x1x1x1xi64, [@CMX_NN, 0]>
     // CHECK:       [[OUTPUT:%.+]] = VPURT.DeclareBuffer <CMX_NN> [0] <164032> -> memref<10x2880x1x1x!qElemType, [@CMX_NN, 0]>
-    // CHECK:       VPUIP.GatherDMA <{elementSize = 0 : i64, padding = 0 : i64, port = 0 : i64, split_candidate}>
+    // CHECK:       VPUIP.GatherDMA <{elementSize = 0 : i64, padding = 0 : i64, port = 0 : i64, split_candidate = true}>
     // CHECK-SAME:      inputs([[BUFFER_DDR]] : memref<184320x2880x1x1x!qElemType, @DDR>)
     // CHECK-SAME:      indices([[INDICES]] : memref<10x1x1x1xi64, [@CMX_NN, 0]>)
     // CHECK-SAME:      outputs([[OUTPUT]] : memref<10x2880x1x1x!qElemType, [@CMX_NN, 0]>)

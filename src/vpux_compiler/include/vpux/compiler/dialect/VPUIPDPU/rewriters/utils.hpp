@@ -94,14 +94,22 @@ SmallVector<DataType> getZeroPoints(mlir::Type type) {
     static_assert(std::is_integral<DataType>::value, "DataType must be an integer type");
     SmallVector<DataType> quantZeroPoints;
 
-    if (const auto uniformQuantType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(type)) {
-        quantZeroPoints.push_back(checked_cast<DataType>(uniformQuantType.getZeroPoint()));
-    } else if (const auto uniformQuantPerAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(type)) {
-        auto zp = uniformQuantPerAxisType.getZeroPoints();
+    const auto appendSingleZeroPoint = [&](int64_t zp) {
+        quantZeroPoints.push_back(checked_cast<DataType>(zp));
+    };
+
+    const auto appendPerAxisZeroPoints = [&](auto perAxisType) {
+        auto zp = perAxisType.getZeroPoints();
         quantZeroPoints.resize(zp.size());
         std::transform(zp.begin(), zp.end(), quantZeroPoints.begin(), [](int64_t a) {
             return checked_cast<DataType>(a);
         });
+    };
+
+    if (const auto uniformQuantType = mlir::dyn_cast<mlir::quant::UniformQuantizedType>(type)) {
+        appendSingleZeroPoint(uniformQuantType.getZeroPoint());
+    } else if (const auto uniformQuantPerAxisType = mlir::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(type)) {
+        appendPerAxisZeroPoints(uniformQuantPerAxisType);
     } else {
         quantZeroPoints.push_back(0);
     }

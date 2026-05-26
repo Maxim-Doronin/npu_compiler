@@ -3,12 +3,12 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --introduce-init-function="ws-extraction-mode=gen-init" --mlir-print-debuginfo %s | FileCheck --check-prefix=CHECK-INIT %s
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --introduce-init-function="ws-extraction-mode=gen-main" --mlir-print-debuginfo %s | FileCheck --check-prefix=CHECK-MAIN %s
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --introduce-init-function="ws-extraction-mode=gen-init" --concat-init-results="ws-extraction-mode=gen-init" --mlir-print-debuginfo %s | FileCheck --check-prefix=CHECK-INIT-CONCAT %s
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --introduce-init-function="ws-extraction-mode=gen-main" --concat-init-results="ws-extraction-mode=gen-main" --mlir-print-debuginfo %s | FileCheck --check-prefix=CHECK-MAIN-CONCAT %s
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --construct-ws-analysis --introduce-init-function="ws-extraction-mode=gen-init" --mlir-print-debuginfo %s | FileCheck --check-prefix=CHECK-INIT %s
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --construct-ws-analysis --introduce-init-function="ws-extraction-mode=gen-main" --mlir-print-debuginfo %s | FileCheck --check-prefix=CHECK-MAIN %s
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --construct-ws-analysis --introduce-init-function="ws-extraction-mode=gen-init" --concat-init-results="ws-extraction-mode=gen-init" --mlir-print-debuginfo %s | FileCheck --check-prefix=CHECK-INIT-CONCAT %s
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --construct-ws-analysis --introduce-init-function="ws-extraction-mode=gen-main" --concat-init-results="ws-extraction-mode=gen-main" --mlir-print-debuginfo %s | FileCheck --check-prefix=CHECK-MAIN-CONCAT %s
 
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
 
 {-#

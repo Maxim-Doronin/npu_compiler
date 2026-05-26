@@ -3,10 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --outliner="function-outlining=\"batching='', naive=''\"" --verify-diagnostics %s
-// REQUIRES: arch-NPU37XX || arch-NPU40XX || arch-NPU50XX
+// RUN: vpux-opt --split-input-file --init-compiler="platform=%platform%" --outliner="function-outlining=\"batching='', naive=''\"" --verify-diagnostics %s
+// REQUIRES: platform-NPU3720 || platform-NPU4000 || platform-NPU5010
 
-// expected-error@+1 {{The module attribute 'config.debatch' doesn't support multiple `OutlinerPassOptions`, got: 2}}
+// expected-error@+1 {{Outliner must not use "batching" outlining together with other options, total options count: 2}}
 module @ValidModuleWithAttrButIncorrectOptions attributes {config.debatch} {
 
     net.NetworkInfo entryPoint : @main

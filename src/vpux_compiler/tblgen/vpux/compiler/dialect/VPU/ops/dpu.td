@@ -107,14 +107,14 @@ def VPU_DPUWorkloadOp :
         VPU::PaddingAttr getPadAttribute();
 
         SmallVector<mlir::OpFoldResult> getMixedOutputOffsets();
-        SmallVector<mlir::OpFoldResult> getMixedOutputSizes();  
-        std::optional<SmallVector<mlir::OpFoldResult>> getMixedInputOffsets();  
+        SmallVector<mlir::OpFoldResult> getMixedOutputSizes();
+        std::optional<SmallVector<mlir::OpFoldResult>> getMixedInputOffsets();
         std::optional<SmallVector<mlir::OpFoldResult>> getMixedInputSizes();
 
         SmallVector<int64_t> getConstOutputOffsets();
-        SmallVector<int64_t> getConstOutputSizes();  
-        std::optional<SmallVector<int64_t>> getConstInputOffsets();  
-        std::optional<SmallVector<int64_t>> getConstInputSizes();           
+        SmallVector<int64_t> getConstOutputSizes();
+        std::optional<SmallVector<int64_t>> getConstInputOffsets();
+        std::optional<SmallVector<int64_t>> getConstInputSizes();
     }];
 }
 
@@ -391,6 +391,7 @@ def VPU_NCEDepthConvolutionOp :
         VPU_PaddingAttr:$pad,
 
         VPU_PPEAttrInterface:$ppe,
+        OptionalAttr<VPU_MPEEngineAttrInterface>:$mpe_engine,
 
         ConfinedAttr<I64ArrayAttr, [ArrayCount<4>]>:$rawFilterShape,
 
@@ -485,6 +486,7 @@ def VPU_NCECompressConvolutionOp :
         VPU_PaddingAttr:$pad,
 
         VPU_PPEAttrInterface:$ppe,
+        OptionalAttr<VPU_MPEEngineAttrInterface>:$mpe_engine,
 
         ConfinedAttr<I64ArrayAttr, [ArrayCount<4>]>:$rawFilterShape,
 
@@ -559,10 +561,12 @@ def VPU_NCEMaxPoolOp :
         VPU_PaddingAttr:$pad,
 
         VPU_PPEAttrInterface:$ppe,
+        OptionalAttr<VPU_MPEEngineAttrInterface>:$mpe_engine,
 
         OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy,
         OptionalAttr<I64ArrayAttr>:$output_padding,
-        OptionalAttr<I64ArrayAttr>:$input_padding
+        OptionalAttr<I64ArrayAttr>:$input_padding,
+        OptionalAttr<VPU_S2DD2SConfigAttr>:$s2dd2s_config
     );
 
     let results = (outs
@@ -605,6 +609,7 @@ def VPU_NCEAveragePoolOp :
         VPU_LayerOp<
             "NCE.AveragePool",
             [
+                AttrSizedOperandSegments,
                 NoRegionArguments,
                 NoTerminator,
                 SingleBlock,
@@ -624,12 +629,15 @@ def VPU_NCEAveragePoolOp :
 
     let arguments = (ins
         AnyTypeOf<[4DTensorOf<[F16, BF16, quant_QuantizedType]>, VPU_SparseTensor, VPU_DistributedTensor]>:$input,
+        Optional<AnyTypeOf<[4DTensorOf<[F32, F8E8M0FNU, F8E5M2, F8E4M3FN]>, VPU_DistributedTensor]>>:$weight_table_scale,
+        Optional<AnyTypeOf<[4DTensorOf<[F32]>, VPU_DistributedTensor]>>:$weight_table_bias,
 
         ConfinedAttr<I64ArrayAttr, [ArrayCount<2>]>:$kernel_size,
         ConfinedAttr<I64ArrayAttr, [ArrayCount<2>]>:$strides,
         VPU_PaddingAttr:$pad,
 
         VPU_PPEAttrInterface:$ppe,
+        OptionalAttr<VPU_MPEEngineAttrInterface>:$mpe_engine,
 
         OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy,
         OptionalAttr<I64ArrayAttr>:$output_padding,
@@ -645,7 +653,11 @@ def VPU_NCEAveragePoolOp :
     );
 
     let assemblyFormat = [{
-        `(` $input `)`
+        `(`
+            $input
+            (`,` $weight_table_scale^ `` custom<OptionalTypes>(type($weight_table_scale)))?
+            (`,` $weight_table_bias^ `` custom<OptionalTypes>(type($weight_table_bias)))?
+        `)`
         attr-dict
         custom<OptionalTypes>(type($input)) ``
         `->` type(results)
@@ -663,6 +675,13 @@ def VPU_NCEAveragePoolOp :
                                 bool checkChannelAlignment = false);
 
         static mlir::LogicalResult verifyKernel(IE::AvgPoolOp origOp, Logger log = Logger::global());
+
+        // NCEAveragePoolOp only has scale/bias tables
+        // adding these functions in order to remain compatible with any template that expects these methods to exist when handling weight tables
+        mlir::Value getWeightsTable() { return nullptr; }
+        mlir::Value getWeightTableDataPtr() { return nullptr; }
+        mlir::Value getWeightTableSpPtr() { return nullptr; }
+        mlir::Value getWeightZeroPoints() { return nullptr; }
     }] # baseExtraClassDeclaration;
 
     let elemComparisonModes = [IE_TypeComparisonMode_ALLOW_MIXED_PRECISION, IE_TypeComparisonMode_ALLOW_DIFFERENT_QUANT,
@@ -698,6 +717,7 @@ def VPU_NCEEltwiseOp :
         VPU_EltwiseTypeAttr:$op_type,
 
         VPU_PPEAttrInterface:$ppe,
+        OptionalAttr<VPU_MPEEngineAttrInterface>:$mpe_engine,
 
         OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy,
         OptionalAttr<BoolAttr>:$is_inplace,
@@ -773,6 +793,8 @@ def VPU_NCEReduceOp :
         I64ArrayAttr:$axes,
 
         VPU_PPEAttrInterface:$ppe,
+        OptionalAttr<VPU_MPEEngineAttrInterface>:$mpe_engine,
+
         VPU_ReduceTypeAttr:$op_type,
         OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy,
         OptionalAttr<I64ArrayAttr>:$output_padding,
@@ -846,6 +868,7 @@ def VPU_NCEPermuteOp :
         TypeAttr:$dstElemType,
         AffineMapAttr:$dstOrder,
         VPU_PPEAttrInterface:$ppe,
+        OptionalAttr<VPU_MPEEngineAttrInterface>:$mpe_engine,
 
         OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy
     );
@@ -911,6 +934,8 @@ def VPU_NCEInterpolateOp :
         ConfinedAttr<I64ArrayAttr, [ArrayCount<2>]>:$strides,
 
         VPU_PPEAttrInterface:$ppe,
+        OptionalAttr<VPU_MPEEngineAttrInterface>:$mpe_engine,
+        
         ConfinedAttr<I64ArrayAttr, [ArrayCount<4>]>:$rawFilterShape,
         OptionalAttr<VPU_MultiClusterStrategyAttr>:$multiClusterStrategy,
         OptionalAttr<VPU_NCEInterpolateModeAttr>:$mode
@@ -943,11 +968,6 @@ def VPU_NCEInterpolateOp :
     let hasVerifier = 1;
 
     let extraClassDeclaration = [{
-        static bool isSupported(vpux::IE::InterpolateOp origOp, vpux::LogCb logCb,
-                                bool checkLayout = false, bool checkChannelAlignment = false, bool checkBatch = false);
-        static bool isSupported(vpux::VPU::InterpolateOp origOp, vpux::LogCb logCb,
-                                bool checkLayout = false, bool checkChannelAlignment = false, bool checkBatch = false);
-
         static mlir::LogicalResult verifyKernel(IE::InterpolateOp origOp, Logger log = Logger::global());
 
         bool fitIntoCMX(vpux::NDTypeInterface input, vpux::NDTypeInterface filter, vpux::NDTypeInterface output, Byte reservedMem);
@@ -1106,6 +1126,34 @@ def VPU_ZeroPointTableOp :
 
     let results = (outs
         AnyTypeOf<[4DTensorOf<[I8]>, VPU_DistributedTensor]>:$output
+    );
+
+    let assemblyFormat = [{
+        attr-dict `->` type(results)
+    }];
+}
+
+def VPU_DataPointerTableOp :
+        VPU_Op<
+            "DataPointerTable",
+            [Pure]
+        > {
+    let summary = "Operation which helps to create data-pointer table.";
+
+    let description = [{
+        This operation creates a data-pointer table that will be converted to a constant in VPUIP dialect.
+        It holds the data-pointer values and metadata needed to generate
+        the actual data-pointer table data based on workload information.
+    }];
+
+    let arguments = (ins
+        TypeAttr:$weightsElemType,
+        OptionalAttr<I64ArrayAttr>:$workloadSizes,
+        OptionalAttr<I64ArrayAttr>:$dataPointerTableData
+    );
+
+    let results = (outs
+        AnyTypeOf<[4DTensorOf<[SI32]>, VPU_DistributedTensor]>:$output
     );
 
     let assemblyFormat = [{

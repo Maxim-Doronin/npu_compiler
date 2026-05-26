@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-// RUN: env OV_NPU_LOG_LEVEL=LOG_TRACE vpux-opt --split-input-file --init-compiler="vpu-arch=%arch%" --logging-weights-quant-fused-into-task %s 2>&1 | FileCheck %s
-// REQUIRES: dev-build && (arch-NPU37XX || arch-NPU40XX)
+// RUN: env OV_NPU_LOG_LEVEL=LOG_TRACE vpux-opt --split-input-file --init-compiler="platform=%platform%" --logging-weights-quant-fused-into-task %s 2>&1 | FileCheck %s
+// REQUIRES: dev-build && (platform-NPU3720 || platform-NPU4000)
 
 !qElemType = !quant.uniform<u8:f16, 1.000000e+00>
 func.func @ConvWithConstQuantWeights(%input: tensor<1x16x16x16xf16>) -> tensor<1x32x16x16xf16>{

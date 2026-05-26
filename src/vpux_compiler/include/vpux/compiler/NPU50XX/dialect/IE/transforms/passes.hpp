@@ -25,8 +25,8 @@ std::unique_ptr<mlir::Pass> createConvertFakeConvertToFakeQuantizePass(Logger lo
 struct DefaultHWOptions : public IE::DefaultHWOptionsDialectBase, virtual vpux::arch50xx::DefaultHWOptionsDeviceBase {
     BoolOption enableConvertFFTToConv{*this, "convert-fft-to-conv", llvm::cl::desc("Enable convert-fft-to-conv pass"),
                                       llvm::cl::init(true)};
-    BoolOption enableConvertToSdpaExtended{*this, "convert-to-sdpa-extended",
-                                           llvm::cl::desc("Enable conversion to SDPA extended"), llvm::cl::init(true)};
+    BoolOption enableConvertToAttention{*this, "convert-to-attention", llvm::cl::desc("Enable conversion to Attention"),
+                                        llvm::cl::init(true)};
     BoolOption enableFuseSoftwareSDPA{*this, "fuse-software-sdpa", llvm::cl::desc("Enable fuse-sdpa pass"),
                                       llvm::cl::init(false)};
     BoolOption enableConvertToReduceSquare{*this, "convert-to-reduce-square",
@@ -34,9 +34,6 @@ struct DefaultHWOptions : public IE::DefaultHWOptionsDialectBase, virtual vpux::
     BoolOption enableDecomposeGRUSequence{*this, "decompose-gru-sequence",
                                           llvm::cl::desc("Enable decompose-gru-sequence pass"), llvm::cl::init(true)};
 
-    BoolOption enableFusePermuteQuantizeExpand{*this, "fuse-permute-quantize-expand",
-                                               llvm::cl::desc("Enable fuse-permute-quantize-expand pass"),
-                                               llvm::cl::init(true)};
     BoolOption enableSwapConvertWithSWOp{*this, "swap-convert-with-sw-op",
                                          llvm::cl::desc("Enable swap-convert-with-sw-op pass"), llvm::cl::init(true)};
 
@@ -60,6 +57,10 @@ struct DefaultHWOptions : public IE::DefaultHWOptionsDialectBase, virtual vpux::
     BoolOption enableReduceNumTilesForSmallModelsPass{*this, "reduce-num-tiles-for-small-models",
                                                       llvm::cl::desc("Enable reduce-num-tiles-for-small-models pass"),
                                                       llvm::cl::init(false)};
+
+    BoolOption enableNCEEltwiseMultiply{*this, "enable-nce-eltwise-multiply",
+                                        llvm::cl::desc("Enable NCEEltwise for Multiply ops with [1,C,1,1] shape"),
+                                        llvm::cl::init(true)};
 };
 
 //

@@ -8,9 +8,14 @@
 namespace vpux::VPU::arch50xx {
 
 constexpr bool shaveControlsDpuValue = true;
+constexpr bool shaveDpuNeedWeightTable = true;
 
-bool getShaveControlsDpuConstraint() {
+constexpr bool getShaveControlsDpuConstraint() {
     return shaveControlsDpuValue;
+}
+
+constexpr bool getShaveDpuNeedWeightTable() {
+    return shaveDpuNeedWeightTable;
 }
 
 }  // namespace vpux::VPU::arch50xx

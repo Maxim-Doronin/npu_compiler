@@ -625,7 +625,7 @@ mlir::LogicalResult AdjustShapeForNCEPermute::matchAndRewrite(VPU::NCEPermuteOp 
     auto newOutputType = origOutputType.changeShape(targetShape);
     auto newNCEPermuteOp = rewriter.create<VPU::NCEPermuteOp>(
             origOp->getLoc(), newOutputType, inShapeCast.getResult(), origOp.getExpandedChannelsAttr(),
-            origOp.getDstElemTypeAttr(), origOp.getDstOrderAttr(), origOp.getPpeAttr(),
+            origOp.getDstElemTypeAttr(), origOp.getDstOrderAttr(), origOp.getPpeAttr(), origOp.getMpeEngineAttr(),
             origOp.getMultiClusterStrategyAttr());
 
     // Reshape output
@@ -850,8 +850,9 @@ mlir::LogicalResult AdjustShapeForNCEAvgPool::matchAndRewrite(VPU::NCEAveragePoo
     auto origOutputType = mlir::cast<NDTypeInterface>(origOp.getOutput().getType());
     auto newOutputType = origOutputType.changeShape(newInShape);
     auto newPoolOp = rewriter.create<VPU::NCEAveragePoolOp>(
-            origOp->getLoc(), newOutputType, inShapeCast.getResult(), origOp.getKernelSizeAttr(),
-            origOp.getStridesAttr(), origOp.getPadAttr(), origOp.getPpeAttr(), origOp.getMultiClusterStrategyAttr(),
+            origOp->getLoc(), newOutputType, inShapeCast.getResult(), origOp.getWeightTableScale(),
+            origOp.getWeightTableBias(), origOp.getKernelSizeAttr(), origOp.getStridesAttr(), origOp.getPadAttr(),
+            origOp.getPpeAttr(), origOp.getMpeEngineAttr(), origOp.getMultiClusterStrategyAttr(),
             origOp.getOutputPaddingAttr(), origOp.getInputPaddingAttr());
 
     // Reshape output

@@ -63,6 +63,7 @@ public:
     static const DimsOrder HNWC;
     static const DimsOrder CWNH;
     static const DimsOrder CNHW;
+    static const DimsOrder CNWH;
     static const DimsOrder CHWN;
     static const DimsOrder HCWN;
 

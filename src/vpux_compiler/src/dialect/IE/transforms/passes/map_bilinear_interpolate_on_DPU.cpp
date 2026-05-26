@@ -23,6 +23,7 @@
 #include <mlir/IR/Operation.h>
 #include <mlir/IR/PatternMatch.h>
 #include <mlir/Support/LLVM.h>
+#include <mlir/Transforms/WalkPatternRewriteDriver.h>
 
 namespace vpux::IE {
 #define GEN_PASS_DECL_MAPBILINEARINTERPOLATEONDPU
@@ -281,6 +282,15 @@ mlir::Value IE::MapBilinearInterpolateOnDPUBaseRewriter::scaleOnAxis(mlir::Patte
 
 mlir::LogicalResult IE::MapBilinearInterpolateOnDPUBaseRewriter::matchAndRewrite(
         IE::InterpolateOp origOp, mlir::PatternRewriter& rewriter) const {
+    const auto logCb = [&](const formatv_object_base& msg) {
+        _log.trace("{0}", msg.str());
+    };
+    VPUX_THROW_WHEN(_strategy == nullptr, "Expected non-null MapBilinearInterpolateOnDPU strategy");
+    const bool shouldConvert = _strategy->shouldConvertInterpolateOpForMapBilinear(origOp, logCb);
+    if (!shouldConvert) {
+        return mlir::failure();
+    }
+
     _log.trace("Got '{0}' at '{1}'", origOp->getName(), origOp->getLoc());
 
     const auto attrs = origOp.getAttr();
@@ -350,8 +360,8 @@ bool vpux::IE::isLegalInterpolateOp(IE::InterpolateOp op, bool interpolateAsSEOp
     auto outputType = mlir::cast<vpux::NDTypeInterface>(op.getOutput().getType());
 
     if (interpolateAsSEOp) {
-        if (VPU::NCEInterpolateOp::isSupported(op, logCb, /*checkLayout=*/false, /*checkChannelAlignment=*/false,
-                                               /*checkBatch=*/false)) {
+        auto seOp = mlir::dyn_cast<IE::SEOpInterface>(op.getOperation());
+        if (seOp && seOp.isSupported(logCb)) {
             auto convert = mlir::dyn_cast_or_null<IE::ConvertOp>(*(op.getOutput().getUsers().begin()));
             return convert == nullptr;
         }
@@ -423,29 +433,15 @@ void MapBilinearInterpolateOnDPUPass::safeRunOnFunc() {
     auto& ctx = getContext();
     const auto func = getOperation();
     const auto moduleOp = getModuleOp(func);
-    const auto logCb = [&](const formatv_object_base& msg) {
-        _log.trace("{0}", msg.str());
-    };
+    const auto interpolateAsSEOps = config::hasEnableSEPtrsOperations(moduleOp);
 
-    auto& strategyFactory = IE::getIEStrategyFactory(&ctx);
-    auto strategy =
-            strategyFactory->getMapBilinearInterpolateOnDPUStrategy(config::hasEnableSEPtrsOperations(moduleOp));
-
-    mlir::ConversionTarget target(ctx);
-    target.addLegalOp<IE::ExpandOp>();
-    target.addLegalOp<IE::AvgPoolOp>();
-    target.addLegalOp<IE::SliceOp>();
-    target.addLegalOp<IE::ConcatOp>();
-    target.addLegalOp<Const::DeclareOp>();
-    target.addLegalOp<IE::GroupConvolutionOp>();
-    strategy->prepareInterpolate(target, logCb);
+    const auto& strategyFactory = IE::getIEStrategyFactory(&ctx);
+    auto strategy = strategyFactory->getMapBilinearInterpolateOnDPUStrategy(interpolateAsSEOps);
 
     mlir::RewritePatternSet patterns(&ctx);
-    patterns.add<IE::MapBilinearInterpolateOnDPUBaseRewriter>(&ctx, _log);
+    patterns.add<IE::MapBilinearInterpolateOnDPUBaseRewriter>(&ctx, strategy.get(), _log);
 
-    if (mlir::failed(mlir::applyPartialConversion(func, target, std::move(patterns)))) {
-        signalPassFailure();
-    }
+    walkAndApplyPatterns(func, std::move(patterns));
 }
 
 }  // namespace

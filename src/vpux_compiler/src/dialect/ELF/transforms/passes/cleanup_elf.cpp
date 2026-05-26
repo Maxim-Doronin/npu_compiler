@@ -8,6 +8,7 @@
 #include "vpux/compiler/dialect/ELF/IR/dialect.hpp"
 #include "vpux/compiler/dialect/ELF/IR/ops.hpp"
 #include "vpux/compiler/dialect/ELF/transforms/passes.hpp"
+#include "vpux/compiler/dialect/ELF/utils/utils.hpp"
 
 #include <mlir/Transforms/DialectConversion.h>
 
@@ -28,11 +29,9 @@ namespace {
 
 void recursivelyRemove(mlir::Operation* symbol, ELF::MainOp main, llvm::SmallVector<mlir::Operation*, 16>& toErase) {
     if (mlir::isa<mlir::SymbolOpInterface>(symbol)) {
-        auto users = mlir::SymbolTable::getSymbolUses(symbol, main);
-        if (users.has_value()) {
-            for (auto user : llvm::make_early_inc_range(users.value())) {
-                recursivelyRemove(user.getUser(), main, toErase);
-            }
+        auto users = vpux::ELF::getSymbolUses(symbol, main);
+        for (auto user : llvm::make_early_inc_range(users)) {
+            recursivelyRemove(user.getUser(), main, toErase);
         }
     } else {
         // it may not be the case, but for safety erase also all SSA users

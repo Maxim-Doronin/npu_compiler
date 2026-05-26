@@ -283,6 +283,7 @@ int64_t getDistributedTilingAxis(ArrayRef<int64_t> tilingScheme);
 bool isDistributedAttrWithExplicitShapesAndOffsets(DistributionInfoAttr distributionAttr);
 bool isDistributionWithExplicitShapesAndOffsets(const DistributionInfo& distribution);
 bool isUniformDistributedSegmentsSupported(mlir::Operation* op);
+bool isHaloAssistedSliceOptimizationSupported(mlir::Operation* op);
 SmallVector<Shape> arrayAttrToVecOfShapes(mlir::ArrayAttr arr);
 
 bool isSegmentedOverH(VPU::DistributionInfoAttr distAttr);

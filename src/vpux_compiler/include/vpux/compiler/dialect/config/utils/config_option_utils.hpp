@@ -80,12 +80,15 @@ constexpr StringRef METADATA_MAX_INVARIANT_COUNT = "config.MetadataMaxInvariantC
 constexpr StringRef METADATA_MAX_KERNEL_INVOCATION_COUNT = "config.MetadataMaxKernelInvocationCount";
 constexpr StringRef METADATA_MAX_KERNEL_RANGE_COUNT = "config.MetadataMaxKernelRangeCount";
 constexpr StringRef METADATA_MAX_MEDIA_COUNT = "config.MetadataMaxMediaCount";
+constexpr StringRef METADATA_MAX_DMA_COUNT = "config.MetadataMaxDMACount";
 
 constexpr StringRef SHV_FIFO_ADDRS = "config.ShvFIFOAddrs";
 constexpr StringRef DPU_FIFO_ADDRS = "config.DpuFIFOAddrs";
 constexpr StringRef BARRIER_FIFO_ADDR = "config.BarrierFIFOAddr";
 constexpr StringRef BARRIER_FIFO_DEPTH = "config.BarrierFIFODepth";
 constexpr StringRef MAX_BARRIERS_PER_TASK = "config.MaxBarriersPerTask";
+constexpr StringRef USE_LEGACY_BARRIERS = "config.UseLegacyBarriers";
+bool hasUseLegacyBarriers(mlir::Operation* op);
 
 // VPUNN Configurations
 constexpr StringRef VPUNN_PRE_SPLIT = "config.EnableVPUNNPreSplit";
