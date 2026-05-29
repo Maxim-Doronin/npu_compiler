@@ -202,7 +202,7 @@ jobs:
 
       - name: System info
         if: ${{ !steps.cache-restore.outputs.cache-hit }}
-        uses: openvinotoolkit/openvino/.github/actions/system_info@3687ccc8dab6a9ad5debfd9263414e6357c43d6f # 2026.1.1
+        uses: openvinotoolkit/openvino/.github/actions/system_info@52ddc07385712456dd9f8c5ecf05d7e49c6da329 # 2026.2.0
 
       - name: Setup python version
         if: ${{ !steps.cache-restore.outputs.cache-hit }}
@@ -357,7 +357,7 @@ jobs:
           key: ${{ steps.cache-key.outputs.cache-key }}
 
       - name: Upload CiD package
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ steps.package-name.outputs.cid-package-full-name }}
           path: |

@@ -128,7 +128,7 @@ jobs:
 
       - name: System info
         if: ${{ !steps.cache-restore.outputs.cache-hit }}
-        uses: openvinotoolkit/openvino/.github/actions/system_info@3687ccc8dab6a9ad5debfd9263414e6357c43d6f # 2026.1.1
+        uses: openvinotoolkit/openvino/.github/actions/system_info@52ddc07385712456dd9f8c5ecf05d7e49c6da329 # 2026.2.0
 
       - name: Setup python version
         if: ${{ !steps.cache-restore.outputs.cache-hit }}
@@ -250,7 +250,7 @@ jobs:
       - name: Filter CodeQL results
         id: codeql-filtered-analyze
         if: ${{ !steps.cache-restore.outputs.cache-hit && inputs.with-codeql }}
-        uses: advanced-security/filter-sarif@f3b8118a9349d88f7b1c0c488476411145b6270d # Release 1.0
+        uses: advanced-security/filter-sarif@2da736ff05ef065cb2894ac6892e47b5eac2c3c0 # v1.1
         with:
           input: ${{ env.CODEQL_OUTPUTS }}/cpp.sarif
           output: ${{ env.CODEQL_OUTPUTS }}/filtered-results.sarif
@@ -269,7 +269,7 @@ jobs:
 
       - name: Upload CodeQL loc as a Build Artifact
         if: ${{ !steps.cache-restore.outputs.cache-hit && inputs.with-codeql }}
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ env.CODEQL_ARTIFACT_NAME }}
           path: ${{ env.CODEQL_OUTPUTS }}
@@ -283,7 +283,7 @@ jobs:
           key: ${{ steps.cache-key.outputs.cache-key }}
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           path: ${{ env.OPENVINO_INSTALL_DIR }}
           name: ${{ env.OPENVINO_BUILD_PACKAGE }}
