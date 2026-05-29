@@ -1,9 +1,9 @@
 # Hugging Face Hub
-huggingface_hub==1.10.2
-hf-xet==1.4.3
+huggingface_hub==1.17.0
+hf-xet==1.5.0
 
 # Utils
-requests>=2.33.1
-urllib3>=2.6.3
-filelock>=3.25.2
+requests>=2.34.2
+urllib3>=2.7.0
+filelock>=3.29.0
 pygments>=2.20.0

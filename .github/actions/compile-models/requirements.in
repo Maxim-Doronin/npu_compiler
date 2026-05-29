@@ -1,23 +1,23 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
 
 # Core
-transformers==5.5.4
-torch==2.11.0+cpu
-torchvision==0.26.0+cpu
-protobuf==7.34.1
+transformers==5.9.0
+torch==2.12.0+cpu
+torchvision==0.27.0+cpu
+protobuf==7.35.0
 onnx==1.21.0
-onnxruntime==1.24.4
+onnxruntime==1.26.0
 onnxruntime-tools>=1.7.0
-onnxscript==0.6.2
+onnxscript==0.7.0
 
 # Hugging Face Hub
-huggingface_hub==1.10.2
-hf-xet==1.4.3
+huggingface_hub==1.17.0
+hf-xet==1.5.0
 
 # Utils
 pillow>=12.2.0
-requests>=2.33.1
+requests>=2.34.2
 tqdm>=4.67.3
 accelerate>=1.13.0
-urllib3>=2.6.3
-filelock>=3.25.2
+urllib3>=2.7.0
+filelock>=3.29.0
