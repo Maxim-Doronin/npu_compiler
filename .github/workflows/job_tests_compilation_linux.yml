@@ -92,7 +92,6 @@ jobs:
           cd ${INSTALL_PACKAGE_DIR}
           dpkg --extract external/intel-driver-compiler-npu_*.deb .
           dpkg --extract external/intel-level-zero-npu_*.deb .
-          dpkg --extract internal/intel-level-zero_*.deb .
           find . -type f
 
       - name: Install system packages
