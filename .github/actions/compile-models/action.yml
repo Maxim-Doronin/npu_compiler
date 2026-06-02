@@ -46,10 +46,9 @@ runs:
         python3 -m pip install --require-hashes -r ${{ github.action_path }}/requirements.txt
 
     - name: Prepare OpenVINO environment
-      if: ${{ inputs.compiler-type == 'PLUGIN' }}
       shell: bash
       run: |
-        cat <<'EOF' > prepare_env.sh
+        cat <<'EOF' > prepare_env_openvino.sh
         #!/usr/bin/env bash
         set -e
         INSTALL_PACKAGE_ABS_PATH=$(realpath ${{ inputs.install-package-dir }})
@@ -59,13 +58,13 @@ runs:
         INSTALL_PACKAGE_ABS_PATH=$(realpath ${{ inputs.install-package-dir }})
         chmod +x ${INSTALL_PACKAGE_ABS_PATH}/setupvars.sh
         chmod +x ${INSTALL_PACKAGE_ABS_PATH}/tools/compile_tool/compile_tool
-        chmod +x prepare_env.sh
+        chmod +x prepare_env_openvino.sh
 
     - name: Prepare Driver environment
       if: ${{ inputs.compiler-type == 'DRIVER' }}
       shell: bash
       run: |
-        cat <<'EOF' > prepare_env.sh
+        cat <<'EOF' > prepare_env_driver.sh
         #!/usr/bin/env bash
         set -e
         if [[ "${{ inputs.npu-platform }}" == "NPU.3720" ]]; then
@@ -82,12 +81,15 @@ runs:
         export ZE_INTEL_NPU_PLATFORM_OVERRIDE=${PLATFORM}
         export COMPILE_TOOL=${INSTALL_PACKAGE_ABS_PATH}/usr/bin/compile_tool
         EOF
-        chmod +x prepare_env.sh
+        chmod +x prepare_env_driver.sh
 
     - name: Compile models for ${{ inputs.npu-platform }} with ${{ inputs.compiler-type }} compiler
       shell: bash
       run: |
-        source prepare_env.sh
+        source prepare_env_openvino.sh
+        if [[ "${{ inputs.compiler-type }}" == "DRIVER" ]]; then
+          source prepare_env_driver.sh
+        fi
         python3 ${{ github.action_path }}/compile_models.py \
           --compiler-type "${{ inputs.compiler-type }}" \
           --compile-tool "${COMPILE_TOOL}" \

@@ -10,10 +10,14 @@ on:
         description: 'Machine on which the tests will run'
         type: string
         required: true
-      install-package:
-        description: 'Artifacts name from the build stage. Content varies depending on compiler-type'
+      install-package-openvino:
+        description: 'Artifacts name from the build stage for OpenVINO package'
         type: string
         required: true
+      install-package-driver:
+        description: 'Artifacts name from the build stage for Driver package'
+        type: string
+        required: false
       compiler-type:
         description: 'PLUGIN or DRIVER'
         type: string
@@ -67,34 +71,37 @@ jobs:
             models-config: ./validation/public_models_5020_${{ inputs.compiler-type }}.json
     steps:
       - name: Checkout
-        if: ${{ !(matrix.npu-platform == 'NPU.5020' && inputs.compiler-type == 'DRIVER') }}
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Download artifacts
-        if: ${{ !(matrix.npu-platform == 'NPU.5020' && inputs.compiler-type == 'DRIVER') }}
+      - name: Download OpenVINO artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
-          name: ${{ inputs.install-package }}
+          name: ${{ inputs.install-package-openvino }}
+          path: ${{ env.INSTALL_PACKAGE_DIR }}
+      
+      - name: Download Driver artifacts
+        if: ${{ inputs.compiler-type == 'DRIVER' }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: ${{ inputs.install-package-driver }}
           path: ${{ env.INSTALL_PACKAGE_DIR }}
 
       - name: Unpack Driver artifacts
-        if: ${{ inputs.compiler-type == 'DRIVER' && !(matrix.npu-platform == 'NPU.5020') }}
+        if: ${{ inputs.compiler-type == 'DRIVER' }}
         run: |
           cd ${INSTALL_PACKAGE_DIR}
           dpkg --extract external/intel-driver-compiler-npu_*.deb .
           dpkg --extract external/intel-level-zero-npu_*.deb .
           dpkg --extract internal/intel-level-zero_*.deb .
-          dpkg --extract internal/intel-openvino-npu_*.deb .
           find . -type f
 
       - name: Install system packages
-        if: ${{ inputs.compiler-type == 'DRIVER' && !(matrix.npu-platform == 'NPU.5020') }}
+        if: ${{ inputs.compiler-type == 'DRIVER' }}
         run: |
           sudo apt update
           sudo apt install -y libtbb12
 
       - name: Download models for ${{ matrix.npu-platform }}
-        if: ${{ !(matrix.npu-platform == 'NPU.5020' && inputs.compiler-type == 'DRIVER') }}
         uses: ./.github/actions/download-models
         with:
           compiler-type: ${{ inputs.compiler-type }}
@@ -102,7 +109,6 @@ jobs:
           models-dir: ${{ env.MODELS_DIR }}
 
       - name: Compile models for ${{ matrix.npu-platform }}
-        if: ${{ !(matrix.npu-platform == 'NPU.5020' && inputs.compiler-type == 'DRIVER') }}
         uses: ./.github/actions/compile-models
         with:
           compiler-type: ${{ inputs.compiler-type }}

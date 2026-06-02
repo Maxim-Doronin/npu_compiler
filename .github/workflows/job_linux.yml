@@ -141,7 +141,7 @@ jobs:
     uses: ./.github/workflows/job_tests_unit_plugin_linux.yml
     with:
       test-runner: ${{ inputs.test-runner }}
-      install-package: ${{ needs.BuildPlugin.outputs.build-package }}
+      install-package-openvino: ${{ needs.BuildPlugin.outputs.build-package }}
       run-unit-tests: ${{ inputs.run-unit-tests }}
       run-lit-tests: ${{ inputs.run-lit-tests }}
 
@@ -153,16 +153,17 @@ jobs:
     with:
       os: ${{ inputs.os }}
       test-runner: ${{ inputs.test-runner }}
-      install-package: ${{ needs.BuildPlugin.outputs.build-package }}
+      install-package-openvino: ${{ needs.BuildPlugin.outputs.build-package }}
       compiler-type: PLUGIN
 
   DriverCompilationTests:
     name: Driver / Compilation Tests
-    needs: BuildDriver
+    needs: [BuildDriver, BuildPlugin]
     if: ${{ inputs.run-compilation-tests }}
     uses: ./.github/workflows/job_tests_compilation_linux.yml
     with:
       os: ${{ inputs.os }}
       test-runner: ${{ inputs.test-runner }}
-      install-package: ${{ needs.BuildDriver.outputs.build-package }}
+      install-package-openvino: ${{ needs.BuildPlugin.outputs.build-package }}
+      install-package-driver: ${{ needs.BuildDriver.outputs.build-package }}
       compiler-type: DRIVER
