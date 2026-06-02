@@ -97,8 +97,9 @@ jobs:
       - name: Install system packages
         if: ${{ inputs.compiler-type == 'DRIVER' }}
         run: |
+          sudo add-apt-repository -y ppa:kobuk-team/intel-graphics
           sudo apt update
-          sudo apt install -y libtbb12
+          sudo apt install -y libtbb12 libze1
 
       - name: Download models for ${{ matrix.npu-platform }}
         uses: ./.github/actions/download-models

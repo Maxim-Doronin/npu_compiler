@@ -73,11 +73,13 @@ runs:
           PLATFORM="LUNARLAKE"
         elif [[ "${{ inputs.npu-platform }}" == "NPU.5010" ]]; then
           PLATFORM="PANTHERLAKE"
+        elif [[ "${{ inputs.npu-platform }}" == "NPU.5020" ]]; then
+          PLATFORM="WILDCATLAKE"
         else
           PLATFORM="not_valid_platform"
         fi
         INSTALL_PACKAGE_ABS_PATH=$(realpath ${{ inputs.install-package-dir }})
-        export LD_LIBRARY_PATH=${INSTALL_PACKAGE_ABS_PATH}/usr/lib/:$LD_LIBRARY_PATH
+        export LD_LIBRARY_PATH=${INSTALL_PACKAGE_ABS_PATH}/usr/lib/:${INSTALL_PACKAGE_ABS_PATH}/usr/lib/x86_64-linux-gnu/:$LD_LIBRARY_PATH
         export ZE_INTEL_NPU_PLATFORM_OVERRIDE=${PLATFORM}
         EOF
         chmod +x prepare_env_driver.sh
